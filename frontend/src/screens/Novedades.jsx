@@ -213,7 +213,7 @@ export default function Novedades() {
 
       {/* Estados: loading / error / empty / contenido */}
       {loading ? (
-        <div className="muted" style={{ padding: 40, textAlign: 'center', fontSize: 13 }}>
+        <div className="muted u-p-40-text-center-fs-13">
           Cargando…
         </div>
       ) : error ? (
@@ -222,8 +222,7 @@ export default function Novedades() {
         </div>
       ) : notasFiltradas.length === 0 ? (
         <div
-          className="muted"
-          style={{ padding: 40, textAlign: 'center', fontSize: 13 }}
+          className="muted u-p-40-text-center-fs-13"
         >
           {tipoFilter === 'todas'
             ? 'Todavía no hay novedades publicadas.'

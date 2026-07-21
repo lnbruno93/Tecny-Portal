@@ -255,16 +255,14 @@ export default function Historial() {
             {/* Rango de fechas */}
             <input
               type="date"
-              className="input"
-              style={{ width: 136 }}
+              className="input u-w-136"
               title="Desde"
               value={desde}
               onChange={handleDesde}
             />
             <input
               type="date"
-              className="input"
-              style={{ width: 136 }}
+              className="input u-w-136"
               title="Hasta"
               value={hasta}
               onChange={handleHasta}
@@ -323,7 +321,7 @@ export default function Historial() {
                       {h.usuario_nombre || <span className="dim">Sistema</span>}
                     </td>
                     <td><AccionBadge raw={h.accion} /></td>
-                    <td className="mono tiny" style={{ color: 'var(--text-2)' }}>
+                    <td className="mono tiny u-color-text-2">
                       {tabla || <span className="dim">—</span>}
                     </td>
                     <td className="tiny" style={{ fontSize: 12.5, maxWidth: 300 }}>
@@ -421,7 +419,7 @@ export default function Historial() {
                     <AccionBadge raw={detail.accion} />
                   </DetailField>
                   <DetailField label="Módulo">
-                    <span className="mono tiny" style={{ color: 'var(--text-2)' }}>
+                    <span className="mono tiny u-color-text-2">
                       {parseAccion(detail.accion).tabla || <span className="dim">—</span>}
                     </span>
                   </DetailField>

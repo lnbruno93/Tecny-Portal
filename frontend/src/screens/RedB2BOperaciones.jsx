@@ -146,7 +146,7 @@ export default function RedB2BOperaciones() {
 
       <section className="card">
         {loading ? (
-          <div className="empty-state" style={{ padding: 24 }}>
+          <div className="empty-state u-p-24">
             Cargando operaciones…
           </div>
         ) : operations.length === 0 ? (

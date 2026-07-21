@@ -1426,15 +1426,15 @@ export default function Inventario() {
               <tr>
                 <th className="u-w-32px" aria-label="Historial"></th>
                 <th className="u-mw-180">Nombre</th>
-                <th style={{ width: 56 }}>GB</th>
+                <th className="u-w-56">GB</th>
                 <th className="u-w-70px">Batería</th>
                 <th className="u-w-96">Color</th>
                 <th style={{ width: 84, textAlign: 'right' }}>Costo</th>
-                <th style={{ width: 68 }}>Mon. Costo</th>
+                <th className="u-w-68">Mon. Costo</th>
                 <th style={{ width: 96, textAlign: 'right' }}>Precio Venta</th>
-                <th style={{ width: 72 }}>Mon. Venta</th>
+                <th className="u-w-72">Mon. Venta</th>
                 <th className="u-w-142-nowrap">IMEI/Serial</th>
-                <th style={{ width: 84 }}>Tipo</th>
+                <th className="u-w-84">Tipo</th>
                 {/* 2026-07-11: columna "Colección" removida — ver comentario en el
                     modal de edición sobre el sunset gradual. */}
                 <th style={{ minWidth: 150, whiteSpace: 'nowrap' }}>Proveedor</th>
@@ -1509,15 +1509,15 @@ export default function Inventario() {
               <tr>
                 <th className="u-w-32px" aria-label="Historial"></th>
                 <th className="u-mw-180">Nombre</th>
-                <th style={{ width: 56 }}>GB</th>
+                <th className="u-w-56">GB</th>
                 <th className="u-w-70px">Batería</th>
                 <th className="u-w-96">Color</th>
                 <th style={{ width: 84, textAlign: 'right' }}>Costo</th>
-                <th style={{ width: 68 }}>Mon. Costo</th>
+                <th className="u-w-68">Mon. Costo</th>
                 <th style={{ width: 96, textAlign: 'right' }}>Precio Venta</th>
-                <th style={{ width: 72 }}>Mon. Venta</th>
+                <th className="u-w-72">Mon. Venta</th>
                 <th className="u-w-142-nowrap">IMEI/Serial</th>
-                <th style={{ width: 84 }}>Tipo</th>
+                <th className="u-w-84">Tipo</th>
                 {/* 2026-07-11: columna "Colección" removida — ver comentario en el
                     modal de edición sobre el sunset gradual. */}
                 <th style={{ minWidth: 150, whiteSpace: 'nowrap' }}>Proveedor</th>

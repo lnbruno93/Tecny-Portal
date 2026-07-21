@@ -1268,17 +1268,17 @@ export default function CuentasCC() {
                 fontSize: 13,
               }}>
                 <colgroup>
-                  <col style={{ width: 88  }} />{/* Fecha        */}
-                  <col style={{ width: 108 }} />{/* Tipo         */}
+                  <col className="u-w-88" />{/* Fecha        */}
+                  <col className="u-w-108" />{/* Tipo         */}
                   <col className="u-w-90px" />{/* Producto     */}
                   <col className="u-w-130px" />{/* Modelo       */}
-                  <col style={{ width: 66  }} />{/* Cap.         */}
-                  <col style={{ width: 76  }} />{/* Color        */}
+                  <col className="u-w-66" />{/* Cap.         */}
+                  <col className="u-w-76" />{/* Color        */}
                   <col className="u-w-130px" />{/* IMEI/Serial  */}
-                  <col style={{ width: 94  }} />{/* Monto USD    */}
-                  <col style={{ width: 30  }} />{/* ✓            */}
+                  <col className="u-w-94" />{/* Monto USD    */}
+                  <col className="u-w-30" />{/* ✓            */}
                   <col className="u-w-150px" />{/* Comentarios  */}
-                  <col style={{ width: 48  }} />{/* Acción       */}
+                  <col className="u-w-48" />{/* Acción       */}
                 </colgroup>
 
                 <thead>
@@ -1418,7 +1418,7 @@ export default function CuentasCC() {
 
                   {movsPag.page < movsPag.pages && (
                     <tr>
-                      <td colSpan={11} style={{ textAlign: 'center', padding: '8px' }}>
+                      <td colSpan={11} className="u-p-8-text-center">
                         <button className="btn btn-ghost btn-sm" onClick={loadMasMovimientos} disabled={loadingMasMovs}>
                           {loadingMasMovs ? 'Cargando…' : `Ver movimientos más antiguos (${movimientos.length} de ${movsPag.total})`}
                         </button>

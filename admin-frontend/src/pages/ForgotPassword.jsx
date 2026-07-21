@@ -134,7 +134,7 @@ export default function ForgotPassword() {
               Volver al login
             </Btn>
 
-            <p className="muted tiny" style={{ textAlign: 'center', margin: '16px 0 0' }}>
+            <p className="muted tiny u-text-center-m-16-0-0">
               ¿Te equivocaste de email?{' '}
               <button
                 type="button"

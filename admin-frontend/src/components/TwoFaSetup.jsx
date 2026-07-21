@@ -93,7 +93,7 @@ export default function TwoFaSetup({ onDone, onCancel, onError }) {
 
   if (step === 'loading' || !setupData) {
     return (
-      <div className="card" style={{ padding: 40, textAlign: 'center' }}>
+      <div className="card u-p-40-text-center">
         <div className="muted">Generando código de seguridad…</div>
       </div>
     );
@@ -101,7 +101,7 @@ export default function TwoFaSetup({ onDone, onCancel, onError }) {
 
   if (step === 'done') {
     return (
-      <div className="card" style={{ textAlign: 'center', padding: 40 }}>
+      <div className="card u-p-40-text-center">
         <div style={{
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           width: 64, height: 64, borderRadius: '50%',

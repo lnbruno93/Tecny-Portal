@@ -488,7 +488,7 @@ function ProyeccionGastosPanel({ onChange }) {
               </colgroup>
               <thead>
                 <tr>
-                  <th style={{ textAlign: 'left' }}>Detalle</th>
+                  <th className="u-td-left">Detalle</th>
                   <th className="u-text-right">Monto $ (ARS)</th>
                   <th className="u-text-right">Monto USD</th>
                   <th></th>

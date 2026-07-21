@@ -94,7 +94,7 @@ export default function TwoFaSetup({ onDone, onCancel }) {
 
   if (step === 'done') {
     return (
-      <div className="card card-tight" style={{ textAlign: 'center', padding: 40 }}>
+      <div className="card card-tight u-p-40-text-center">
         <div style={{
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           width: 64, height: 64, borderRadius: '50%',

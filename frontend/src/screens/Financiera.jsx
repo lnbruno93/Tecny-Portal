@@ -1205,7 +1205,7 @@ export default function Financiera() {
               <button className="btn btn-sm" onClick={openManualCreate}>
                 <Icons.Plus size={13} /> Venta previa
               </button>
-              <div className="input-group" style={{ width: 220 }}>
+              <div className="input-group u-w-220">
                 <span className="addon addon-l"><Icons.Search size={14} /></span>
                 <input
                   className="input"
@@ -1382,7 +1382,7 @@ export default function Financiera() {
                         value={pagoForm.usd_recibido}
                         onChange={e => setPagoUsd(e.target.value)} />
                     </div>
-                    <div aria-hidden="true" style={{ paddingBottom: 8, color: 'var(--text-muted)', fontWeight: 700, fontSize: 18 }}>×</div>
+                    <div aria-hidden="true" className="u-pb-8-color-muted-fw-700-fs-18">×</div>
                     <div className="field" style={{ flex: '1 1 120px', minWidth: 120 }}>
                       <label htmlFor="pago-tc" className="field-label">TC del día</label>
                       <input id="pago-tc" type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
@@ -1391,7 +1391,7 @@ export default function Financiera() {
                         onChange={e => setPagoTc(e.target.value)} />
                       <TcWarning tc={pagoForm.tc} />
                     </div>
-                    <div aria-hidden="true" style={{ paddingBottom: 8, color: 'var(--text-muted)', fontWeight: 700, fontSize: 18 }}>=</div>
+                    <div aria-hidden="true" className="u-pb-8-color-muted-fw-700-fs-18">=</div>
                     <div className="field" style={{ flex: '1 1 160px', minWidth: 160 }}>
                       <label htmlFor="pago-ars" className="field-label">Total ARS (descuenta del saldo)</label>
                       <div className="input-group">
@@ -1583,7 +1583,7 @@ export default function Financiera() {
             </div>
             <form onSubmit={handleManualSave}>
               <div className="modal-body">
-                <fieldset disabled={savingManual} style={{ border: 0, padding: 0, margin: 0 }}>
+                <fieldset disabled={savingManual} className="fieldset-inline">
                 <div className="muted tiny u-lh-15-mb-14">
                   Para ventas anteriores al sistema cobradas con la caja Financiera.
                   NO crea una venta — solo agrega el comprobante al resumen

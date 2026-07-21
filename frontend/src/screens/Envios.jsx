@@ -1121,8 +1121,7 @@ export default function Envios() {
           {/* ── Right: detail panel ── */}
           {selected ? (
             <div
-              className="card card-flush"
-              style={{ position: 'sticky', top: 16 }}
+              className="card card-flush u-position-sticky-top-16"
             >
               {/* Panel header */}
               <div className="card-hd">
@@ -1643,7 +1642,7 @@ export default function Envios() {
                                     className="input mono" placeholder="1460"
                                     value={it.tc}
                                     onChange={e => setPagoTc(idx, e.target.value)}
-                                    style={{ paddingLeft: 30 }}
+                                    className="u-pl-30"
                                   />
                                 </div>
                               )}

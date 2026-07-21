@@ -335,7 +335,7 @@ export default function Novedades() {
         </Card>
 
         {/* ── FORM PANEL ──────────────────────────────────────────── */}
-        <div style={{ position: 'sticky', top: 16 }}>
+        <div className="u-position-sticky-top-16">
           <Card
             title={
               <span className="u-flex-center-gap-8">

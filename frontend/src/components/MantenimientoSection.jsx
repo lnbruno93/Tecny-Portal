@@ -56,7 +56,7 @@ function FinancieraReport({ report }) {
           </tr>
           <tr>
             <td className="u-pr-16">+ Comprobantes ({report.comprobantes})</td>
-            <td className="mono" style={{ textAlign: 'right', color: 'var(--pos)' }}>
+            <td className="mono u-td-right-color-pos">
               +{fmtARS(report.totalCompromisos)}
             </td>
           </tr>
@@ -162,7 +162,7 @@ function TarjetasReport({ report }) {
                     <span className="muted tiny u-ml-6">{g.tarjeta.moneda}</span>
                   </td>
                   <td className="mono tiny u-text-right">{fmt(g.saldoAntes)}</td>
-                  <td className="mono tiny" style={{ textAlign: 'right', color: 'var(--pos)' }}>
+                  <td className="mono tiny u-td-right-color-pos">
                     {g.cobros > 0 ? `+${fmt(g.totalCobros)} (${g.cobros})` : '—'}
                   </td>
                   <td className="mono tiny u-color-neg-text-right">

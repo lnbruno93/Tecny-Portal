@@ -92,7 +92,7 @@ export default function SuspendTenantModal({ tenant, open, onClose, onSaved }) {
           onChange={(e) => setReason(e.target.value)}
           placeholder="Ej: pago vencido, comportamiento abusivo, pedido del cliente"
           disabled={submitting}
-          style={{ resize: 'vertical', minHeight: 84 }}
+          className="u-resize-v-mh-84"
         />
         <div className="muted tiny u-mt-4">
           Mínimo {MIN_REASON_CHARS} caracteres. Queda en el audit trail

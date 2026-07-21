@@ -1410,7 +1410,7 @@ export default function Ventas() {
           ])} />
         </div>
         <div className="flex-row u-gap-8">
-          <div className="input-group" style={{ width: 280 }}>
+          <div className="input-group u-w-280">
             <span className="addon addon-l"><Icons.Search size={14} /></span>
             <input className="input" placeholder="Order ID, cliente, producto, IMEI…" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
@@ -1459,7 +1459,7 @@ export default function Ventas() {
           </tbody>
         </table>
       ) : lista.length === 0 ? (
-        <div className="empty" style={{ textAlign: 'center', padding: '32px 20px' }}>
+        <div className="empty u-p-32-20-text-center">
           <div style={{ fontSize: 14, marginBottom: 6 }}>No hay ventas en el período seleccionado.</div>
           <div className="muted tiny">
             Cargá una nueva desde el botón <strong>Nueva venta</strong> del header, o cambiá el filtro de fechas.
@@ -2017,7 +2017,7 @@ export default function Ventas() {
                                     className="input mono" placeholder="1460"
                                     value={p.tc}
                                     onChange={e => setPagoTc(i, e.target.value)}
-                                    style={{ paddingLeft: 30 }}
+                                    className="u-pl-30"
                                   />
                                 </div>
                               )}
