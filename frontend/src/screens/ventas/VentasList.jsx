@@ -185,7 +185,7 @@ const VentaRow = memo(function VentaRow({
         <td className="mono pos u-fw-600">u$s{fmt(v.ganancia_usd)}</td>
       )}
       <td className="mono u-fw-600">u$s{fmt(v.total_usd)}</td>
-      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+      <td className="u-text-right-nowrap">
         {/* 2026-06-10: select de estado movido al badge de la izquierda.
             Esta celda solo tiene íconos de acción ahora. */}
         {/* "Confirmar entrega": solo cuando la venta nació de un envío

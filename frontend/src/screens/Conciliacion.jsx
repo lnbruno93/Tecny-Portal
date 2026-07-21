@@ -436,7 +436,7 @@ function Detalle({ id, onVolver }) {
             <div className="muted tiny">Progreso</div>
             <div className="mono">
               <span className="u-color-pos">{matched}</span> matched ·{' '}
-              <span style={{ color: 'var(--warn)' }}>{pendientes}</span> pendientes ·{' '}
+              <span className="u-color-warn">{pendientes}</span> pendientes ·{' '}
               <span className="muted">{ignoradas}</span> ignoradas
             </div>
           </div>

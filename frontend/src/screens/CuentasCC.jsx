@@ -1035,8 +1035,8 @@ export default function CuentasCC() {
               <table className="tbl">
                 <thead>
                   <tr>
-                    <th style={{ width: 40 }}>#</th><th>Cliente</th><th>Categoría</th>
-                    <th className="num">Saldo</th><th style={{ width: 120 }}>Proporción</th>
+                    <th className="u-w-40px">#</th><th>Cliente</th><th>Categoría</th>
+                    <th className="num">Saldo</th><th className="u-w-120px">Proporción</th>
                   </tr>
                 </thead>
                 <tbody>

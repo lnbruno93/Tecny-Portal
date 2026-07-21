@@ -2424,7 +2424,7 @@ Pago: Efectivo + Transferencia`}
                 <input className="input" placeholder="Nueva etiqueta (ej. Mayorista)" value={nuevaEtiqueta} onChange={e => setNuevaEtiqueta(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addEtiqueta(); } }} />
                 <button className="btn btn-sm" onClick={addEtiqueta}><Icons.Plus size={13} /></button>
               </div>
-              <div className="stack" style={{ gap: 4 }}>
+              <div className="stack u-gap-4">
                 {etiquetas.length === 0 && <div className="muted tiny">Sin etiquetas</div>}
                 {etiquetas.map(et => (
                   <div key={et.id} className="flex-between" style={{ fontSize: 13, padding: '4px 0', borderBottom: '1px solid var(--hairline)' }}>

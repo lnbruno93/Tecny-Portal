@@ -176,14 +176,14 @@ export default function EgresosPanel() {
                     <td>{e.categoria_nombre ? <span className="badge">{e.categoria_nombre}</span> : '—'}</td>
                     <td className="tiny">{e.caja_nombre || '—'}</td>
                     <td className="mono u-text-right">{Number(e.monto) > 0 ? `${e.moneda === 'ARS' ? '$' : 'u$s'} ${fmt(e.monto)}` : '—'}</td>
-                    <td className="mono" style={{ textAlign: 'right', color: 'var(--neg)' }}>u$s {fmt(e.monto_usd)}</td>
+                    <td className="mono u-color-neg-text-right">u$s {fmt(e.monto_usd)}</td>
                     <td>
                       <button className={'badge ' + (e.estado === 'pagado' ? 'badge-info' : '')} style={{ cursor: 'pointer', border: 'none' }}
                         title={e.estado === 'pagado' ? 'Marcar pendiente' : 'Marcar pagado'} onClick={() => togglePagado(e)}>
                         {e.estado === 'pagado' ? 'Pagado ✓' : 'Pendiente'}
                       </button>
                     </td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <td className="u-text-right-nowrap">
                       <button className="icon-btn" title="Editar" onClick={() => openEdit(e)}><Icons.Edit size={14} /></button>
                       <button className="icon-btn u-color-neg" title="Eliminar" onClick={() => handleDelete(e)}><Icons.Trash size={14} /></button>
                     </td>
@@ -279,7 +279,7 @@ function CategoriasModal({ categorias, onClose, onChange, toast, confirm }) {
             <input className="input u-flex-1" placeholder="Nueva categoría…" value={nombre} onChange={e => setNombre(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add(); } }} />
             <button className="btn btn-primary btn-sm" onClick={add} disabled={!nombre.trim()}>+ Agregar</button>
           </div>
-          <div className="stack" style={{ gap: 4 }}>
+          <div className="stack u-gap-4">
             {categorias.length === 0 && <div className="muted tiny">Sin categorías.</div>}
             {categorias.map(c => (
               <div key={c.id} className="flex-between" style={{ padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 8 }}>
@@ -327,7 +327,7 @@ function RecurrentesModal({ recurrentes, categorias, cajas, onClose, onChange, t
         <div className="modal-body">
           <div className="row" style={{ gap: 8, marginBottom: 6, alignItems: 'flex-end' }}>
             <div className="field u-flex-2"><label className="field-label tiny">Concepto</label><input className="input" placeholder="Alquiler…" value={form.concepto} onChange={e => setForm(f => ({ ...f, concepto: e.target.value }))} /></div>
-            <div className="field u-flex-1"><label className="field-label tiny">Monto</label><div className="flex-row" style={{ gap: 4 }}><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="0" value={form.monto} onChange={e => setForm(f => ({ ...f, monto: e.target.value }))} className="u-flex-1" /><select className="input u-w-70px" value={form.moneda} onChange={e => setForm(f => ({ ...f, moneda: e.target.value }))}>{Array.from(new Set([...monedas, form.moneda].filter(Boolean))).map(m => <option key={m} value={m}>{m}</option>)}</select></div></div>
+            <div className="field u-flex-1"><label className="field-label tiny">Monto</label><div className="flex-row u-gap-4"><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="0" value={form.monto} onChange={e => setForm(f => ({ ...f, monto: e.target.value }))} className="u-flex-1" /><select className="input u-w-70px" value={form.moneda} onChange={e => setForm(f => ({ ...f, moneda: e.target.value }))}>{Array.from(new Set([...monedas, form.moneda].filter(Boolean))).map(m => <option key={m} value={m}>{m}</option>)}</select></div></div>
             {form.moneda === 'ARS' && (
               <div className="field u-w-80px"><label className="field-label tiny">TC</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="1425" value={form.tc} onChange={e => setForm(f => ({ ...f, tc: e.target.value }))} /><TcWarning tc={form.tc} /></div>
             )}
@@ -338,7 +338,7 @@ function RecurrentesModal({ recurrentes, categorias, cajas, onClose, onChange, t
             <div className="field u-flex-1"><label className="field-label tiny">Caja</label><select className="input" value={form.metodo_pago_id} onChange={e => setForm(f => ({ ...f, metodo_pago_id: e.target.value }))}><option value="">—</option>{cajas.map(c => <option key={c.id} value={c.id}>{c.nombre}{c.moneda ? ' · ' + c.moneda : ''}</option>)}<CajaSelectHint /></select></div>
             <button className="btn btn-primary btn-sm" onClick={add} disabled={!form.concepto.trim()}>+ Agregar</button>
           </div>
-          <div className="stack" style={{ gap: 4 }}>
+          <div className="stack u-gap-4">
             {recurrentes.length === 0 && <div className="muted tiny">Sin recurrentes. Agregá uno y usá "Generar del mes".</div>}
             {recurrentes.map(r => (
               <div key={r.id} className="flex-between" style={{ padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 8 }}>

@@ -48,7 +48,7 @@ function TwoFaCodeModal({ open, title, description, onSubmit, onCancel, loading 
             <h3 id="twofa-code-modal-title" style={{ marginTop: 0, fontSize: 17, fontWeight: 700 }}>
               {title}
             </h3>
-            <div className="muted tiny" id="twofa-code-modal-desc" style={{ lineHeight: 1.5, marginBottom: 14 }}>
+            <div className="muted tiny u-lh-15-mb-14" id="twofa-code-modal-desc">
               {description}
             </div>
             <input
@@ -178,7 +178,7 @@ export default function TwoFaSection() {
                 <br />
                 {status.recovery_codes_remaining} de 8 recovery codes disponibles.
                 {status.recovery_codes_remaining <= 2 && (
-                  <span style={{ color: 'var(--warn)' }}>{' '}⚠️ Te quedan pocos. Considerá regenerarlos.</span>
+                  <span className="u-color-warn">{' '}⚠️ Te quedan pocos. Considerá regenerarlos.</span>
                 )}
               </div>
             </div>
@@ -265,7 +265,7 @@ export default function TwoFaSection() {
             <span className="badge" style={{ background: 'var(--warn)', color: '#000' }}>Setup pendiente</span>
             <strong>Autenticación de dos factores</strong>
           </div>
-          <div className="muted tiny" style={{ lineHeight: 1.5, marginBottom: 14 }}>
+          <div className="muted tiny u-lh-15-mb-14">
             Empezaste a activar 2FA pero no completaste el paso final (ingresar el código de 6 dígitos de tu app autenticadora). Para terminar, continuá el setup. Si perdiste el QR o querés empezar de cero, cancelá.
           </div>
           <div className="flex-row" style={{ gap: 8, justifyContent: 'flex-end' }}>
@@ -305,7 +305,7 @@ export default function TwoFaSection() {
         <span className="badge badge-default">No activado</span>
         <strong>Autenticación de dos factores</strong>
       </div>
-      <div className="muted tiny" style={{ lineHeight: 1.5, marginBottom: 14 }}>
+      <div className="muted tiny u-lh-15-mb-14">
         Agregá una capa extra de seguridad. Cuando esté activo, el portal va a
         pedirte un código de 6 dígitos de tu app autenticadora (Google
         Authenticator, Authy, 1Password, etc.) después del password.

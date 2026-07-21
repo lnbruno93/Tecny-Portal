@@ -290,7 +290,7 @@ export default function Historial() {
                 <th>Acción</th>
                 <th>Módulo</th>
                 <th>Detalle</th>
-                <th style={{ width: 40 }}></th>
+                <th className="u-w-40px"></th>
               </tr>
             </thead>
             <tbody>
@@ -308,7 +308,7 @@ export default function Historial() {
                 <th>Acción</th>
                 <th>Módulo</th>
                 <th>Detalle</th>
-                <th style={{ width: 40 }}></th>
+                <th className="u-w-40px"></th>
               </tr>
             </thead>
             <tbody>

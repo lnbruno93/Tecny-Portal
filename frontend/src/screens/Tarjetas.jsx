@@ -680,7 +680,7 @@ export default function Tarjetas() {
       {sinTarjetas ? (
         // 2026-06-24 lote F: padding fluido — 14px mobile / 24px desktop.
         <div className="card" style={{ padding: 'clamp(14px, 4vw, 24px)' }}>
-          <div style={{ fontWeight: 600, marginBottom: 6 }}>Todavía no hay tarjetas configuradas</div>
+          <div className="u-fw-600-mb-6">Todavía no hay tarjetas configuradas</div>
           <div className="muted u-fs-13">
             Creá los métodos de pago tarjeta en <b>Cajas → Config Cajas</b> (tildá "Es tarjeta" y poné su % de comisión).
             Después, cada venta cobrada con ellos impacta acá automáticamente.
@@ -724,7 +724,7 @@ export default function Tarjetas() {
                     <td className="u-fw-600">{t.nombre}</td>
                     <td className="mono tiny u-text-right">{Number(t.comision_pct || 0)}%</td>
                     <td className="mono u-text-right">$ {fmt(t.bruto_total)}</td>
-                    <td className="mono" style={{ textAlign: 'right', color: 'var(--neg)' }}>$ {fmt(t.comision_total)}</td>
+                    <td className="mono u-color-neg-text-right">$ {fmt(t.comision_total)}</td>
                     <td className="mono" style={{ textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>$ {fmt(t.saldo)}</td>
                   </tr>
                 ))}
@@ -787,7 +787,7 @@ export default function Tarjetas() {
                       </td>
                       <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>$ {fmt(m.saldo_acum)}</td>
                       <td className="tiny">{m.venta_order_id ? `Venta ${m.venta_order_id}` : (m.caja_nombre || '—')}</td>
-                      <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
+                      <td className="u-text-right-nowrap">
                         {canEdit(m) ? (
                           <>
                             <button className="icon-btn" title="Editar" aria-label="Editar movimiento" onClick={() => openEdit(m)}>
@@ -850,7 +850,7 @@ export default function Tarjetas() {
             //    de la financiera que cubre N modalidades en una sola operación. ──
             <div className="stack u-gap-14">
               <div className="card">
-                <div style={{ fontWeight: 700, fontSize: 18 }}>Todas las tarjetas</div>
+                <div className="u-fs-18-fw-700">Todas las tarjetas</div>
                 <div className="muted tiny u-mt-4">
                   Resumen agregado de las {list.length} {list.length === 1 ? 'modalidad activa' : 'modalidades activas'}.
                 </div>
@@ -945,7 +945,7 @@ export default function Tarjetas() {
                                onChange={e => setUsdRecibido(e.target.value)} />
                       </div>
                       <div className="flex-row" aria-hidden="true" style={{ alignItems: 'center', marginBottom: 8 }}>
-                        <span className="muted" style={{ fontSize: 18, fontWeight: 700 }}>×</span>
+                        <span className="muted u-fs-18-fw-700">×</span>
                       </div>
                       <div className="field" style={{ flex: '1 1 120px', minWidth: 120 }}>
                         <label htmlFor="multiliq-tc" className="field-label tiny">TC del día</label>
@@ -958,7 +958,7 @@ export default function Tarjetas() {
                         <TcWarning tc={multiLiq.tc} />
                       </div>
                       <div className="flex-row" aria-hidden="true" style={{ alignItems: 'center', marginBottom: 8 }}>
-                        <span className="muted" style={{ fontSize: 18, fontWeight: 700 }}>=</span>
+                        <span className="muted u-fs-18-fw-700">=</span>
                       </div>
                       <div className="field" style={{ flex: '1 1 160px', minWidth: 160 }}>
                         <label htmlFor="multiliq-ars" className="field-label tiny">Total ARS (descuenta del saldo)</label>
@@ -1119,7 +1119,7 @@ export default function Tarjetas() {
                           <td className="mono u-text-right">
                             {m.tipo === 'cobro' ? `${sym(m.moneda)} ${fmt(m.monto_bruto)}` : '—'}
                           </td>
-                          <td className="mono tiny" style={{ textAlign: 'right', color: 'var(--neg)' }}>
+                          <td className="mono tiny u-color-neg-text-right">
                             {Number(m.monto_comision) > 0 ? sym(m.moneda) + ' ' + fmt(m.monto_comision) : '—'}
                           </td>
                           <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{sym(m.moneda)} {fmt(m.monto_neto)}</td>
@@ -1136,7 +1136,7 @@ export default function Tarjetas() {
           ) : (
             <div className="stack u-gap-14">
               <div className="card">
-                <div style={{ fontWeight: 700, fontSize: 18 }}>{detalle.nombre}</div>
+                <div className="u-fs-18-fw-700">{detalle.nombre}</div>
                 <div className="muted tiny u-mt-4">Comisión de la financiera: {Number(detalle.comision_pct || 0)}%</div>
               </div>
 
@@ -1198,10 +1198,10 @@ export default function Tarjetas() {
                           <td className="mono u-text-right">
                             {m.tipo === 'cobro' ? `${sym(m.moneda)} ${fmt(m.monto_bruto)}` : '—'}
                           </td>
-                          <td className="mono tiny" style={{ textAlign: 'right', color: 'var(--neg)' }}>{Number(m.monto_comision) > 0 ? sym(m.moneda) + ' ' + fmt(m.monto_comision) : '—'}</td>
+                          <td className="mono tiny u-color-neg-text-right">{Number(m.monto_comision) > 0 ? sym(m.moneda) + ' ' + fmt(m.monto_comision) : '—'}</td>
                           <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{sym(m.moneda)} {fmt(m.monto_neto)}</td>
                           <td className="tiny">{m.venta_order_id ? `Venta ${m.venta_order_id}` : (m.caja_nombre || '—')}</td>
-                          <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
+                          <td className="u-text-right-nowrap">
                             {canEdit(m) ? (
                               <>
                                 <button className="icon-btn" title="Editar" aria-label="Editar movimiento" onClick={() => openEdit(m)}>
@@ -1238,7 +1238,7 @@ export default function Tarjetas() {
             <form onSubmit={handleCobroPrevSave}>
               <div className="modal-body">
                 <fieldset disabled={savingCobroPrev} style={{ border: 0, padding: 0, margin: 0 }}>
-                <div className="muted tiny" style={{ marginBottom: 14, lineHeight: 1.5 }}>
+                <div className="muted tiny u-lh-15-mb-14">
                   Para saldos pendientes de ventas anteriores al sistema. NO genera
                   una venta — solo agrega saldo a cobrar de la financiera. Una
                   liquidación futura lo cancela igual que cualquier otro cobro.
@@ -1331,7 +1331,7 @@ export default function Tarjetas() {
                     durante el save no se puede seguir tipeando (evita race con
                     el toast de éxito + cierre que pisaba cambios). */}
                 <fieldset disabled={savingEdit} style={{ border: 0, padding: 0, margin: 0 }}>
-                <div className="muted tiny" style={{ marginBottom: 14, lineHeight: 1.5 }}>
+                <div className="muted tiny u-lh-15-mb-14">
                   Tarjeta: <b>{editMov.metodo_nombre}</b>
                   {editMov.tipo === 'liquidacion' && (
                     <> · Si cambiás caja o monto, se revierte el ingreso anterior y se postea el nuevo.</>

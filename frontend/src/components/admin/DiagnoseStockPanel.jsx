@@ -128,7 +128,7 @@ function RestoreModal({ producto, onClose, onDone }) {
             </span>
           </label>
         </div>
-        <div className="modal-ft" style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <div className="modal-ft u-flex-end-gap-8">
           <button className="btn btn-ghost" onClick={onClose} disabled={submitting}>Cancelar</button>
           <button
             className="btn btn-primary"

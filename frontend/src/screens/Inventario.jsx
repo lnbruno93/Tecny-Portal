@@ -1215,7 +1215,7 @@ export default function Inventario() {
       >
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">En técnico</div>
-          <div className="kpi-value mono" style={{ color: 'var(--warn)' }}>{metricas ? metricas.en_tecnico_count : '—'}</div>
+          <div className="kpi-value mono u-color-warn">{metricas ? metricas.en_tecnico_count : '—'}</div>
           <div className="muted tiny u-mt-6">
             {metricas && metricas.en_tecnico_usd != null ? money(metricas.en_tecnico_usd, 'USD') : ''}
           </div>
@@ -1464,7 +1464,7 @@ export default function Inventario() {
           if (hasFilters) {
             return (
               <div className="empty" style={{ padding: '28px 16px' }}>
-                <div style={{ fontWeight: 600, marginBottom: 6 }}>Sin resultados</div>
+                <div className="u-fw-600-mb-6">Sin resultados</div>
                 <div className="muted tiny u-mb-14">
                   No hay productos que coincidan con los filtros aplicados.
                 </div>
@@ -1485,7 +1485,7 @@ export default function Inventario() {
           }
           return (
             <div className="empty" style={{ padding: '32px 16px' }}>
-              <div style={{ fontWeight: 600, marginBottom: 6 }}>Todavía no cargaste productos</div>
+              <div className="u-fw-600-mb-6">Todavía no cargaste productos</div>
               <div className="muted tiny u-mb-14">
                 {canCreateProducto
                   ? 'Empezá con tu primer equipo o accesorio — necesitás al menos uno para registrar ventas.'
@@ -1659,7 +1659,7 @@ export default function Inventario() {
                       <div
                         id="imei-warning"
                         role="alert"
-                        style={{ color: 'var(--neg)', fontSize: 12, marginTop: 4 }}
+                        className="u-color-neg-fs-12-mt-4"
                       >
                         {imeiWarning}
                       </div>
@@ -2035,7 +2035,7 @@ export default function Inventario() {
                 <input className="input" placeholder="Nuevo depósito" value={nuevoDep} onChange={e => setNuevoDep(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addDeposito(); } }} />
                 <button className="btn btn-sm" onClick={addDeposito}><Icons.Plus size={13} /></button>
               </div>
-              <div className="stack" style={{ gap: 4 }}>
+              <div className="stack u-gap-4">
                 {depositos.length === 0 && <div className="muted tiny">Sin depósitos</div>}
                 {depositos.map(d => (
                   <div key={d.id} className="flex-between" style={{ fontSize: 13, padding: '6px 0', borderBottom: '1px solid var(--hairline)' }}>
@@ -2439,7 +2439,7 @@ const InventarioRow = memo(function InventarioRow({
         onSave={save('estado')}
         emptyToNull={false}
       />
-      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+      <td className="u-text-right-nowrap">
         <button
           className="icon-btn"
           title={p.oculto ? 'Mostrar (sacar de ocultos)' : 'Ocultar de la vista por defecto'}

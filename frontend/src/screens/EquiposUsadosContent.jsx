@@ -265,7 +265,7 @@ export default function EquiposUsadosContent({ onCountChange }) {
         </div>
       ) : items.length === 0 ? (
         <div className="empty" style={{ padding: '28px 16px' }}>
-          <div style={{ fontWeight: 600, marginBottom: 6 }}>Sin resultados</div>
+          <div className="u-fw-600-mb-6">Sin resultados</div>
           <div className="muted tiny">
             {buscar || origen !== 'todos' || estado
               ? 'No hay equipos usados que coincidan con los filtros aplicados.'
@@ -278,7 +278,7 @@ export default function EquiposUsadosContent({ onCountChange }) {
             <thead>
               <tr>
                 <th style={{ minWidth: 180 }}>Equipo</th>
-                <th style={{ width: 120 }}>GB · Color</th>
+                <th className="u-w-120px">GB · Color</th>
                 <th className="u-w-90px">Batería</th>
                 <th style={{ width: 142, whiteSpace: 'nowrap' }}>IMEI / Serial</th>
                 <th style={{ width: 100, textAlign: 'right' }}>Costo</th>

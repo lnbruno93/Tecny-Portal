@@ -62,7 +62,7 @@ function FinancieraReport({ report }) {
           </tr>
           <tr>
             <td style={{ paddingRight: 16 }}>− Pagos ({report.pagos})</td>
-            <td className="mono" style={{ textAlign: 'right', color: 'var(--neg)' }}>
+            <td className="mono u-color-neg-text-right">
               −{fmtARS(report.totalPagos)}
             </td>
           </tr>
@@ -165,7 +165,7 @@ function TarjetasReport({ report }) {
                   <td className="mono tiny" style={{ textAlign: 'right', color: 'var(--pos)' }}>
                     {g.cobros > 0 ? `+${fmt(g.totalCobros)} (${g.cobros})` : '—'}
                   </td>
-                  <td className="mono tiny" style={{ textAlign: 'right', color: 'var(--neg)' }}>
+                  <td className="mono tiny u-color-neg-text-right">
                     {g.liquidaciones > 0 ? `−${fmt(g.totalLiq)} (${g.liquidaciones})` : '—'}
                   </td>
                   <td className="mono" style={{ textAlign: 'right', fontWeight: 700, color: negativo ? 'var(--neg)' : 'inherit' }}>

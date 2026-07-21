@@ -211,7 +211,7 @@ export default function CategoriasProductoModal({
                   <Icons.Plus size={13} /> Agregar
                 </button>
               </div>
-              <div className="stack" style={{ gap: 4 }}>
+              <div className="stack u-gap-4">
                 {colecciones.length === 0 && <div className="muted tiny">Sin colecciones</div>}
                 {colecciones.map(c => {
                   const count = Number(c.productos_count ?? 0);
@@ -318,7 +318,7 @@ function CatList({ items, onEdit, onDelete, onReorder }) {
                   <span className="chip tiny" title="Categoría base (creada al arrancar el tenant)">Base</span>
                 )}
                 {!row.activa && (
-                  <span className="chip tiny" style={{ color: 'var(--warn)' }}>Inactiva</span>
+                  <span className="chip tiny u-color-warn">Inactiva</span>
                 )}
               </div>
               <div className="muted tiny">
