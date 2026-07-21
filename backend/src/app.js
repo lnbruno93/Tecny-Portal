@@ -2,6 +2,10 @@ const express     = require('express');
 const compression = require('compression');
 const cors        = require('cors');
 const helmet      = require('helmet');
+// 2026-07-21 Task #190 refresh token pattern: cookie-parser para leer el
+// httpOnly cookie `tecny_refresh` en el endpoint POST /api/auth/refresh.
+// Sin este middleware `req.cookies` es undefined.
+const cookieParser = require('cookie-parser');
 // 2026-06-11 S-IPv6: importamos `ipKeyGenerator` además del default rateLimit.
 // Sin el helper, los `keyGenerator` custom que combinan `req.ip` con user.id
 // dejan un agujero IPv6: un atacante puede rotar el sufijo de host dentro del
@@ -194,6 +198,13 @@ app.use(compression({
     return compression.filter(req, res);
   },
 }));
+
+// 2026-07-21 Task #190: parsing de cookies (necesario para el refresh
+// token httpOnly del endpoint POST /api/auth/refresh). Sin secret
+// argument — no usamos signed cookies (el refresh token en sí ya es
+// randombytes(32) + guardado hasheado en DB, el tamper resistance
+// viene de la DB lookup no del signing).
+app.use(cookieParser());
 
 // Security headers — CSP explícito para servidor API puro (sin HTML propio)
 // defaultSrc 'none' bloquea cualquier intento de cargar recursos desde este origen.
