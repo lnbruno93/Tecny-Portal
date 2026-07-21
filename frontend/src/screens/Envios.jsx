@@ -907,7 +907,7 @@ export default function Envios() {
       {/* 2026-06-24 mobile lote E: flex-wrap + gap mayor para que en
           <=414px las dos mitades (date nav + search/filtros) caigan a
           líneas separadas en vez de squeezear horizontalmente. */}
-      <div className="flex-between" style={{ marginBottom: 14, flexWrap: 'wrap', rowGap: 10 }}>
+      <div className="flex-between" className="u-mb-14-wrap-rowgap-10">
         <div className="flex-row u-gap-8-flex-wrap">
           <button
             className="icon-btn"
@@ -917,7 +917,7 @@ export default function Envios() {
           >
             <Icons.ChevronRight size={14} className="u-rotate-180" />
           </button>
-          <div style={{ fontWeight: 600, fontSize: 14, minWidth: 96, textAlign: 'center' }}>
+          <div className="u-fw-600-fs-14-mw-96-center">
             {dateLabel(dateFilter)}
           </div>
           <button
@@ -945,7 +945,7 @@ export default function Envios() {
           {/* 2026-06-24 mobile lote E: width 280 fijo no entra en 375px viewport
               (junto con el Seg al lado). flex-grow + min-width 200 hace que
               se estire en desktop pero achique a 200px mínimo en mobile. */}
-          <div className="input-group" style={{ flex: '1 1 200px', minWidth: 200, maxWidth: 280 }}>
+          <div className="input-group" className="u-flex-11-200-mw-mw">
             <span className="addon addon-l"><Icons.Search size={14} /></span>
             <input
               className="input"
@@ -979,7 +979,7 @@ export default function Envios() {
           aria-live="polite"
           aria-label="Cargando envíos"
           className="stack"
-          style={{ gap: 8, padding: '12px 0' }}
+          className="u-gap-8-p-12-0"
         >
           {Array.from({ length: 5 }).map((_, i) => (
             <div key={i} className="card card-tight">
@@ -1029,7 +1029,7 @@ export default function Envios() {
                 const hasFilters = !!(search || estadoFilter !== 'todos' || dateFilter);
                 if (hasFilters) {
                   return (
-                    <div className="empty" style={{ padding: '24px 16px' }}>
+                    <div className="empty" className="u-p-24-16-only">
                       <div className="u-fw-600-mb-6">Sin resultados</div>
                       <div className="muted tiny u-mb-14">
                         No hay envíos que coincidan con los filtros aplicados.
@@ -1076,7 +1076,7 @@ export default function Envios() {
                     <div className="flex-row u-gap-8">
                       <span
                         className="mono tiny"
-                        style={{ fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.04em' }}
+                        className="u-fw-700-accent-ls-04"
                       >
                         #{e.id}
                       </span>
@@ -1087,7 +1087,7 @@ export default function Envios() {
                   </div>
                   <div className="u-fs-14-fw-600">{e.cliente}</div>
                   <div className="muted tiny u-mt-2">{e.direccion}{e.barrio ? ' · ' + e.barrio : ''}</div>
-                  <div className="flex-row" style={{ gap: 14, marginTop: 8, flexWrap: 'wrap' }}>
+                  <div className="flex-row" className="u-gap-14-mt-8-wrap">
                     {productos.length > 0 && (
                       <div className="flex-row u-gap-5-fs-12">
                         <Icons.Box size={13} className="muted" />
@@ -1107,7 +1107,7 @@ export default function Envios() {
                       </div>
                     )}
                     {e.operador && (
-                      <div className="flex-row" style={{ gap: 5, fontSize: 12, marginLeft: 'auto' }}>
+                      <div className="flex-row" className="u-gap-5-fs-12-ml-auto">
                         <Icons.Users size={13} className="muted" />
                         <span className="muted">{e.operador}</span>
                       </div>
@@ -1129,19 +1129,19 @@ export default function Envios() {
                   <div className="u-flex-center-gap-8">
                     <span
                       className="mono"
-                      style={{ fontWeight: 700, color: 'var(--accent)', fontSize: 13 }}
+                      className="u-fw-700-accent-fs-13"
                     >
                       Envío #{selected.id}
                     </span>
                     {estadoBadge(selected.estado)}
                     {prioridadBadge(selected.prioridad)}
                   </div>
-                  <div style={{ fontWeight: 600, fontSize: 16, marginTop: 4 }}>{selected.cliente}</div>
+                  <div className="u-fw-600-fs-16-mt-4">{selected.cliente}</div>
                 </div>
               </div>
 
               {/* Data rows */}
-              <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>
+              <div className="u-p-14-18-border-bottom">
                 <div className="stack u-gap-8">
                   {[
                     ['Fecha',     fmtFecha(selected.fecha) + (selected.horario ? ' · ' + selected.horario : '')],
@@ -1208,7 +1208,7 @@ export default function Envios() {
               </div>
 
               {/* Items list */}
-              <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+              <div className="u-mh-320-oy">
                 {(selected.items || []).length === 0 && (
                   <div className="empty">Sin items</div>
                 )}
@@ -1251,7 +1251,7 @@ export default function Envios() {
               </div>
 
               {/* Action buttons */}
-              <div style={{ padding: '12px 18px', display: 'flex', gap: 8, borderTop: '1px solid var(--border)' }}>
+              <div className="u-p-12-18-flex-gap-8-border-top">
                 {nextEstadoLabel(selected.estado) && (
                   <button
                     className="btn btn-primary btn-sm"
@@ -1279,7 +1279,7 @@ export default function Envios() {
                 </button>
                 <button
                   className="btn btn-sm"
-                  style={{ marginLeft: 'auto', color: 'var(--neg)' }}
+                  className="u-ml-auto-color-neg"
                   disabled={deletingId === selected.id}
                   onClick={() => handleDelete(selected.id)}
                 >
@@ -1446,7 +1446,7 @@ export default function Envios() {
                     <div className="stack u-gap-8">
                       {/* Auditoría 2026-06-30 F-13/14: key={_id} estable. */}
                       {items.map((it, idx) => ({ it, idx })).filter(({ it }) => it.tipo === 'producto').map(({ it, idx }) => (
-                        <div key={it._id} className="card card-tight" style={{ padding: '12px 14px' }}>
+                        <div key={it._id} className="card card-tight" className="u-p-12-14">
                           {/* 2026-06-10 (Lucas eligió layout "Hero card con chips"):
                               · Sin linkear → grilla compacta de 4 col: buscador + monto + moneda + ✕.
                               · Linkeado → 2 niveles:
@@ -1456,20 +1456,20 @@ export default function Envios() {
                           {!it.producto_id ? (
                             // 2026-06-24 mobile lote C: .item-grid responsive
                             <div className="item-grid" style={{ '--cols': '1fr 140px 90px auto', gap: 8, alignItems: 'end' }}>
-                              <div className="field" style={{ marginBottom: 0, position: 'relative' }}>
+                              <div className="field" className="u-mb-0-relative">
                                 <label className="field-label">Buscar producto del inventario <span className="muted tiny">(nombre, IMEI, color, GB…)</span></label>
                                 <input className="input" placeholder="Empezá a tipear…"
                                        value={prodSearch.itemIdx === idx ? prodSearch.q : ''}
                                        onChange={e => searchProductos(idx, e.target.value)}
                                        onFocus={() => setProdSearch(s => ({ ...s, itemIdx: idx }))} />
                                 {prodSearch.itemIdx === idx && prodSearch.q.trim().length >= 2 && (
-                                  <div className="card card-tight" style={{ position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 4, zIndex: 50, maxHeight: 260, overflowY: 'auto', padding: 0 }}>
+                                  <div className="card card-tight" className="u-dropdown-abs-large">
                                     {prodSearch.loading && <div className="muted tiny u-p-8-10">Buscando…</div>}
                                     {!prodSearch.loading && prodSearch.results.length === 0 && <div className="muted tiny u-p-8-10">Sin resultados</div>}
                                     {prodSearch.results.map(p => (
                                       <button type="button" key={p.id}
                                               onClick={() => pickProducto(idx, p)}
-                                              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', border: 'none', background: 'transparent', cursor: 'pointer', borderBottom: '1px solid var(--hairline)', color: 'var(--text)' }}>
+                                              className="u-btn-list-item">
                                         <div className="u-fs-13-fw-600">{[p.nombre, gbLabel(p.gb), p.color].filter(Boolean).join(' · ')}</div>
                                         <div className="muted tiny mono">{p.imei ? 'IMEI ' + fmtImei(p.imei) : '—'} · cantidad {p.cantidad ?? 0} · ${fmt(p.precio_venta)}</div>
                                       </button>
@@ -1499,15 +1499,15 @@ export default function Envios() {
                             <>
                               {/* HERO: solo título + Cambiar. Los chips, IMEI y controles
                                   bajan a una única fila debajo (variante V2 elegida por Lucas). */}
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
+                              <div className="u-flex-between-start-12-mb-12">
                                 <div className="u-flex-1-minw-0">
-                                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.5, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>
+                                  <div className="u-tiny-label-uppercase">
                                     Producto seleccionado
                                   </div>
                                   {/* 2026-06-24 lote F: clamp para que en mobile (375px viewport)
                                       el título del producto seleccionado no domine sobre los chips
                                       e info debajo. Min 15px asegura legibilidad. */}
-                                  <div style={{ fontSize: 'clamp(15px, 4vw, 17px)', fontWeight: 600, letterSpacing: -0.2, color: 'var(--text)' }}>
+                                  <div className="u-fs-clamp-fw-600">
                                     {it._nombre || it.descripcion}
                                   </div>
                                 </div>
@@ -1521,7 +1521,7 @@ export default function Envios() {
                                 '--cols': '1fr 140px 90px auto',
                                 gap: 10, alignItems: 'end',
                               }}>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', paddingBottom: 7 }}>
+                                <div className="u-flex-wrap-gap-8-center-pb-7">
                                   {it._gb && <span className="badge">{gbLabel(it._gb)}</span>}
                                   {it._color && <span className="badge">{it._color}</span>}
                                   {it._costo && (
@@ -1530,7 +1530,7 @@ export default function Envios() {
                                     </span>
                                   )}
                                   {it._imei && (
-                                    <span className="mono" style={{ color: 'var(--text-muted)', fontSize: 11.5, marginLeft: 2 }}>
+                                    <span className="mono" className="u-color-muted-fs-115-ml-2">
                                       IMEI {it._imei}
                                     </span>
                                   )}
@@ -1621,7 +1621,7 @@ export default function Envios() {
                                     className="input mono" placeholder="730.000"
                                     value={it.monto}
                                     onChange={e => setPagoArsAmount(idx, e.target.value)}
-                                    style={{ paddingLeft: 22 }}
+                                    className="u-pl-22"
                                   />
                                 ) : (
                                   <input
@@ -1708,7 +1708,7 @@ export default function Envios() {
                         );
                       })}
                       {items.filter(i => i.tipo === 'pago').length === 0 && (
-                        <div className="muted tiny" style={{ padding: '4px 0' }}>Sin pagos cargados. Sumá un método con "Agregar método".</div>
+                        <div className="muted tiny" className="u-p-4-0-only">Sin pagos cargados. Sumá un método con "Agregar método".</div>
                       )}
                     </div>
                   </div>
@@ -1809,7 +1809,7 @@ export default function Envios() {
                   )}
 
                   {/* Resumen tipo Ventas: Total venta · Pagos · Diferencia (Cubierto ✓) */}
-                  <div className="card card-tight" style={{ padding: '10px 12px', background: 'var(--surface-2)' }}>
+                  <div className="card card-tight" className="u-p-10-12-bg-2">
                     <div className="u-flex-between-fs-13">
                       <span className="muted">Total venta</span>
                       <span className="mono">u$s {summary.totalUsd.toFixed(2)}</span>

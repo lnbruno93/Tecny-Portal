@@ -3585,3 +3585,32 @@ body.modal-open { overflow: hidden; }
 .u-fs-11-muted-pl-4-ellipsis { font-size: 11px; color: var(--muted); padding-left: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .u-pre-wrap                { white-space: pre-wrap; }
 .u-fs-14-mb-6              { font-size: 14px; margin-bottom: 6px; }
+
+/* Sprint 18 (2026-07-21) — utilities for Envios.jsx manual migration */
+
+.u-dropdown-abs-large         { position: absolute; left: 0; right: 0; top: 100%; margin-top: 4px; z-index: 50; max-height: 260px; overflow-y: auto; padding: 0; }
+.u-pl-22                      { padding-left: 22px; }
+.u-p-4-0-only                 { padding: 4px 0; }
+.u-p-24-16-only               { padding: 24px 16px; }
+.u-p-14-18-border-bottom      { padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.u-p-12-18-flex-gap-8-border-top { padding: 12px 18px; display: flex; gap: 8px; border-top: 1px solid var(--border); }
+.u-p-12-14                    { padding: 12px 14px; }
+.u-p-10-12-bg-2               { padding: 10px 12px; background: var(--surface-2); }
+.u-mh-320-oy                  { max-height: 320px; overflow-y: auto; }
+.u-ml-auto-color-neg          { margin-left: auto; color: var(--neg); }
+.u-mb-14-wrap-rowgap-10       { margin-bottom: 14px; flex-wrap: wrap; row-gap: 10px; }
+.u-mb-0-relative              { margin-bottom: 0; position: relative; }
+.u-gap-8-p-12-0               { gap: 8px; padding: 12px 0; }
+.u-gap-5-fs-12-ml-auto        { gap: 5px; font-size: 12px; margin-left: auto; }
+.u-gap-14-mt-8-wrap           { gap: 14px; margin-top: 8px; flex-wrap: wrap; }
+.u-fw-700-accent-ls-04        { font-weight: 700; color: var(--accent); letter-spacing: 0.04em; }
+.u-fw-700-accent-fs-13        { font-weight: 700; color: var(--accent); font-size: 13px; }
+.u-fw-600-fs-16-mt-4          { font-weight: 600; font-size: 16px; margin-top: 4px; }
+.u-fw-600-fs-14-mw-96-center  { font-weight: 600; font-size: 14px; min-width: 96px; text-align: center; }
+.u-tiny-label-uppercase       { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px; }
+.u-fs-clamp-fw-600            { font-size: clamp(15px, 4vw, 17px); font-weight: 600; letter-spacing: -0.2px; color: var(--text); }
+.u-flex-11-200-mw-mw          { flex: 1 1 200px; min-width: 200px; max-width: 280px; }
+.u-flex-between-start-12-mb-12 { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.u-flex-wrap-gap-8-center-pb-7 { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding-bottom: 7px; }
+.u-btn-list-item              { display: block; width: 100%; text-align: left; padding: 8px 10px; border: none; background: transparent; cursor: pointer; border-bottom: 1px solid var(--hairline); color: var(--text); }
+.u-color-muted-fs-115-ml-2    { color: var(--text-muted); font-size: 11.5px; margin-left: 2px; }
