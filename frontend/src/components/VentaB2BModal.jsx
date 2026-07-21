@@ -25,7 +25,7 @@ import { cuentas as cuentasApi, inventario as invApi, cajas as cajasApi, redB2b 
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from './ConfirmModal';
 import AutocompletePicker from './AutocompletePicker';
-import { cellInp, headerTh as th, catalogosErrorBanner } from '../lib/spreadsheetStyles';
+import { headerTh as th, catalogosErrorBanner } from '../lib/spreadsheetStyles';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #M-11
 import useSpreadsheetRows from '../lib/useSpreadsheetRows'; // #F-5
 import TcWarning from './TcWarning';
@@ -508,19 +508,18 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
                           onPick={p => pickProducto(idx, p)}
                           onClear={() => clearProducto(idx)}
                           onChange={v => updCell(idx, 'nombre', v)}
-                          cellInp={cellInp}
                         />
                       </td>
                       <td className="u-p-3-4">
-                        <input style={{ ...cellInp, fontFamily: 'monospace', opacity: r.producto_id ? 0.7 : 1 }}
+                        <input className="cell-inp u-mono" style={{ opacity: r.producto_id ? 0.7 : 1 }}
                           value={r.imei} readOnly={!!r.producto_id} placeholder="—" />
                       </td>
                       <td className="u-p-3-4">
-                        <input style={{ ...cellInp, textAlign: 'right', opacity: r.producto_id ? 0.7 : 1 }}
+                        <input className="cell-inp u-text-right" style={{ opacity: r.producto_id ? 0.7 : 1 }}
                           value={r.gb} readOnly={!!r.producto_id} placeholder="—" />
                       </td>
                       <td className="u-p-3-4">
-                        <input style={{ ...cellInp, opacity: r.producto_id ? 0.7 : 1 }}
+                        <input className="cell-inp" style={{ opacity: r.producto_id ? 0.7 : 1 }}
                           value={r.color} readOnly={!!r.producto_id} placeholder="—" />
                       </td>
                       <td style={{ padding: '3px 4px', textAlign: 'right', fontSize: 12, color: 'var(--text-muted)' }}>
@@ -535,10 +534,10 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
                           : '—'}
                       </td>
                       <td className="u-p-3-4">
-                        <input type="number" onKeyDown={blockInvalidNumberKeys} min="1" style={{
-                          ...cellInp, textAlign: 'right',
-                          borderColor: exceeds ? 'var(--neg)' : 'var(--border)',
-                        }} value={r.cantidad}
+                        <input type="number" onKeyDown={blockInvalidNumberKeys} min="1"
+                          className="cell-inp u-text-right"
+                          style={{ borderColor: exceeds ? 'var(--neg)' : 'var(--border)' }}
+                          value={r.cantidad}
                           onChange={e => updCell(idx, 'cantidad', e.target.value)} />
                       </td>
                       <td className="u-p-3-4">
@@ -550,11 +549,12 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
                           const mismaMoneda = r.costo != null && r.precio_moneda === (r.costo_moneda || 'USD');
                           const aPerdida = mismaMoneda && precioN > 0 && precioN < Number(r.costo);
                           return (
-                            <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" style={{
-                              ...cellInp, textAlign: 'right', fontWeight: 700,
-                              borderColor: aPerdida ? 'var(--neg)' : cellInp.borderColor,
-                              background:  aPerdida ? 'rgba(220, 38, 38, 0.08)' : cellInp.background,
-                            }}
+                            <input type="number" onKeyDown={blockInvalidNumberKeys} min="0"
+                              className="cell-inp u-td-right-fw-700"
+                              style={{
+                                borderColor: aPerdida ? 'var(--neg)' : 'var(--border)',
+                                background:  aPerdida ? 'rgba(220, 38, 38, 0.08)' : 'var(--surface)',
+                              }}
                               title={aPerdida ? `Precio menor al costo (${r.costo_moneda || 'USD'} ${r.costo}) — vendés a pérdida` : undefined}
                               value={r.precio_unit} placeholder="0"
                               onChange={e => updCell(idx, 'precio_unit', e.target.value)} />
@@ -563,7 +563,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
                       </td>
                       <td className="u-p-3-4">
                         {/* 2026-06-29 Multi-país F3: USD + moneda local. */}
-                        <select style={{ ...cellInp, cursor: 'pointer' }} value={r.precio_moneda}
+                        <select className="cell-inp u-cursor-pointer" value={r.precio_moneda}
                           onChange={e => updCell(idx, 'precio_moneda', e.target.value)}>
                           {Array.from(new Set(['USD', monedaLocal, r.precio_moneda].filter(Boolean)))
                             .map(m => <option key={m} value={m}>{m}</option>)}
@@ -642,7 +642,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
 // fetch/dropdown/teclado vive en components/AutocompletePicker.jsx. Acá
 // solo configuramos el fetcher y el render de cada opción.
 const PRODUCTO_LIMIT = 8;
-function ProductoPicker({ value, locked, onPick, onClear, onChange, cellInp }) {
+function ProductoPicker({ value, locked, onPick, onClear, onChange }) {
   const fetchOptions = (q) =>
     invApi.productos({ buscar: q, vista: 'no_vendidos', limit: PRODUCTO_LIMIT + 1 })
       .then(res => (res.data || []).slice(0, PRODUCTO_LIMIT));
@@ -655,7 +655,6 @@ function ProductoPicker({ value, locked, onPick, onClear, onChange, cellInp }) {
       placeholder="Buscar nombre o IMEI…"
       emptyText="Sin coincidencias en stock"
       limit={PRODUCTO_LIMIT}
-      cellInp={cellInp}
       renderOption={(p) => (
         <>
           <div className="u-fw-600">

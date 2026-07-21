@@ -25,7 +25,9 @@
  *   debounceMs    — int (default: 200)
  *   limit         — int para mostrar "hay más" si llega ≥ limit (default: null = sin indicador)
  *   emptyText     — texto si no hay matches (default: 'Sin coincidencias')
- *   cellInp       — estilo del input (forwardeado)
+ *
+ * Estilos: usa `.cell-inp` class (Sprint 9 componentización). Locked
+ * agrega background + fontWeight overrides inline por depender de estado.
  *
  * Atajos de teclado: ↑/↓ navegar, Enter elegir, Escape cerrar.
  */
@@ -47,7 +49,6 @@ export default function AutocompletePicker({
   debounceMs = 200,
   limit = null,
   emptyText = 'Sin coincidencias',
-  cellInp,
 }) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]);
@@ -102,12 +103,12 @@ export default function AutocompletePicker({
 
   return (
     <div ref={boxRef} className="u-pos-rel">
-      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+      <div className="u-flex-gap-4" style={{ alignItems: 'center' }}>
         <input
+          className="cell-inp"
           style={{
-            ...cellInp,
-            background: locked ? 'rgba(99,102,241,0.10)' : (cellInp?.background || 'var(--surface)'),
-            fontWeight: locked ? 600 : (cellInp?.fontWeight || 400),
+            background: locked ? 'rgba(99,102,241,0.10)' : 'var(--surface)',
+            fontWeight: locked ? 600 : 400,
           }}
           value={value}
           placeholder={placeholder}

@@ -1089,9 +1089,6 @@ export default function CuentasCC() {
     ? [...detail.movimientos].reverse()
     : [];
 
-  // Estilo de celda en tabla existente
-  const cell = { padding: '7px 8px', fontSize: 13 };
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Page head */}
@@ -1343,14 +1340,14 @@ export default function CuentasCC() {
                           cursor: isCrossTenant ? 'pointer' : undefined,
                         }}
                       >
-                        <td style={cell} className="muted mono">{fmtFecha(m.fecha)}</td>
-                        <td style={cell}>
+                        <td className="cell muted mono">{fmtFecha(m.fecha)}</td>
+                        <td className="cell">
                           <Status tone={t.tone}>{t.label}</Status>
                           {isCrossTenant && (
                             <Badge tone="info" style={{ marginLeft: 6, fontSize: 10 }}>RED B2B</Badge>
                           )}
                         </td>
-                        <td style={cell}>
+                        <td className="cell">
                           {canExpand && (
                             <button
                               onClick={() => toggleExpand(m.id)}
@@ -1371,30 +1368,30 @@ export default function CuentasCC() {
                             : (m.descripcion || <span className="dim">—</span>)
                           }
                         </td>
-                        <td style={{ ...cell, color: 'var(--text-2)' }}>
+                        <td className="cell u-color-text-2">
                           {item?.modelo || <span className="dim">—</span>}
                         </td>
-                        <td style={{ ...cell, color: 'var(--text-2)' }}>
+                        <td className="cell u-color-text-2">
                           {item?.tamano || <span className="dim">—</span>}
                         </td>
-                        <td style={{ ...cell, color: 'var(--text-2)' }}>
+                        <td className="cell u-color-text-2">
                           {item?.color || <span className="dim">—</span>}
                         </td>
-                        <td style={{ ...cell, fontFamily: 'monospace', fontSize: 12 }}>
+                        <td className="cell u-mono u-fs-12">
                           {item?.imei_serial || <span className="dim">—</span>}
                         </td>
-                        <td style={{ ...cell, textAlign: 'right', fontWeight: 700 }}>
+                        <td className="cell u-td-right-fw-700">
                           <span className={t.tone === 'neg' ? 'neg' : 'pos'}>
                             {t.signo > 0 ? '+' : '−'}USD {fmt(m.monto_total)}
                           </span>
                         </td>
-                        <td style={{ ...cell, textAlign: 'center' }}>
+                        <td className="cell u-text-center">
                           {item?.verificado
                             ? <span style={{ color: 'var(--pos)', fontSize: 14 }}>✓</span>
                             : <span className="dim u-fs-11">—</span>}
                         </td>
                         {/* 2026-07-17: columna Comentarios */}
-                        <td style={{ ...cell, color: 'var(--text-2)', fontSize: 12 }}
+                        <td className="cell u-color-text-2 u-fs-12"
                             title={m.notas || ''}>
                           {m.notas
                             ? <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', whiteSpace: 'nowrap' }}>{m.notas}</span>
