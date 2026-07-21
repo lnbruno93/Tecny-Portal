@@ -1257,7 +1257,7 @@ export default function Inventario() {
 
       {/* Botón detalle: abre el modal con breakdown por categoría real.
           Deshabilitado mientras las métricas están cargando o no tenemos data. */}
-      <div style={{ marginBottom: 18 }}>
+      <div className="u-mb-18">
         <button
           type="button"
           className="btn btn-sm"
@@ -1330,7 +1330,7 @@ export default function Inventario() {
             onChange={setClaseFilter}
           />
         </ScrollFadeX>
-        <div className="flex-between" style={{ gap: 8, flexWrap: 'wrap' }}>
+        <div className="flex-between u-gap-8-flex-wrap">
           <div className="flex-row" style={{ gap: 8, alignItems: 'center' }}>
             <label className="field-label" style={{ marginBottom: 0, marginRight: 4 }}>Vista</label>
             <select
@@ -1352,7 +1352,7 @@ export default function Inventario() {
             = sin filtro. En 'custom' se muestran 2 date pickers. */}
         {vistaFiltro === 'vendidos' && (
           <div className="flex-row" style={{ gap: 6, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-            <span className="muted tiny" style={{ marginRight: 4 }}>Vendidos:</span>
+            <span className="muted tiny u-mr-4">Vendidos:</span>
             {RANGE_PRESETS.map(p => (
               <button
                 key={p.v}
@@ -1375,8 +1375,7 @@ export default function Inventario() {
                 <span className="muted">→</span>
                 <input
                   type="date"
-                  className="input"
-                  style={{ width: 140 }}
+                  className="input u-w-140"
                   value={vendidosRange.hasta}
                   onChange={e => setVendidosRange(r => ({ ...r, hasta: e.target.value }))}
                 />

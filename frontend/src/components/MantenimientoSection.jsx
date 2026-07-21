@@ -49,19 +49,19 @@ function FinancieraReport({ report }) {
       <table className="tbl" style={{ width: 'auto' }}>
         <tbody>
           <tr>
-            <td style={{ paddingRight: 16 }}>Saldo {report.apply ? 'previo' : 'actual'}</td>
+            <td className="u-pr-16">Saldo {report.apply ? 'previo' : 'actual'}</td>
             <td className="mono" style={{ textAlign: 'right', fontWeight: 600 }}>
               {fmtARS(report.saldoAntes)}
             </td>
           </tr>
           <tr>
-            <td style={{ paddingRight: 16 }}>+ Comprobantes ({report.comprobantes})</td>
+            <td className="u-pr-16">+ Comprobantes ({report.comprobantes})</td>
             <td className="mono" style={{ textAlign: 'right', color: 'var(--pos)' }}>
               +{fmtARS(report.totalCompromisos)}
             </td>
           </tr>
           <tr>
-            <td style={{ paddingRight: 16 }}>− Pagos ({report.pagos})</td>
+            <td className="u-pr-16">− Pagos ({report.pagos})</td>
             <td className="mono u-color-neg-text-right">
               −{fmtARS(report.totalPagos)}
             </td>
@@ -198,15 +198,15 @@ function OrphanMovsReport({ report }) {
       <table className="tbl" style={{ width: 'auto' }}>
         <tbody>
           <tr>
-            <td style={{ paddingRight: 16 }}>Movimientos huérfanos detectados</td>
-            <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{report.movs_count}</td>
+            <td className="u-pr-16">Movimientos huérfanos detectados</td>
+            <td className="mono u-td-right-fw-700">{report.movs_count}</td>
           </tr>
           <tr>
-            <td style={{ paddingRight: 16 }}>Deuda B2B asociada</td>
+            <td className="u-pr-16">Deuda B2B asociada</td>
             <td className="mono u-text-right">US$ {Number(report.deuda_huerfana || 0).toLocaleString('es-AR')}</td>
           </tr>
           <tr>
-            <td style={{ paddingRight: 16 }}>Caja movimientos a revertir</td>
+            <td className="u-pr-16">Caja movimientos a revertir</td>
             <td className="mono u-text-right">{report.caja_movs_a_revertir}</td>
           </tr>
         </tbody>

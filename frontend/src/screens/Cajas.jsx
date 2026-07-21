@@ -571,7 +571,7 @@ export default function Cajas() {
   return (
     <div>
       {/* Page head */}
-      <div className="page-head" style={{ marginBottom: 20 }}>
+      <div className="page-head u-mb-20">
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <h1 className="page-title">Cajas</h1>
@@ -934,7 +934,7 @@ export default function Cajas() {
                     .map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
-              <div className="field" style={{ width: 140 }}>
+              <div className="field u-w-140">
                 <label className="field-label">Saldo inicial</label>
                 <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} step="0.01" className="input" placeholder="0"
                        value={cajaForm.saldo_inicial} onChange={e => setCajaForm(f => ({ ...f, saldo_inicial: e.target.value }))} />
@@ -1025,7 +1025,7 @@ export default function Cajas() {
                           ? <span className="badge badge-info" title="Método tarjeta — comisión de la financiera">Tarjeta · {Number(c.comision_pct || 0)}%</span>
                           : <span className="dim">—</span>}
                       </td>
-                      <td style={{ whiteSpace: 'nowrap' }}>
+                      <td className="u-nowrap">
                         <button className="icon-btn" title="Movimientos / ajuste" onClick={() => openCajaLedger(c)}>
                           <Icons.Eye size={14} />
                         </button>
@@ -1114,7 +1114,7 @@ export default function Cajas() {
       {showContacto && (
         <div ref={contactoModalRef} className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="contacto-modal-title"
              onClick={(e) => { if (e.target === e.currentTarget && !cCreating) setShowContacto(false); }}>
-          <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+          <div className="modal u-mw-420" onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
               <h3 id="contacto-modal-title">Nuevo contacto</h3>
               <button className="icon-btn" aria-label="Cerrar modal"
@@ -1237,7 +1237,7 @@ export default function Cajas() {
       {showInv && (
         <div ref={invModalRef} className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="inv-modal-title"
              onClick={(e) => { if (e.target === e.currentTarget && !invCreating) setShowInv(false); }}>
-          <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+          <div className="modal u-mw-420" onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
               <h3 id="inv-modal-title">Nueva inversión</h3>
               <button className="icon-btn" aria-label="Cerrar modal" onClick={() => setShowInv(false)} disabled={invCreating}>

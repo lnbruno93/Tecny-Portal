@@ -740,7 +740,7 @@ export default function Financiera() {
               inputs date adicionales para Desde/Hasta. */}
           <div className="card card-tight u-mb-14">
             <div className="flex-row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-              <span className="muted tiny" style={{ marginRight: 4 }}>Período:</span>
+              <span className="muted tiny u-mr-4">Período:</span>
               {[
                 { v: 'hoy',         l: 'Hoy' },
                 { v: 'mes_actual',  l: 'Este mes' },
@@ -760,7 +760,7 @@ export default function Financiera() {
                          value={dashRange.desde}
                          onChange={e => setDashRange(r => ({ ...r, desde: e.target.value }))} />
                   <span className="muted tiny">a</span>
-                  <input type="date" className="input" style={{ width: 140 }}
+                  <input type="date" className="input u-w-140"
                          value={dashRange.hasta}
                          onChange={e => setDashRange(r => ({ ...r, hasta: e.target.value }))} />
                 </>
@@ -953,7 +953,7 @@ export default function Financiera() {
 
 
               {/* Dropzone */}
-              <div className="field" style={{ marginBottom: 18 }}>
+              <div className="field u-mb-18">
                 <div className="field-label">Comprobante adjunto</div>
                 <div
                   className="dropzone"
@@ -1010,7 +1010,7 @@ export default function Financiera() {
                     que truncan los valores numéricos. */}
                 <div className="kpi-grid u-gap-14">
                   <div>
-                    <div className="muted tiny" style={{ fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                    <div className="muted tiny u-uppercase-06-fw-600">
                       Total ingresado
                     </div>
                     <div className="mono" style={{ fontSize: 17, fontWeight: 600, marginTop: 4 }}>
@@ -1018,7 +1018,7 @@ export default function Financiera() {
                     </div>
                   </div>
                   <div>
-                    <div className="muted tiny" style={{ fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                    <div className="muted tiny u-uppercase-06-fw-600">
                       Retención ({pct.toFixed(1)}%)
                     </div>
                     <div className="mono" style={{ fontSize: 17, fontWeight: 600, marginTop: 4, color: 'var(--accent)' }}>
@@ -1026,7 +1026,7 @@ export default function Financiera() {
                     </div>
                   </div>
                   <div>
-                    <div className="muted tiny" style={{ fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                    <div className="muted tiny u-uppercase-06-fw-600">
                       Nos queda
                     </div>
                     <div className="mono pos" style={{ fontSize: 17, fontWeight: 600, marginTop: 4 }}>
@@ -1135,7 +1135,7 @@ export default function Financiera() {
             para que cada tab recuerde su scope sin pisarse. */}
         <div className="card card-tight u-mb-14">
           <div className="flex-row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-            <span className="muted tiny" style={{ marginRight: 4 }}>Período:</span>
+            <span className="muted tiny u-mr-4">Período:</span>
             {[
               { v: 'hoy',         l: 'Hoy' },
               { v: 'mes_actual',  l: 'Este mes' },
@@ -1155,7 +1155,7 @@ export default function Financiera() {
                        value={compRange.desde}
                        onChange={e => setCompRange(r => ({ ...r, desde: e.target.value }))} />
                 <span className="muted tiny">a</span>
-                <input type="date" className="input" style={{ width: 140 }}
+                <input type="date" className="input u-w-140"
                        value={compRange.hasta}
                        onChange={e => setCompRange(r => ({ ...r, hasta: e.target.value }))} />
               </>
@@ -1180,7 +1180,7 @@ export default function Financiera() {
                 </span>
               )}
             </h3>
-            <div className="flex-row" style={{ gap: 8, flexWrap: 'wrap' }}>
+            <div className="flex-row u-gap-8-flex-wrap">
               {/* Exportar el período actual: ZIP de archivos físicos + resumen
                   PDF/XLSX. Los 3 botones respetan el filtro de período + vendedor
                   visible arriba; el ZIP además es streamed server-side. */}
@@ -1288,7 +1288,7 @@ export default function Financiera() {
                         : <span className="dim tiny">—</span>}
                     </td>
                     <td>
-                      <div className="flex-row" style={{ gap: 4, justifyContent: 'flex-end' }}>
+                      <div className="flex-row u-gap-4-justify-end">
                         {esManual && (
                           <>
                             <button className="icon-btn" title="Editar venta previa" aria-label="Editar venta previa"
@@ -1483,7 +1483,7 @@ export default function Financiera() {
                 <div style={{ padding: '0 18px 18px' }}>
                   <div className="row u-mb-16">
                     <div className="u-flex-1">
-                      <div className="muted tiny" style={{ fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                      <div className="muted tiny u-uppercase-06-fw-600">
                         Recibido
                       </div>
                       <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', marginTop: 4 }}>
@@ -1492,7 +1492,7 @@ export default function Financiera() {
                       </div>
                     </div>
                     <div className="u-flex-1">
-                      <div className="muted tiny" style={{ fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                      <div className="muted tiny u-uppercase-06-fw-600">
                         N° pagos
                       </div>
                       <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', marginTop: 4 }}>

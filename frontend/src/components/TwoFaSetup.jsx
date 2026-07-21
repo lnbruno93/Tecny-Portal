@@ -105,7 +105,7 @@ export default function TwoFaSetup({ onDone, onCancel }) {
             <polyline points="20 6 9 17 4 12" />
           </svg>
         </div>
-        <h3 style={{ margin: '0 0 8px' }}>2FA activado</h3>
+        <h3 className="u-m-0-0-8">2FA activado</h3>
         <div className="muted tiny">Desde ahora vas a necesitar tu código al loguearte.</div>
       </div>
     );
@@ -114,7 +114,7 @@ export default function TwoFaSetup({ onDone, onCancel }) {
   return (
     <div className="card card-tight" style={{ padding: 20 }}>
       <h3 style={{ marginTop: 0 }}>Activar autenticación de dos factores</h3>
-      <div className="muted tiny" style={{ marginBottom: 18 }}>
+      <div className="muted tiny u-mb-18">
         Necesitás una app autenticadora en tu cel: Google Authenticator,
         Authy, 1Password o cualquier otra compatible con TOTP.
       </div>

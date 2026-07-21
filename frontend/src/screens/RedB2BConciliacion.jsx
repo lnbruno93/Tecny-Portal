@@ -106,16 +106,16 @@ export function RedB2BConciliacionContent({
           para ver la conciliación detallada.
         </p>
         {loading ? (
-          <div className="empty-state" style={{ padding: 32 }}>Cargando…</div>
+          <div className="empty-state u-p-32">Cargando…</div>
         ) : partnerships.length === 0 ? (
-          <div className="empty-state" style={{ padding: 32 }}>
+          <div className="empty-state u-p-32">
             <p>No tenés partnerships activos.</p>
             <Link to="/red-b2b" className="btn-primary u-mt-12">
               Ir a Partnerships
             </Link>
           </div>
         ) : (
-          <section className="card" style={{ padding: 16 }}>
+          <section className="card u-p-16">
             <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
               {partnerships.map((p) => {
                 const partner = p.partner || p.tenant_a || p.tenant_b;
@@ -151,7 +151,7 @@ export function RedB2BConciliacionContent({
   if (loading || !conciliacion) {
     return (
       <div>
-        <div className="empty-state" style={{ padding: 32 }}>Cargando conciliación…</div>
+        <div className="empty-state u-p-32">Cargando conciliación…</div>
       </div>
     );
   }

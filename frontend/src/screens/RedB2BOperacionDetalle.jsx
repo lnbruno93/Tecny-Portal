@@ -126,7 +126,7 @@ export default function RedB2BOperacionDetalle() {
   if (loading) {
     return (
       <div className="screen-wrap">
-        <div className="empty-state" style={{ padding: 32 }}>
+        <div className="empty-state u-p-32">
           Cargando operación…
         </div>
       </div>
@@ -136,7 +136,7 @@ export default function RedB2BOperacionDetalle() {
   if (!op) {
     return (
       <div className="screen-wrap">
-        <div className="empty-state" style={{ padding: 32 }}>
+        <div className="empty-state u-p-32">
           Operación no encontrada.
           <div style={{ marginTop: 16 }}>
             <Link to="/red-b2b/operaciones" className="btn-secondary">
@@ -257,7 +257,7 @@ export default function RedB2BOperacionDetalle() {
         </div>
       </section>
 
-      <section className="card" style={{ padding: 16 }}>
+      <section className="card u-p-16">
         <h2 style={{ marginTop: 0, fontSize: 16 }}>Notas</h2>
         {canEdit ? (
           <>

@@ -560,7 +560,7 @@ function ProyeccionGastosPanel({ onChange }) {
                             <span className="sanidad-money"><span className="sanidad-money-prefix">USD</span><span className="sanidad-money-amount">{fmt(montoUsd(r.monto, r.moneda, r.tc), 2)}</span></span>
                           </td>
                           <td>
-                            <div className="flex-row" style={{ gap: 4, justifyContent: 'flex-end' }}>
+                            <div className="flex-row u-gap-4-justify-end">
                               <button className="btn btn-sm" onClick={() => startEdit(r)} title="Editar">
                                 <Icons.Edit size={12} />
                               </button>
@@ -718,7 +718,7 @@ function RecurrenteEditRow({ draft, setDraft, categorias, onCreateCategoria, onS
         </div>
       </td>
       <td>
-        <div className="flex-row" style={{ gap: 4, justifyContent: 'flex-end' }}>
+        <div className="flex-row u-gap-4-justify-end">
           <button className="btn btn-sm btn-primary" onClick={onSave} title="Guardar">
             <Icons.Check size={12} />
           </button>
@@ -869,7 +869,7 @@ export default function Sanidad() {
   if (!data) {
     return (
       <div>
-        <div className="page-head" style={{ marginBottom: 20 }}>
+        <div className="page-head u-mb-20">
           <div>
             <h1 className="page-title">Sanidad del Negocio</h1>
             <div className="page-sub">{error ? '' : 'Cargando…'}</div>

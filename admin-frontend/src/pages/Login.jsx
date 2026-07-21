@@ -303,8 +303,7 @@ export default function Login() {
                   ? code.length !== 6
                   : !username || !password)
               }
-              className="btn-block"
-              style={{ width: '100%', marginTop: 4 }}
+              className="btn-block u-w-100-mt-4"
             >
               {busy
                 ? 'Ingresando…'

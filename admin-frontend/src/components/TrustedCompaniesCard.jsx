@@ -214,13 +214,13 @@ export default function TrustedCompaniesCard() {
 
   return (
     <Card>
-      <div style={{ padding: 20, display: 'grid', gap: 16 }}>
+      <div className="u-p-20-grid-gap-16">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
           <div>
             <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>
               Empresas que confiaron en Tecny
             </h3>
-            <p className="muted" style={{ margin: '4px 0 0', fontSize: 13 }}>
+            <p className="muted u-m-4-0-0-fs-13">
               Grid de logos que se muestra en la landing como carrusel infinito.
               Máximo {limit} empresas. Los logos ideales son PNG/SVG con fondo transparente
               (se aplica filter grayscale en la landing).
@@ -289,7 +289,7 @@ export default function TrustedCompaniesCard() {
                 {/* Nombre — editable inline con click */}
                 {editingId === c.id ? (
                   <form onSubmit={(e) => { e.preventDefault(); handleRename(c.id); }}
-                        style={{ display: 'flex', gap: 4 }}>
+                        className="u-flex-gap-4">
                     <input
                       className="input"
                       autoFocus
@@ -322,7 +322,7 @@ export default function TrustedCompaniesCard() {
                 {/* Acciones: reorder + delete */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div className="muted tiny">#{idx + 1}</div>
-                  <div style={{ display: 'flex', gap: 4 }}>
+                  <div className="u-flex-gap-4">
                     <button type="button" className="icon-btn"
                             onClick={() => handleMove(idx, -1)}
                             disabled={busyId !== null || idx === 0}

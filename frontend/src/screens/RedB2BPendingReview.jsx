@@ -183,7 +183,7 @@ export function RedB2BPendingReviewContent({ onCountChange } = {}) {
 export default function RedB2BPendingReview() {
   return (
     <div>
-      <div className="page-head" style={{ marginBottom: 20 }}>
+      <div className="page-head u-mb-20">
         <h1>Productos pendientes de revisión</h1>
       </div>
       <RedB2BPendingReviewContent />

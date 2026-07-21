@@ -720,7 +720,7 @@ export default function Proveedores() {
                         onChange={e => setPagoForm(f => ({ ...f, monto: e.target.value }))} />
                     </div>
                     {monedaSel !== 'USD' && (
-                      <div className="field" style={{ flex: '0 0 140px' }}>
+                      <div className="field u-flex-0-0-140">
                         <label className="field-label">TC {monedaSel}→USD <span className="u-color-neg">*</span></label>
                         <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input mono"
                           value={pagoForm.tc}

@@ -151,7 +151,7 @@ export default function ForgotPassword() {
                 </button>
               </div>
               <div className="lg-foot" style={{ marginTop: 20 }}>
-                <Link to="/" className="lg-link" style={{ textDecoration: 'none' }}>
+                <Link to="/" className="lg-link u-text-none">
                   Volver a iniciar sesión →
                 </Link>
               </div>
@@ -209,7 +209,7 @@ export default function ForgotPassword() {
 
               <div className="lg-foot">
                 <span>¿Ya te acordaste?</span>
-                <Link to="/" className="lg-link" style={{ textDecoration: 'none' }}>
+                <Link to="/" className="lg-link u-text-none">
                   Iniciar sesión
                 </Link>
               </div>

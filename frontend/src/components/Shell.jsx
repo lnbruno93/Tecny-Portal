@@ -398,11 +398,10 @@ function UserPill() {
             dark (action: "ir a light"), luna cuando estamos en light (action:
             "ir a dark"). aria-label describe el destino, no el estado actual. */}
         <button
-          className="icon-btn"
+          className="icon-btn u-flex-shrink-0"
           onClick={toggleTheme}
           title={isDark ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
           aria-label={isDark ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
-          style={{ flexShrink: 0 }}
         >
           {isDark ? <Icons.Sun size={14} /> : <Icons.Moon size={14} />}
         </button>
@@ -415,16 +414,15 @@ function UserPill() {
           onClick={() => setShowChangePassword(true)}
           title="Cambiar contraseña"
           aria-label="Cambiar contraseña"
-          style={{ flexShrink: 0 }}
+          className="u-flex-shrink-0"
         >
           <Icons.Lock size={14} />
         </button>
         <button
-          className="icon-btn"
+          className="icon-btn u-flex-shrink-0"
           onClick={logout}
           title="Cerrar sesión"
           aria-label="Cerrar sesión"
-          style={{ flexShrink: 0 }}
         >
           <Icons.Logout size={14} />
         </button>

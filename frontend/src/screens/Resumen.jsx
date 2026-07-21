@@ -187,7 +187,7 @@ export default function Resumen() {
           queda siempre visible (auto-rellena al mes anterior, editable). */}
       <div className="card card-tight u-mb-16">
         <div className="flex-row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span className="muted tiny" style={{ marginRight: 4 }}>Período:</span>
+          <span className="muted tiny u-mr-4">Período:</span>
           {MES_PRESETS.map(p => {
             const activo = presetParaMes(periodoActual) === p.v;
             return (
@@ -240,7 +240,7 @@ export default function Resumen() {
           {/* ── Bloque 1: Ventas ── */}
           <h3 style={{ marginTop: 18, marginBottom: 8 }}>Ventas</h3>
           <div className="row" style={{ gap: 12, flexWrap: 'wrap' }}>
-            <div style={{ flex: '1 1 200px' }}>
+            <div className="u-flex-1-1-200">
               <KpiCard label="Ventas totales" unidad="USD" valor={ventasUsdA} comparado={ventasUsdC} />
             </div>
             {/* 2026-07-04 (ventas.ver_ganancias): backend redacta ganancia_usd
@@ -248,14 +248,14 @@ export default function Resumen() {
                 ocultamos la card entera. Owner/admin siempre ven; vendedor
                 sin override, no. Modo "ocultar" (no "—") consensuado con Lucas. */}
             {gananciaA !== undefined && (
-              <div style={{ flex: '1 1 200px' }} data-testid="kpi-ganancia">
+              <div className="u-flex-1-1-200" data-testid="kpi-ganancia">
                 <KpiCard label="Ganancia bruta" unidad="USD" valor={gananciaA} comparado={gananciaC} />
               </div>
             )}
-            <div style={{ flex: '1 1 200px' }}>
+            <div className="u-flex-1-1-200">
               <KpiCard label="Ticket promedio" unidad="USD" valor={ticketA} comparado={ticketC} />
             </div>
-            <div style={{ flex: '1 1 200px' }}>
+            <div className="u-flex-1-1-200">
               <KpiCard label="Cantidad de ventas" valor={cantVtaA} comparado={cantVtaC} formatter={n => String(n)} />
             </div>
           </div>
@@ -272,15 +272,15 @@ export default function Resumen() {
                 hint={actual?.cajas?.tc_referencia ? null : 'Configurá un TC en Config → Alertas para ver capital agregado.'}
               />
             </div>
-            <div style={{ flex: '1 1 200px' }}>
+            <div className="u-flex-1-1-200">
               {/* Auditoría 2026-06-30 F-02→05: label y unidad dinámicas (ARS/$
                   en AR, UYU/$U en UY). */}
               <KpiCard label={monedaLocal} unidad={simboloLocal} valor={localA} comparado={localC} />
             </div>
-            <div style={{ flex: '1 1 200px' }}>
+            <div className="u-flex-1-1-200">
               <KpiCard label="USD" unidad="u$s" valor={usdA} comparado={usdC} />
             </div>
-            <div style={{ flex: '1 1 200px' }}>
+            <div className="u-flex-1-1-200">
               <KpiCard label="USDT" unidad="USDT" valor={usdtA} comparado={usdtC} />
             </div>
           </div>

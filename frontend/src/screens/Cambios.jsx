@@ -601,7 +601,7 @@ export default function Cambios() {
             </div>
 
             <div className="card card-flush">
-              <div style={{ overflow: 'auto' }}>
+              <div className="u-overflow-auto">
                 <table className="tbl">
                   <thead>
                     <tr>
@@ -645,7 +645,7 @@ export default function Cambios() {
       {/* Modal nueva financiera */}
       {showCreate && (
         <div ref={createModalRef} className="modal-overlay" onClick={() => setShowCreate(false)}>
-          <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+          <div className="modal u-mw-420" onClick={e => e.stopPropagation()}>
             <div className="modal-hd"><h3>Nueva financiera de cambio</h3><button className="icon-btn" onClick={() => setShowCreate(false)}><Icons.X size={16} /></button></div>
             <form onSubmit={handleCreate}>
               <div className="modal-body">

@@ -348,10 +348,10 @@ export default function SitioPublico() {
         <div style={{ display: 'grid', gap: 16 }}>
           {/* ── SECCIÓN CONTACTO ── */}
           <Card>
-            <div style={{ padding: 20, display: 'grid', gap: 16 }}>
+            <div className="u-p-20-grid-gap-16">
               <div>
                 <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>Sección Contacto</h3>
-                <p className="muted" style={{ margin: '4px 0 0', fontSize: 13 }}>
+                <p className="muted u-m-4-0-0-fs-13">
                   Datos que aparecen en la landing pública.
                 </p>
               </div>
@@ -383,7 +383,7 @@ export default function SitioPublico() {
 
           {/* ── SECCIÓN HERO (Fase 3) ── */}
           <Card>
-            <div style={{ padding: 20, display: 'grid', gap: 16 }}>
+            <div className="u-p-20-grid-gap-16">
               <div>
                 <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
                   Hero (top de la landing)
@@ -394,7 +394,7 @@ export default function SitioPublico() {
                     </span>
                   )}
                 </h3>
-                <p className="muted" style={{ margin: '4px 0 0', fontSize: 13 }}>
+                <p className="muted u-m-4-0-0-fs-13">
                   Título grande + subtítulo + descripción arriba de todo. Vacío → landing usa el default.
                 </p>
               </div>
@@ -434,7 +434,7 @@ export default function SitioPublico() {
 
           {/* ── SECCIÓN CTA FINAL (Fase 3) ── */}
           <Card>
-            <div style={{ padding: 20, display: 'grid', gap: 16 }}>
+            <div className="u-p-20-grid-gap-16">
               <div>
                 <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
                   CTA final
@@ -445,7 +445,7 @@ export default function SitioPublico() {
                     </span>
                   )}
                 </h3>
-                <p className="muted" style={{ margin: '4px 0 0', fontSize: 13 }}>
+                <p className="muted u-m-4-0-0-fs-13">
                   Bloque de conversión antes del footer. Máxima visibilidad del CTA "Empezá gratis".
                 </p>
               </div>
@@ -485,7 +485,7 @@ export default function SitioPublico() {
 
           {/* ── SECCIÓN FAQ (Fase 3) ── */}
           <Card>
-            <div style={{ padding: 20, display: 'grid', gap: 16 }}>
+            <div className="u-p-20-grid-gap-16">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
                 <div>
                   <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -497,7 +497,7 @@ export default function SitioPublico() {
                       </span>
                     )}
                   </h3>
-                  <p className="muted" style={{ margin: '4px 0 0', fontSize: 13 }}>
+                  <p className="muted u-m-4-0-0-fs-13">
                     Aparecen en la sección FAQ de la landing. Vacío → landing muestra las 6 default.
                   </p>
                 </div>
@@ -524,7 +524,7 @@ export default function SitioPublico() {
                         <div className="muted u-fs-12">
                           #{idx + 1} — {q.question ? q.question.slice(0, 60) : 'Sin pregunta'}
                         </div>
-                        <div style={{ display: 'flex', gap: 4 }}>
+                        <div className="u-flex-gap-4">
                           <button type="button" className="icon-btn" onClick={() => moveFaq(idx, -1)}
                                   disabled={saving || idx === 0} title="Subir">▲</button>
                           <button type="button" className="icon-btn" onClick={() => moveFaq(idx, 1)}
@@ -562,7 +562,7 @@ export default function SitioPublico() {
 
           {/* ── SECCIÓN GOOGLE REVIEWS ── */}
           <Card>
-            <div style={{ padding: 20, display: 'grid', gap: 16 }}>
+            <div className="u-p-20-grid-gap-16">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
                 <div>
                   <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -574,7 +574,7 @@ export default function SitioPublico() {
                       </span>
                     )}
                   </h3>
-                  <p className="muted" style={{ margin: '4px 0 0', fontSize: 13 }}>
+                  <p className="muted u-m-4-0-0-fs-13">
                     Integración con Google Business Profile. Las reseñas reales aparecen arriba
                     de las manuales cuando hay 3 o más en Google.
                   </p>
@@ -680,7 +680,7 @@ export default function SitioPublico() {
 
           {/* ── SECCIÓN RESEÑAS (Fase 2) ── */}
           <Card>
-            <div style={{ padding: 20, display: 'grid', gap: 16 }}>
+            <div className="u-p-20-grid-gap-16">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
                 <div>
                   <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>
@@ -692,7 +692,7 @@ export default function SitioPublico() {
                       </span>
                     )}
                   </h3>
-                  <p className="muted" style={{ margin: '4px 0 0', fontSize: 13 }}>
+                  <p className="muted u-m-4-0-0-fs-13">
                     Aparecen en la sección &quot;Opiniones&quot; de la landing.
                     {testimonials.length === 0 && ' Si dejás la lista vacía, la landing muestra su set default.'}
                   </p>
@@ -731,7 +731,7 @@ export default function SitioPublico() {
                             #{idx + 1} — {t.name || 'Sin nombre'}
                           </div>
                         </div>
-                        <div style={{ display: 'flex', gap: 4 }}>
+                        <div className="u-flex-gap-4">
                           <button type="button" className="icon-btn" onClick={() => moveTestimonial(idx, -1)}
                                   disabled={saving || idx === 0} title="Subir">▲</button>
                           <button type="button" className="icon-btn" onClick={() => moveTestimonial(idx, 1)}

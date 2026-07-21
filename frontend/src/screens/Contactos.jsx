@@ -321,7 +321,7 @@ export default function Contactos() {
                 onClick={copiarMails}
               >
                 <Icons.Copy size={13} />
-                <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <span className="u-flex-col-gap-2">
                   <strong className="u-fs-13">Copiar al portapapeles</strong>
                   <span className="muted tiny">Solo emails, listos para pegar en Gmail</span>
                 </span>
@@ -334,7 +334,7 @@ export default function Contactos() {
                 onClick={descargarCsv}
               >
                 <Icons.Download size={13} />
-                <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <span className="u-flex-col-gap-2">
                   <strong className="u-fs-13">Descargar CSV</strong>
                   <span className="muted tiny">Ficha completa · Excel, Mailchimp, otros CRM</span>
                 </span>
@@ -347,7 +347,7 @@ export default function Contactos() {
                 onClick={descargarXlsx}
               >
                 <Icons.Download size={13} />
-                <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <span className="u-flex-col-gap-2">
                   <strong className="u-fs-13">Descargar XLSX</strong>
                   <span className="muted tiny">Ficha completa · abre directo en Excel</span>
                 </span>

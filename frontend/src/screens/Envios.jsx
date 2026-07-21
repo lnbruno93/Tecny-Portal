@@ -872,7 +872,7 @@ export default function Envios() {
       {/* 2026-06-24 mobile lote D: usar .kpi-grid (no .row) — 5 cards en
           .row colisionan en 375px exprimiendo cada card a ~70px ilegible.
           .kpi-grid hereda los breakpoints del styles.css (2x2 en <=640px). */}
-      <div className="kpi-grid" style={{ marginBottom: 18 }}>
+      <div className="kpi-grid u-mb-18">
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">Total</div>
           <div className="kpi-value mono">{kpiTotal}</div>
@@ -908,7 +908,7 @@ export default function Envios() {
           <=414px las dos mitades (date nav + search/filtros) caigan a
           líneas separadas en vez de squeezear horizontalmente. */}
       <div className="flex-between" style={{ marginBottom: 14, flexWrap: 'wrap', rowGap: 10 }}>
-        <div className="flex-row" style={{ gap: 8, flexWrap: 'wrap' }}>
+        <div className="flex-row u-gap-8-flex-wrap">
           <button
             className="icon-btn"
             title="Día anterior"
@@ -941,7 +941,7 @@ export default function Envios() {
             </button>
           )}
         </div>
-        <div className="flex-row" style={{ gap: 8, flexWrap: 'wrap' }}>
+        <div className="flex-row u-gap-8-flex-wrap">
           {/* 2026-06-24 mobile lote E: width 280 fijo no entra en 375px viewport
               (junto con el Seg al lado). flex-grow + min-width 200 hace que
               se estire en desktop pero achique a 200px mínimo en mobile. */}
@@ -1266,8 +1266,7 @@ export default function Envios() {
                 {selected.telefono && (
                   <a
                     href={`tel:${selected.telefono}`}
-                    className="btn btn-sm"
-                    style={{ textDecoration: 'none' }}
+                    className="btn btn-sm u-text-none"
                   >
                     <Icons.Phone size={13} /> {selected.telefono}
                   </a>

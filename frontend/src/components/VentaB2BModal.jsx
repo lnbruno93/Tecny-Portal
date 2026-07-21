@@ -383,7 +383,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
                 alignItems: 'flex-start',
               }}
             >
-              <strong style={{ flexShrink: 0 }}>Red B2B:</strong>
+              <strong className="u-flex-shrink-0">Red B2B:</strong>
               <span>
                 Esta venta se va a replicar automáticamente en{' '}
                 <strong>{matchedPartnership.partner?.nombre || 'el partner'}</strong>.
@@ -431,7 +431,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
               </select>
             </div>
             {((cajaId && monedaCaja !== 'USD') || rows.some(r => isUsedRow(r) && r.precio_moneda !== 'USD')) && (
-              <div className="field" style={{ flex: '0 0 140px' }}>
+              <div className="field u-flex-0-0-140">
                 <label className="field-label">TC →USD <span className="u-color-neg">*</span></label>
                 <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" min="0" step="0.01"
                   value={tc} onChange={e => setTc(e.target.value)} placeholder="0" />

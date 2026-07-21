@@ -303,8 +303,7 @@ export default function Resumen() {
           </div>
           <Link
             to="/mi-cuenta?tab=seguridad"
-            className="btn btn-primary"
-            style={{ whiteSpace: 'nowrap' }}
+            className="btn btn-primary u-nowrap"
           >
             Activar 2FA
           </Link>

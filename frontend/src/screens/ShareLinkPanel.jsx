@@ -310,7 +310,7 @@ export default function ShareLinkPanel() {
 
           {/* Acciones */}
           <div className="flex-row" style={{ gap: 8, flexWrap: 'wrap', justifyContent: 'space-between' }}>
-            <div className="flex-row" style={{ gap: 8, flexWrap: 'wrap' }}>
+            <div className="flex-row u-gap-8-flex-wrap">
               <button className="btn btn-sm btn-primary" onClick={onSave} disabled={saving}>
                 {saving ? 'Guardando…' : 'Guardar cambios'}
               </button>

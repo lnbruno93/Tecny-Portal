@@ -130,7 +130,7 @@ export default function ForgotPassword() {
               type="button"
               kind="primary"
               onClick={() => navigate('/login')}
-              style={{ width: '100%', marginTop: 4 }}
+              className="u-w-100-mt-4"
             >
               Volver al login
             </Btn>
@@ -223,8 +223,7 @@ export default function ForgotPassword() {
                   type="submit"
                   kind="primary"
                   disabled={busy || !email}
-                  className="btn-block"
-                  style={{ width: '100%', marginTop: 4 }}
+                  className="btn-block u-w-100-mt-4"
                 >
                   {busy ? 'Enviando…' : 'Mandar link de reset'}
                 </Btn>

@@ -244,7 +244,7 @@ function Wizard({ cajas, onCancel, onCreated }) {
               <label className="field-label">Hasta <span className="u-color-neg">*</span></label>
               <input type="date" className="input" value={fechaHasta} max={todayISO()} onChange={e => setFechaHasta(e.target.value)} />
             </div>
-            <div className="field" style={{ flex: '0 0 140px' }}>
+            <div className="field u-flex-0-0-140">
               <label className="field-label">Tolerancia (días)</label>
               <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" max="30"
                      className="input mono" value={tolerancia}

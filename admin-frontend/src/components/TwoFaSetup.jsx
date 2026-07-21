@@ -112,7 +112,7 @@ export default function TwoFaSetup({ onDone, onCancel, onError }) {
             <polyline points="20 6 9 17 4 12" />
           </svg>
         </div>
-        <h3 style={{ margin: '0 0 8px' }}>2FA activado</h3>
+        <h3 className="u-m-0-0-8">2FA activado</h3>
         <div className="muted u-fs-13">
           Desde ahora vas a necesitar tu código al loguearte.
         </div>
