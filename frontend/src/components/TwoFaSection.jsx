@@ -165,7 +165,7 @@ export default function TwoFaSection() {
   if (status?.enabled) {
     return (
       <div>
-        <div className="card card-tight" style={{ padding: 18, marginBottom: 12 }}>
+        <div className="card card-tight u-p-18-mb-12">
           <div className="flex-between u-align-items-flex-start">
             <div>
               <div className="flex-row" style={{ gap: 8, alignItems: 'center', marginBottom: 4 }}>
@@ -300,7 +300,7 @@ export default function TwoFaSection() {
 
   // ── Estado NO configurado ──
   return (
-    <div className="card card-tight" style={{ padding: 18 }}>
+    <div className="card card-tight u-p-18">
       <div className="flex-row u-gap-8-center-mb-6">
         <span className="badge badge-default">No activado</span>
         <strong>Autenticación de dos factores</strong>

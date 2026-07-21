@@ -387,7 +387,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
           <button className="icon-btn" onClick={tryClose} aria-label="Cerrar modal"><Icons.X size={16} /></button>
         </div>
 
-        <div className="modal-body" style={{ maxHeight: '85vh', overflowY: 'auto' }}>
+        <div className="modal-body u-mh-85vh-oy-auto">
           {/* #H-12: banner si catálogos fallaron al cargar */}
           {catalogosError && (
             <div style={catalogosErrorBanner}>
@@ -640,7 +640,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
           </div>
 
           {/* ── Notas + Total ── */}
-          <div className="row" style={{ marginTop: 12, alignItems: 'flex-end' }}>
+          <div className="row u-mt-12-align-end">
             <div className="field u-flex-1">
               <label className="field-label">Notas de la compra (opcional)</label>
               <input className="input" value={notas} onChange={e => setNotas(e.target.value)}

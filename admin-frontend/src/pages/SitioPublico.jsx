@@ -549,7 +549,7 @@ export default function SitioPublico() {
                                   value={q.answer} disabled={saving}
                                   onChange={e => updateFaq(idx, 'answer', e.target.value)}
                                   className="u-w-100-resize-v" />
-                        <div className="muted tiny" style={{ marginTop: 2, textAlign: 'right' }}>
+                        <div className="muted tiny u-mt-2-td-right">
                           {(q.answer || '').length} / 1000
                         </div>
                       </div>
@@ -777,7 +777,7 @@ export default function SitioPublico() {
                                   value={t.text} disabled={saving}
                                   onChange={e => updateTestimonial(idx, 'text', e.target.value)}
                                   className="u-w-100-resize-v" />
-                        <div className="muted tiny" style={{ marginTop: 2, textAlign: 'right' }}>
+                        <div className="muted tiny u-mt-2-td-right">
                           {t.text.length} / 1000
                         </div>
                       </div>

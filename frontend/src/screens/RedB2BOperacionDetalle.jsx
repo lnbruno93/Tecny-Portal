@@ -210,7 +210,7 @@ export default function RedB2BOperacionDetalle() {
         )}
       </header>
 
-      <section className="card" style={{ marginBottom: 16, padding: 16 }}>
+      <section className="card u-p-16-mb-16">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
           <KpiBox label="Total USD" value={fmtMoney(op.total_usd, 'USD')} />
           <KpiBox label="Total ARS" value={fmtMoney(op.total_ars, 'ARS')} />
@@ -224,7 +224,7 @@ export default function RedB2BOperacionDetalle() {
       </section>
 
       <section className="card u-mb-16">
-        <h2 style={{ padding: '12px 16px', margin: 0, fontSize: 16 }}>Items</h2>
+        <h2 className="u-p-12-16-m-0-fs-16">Items</h2>
         <div className="u-overflow-x-auto">
           <table className="data-table">
             <thead>
@@ -292,7 +292,7 @@ export default function RedB2BOperacionDetalle() {
       </section>
 
       {/* F4: sección de pagos cross-tenant */}
-      <section className="card" style={{ padding: 16, marginTop: 16 }}>
+      <section className="card u-p-16-mt-16">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <h2 className="u-m-0-fs-16">Pagos cross-tenant</h2>
           {op.status === 'active' && pagosData?.saldo && !pagosData.saldo.completo && (
@@ -433,7 +433,7 @@ export default function RedB2BOperacionDetalle() {
         </div>
       )}
 
-      <section className="card" style={{ padding: 16, marginTop: 16 }}>
+      <section className="card u-p-16-mt-16">
         <h2 className="u-mt-0-fs-16">Trazabilidad</h2>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 14 }}>
           {isSeller && (
@@ -460,7 +460,7 @@ export default function RedB2BOperacionDetalle() {
 
 function KpiBox({ label, value }) {
   return (
-    <div style={{ padding: 12, background: 'var(--bg-subtle, #f9fafb)', borderRadius: 4 }}>
+    <div className="u-p-12-bg-subtle-r-4">
       <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: 18, fontWeight: 600 }}>{value}</div>
     </div>

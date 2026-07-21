@@ -1429,16 +1429,16 @@ export default function Inventario() {
                 <th className="u-w-56">GB</th>
                 <th className="u-w-70px">Batería</th>
                 <th className="u-w-96">Color</th>
-                <th style={{ width: 84, textAlign: 'right' }}>Costo</th>
+                <th className="u-w-84-td-right">Costo</th>
                 <th className="u-w-68">Mon. Costo</th>
-                <th style={{ width: 96, textAlign: 'right' }}>Precio Venta</th>
+                <th className="u-w-96-td-right">Precio Venta</th>
                 <th className="u-w-72">Mon. Venta</th>
                 <th className="u-w-142-nowrap">IMEI/Serial</th>
                 <th className="u-w-84">Tipo</th>
                 {/* 2026-07-11: columna "Colección" removida — ver comentario en el
                     modal de edición sobre el sunset gradual. */}
-                <th style={{ minWidth: 150, whiteSpace: 'nowrap' }}>Proveedor</th>
-                <th style={{ width: 60, textAlign: 'right' }}>Stock</th>
+                <th className="u-mw-min-150-nowrap">Proveedor</th>
+                <th className="u-w-60-td-right">Stock</th>
                 <th className="u-w-110px">Estado</th>
                 <th className="u-w-110px"></th>
               </tr>
@@ -1512,16 +1512,16 @@ export default function Inventario() {
                 <th className="u-w-56">GB</th>
                 <th className="u-w-70px">Batería</th>
                 <th className="u-w-96">Color</th>
-                <th style={{ width: 84, textAlign: 'right' }}>Costo</th>
+                <th className="u-w-84-td-right">Costo</th>
                 <th className="u-w-68">Mon. Costo</th>
-                <th style={{ width: 96, textAlign: 'right' }}>Precio Venta</th>
+                <th className="u-w-96-td-right">Precio Venta</th>
                 <th className="u-w-72">Mon. Venta</th>
                 <th className="u-w-142-nowrap">IMEI/Serial</th>
                 <th className="u-w-84">Tipo</th>
                 {/* 2026-07-11: columna "Colección" removida — ver comentario en el
                     modal de edición sobre el sunset gradual. */}
-                <th style={{ minWidth: 150, whiteSpace: 'nowrap' }}>Proveedor</th>
-                <th style={{ width: 60, textAlign: 'right' }}>Stock</th>
+                <th className="u-mw-min-150-nowrap">Proveedor</th>
+                <th className="u-w-60-td-right">Stock</th>
                 <th className="u-w-110px">Estado</th>
                 <th className="u-w-110px"></th>
               </tr>
@@ -1559,8 +1559,7 @@ export default function Inventario() {
       {showForm && (
         <div ref={formModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowForm(false)}>
           <div
-            className="modal"
-            style={{ maxWidth: 620 }}
+            className="modal u-mw-620-max"
             onClick={e => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
@@ -2063,7 +2062,7 @@ export default function Inventario() {
         return (
           <div ref={historialModalRef} className="modal-overlay"
             onClick={e => e.target === e.currentTarget && setHistorialProductoId(null)}>
-            <div className="modal" style={{ maxWidth: 640 }} onClick={e => e.stopPropagation()}>
+            <div className="modal u-mw-640-max" onClick={e => e.stopPropagation()}>
               <div className="modal-hd">
                 <h3>
                   {producto?.nombre || 'Producto'}
@@ -2167,7 +2166,7 @@ function HistorialModalContent({ producto, data, loading, error, categorias, dep
       )}
 
       {tab === 'historial' && (
-        <div style={{ marginTop: 14 }}>
+        <div className="u-mt-14">
           {loading && <div className="muted">Cargando historial…</div>}
           {error && <div className="neg">Error: {error}</div>}
           {!loading && !error && data && (

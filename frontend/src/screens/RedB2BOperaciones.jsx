@@ -84,7 +84,7 @@ export default function RedB2BOperaciones() {
         </div>
       </header>
 
-      <section className="card" style={{ marginBottom: 16, padding: 16 }}>
+      <section className="card u-p-16-mb-16">
         <div className="filters-row" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <label className="u-flex-col-gap-4">
             <span className="muted u-fs-12">Partner</span>

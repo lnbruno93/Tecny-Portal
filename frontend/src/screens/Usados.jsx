@@ -269,7 +269,7 @@ export default function Usados() {
                   </td>
                   <td className="num u-w-150px">
                     <div className="input-group" style={{ width: 130, marginLeft: 'auto' }}>
-                      <span className="addon addon-l muted tiny" style={{ padding: '0 8px' }}>USD</span>
+                      <span className="addon addon-l muted tiny u-p-0-8">USD</span>
                       <input
                         type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                         className="input mono"
@@ -337,7 +337,7 @@ export default function Usados() {
                     <div className="field u-flex-1">
                       <label className="field-label">Precio USD <span className="u-color-neg">*</span></label>
                       <div className="input-group">
-                        <span className="addon addon-l muted tiny" style={{ padding: '0 8px' }}>USD</span>
+                        <span className="addon addon-l muted tiny u-p-0-8">USD</span>
                         <input
                           type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                           className="input mono"

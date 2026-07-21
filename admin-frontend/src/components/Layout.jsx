@@ -194,11 +194,10 @@ export default function Layout({ children }) {
               claro que están en wait-state, sin perder el slot del layout
               para cuando se implementen. */}
           <div
-            className="search"
+            className="search u-opacity-04-not-allowed"
             role="search"
             aria-label="Búsqueda global"
             title="Búsqueda global — próximamente"
-            style={{ opacity: 0.4, cursor: 'not-allowed' }}
           >
             <span className="ico"><Icons.Search size={14} /></span>
             <input
@@ -213,11 +212,10 @@ export default function Layout({ children }) {
 
           <button
             type="button"
-            className="icon-btn"
+            className="icon-btn u-opacity-04-not-allowed"
             aria-label="Notificaciones (próximamente)"
             title="Notificaciones — próximamente"
             disabled
-            style={{ opacity: 0.4, cursor: 'not-allowed' }}
           >
             <Icons.Bell size={16} />
             <span className="dot" aria-hidden="true" />

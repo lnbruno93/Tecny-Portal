@@ -362,7 +362,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
           <button className="icon-btn" onClick={tryClose} aria-label="Cerrar modal"><Icons.X size={16} /></button>
         </div>
 
-        <div className="modal-body" style={{ maxHeight: '85vh', overflowY: 'auto' }}>
+        <div className="modal-body u-mh-85vh-oy-auto">
           {/* PR-A audit Red B2B (UX-1 BLOCKER): banner inline cuando el
               cliente es un partner cross-tenant. Explica al seller que la
               operación se replicará al partner (inventario + CC bilateral). */}
@@ -588,7 +588,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
           </div>
 
           {/* ── Descripción + Total ── */}
-          <div className="row" style={{ marginTop: 12, alignItems: 'flex-end' }}>
+          <div className="row u-mt-12-align-end">
             <div className="field u-flex-1">
               <label className="field-label">Descripción / notas (opcional)</label>
               <input className="input" value={descripcion} onChange={e => setDescripcion(e.target.value)}

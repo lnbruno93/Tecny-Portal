@@ -244,7 +244,7 @@ export default function Proyectos() {
           </div>
 
           <div className="u-mb-10">
-            <input className="input" style={{ maxWidth: 320 }} placeholder="Buscar proyecto…" value={search} onChange={e => setSearch(e.target.value)} />
+            <input className="input u-mw-320-max" placeholder="Buscar proyecto…" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
 
           <div className="card card-flush">

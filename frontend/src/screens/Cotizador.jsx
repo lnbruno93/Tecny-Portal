@@ -224,7 +224,7 @@ function TabTarjetas() {
         <div className="card card-tight u-mb-14">
           <div className="field u-mb-0">
             <div className="field-label">Tipo de cambio (USD → {monedaLocal})</div>
-            <div className="input-group" style={{ maxWidth: 240 }}>
+            <div className="input-group u-mw-240-max">
               <span className="addon addon-l u-color-accent">{symLocal}</span>
               <input
                 type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
@@ -522,7 +522,7 @@ function TabUsd() {
         <div className="card card-tight u-mb-14">
           <div className="field u-mb-0">
             <div className="field-label">Tipo de cambio (USD → {monedaLocal})</div>
-            <div className="input-group" style={{ maxWidth: 240 }}>
+            <div className="input-group u-mw-240-max">
               <span className="addon addon-l u-color-accent">{symLocal}</span>
               <input
                 type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}

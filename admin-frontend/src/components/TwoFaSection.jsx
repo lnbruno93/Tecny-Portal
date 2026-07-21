@@ -225,7 +225,7 @@ export default function TwoFaSection({ onMessage }) {
       <div>
         {localBanner}
 
-        <div className="card" style={{ padding: 18, marginBottom: 12 }}>
+        <div className="card u-p-18-mb-12">
           <div className="flex-between u-align-items-flex-start">
             <div>
               <div className="flex-row" style={{ gap: 8, alignItems: 'center', marginBottom: 4 }}>
@@ -451,7 +451,7 @@ export default function TwoFaSection({ onMessage }) {
   return (
     <div>
       {localBanner}
-      <div className="card" style={{ padding: 18 }}>
+      <div className="card u-p-18">
         <div className="flex-row u-gap-8-center-mb-6">
           <Badge>No activado</Badge>
           <strong>Autenticación de dos factores</strong>

@@ -346,7 +346,7 @@ function PartnershipRow({ p, acting, onAccept, onReject, onRevoke }) {
             Plan {planLabel(partner.plan)} · {dateLabel}: {dateValue}
           </div>
           {p.invitation_message && (
-            <div className="tiny" style={{ marginTop: 6, fontStyle: 'italic' }}>
+            <div className="tiny u-mt-6-italic">
               “{p.invitation_message}”
             </div>
           )}

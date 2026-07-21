@@ -140,11 +140,10 @@ export default function CategoriasProductoModal({
       onClick={e => e.target === e.currentTarget && onClose()}
     >
       <div
-        className="modal"
+        className="modal u-mw-560-w-92vw"
         role="dialog"
         aria-labelledby="cats-modal-title"
         aria-modal="true"
-        style={{ maxWidth: 560, width: '92vw' }}
       >
         <div className="modal-hd">
           <h3 id="cats-modal-title">Categorías</h3>
@@ -159,7 +158,7 @@ export default function CategoriasProductoModal({
           </button>
         </div>
 
-        <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+        <div className="modal-body u-mh-70vh-oy-auto">
           <p className="muted tiny u-mb-12">
             Tipo de producto que aparece en el dropdown del alta de Inventario y en los chips del Dashboard.
             Arrastrá filas para reordenar. La categoría <strong>"Sin categoría"</strong> es del sistema

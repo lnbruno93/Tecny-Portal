@@ -235,7 +235,7 @@ export default function EquiposUsadosContent({ onCountChange }) {
           ]}
           onChange={setOrigen}
         />
-        <select className="input" value={estado} onChange={e => setEstado(e.target.value)} style={{ maxWidth: 180 }}>
+        <select className="input" value={estado} onChange={e => setEstado(e.target.value)} className="u-mw-180-max">
           <option value="">Todos los estados</option>
           <option value="disponible">Disponible</option>
           <option value="vendido">Vendido</option>
@@ -281,8 +281,8 @@ export default function EquiposUsadosContent({ onCountChange }) {
                 <th className="u-w-120px">GB · Color</th>
                 <th className="u-w-90px">Batería</th>
                 <th className="u-w-142-nowrap">IMEI / Serial</th>
-                <th style={{ width: 100, textAlign: 'right' }}>Costo</th>
-                <th style={{ width: 100, textAlign: 'right' }}>Precio venta</th>
+                <th className="u-w-100-td-right">Costo</th>
+                <th className="u-w-100-td-right">Precio venta</th>
                 <th className="u-w-130px">Origen</th>
                 <th style={{ minWidth: 170 }}>Cliente que lo entregó</th>
                 <th className="u-w-96">Ingresó</th>

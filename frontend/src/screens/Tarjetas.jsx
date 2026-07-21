@@ -814,7 +814,7 @@ export default function Tarjetas() {
           {/* Lista de tarjetas (métodos de pago) + ítem virtual "Todas las
               tarjetas" al inicio para ver el resumen agregado y registrar
               la liquidación múltiple (un depósito que cubre N modalidades). */}
-          <div className="card card-flush" style={{ maxHeight: '78vh', overflow: 'auto' }}>
+          <div className="card card-flush u-mh-78vh-o-auto">
             <div onClick={() => setSelectedId(ALL_TARJETAS)} style={{
               padding: '10px 13px', cursor: 'pointer',
               borderBottom: '1px solid var(--hairline)',
