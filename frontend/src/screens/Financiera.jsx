@@ -1250,7 +1250,7 @@ export default function Financiera() {
                   <th className="num">Retención</th>
                   <th className="num">Neto</th>
                   <th>Archivo</th>
-                  <th style={{ width: 80 }}></th>
+                  <th className="u-w-80px"></th>
                 </tr>
               </thead>
               <tbody>

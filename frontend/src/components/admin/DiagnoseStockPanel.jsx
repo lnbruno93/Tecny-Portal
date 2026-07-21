@@ -84,8 +84,7 @@ function RestoreModal({ producto, onClose, onDone }) {
       style={{ zIndex: 500 }}
     >
       <div
-        className="modal"
-        style={{ maxWidth: 480 }}
+        className="modal u-mw-480"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-hd">
@@ -160,7 +159,7 @@ function ProductoCard({ producto, trail, onRestore }) {
         <div>
           <div style={{ fontWeight: 700, fontSize: 15 }}>
             {producto.nombre}
-            <span className="tiny muted" style={{ marginLeft: 8 }}>#{producto.id}</span>
+            <span className="tiny muted u-ml-8">#{producto.id}</span>
           </div>
           <div className="tiny muted u-mt-2">
             {/* F3.d-3: `producto.clase` = slug legacy que viene del JOIN backend
@@ -224,7 +223,7 @@ function ProductoCard({ producto, trail, onRestore }) {
                           Borrado {fmtDateTime(t.mov_deleted_at)}
                         </span>
                       ) : (
-                        <span style={{ color: 'var(--pos)' }}>Vivo</span>
+                        <span className="u-color-pos">Vivo</span>
                       )}
                     </td>
                     <td className="tiny muted">{fmtDateTime(t.mov_created_at)}</td>

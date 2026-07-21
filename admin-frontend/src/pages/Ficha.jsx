@@ -233,7 +233,7 @@ export default function Ficha() {
             <span className="skeleton" style={{ display: 'block', width: 320, height: 13 }} />
           </div>
         </div>
-        <div className="kpi-grid" style={{ marginTop: 'var(--gap)' }}>
+        <div className="kpi-grid u-mt-var-gap">
           {[0, 1, 2, 3].map((i) => (
             <div key={i} className="kpi">
               <span className="skeleton" style={{ display: 'block', width: 70, height: 11, marginBottom: 10 }} />
@@ -449,7 +449,7 @@ export default function Ficha() {
       />
 
       {activeTab === 'resumen' && (
-        <div className="split-2" style={{ marginTop: 'var(--gap)' }}>
+        <div className="split-2 u-mt-var-gap">
           {/* Salud de la cuenta — 4 componentes del score (#440). El backend
               calcula cada uno y los devuelve en tenant.health_breakdown. La
               suma ponderada (30/30/20/20) da el score total. */}
@@ -536,7 +536,7 @@ export default function Ficha() {
          side-effects (cajas nuevas + alerta TC). NO se muestra en
          tab Actividad para no contaminar el panel de drill-down. */}
       {activeTab === 'resumen' && (
-        <div className="card" style={{ marginTop: 'var(--gap)' }}>
+        <div className="card u-mt-var-gap">
           <h3 style={{ margin: '0 0 8px' }}>País del tenant</h3>
           <p style={{ margin: '0 0 6px' }}>
             Actualmente:{' '}
@@ -576,7 +576,7 @@ export default function Ficha() {
       )}
 
       {activeTab === 'actividad' && (
-        <div style={{ marginTop: 'var(--gap)' }}>
+        <div className="u-mt-var-gap">
           <div className="flex-row u-mb-12">
             <Seg
               value={activitySubTab}
@@ -980,7 +980,7 @@ function ComprobanteEmailFooterCard({ tenant, onSaved }) {
   const previewText = value.trim() || FOOTER_DEFAULT_PREVIEW.replace('{tenant.nombre}', tenant.nombre || 'Tecny');
 
   return (
-    <div className="card" style={{ marginTop: 'var(--gap)' }}>
+    <div className="card u-mt-var-gap">
       <h3 style={{ margin: '0 0 8px' }}>Footer email comprobante</h3>
       <p className="muted tiny" style={{ margin: '0 0 12px' }}>
         Texto que aparece al final del email de comprobante de venta retail que
@@ -1002,7 +1002,7 @@ function ComprobanteEmailFooterCard({ tenant, onSaved }) {
           style={{ fontFamily: 'inherit', resize: 'vertical' }}
         />
         {overLimit && (
-          <div className="tiny" style={{ color: 'var(--neg)', marginTop: 4 }}>
+          <div className="tiny u-color-neg-mt-4">
             Excede el máximo de {FOOTER_MAX} caracteres
           </div>
         )}
@@ -1011,7 +1011,7 @@ function ComprobanteEmailFooterCard({ tenant, onSaved }) {
         <Btn icon="Save" onClick={handleSave} disabled={!dirty || saving || overLimit}>
           {saving ? 'Guardando…' : 'Guardar'}
         </Btn>
-        {saved && <span className="tiny" style={{ color: 'var(--pos)' }}>✓ Guardado</span>}
+        {saved && <span className="tiny u-color-pos">✓ Guardado</span>}
         {error && <span className="tiny u-color-neg">{error}</span>}
       </div>
 
@@ -1086,7 +1086,7 @@ function ClasesDuplicadasCard({ tenantId }) {
 
   return (
     <>
-      <div className="card" style={{ marginTop: 'var(--gap)' }}>
+      <div className="card u-mt-var-gap">
         <div className="flex-between u-mb-8">
           <div>
             <h3 style={{ margin: '0 0 4px' }}>Categorías duplicadas</h3>
@@ -1107,7 +1107,7 @@ function ClasesDuplicadasCard({ tenantId }) {
         </div>
 
         {lastMergeResult && (
-          <div className="banner banner-info" style={{ marginTop: 10 }}>
+          <div className="banner banner-info u-mt-10">
             <Icons.Sparkle size={16} />
             <span>
               Fusionadas: <code>{lastMergeResult.duplicada_nombre}</code>
@@ -1119,20 +1119,20 @@ function ClasesDuplicadasCard({ tenantId }) {
         )}
 
         {error && (
-          <div className="banner banner-neg" role="alert" style={{ marginTop: 10 }}>
+          <div className="banner banner-neg u-mt-10" role="alert">
             {error}
           </div>
         )}
 
         {pairs != null && !loading && !error && pairs.length === 0 && (
-          <div className="empty-state" style={{ marginTop: 10 }}>
+          <div className="empty-state u-mt-10">
             <div className="empty-title">Sin duplicados detectados</div>
             No se encontraron categorías casi-duplicadas en este tenant.
           </div>
         )}
 
         {Array.isArray(pairs) && pairs.length > 0 && (
-          <div style={{ marginTop: 10 }}>
+          <div className="u-mt-10">
             <table className="tbl">
               <caption className="sr-only">
                 Pares de categorías casi-duplicadas detectadas en el catálogo del tenant.
@@ -1187,7 +1187,7 @@ function ClasesDuplicadasCard({ tenantId }) {
                 })}
               </tbody>
             </table>
-            <div className="muted tiny" style={{ marginTop: 8 }}>
+            <div className="muted tiny u-mt-8">
               Ordenados por score (containment {'>'} similitud). Confianza{' '}
               <strong>high</strong> = score ≥ 0.9 (típicamente uno contiene al otro);
               {' '}<strong>medium</strong> = resto de matches.
@@ -1196,7 +1196,7 @@ function ClasesDuplicadasCard({ tenantId }) {
         )}
 
         {loading && pairs == null && (
-          <div className="muted tiny" style={{ marginTop: 10 }}>Analizando el catálogo…</div>
+          <div className="muted tiny u-mt-10">Analizando el catálogo…</div>
         )}
       </div>
 

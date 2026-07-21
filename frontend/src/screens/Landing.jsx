@@ -468,8 +468,8 @@ export default function Landing() {
           <div className="feat-visual">
             <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>iPhone 16 Pro · 256GB Natural</div>
             <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16 }} className="mono">USD 1.185 · TC $1.200</div>
-            <div className="calc-row"><span className="l">Contado</span><span className="v" style={{ color: 'var(--pos)' }}>$1.422.000</span></div>
-            <div className="calc-row"><span className="l">Transferencia (+3%)</span><span className="v" style={{ color: 'var(--pos)' }}>$1.464.660</span></div>
+            <div className="calc-row"><span className="l">Contado</span><span className="v u-color-pos">$1.422.000</span></div>
+            <div className="calc-row"><span className="l">Transferencia (+3%)</span><span className="v u-color-pos">$1.464.660</span></div>
             <div className="calc-row"><span className="l">💳 3 cuotas (+23.5%)</span><span className="v u-color-accent">$1.756.170</span></div>
             <div className="calc-row"><span className="l">💳 6 cuotas (+28%)</span><span className="v u-color-accent">$1.820.160</span></div>
             <div className="calc-total"><span className="l" style={{ color: 'var(--muted)', fontSize: 13, alignSelf: 'flex-end' }}>6 × $303.360</span><span className="v">$1.820.160</span></div>

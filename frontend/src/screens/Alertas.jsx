@@ -134,7 +134,7 @@ function GrupoAlerta({ grupo }) {
         </button>
       </div>
       {expanded && (
-        <div style={{ marginTop: 8 }}>
+        <div className="u-mt-8">
           {grupo.error ? (
             <div className="empty tiny u-color-neg">Error: {grupo.error}</div>
           ) : (

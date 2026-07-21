@@ -495,20 +495,20 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
                 <col style={{ width: 38 }} />   {/* Stock */}
                 <col style={{ width: 180 }} />  {/* Nombre */}
                 <col className="u-w-130px" />  {/* IMEI */}
-                <col style={{ width: 60 }} />   {/* GB */}
-                <col style={{ width: 90 }} />   {/* Color */}
-                <col style={{ width: 60 }} />   {/* Bat % */}
+                <col className="u-w-60px" />   {/* GB */}
+                <col className="u-w-90px" />   {/* Color */}
+                <col className="u-w-60px" />   {/* Bat % */}
                 <col style={{ width: 88 }} />   {/* Tipo */}
                 <col style={{ width: 120 }} />  {/* Categoría */}
                 <col style={{ width: 120 }} />  {/* Depósito */}
                 <col style={{ width: 88 }} />   {/* Condición */}
                 <col style={{ width: 96 }} />   {/* Tipo carga */}
-                <col style={{ width: 60 }} />   {/* Cant */}
-                <col style={{ width: 80 }} />   {/* Costo */}
+                <col className="u-w-60px" />   {/* Cant */}
+                <col className="u-w-80px" />   {/* Costo */}
                 <col style={{ width: 64 }} />   {/* Moneda */}
-                <col style={{ width: 80 }} />   {/* Precio */}
+                <col className="u-w-80px" />   {/* Precio */}
                 <col style={{ width: 64 }} />   {/* Moneda */}
-                <col style={{ width: 32 }} />   {/* X */}
+                <col className="u-w-32px" />   {/* X */}
               </colgroup>
               <thead>
                 <tr>

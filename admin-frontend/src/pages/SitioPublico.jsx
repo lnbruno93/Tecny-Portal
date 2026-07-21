@@ -330,7 +330,7 @@ export default function SitioPublico() {
         subtitle="Editá Contacto y Reseñas. Los cambios aparecen en la landing en máx. 5 minutos (cache HTTP)."
         actions={
           isDirty && (
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div className="u-flex-gap-8">
               <Btn variant="ghost" onClick={descartar} disabled={saving}>
                 Descartar
               </Btn>
@@ -360,8 +360,7 @@ export default function SitioPublico() {
                 const changed = (contact[f.key] || '') !== (contactOriginal[f.key] || '');
                 return (
                   <div key={f.key} className="field">
-                    <label className="field-label" htmlFor={`sc-${f.key}`}
-                           style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <label className="field-label u-flex-center-gap-8" htmlFor={`sc-${f.key}`}>
                       {f.label}
                       {changed && (
                         <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px',
@@ -403,8 +402,7 @@ export default function SitioPublico() {
                 const changed = (hero[f.key] || '') !== (heroOriginal[f.key] || '');
                 return (
                   <div key={f.key} className="field">
-                    <label className="field-label" htmlFor={`sc-${f.key}`}
-                           style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <label className="field-label u-flex-center-gap-8" htmlFor={`sc-${f.key}`}>
                       {f.label}
                       {changed && (
                         <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px',
@@ -455,8 +453,7 @@ export default function SitioPublico() {
                 const changed = (cta[f.key] || '') !== (ctaOriginal[f.key] || '');
                 return (
                   <div key={f.key} className="field">
-                    <label className="field-label" htmlFor={`sc-${f.key}`}
-                           style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <label className="field-label u-flex-center-gap-8" htmlFor={`sc-${f.key}`}>
                       {f.label}
                       {changed && (
                         <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px',

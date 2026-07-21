@@ -125,8 +125,7 @@ export default function VendedoresCatalogModal({ open, onClose, onChange }) {
       aria-labelledby="vendedores-modal-title"
     >
       <div
-        className="modal"
-        style={{ maxWidth: 480 }}
+        className="modal u-mw-480"
         onClick={e => e.stopPropagation()}
       >
         <div className="modal-hd">

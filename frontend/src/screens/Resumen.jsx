@@ -213,7 +213,7 @@ export default function Resumen() {
               max={mesActualISO()}
             />
           )}
-          <span className="muted tiny" style={{ marginLeft: 8 }}>vs</span>
+          <span className="muted tiny u-ml-8">vs</span>
           <input
             type="month" className="input mono" style={{ width: 160 }}
             value={periodoComp}

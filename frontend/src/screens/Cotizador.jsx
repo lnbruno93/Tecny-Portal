@@ -327,20 +327,20 @@ function TabTarjetas() {
             </div>
             <div className="quote-line u-mt-6">
               <span className="lbl">💳 1 cuota (+{pctEfectivo(COMISIONES.c1)}%)</span>
-              <span className="val mono" style={{ fontWeight: 600, color: 'var(--accent)' }}>
+              <span className="val mono u-color-accent-fw-600">
                 {symLocal}{fmt(c1)}
               </span>
             </div>
             <div className="quote-line">
               <span className="lbl">💳 3 cuotas (+{pctEfectivo(COMISIONES.c3)}%)</span>
-              <span className="val mono" style={{ fontWeight: 600, color: 'var(--accent)' }}>
+              <span className="val mono u-color-accent-fw-600">
                 {symLocal}{fmt(c3)}{' '}
                 <small className="muted">· {symLocal}{fmt(Math.round(c3 / 3))}/c</small>
               </span>
             </div>
             <div className="quote-line">
               <span className="lbl">💳 6 cuotas (+{pctEfectivo(COMISIONES.c6)}%)</span>
-              <span className="val mono" style={{ fontWeight: 600, color: 'var(--accent)' }}>
+              <span className="val mono u-color-accent-fw-600">
                 {symLocal}{fmt(c6)}{' '}
                 <small className="muted">· {symLocal}{fmt(Math.round(c6 / 6))}/c</small>
               </span>
@@ -360,15 +360,15 @@ function TabTarjetas() {
             </div>
             <div className="quote-line u-mt-4">
               <span className="lbl">💳 Total 1 cuota</span>
-              <span className="val mono" style={{ fontWeight: 600, color: 'var(--accent)' }}>{symLocal}{fmt(calculo.tots.c1)}</span>
+              <span className="val mono u-color-accent-fw-600">{symLocal}{fmt(calculo.tots.c1)}</span>
             </div>
             <div className="quote-line">
               <span className="lbl">💳 Total 3 cuotas</span>
-              <span className="val mono" style={{ fontWeight: 600, color: 'var(--accent)' }}>{symLocal}{fmt(calculo.tots.c3)}</span>
+              <span className="val mono u-color-accent-fw-600">{symLocal}{fmt(calculo.tots.c3)}</span>
             </div>
             <div className="quote-line">
               <span className="lbl">💳 Total 6 cuotas</span>
-              <span className="val mono" style={{ fontWeight: 600, color: 'var(--accent)' }}>{symLocal}{fmt(calculo.tots.c6)}</span>
+              <span className="val mono u-color-accent-fw-600">{symLocal}{fmt(calculo.tots.c6)}</span>
             </div>
           </>
         )}
@@ -677,7 +677,7 @@ function TabUsd() {
                 {optTusd && (
                   <div className="quote-line">
                     <span className="lbl">Transferencia USD (+{pctEfectivo(COMISIONES.transf)}%)</span>
-                    <span className="val mono" style={{ fontWeight: 700, color: 'var(--accent)' }}>
+                    <span className="val mono u-color-accent-fw-700">
                       USD {fmt(tusd)}
                     </span>
                   </div>
@@ -703,7 +703,7 @@ function TabUsd() {
                 {optTusd && (
                   <div className="quote-line">
                     <span className="lbl">Total Transferencia USD</span>
-                    <span className="val mono" style={{ fontWeight: 700, color: 'var(--accent)' }}>
+                    <span className="val mono u-color-accent-fw-700">
                       USD {fmt(calculo.tots.tusd)}
                     </span>
                   </div>
@@ -762,7 +762,7 @@ export default function Cotizador() {
           <h1 className="page-title">Cotizador</h1>
           <div className="page-sub">Cálculo de precios para clientes · client-side, no persiste</div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div className="u-flex-gap-8">
           {/* Configuración va primera porque es lo que el admin abre cuando
               llega al módulo por primera vez (setea su ficha de Google una
               vez y se olvida). Default tab sigue siendo 'tarjetas' — el uso

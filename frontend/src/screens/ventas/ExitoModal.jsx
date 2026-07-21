@@ -34,7 +34,7 @@ export default function ExitoModal({ state, onClose, onDescargar, pdfLoading, on
   return (
     <div ref={overlayRef} className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="exito-modal-title" style={{ zIndex: 600 }}
          onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+      <div className="modal u-mw-480" onClick={e => e.stopPropagation()}>
         <div className="modal-body" style={{ padding: '36px 28px 18px', textAlign: 'center' }}>
           <div style={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',

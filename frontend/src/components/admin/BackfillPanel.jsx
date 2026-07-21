@@ -92,7 +92,7 @@ export default function BackfillPanel({
   return (
     <section className="card u-mb-16" aria-labelledby={titleId}>
       <div className="card-hd">
-        <h3 id={titleId} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <h3 id={titleId} className="u-flex-center-gap-8">
           <Icons.Bolt size={16} /> {title}
         </h3>
       </div>
@@ -139,7 +139,7 @@ export default function BackfillPanel({
         >
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
             {report.apply
-              ? <><Icons.Check size={12} style={{ color: 'var(--pos)' }} aria-hidden="true"/> Aplicado</>
+              ? <><Icons.Check size={12} className="u-color-pos" aria-hidden="true"/> Aplicado</>
               : <>· Reporte</>}
             {' · '}{reportAt ? reportAt.toLocaleTimeString('es-AR') : '—'}
           </div>

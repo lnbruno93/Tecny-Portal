@@ -379,7 +379,7 @@ export default function ResetPassword() {
                 />
               </div>
               {fieldErrors.confirmPassword && (
-                <div className="tiny" style={{ marginTop: 4, color: 'var(--neg)' }}>
+                <div className="tiny u-color-neg-mt-4">
                   {fieldErrors.confirmPassword}
                 </div>
               )}

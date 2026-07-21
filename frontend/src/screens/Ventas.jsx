@@ -1802,7 +1802,7 @@ export default function Ventas() {
 
                           {/* Fila 1: descripción + IMEI + valor toma */}
                           <div className="row u-mb-8">
-                            <div className="field" style={{ flex: 2 }}>
+                            <div className="field u-flex-2">
                               <label className="field-label">Descripción</label>
                               <input className="input" placeholder="iPhone 13 Pro 256 Sierra Blue"
                                      value={c.descripcion} onChange={e => setCanje(c._id, 'descripcion', e.target.value)} />
@@ -2036,7 +2036,7 @@ export default function Ventas() {
                               >
                                 <div>
                                   <div className="muted tiny" style={{ marginBottom: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
-                                    <span>Le cobrás al cliente <span style={{ color: 'var(--text-muted)' }}>(editable)</span></span>
+                                    <span>Le cobrás al cliente <span className="u-color-text-muted">(editable)</span></span>
                                     {p.bruto_manual && (
                                       <span
                                         title="Estás editando el monto manualmente. Al cambiar USD/TC/método el cálculo vuelve a la fórmula."
@@ -2066,7 +2066,7 @@ export default function Ventas() {
                                   <div className="mono neg u-fs-13-fw-600">−{sym(p.moneda)}{fmt(det.costoFinOrig)}</div>
                                 </div>
                                 <div>
-                                  <div className="muted tiny u-mb-2">Entra a tu caja <span style={{ color: 'var(--text-muted)' }}>(editable)</span></div>
+                                  <div className="muted tiny u-mb-2">Entra a tu caja <span className="u-color-text-muted">(editable)</span></div>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
                                     <input
                                       type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
@@ -2274,7 +2274,7 @@ export default function Ventas() {
                       </div>
                     )}
                     {ocrSugerencia.status === 'error' && (
-                      <div className="muted tiny" style={{ marginTop: 4, color: 'var(--neg)' }}>No se pudo leer el monto. Cargalo a mano.</div>
+                      <div className="muted tiny u-color-neg-mt-4">No se pudo leer el monto. Cargalo a mano.</div>
                     )}
                   </div>
 
@@ -2303,7 +2303,7 @@ export default function Ventas() {
         <div ref={rapidaModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowRapida(false)}>
           <div className="modal u-mw-520" onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
-              <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <h3 className="u-flex-center-gap-8">
                 <Icons.Bolt size={18} /> Nueva Venta Rápida
               </h3>
               <button type="button" className="icon-btn" onClick={() => setShowRapida(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button>

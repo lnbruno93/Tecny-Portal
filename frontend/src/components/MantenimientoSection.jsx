@@ -82,7 +82,7 @@ function FinancieraReport({ report }) {
             Ver primeros 10 movimientos pendientes
           </summary>
           {report.muestras.comprobantes?.length > 0 && (
-            <div style={{ marginTop: 8 }}>
+            <div className="u-mt-8">
               <div style={{ fontWeight: 600, marginBottom: 4 }}>Comprobantes:</div>
               <table className="tbl">
                 <thead><tr><th>Fecha</th><th>Cliente</th><th className="u-text-right">Neto</th></tr></thead>
@@ -99,7 +99,7 @@ function FinancieraReport({ report }) {
             </div>
           )}
           {report.muestras.pagos?.length > 0 && (
-            <div style={{ marginTop: 10 }}>
+            <div className="u-mt-10">
               <div style={{ fontWeight: 600, marginBottom: 4 }}>Pagos:</div>
               <table className="tbl">
                 <thead><tr><th>Fecha</th><th>Caja destino</th><th className="u-text-right">Monto</th></tr></thead>

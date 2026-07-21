@@ -1073,7 +1073,7 @@ export default function Tarjetas() {
                                   : `Te faltan $ ${fmt(-deltaRepartos)} para llegar al total`)}
                         </div>
                         {multiLiq.convertir_usd && usdRecibidoN > 0 && (
-                          <div className="mono tiny" style={{ color: 'var(--accent)', fontWeight: 600 }}>
+                          <div className="mono tiny u-color-accent-fw-600">
                             · Caja USD recibe: u$s {fmt(usdRecibidoN)}
                           </div>
                         )}
@@ -1228,7 +1228,7 @@ export default function Tarjetas() {
       {showCobroPrev && (
         <div ref={cobroPrevModalRef} className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="cobro-prev-title"
              onClick={(e) => { if (e.target === e.currentTarget && !savingCobroPrev) setShowCobroPrev(false); }}>
-          <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+          <div className="modal u-mw-480" onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
               <h3 id="cobro-prev-title">Registrar cobro previo</h3>
               <button className="icon-btn" aria-label="Cerrar modal" onClick={() => setShowCobroPrev(false)} disabled={savingCobroPrev}>
@@ -1287,7 +1287,7 @@ export default function Tarjetas() {
                       <div className="flex-between"><span className="muted">Comisión ({cobroPrev.pct || 0}%):</span><span className="mono u-color-neg">− {fmt(cobroPrevCalc.comision)}</span></div>
                       <div className="flex-between" style={{ paddingTop: 4, borderTop: '1px solid var(--hairline)', marginTop: 4 }}>
                         <strong>Neto a cobrar:</strong>
-                        <span className="mono" style={{ fontWeight: 700, color: 'var(--accent)' }}>{fmt(cobroPrevCalc.neto)}</span>
+                        <span className="mono u-color-accent-fw-700">{fmt(cobroPrevCalc.neto)}</span>
                       </div>
                     </div>
                   )}
@@ -1318,7 +1318,7 @@ export default function Tarjetas() {
       {editMov && (
         <div ref={editModalRef} className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="edit-mov-title"
              onClick={(e) => { if (e.target === e.currentTarget && !savingEdit) setEditMov(null); }}>
-          <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+          <div className="modal u-mw-480" onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
               <h3 id="edit-mov-title">Editar {editMov.tipo === 'cobro' ? 'cobro previo' : 'liquidación'}</h3>
               <button className="icon-btn" aria-label="Cerrar modal" onClick={() => setEditMov(null)} disabled={savingEdit}>
@@ -1368,7 +1368,7 @@ export default function Tarjetas() {
                           <div className="flex-between"><span className="muted">Comisión ({editForm.pct || 0}%):</span><span className="mono u-color-neg">− {fmt(editCobroCalc.comision)}</span></div>
                           <div className="flex-between" style={{ paddingTop: 4, borderTop: '1px solid var(--hairline)', marginTop: 4 }}>
                             <strong>Neto a cobrar:</strong>
-                            <span className="mono" style={{ fontWeight: 700, color: 'var(--accent)' }}>{fmt(editCobroCalc.neto)}</span>
+                            <span className="mono u-color-accent-fw-700">{fmt(editCobroCalc.neto)}</span>
                           </div>
                         </div>
                       )}

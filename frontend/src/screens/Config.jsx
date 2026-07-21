@@ -295,7 +295,7 @@ export default function Config() {
                       setError('');
                     }}
                   />
-                  <span className="addon" style={{ fontWeight: 700, color: 'var(--accent)' }}>%</span>
+                  <span className="addon u-color-accent-fw-700">%</span>
                 </div>
                 <span className="muted tiny">
                   Guardado: <span className="mono u-fw-700">{pct.toFixed(1)}%</span>
@@ -327,7 +327,7 @@ export default function Config() {
                             value={t.pct_input}
                             onChange={e => setTarjetaPct(t.id, e.target.value)}
                           />
-                          <span className="addon" style={{ fontWeight: 700, color: 'var(--accent)' }}>%</span>
+                          <span className="addon u-color-accent-fw-700">%</span>
                         </div>
                         <span className="muted tiny u-text-right">
                           {tDirty
@@ -365,7 +365,7 @@ export default function Config() {
                 </div>
                 <div className="flex-between">
                   <span className="muted tiny">Retención ({simPct.toFixed(1)}%)</span>
-                  <span className="mono" style={{ fontWeight: 600, color: 'var(--accent)' }}>
+                  <span className="mono u-color-accent-fw-600">
                     ARS {fmt(simRet)}
                   </span>
                 </div>

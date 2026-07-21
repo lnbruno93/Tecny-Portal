@@ -252,7 +252,7 @@ function Wizard({ cajas, onCancel, onCreated }) {
               <div className="muted tiny u-mt-2">± días para auto-match</div>
             </div>
           </div>
-          <div className="field" style={{ marginTop: 8 }}>
+          <div className="field u-mt-8">
             <label className="field-label">Archivo del extracto (CSV o XLSX) <span className="u-color-neg">*</span></label>
             <input type="file" accept=".csv,.xlsx" onChange={handleArchivo}
                    disabled={!cajaId || !fechaDesde || !fechaHasta}
@@ -302,7 +302,7 @@ function Wizard({ cajas, onCancel, onCreated }) {
               </tbody>
             </table>
           </div>
-          <div className="muted tiny" style={{ marginTop: 8 }}>
+          <div className="muted tiny u-mt-8">
             Vista previa: primeras 5 filas. <strong>{lineasValidas.length}</strong> líneas válidas se importarán.
           </div>
           <div className="flex-row" style={{ gap: 8, marginTop: 12 }}>
@@ -435,7 +435,7 @@ function Detalle({ id, onVolver }) {
           <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
             <div className="muted tiny">Progreso</div>
             <div className="mono">
-              <span style={{ color: 'var(--pos)' }}>{matched}</span> matched ·{' '}
+              <span className="u-color-pos">{matched}</span> matched ·{' '}
               <span style={{ color: 'var(--warn)' }}>{pendientes}</span> pendientes ·{' '}
               <span className="muted">{ignoradas}</span> ignoradas
             </div>
@@ -524,7 +524,7 @@ function Detalle({ id, onVolver }) {
       </div>
 
       {!cerrada && pendientes > 0 && (
-        <div className="muted tiny" style={{ marginTop: 8 }}>
+        <div className="muted tiny u-mt-8">
           Tenés {pendientes} líneas pendientes. Para cerrar la conciliación, todas las líneas deben estar
           matcheadas o marcadas como "Ignorar".
         </div>

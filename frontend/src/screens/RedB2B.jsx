@@ -249,7 +249,7 @@ function PartnersTab() {
             >
               {t.label}
               {count > 0 && (
-                <span className="badge" style={{ marginLeft: 8 }}>{count}</span>
+                <span className="badge u-ml-8">{count}</span>
               )}
             </button>
           );
@@ -435,7 +435,7 @@ export function InvitePartnerModal({ onClose, onSuccess }) {
       aria-labelledby="invite-modal-title"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="modal" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
+      <div className="modal u-mw-480" onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd">
           <h3 id="invite-modal-title">Invitar partner</h3>
           <button type="button" className="icon-btn" onClick={onClose} aria-label="Cerrar modal">
@@ -486,7 +486,7 @@ export function InvitePartnerModal({ onClose, onSuccess }) {
             </div>
 
             {error && (
-              <div className="neg tiny" style={{ marginTop: 8 }}>{error}</div>
+              <div className="neg tiny u-mt-8">{error}</div>
             )}
           </div>
 

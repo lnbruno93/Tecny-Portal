@@ -121,7 +121,7 @@ export default function InviteAdminModal({ open, onClose, onCreated }) {
             autoFocus
           />
           {form.email && !emailOK && (
-            <div className="tiny" style={{ color: 'var(--neg)', marginTop: 4 }}>
+            <div className="tiny u-color-neg-mt-4">
               Email inválido.
             </div>
           )}

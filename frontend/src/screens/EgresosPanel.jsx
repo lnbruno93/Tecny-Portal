@@ -208,7 +208,7 @@ export default function EgresosPanel() {
                         Usuarios, CuentasCC). EgresosPanel era el único que usaba
                         `*` plano sin estilizar — desprolijo visto lado a lado. */}
                     <div className="field u-flex-1"><label className="field-label">Fecha <span className="u-color-neg">*</span></label><input type="date" className="input" value={form.fecha} onChange={e => setForm(f => ({ ...f, fecha: e.target.value }))} /></div>
-                    <div className="field" style={{ flex: 2 }}><label className="field-label">Concepto <span className="u-color-neg">*</span></label><input className="input" placeholder="Alquiler, sueldos…" value={form.concepto} onChange={e => setForm(f => ({ ...f, concepto: e.target.value }))} autoFocus /></div>
+                    <div className="field u-flex-2"><label className="field-label">Concepto <span className="u-color-neg">*</span></label><input className="input" placeholder="Alquiler, sueldos…" value={form.concepto} onChange={e => setForm(f => ({ ...f, concepto: e.target.value }))} autoFocus /></div>
                   </div>
                   <div className="row u-gap-12">
                     <div className="field u-flex-1"><label className="field-label">Categoría</label>
@@ -220,7 +220,7 @@ export default function EgresosPanel() {
                     <div className="field u-flex-1"><label className="field-label">Monto</label>
                       <div className="flex-row u-gap-6">
                         <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="0" value={form.monto} onChange={e => setForm(f => ({ ...f, monto: e.target.value }))} className="u-flex-1" />
-                        <select className="input" style={{ width: 80 }} value={form.moneda} onChange={e => setForm(f => ({ ...f, moneda: e.target.value }))}>{Array.from(new Set([...monedas, form.moneda].filter(Boolean))).map(m => <option key={m} value={m}>{m}</option>)}</select>
+                        <select className="input u-w-80px" value={form.moneda} onChange={e => setForm(f => ({ ...f, moneda: e.target.value }))}>{Array.from(new Set([...monedas, form.moneda].filter(Boolean))).map(m => <option key={m} value={m}>{m}</option>)}</select>
                       </div>
                     </div>
                     <div className="field u-flex-1"><label className="field-label">TC (si es ARS)</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="1425" value={form.tc} onChange={e => setForm(f => ({ ...f, tc: e.target.value }))} /><TcWarning tc={form.tc} /></div>
@@ -326,12 +326,12 @@ function RecurrentesModal({ recurrentes, categorias, cajas, onClose, onChange, t
         <div className="modal-hd"><h3>Egresos recurrentes (mensuales)</h3><button className="icon-btn" onClick={onClose}><Icons.X size={16} /></button></div>
         <div className="modal-body">
           <div className="row" style={{ gap: 8, marginBottom: 6, alignItems: 'flex-end' }}>
-            <div className="field" style={{ flex: 2 }}><label className="field-label tiny">Concepto</label><input className="input" placeholder="Alquiler…" value={form.concepto} onChange={e => setForm(f => ({ ...f, concepto: e.target.value }))} /></div>
-            <div className="field u-flex-1"><label className="field-label tiny">Monto</label><div className="flex-row" style={{ gap: 4 }}><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="0" value={form.monto} onChange={e => setForm(f => ({ ...f, monto: e.target.value }))} className="u-flex-1" /><select className="input" style={{ width: 70 }} value={form.moneda} onChange={e => setForm(f => ({ ...f, moneda: e.target.value }))}>{Array.from(new Set([...monedas, form.moneda].filter(Boolean))).map(m => <option key={m} value={m}>{m}</option>)}</select></div></div>
+            <div className="field u-flex-2"><label className="field-label tiny">Concepto</label><input className="input" placeholder="Alquiler…" value={form.concepto} onChange={e => setForm(f => ({ ...f, concepto: e.target.value }))} /></div>
+            <div className="field u-flex-1"><label className="field-label tiny">Monto</label><div className="flex-row" style={{ gap: 4 }}><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="0" value={form.monto} onChange={e => setForm(f => ({ ...f, monto: e.target.value }))} className="u-flex-1" /><select className="input u-w-70px" value={form.moneda} onChange={e => setForm(f => ({ ...f, moneda: e.target.value }))}>{Array.from(new Set([...monedas, form.moneda].filter(Boolean))).map(m => <option key={m} value={m}>{m}</option>)}</select></div></div>
             {form.moneda === 'ARS' && (
-              <div className="field" style={{ width: 80 }}><label className="field-label tiny">TC</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="1425" value={form.tc} onChange={e => setForm(f => ({ ...f, tc: e.target.value }))} /><TcWarning tc={form.tc} /></div>
+              <div className="field u-w-80px"><label className="field-label tiny">TC</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="1425" value={form.tc} onChange={e => setForm(f => ({ ...f, tc: e.target.value }))} /><TcWarning tc={form.tc} /></div>
             )}
-            <div className="field" style={{ width: 70 }}><label className="field-label tiny">Día</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="1" max="31" className="input mono" value={form.dia_del_mes} onChange={e => setForm(f => ({ ...f, dia_del_mes: e.target.value }))} /></div>
+            <div className="field u-w-70px"><label className="field-label tiny">Día</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="1" max="31" className="input mono" value={form.dia_del_mes} onChange={e => setForm(f => ({ ...f, dia_del_mes: e.target.value }))} /></div>
           </div>
           <div className="row" style={{ gap: 8, marginBottom: 10, alignItems: 'flex-end' }}>
             <div className="field u-flex-1"><label className="field-label tiny">Categoría</label><select className="input" value={form.categoria_id} onChange={e => setForm(f => ({ ...f, categoria_id: e.target.value }))}><option value="">—</option>{categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></div>

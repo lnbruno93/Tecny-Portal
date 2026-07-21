@@ -235,7 +235,7 @@ export default function ResetPassword() {
             )}
           </div>
 
-          <button className="login-btn" type="submit" disabled={loading} style={{ marginTop: 8 }}>
+          <button className="login-btn u-mt-8" type="submit" disabled={loading}>
             {loading ? 'Guardando…' : 'Cambiar contraseña →'}
           </button>
 

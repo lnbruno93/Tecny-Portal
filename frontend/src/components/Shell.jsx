@@ -89,7 +89,7 @@ function UpdateBanner() {
           Se aplicará automáticamente si estás inactivo.
         </span>
       </span>
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div className="u-flex-gap-8">
         <button
           onClick={() => updateServiceWorker(true)}
           style={{

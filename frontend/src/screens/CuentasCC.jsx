@@ -1273,7 +1273,7 @@ export default function CuentasCC() {
                 <colgroup>
                   <col style={{ width: 88  }} />{/* Fecha        */}
                   <col style={{ width: 108 }} />{/* Tipo         */}
-                  <col style={{ width: 90  }} />{/* Producto     */}
+                  <col className="u-w-90px" />{/* Producto     */}
                   <col className="u-w-130px" />{/* Modelo       */}
                   <col style={{ width: 66  }} />{/* Cap.         */}
                   <col style={{ width: 76  }} />{/* Color        */}

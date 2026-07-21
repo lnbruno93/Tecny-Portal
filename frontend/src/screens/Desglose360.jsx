@@ -303,7 +303,7 @@ export default function Desglose360() {
         </div>
       )}
 
-      <div className="muted tiny" style={{ marginTop: 10 }}>
+      <div className="muted tiny u-mt-10">
         Tip: click en cualquier fila te lleva al inventario filtrado por ese valor.
       </div>
     </div>
