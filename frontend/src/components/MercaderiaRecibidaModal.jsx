@@ -322,11 +322,11 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
             <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 10 }}>
               <input type="date" className="input" value={fecha}
                      onChange={e => setFecha(e.target.value)}
-                     style={{ fontSize: 12, padding: '6px 8px' }} />
+                     className="u-fs-12-p-6-8" />
               <input type="text" className="input"
                      placeholder="Concepto (opcional) — Ej: 2 PS5 a cuenta"
                      value={concepto} onChange={e => setConcepto(e.target.value)}
-                     style={{ fontSize: 12, padding: '6px 8px' }} />
+                     className="u-fs-12-p-6-8" />
             </div>
           </div>
 

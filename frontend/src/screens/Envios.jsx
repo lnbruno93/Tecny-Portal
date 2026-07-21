@@ -1089,13 +1089,13 @@ export default function Envios() {
                   <div className="muted tiny u-mt-2">{e.direccion}{e.barrio ? ' · ' + e.barrio : ''}</div>
                   <div className="flex-row" style={{ gap: 14, marginTop: 8, flexWrap: 'wrap' }}>
                     {productos.length > 0 && (
-                      <div className="flex-row" style={{ gap: 5, fontSize: 12 }}>
+                      <div className="flex-row u-gap-5-fs-12">
                         <Icons.Box size={13} className="muted" />
                         <span className="muted">{productos.length} {productos.length === 1 ? 'producto' : 'productos'}</span>
                       </div>
                     )}
                     {pagos.length > 0 && (
-                      <div className="flex-row" style={{ gap: 5, fontSize: 12 }}>
+                      <div className="flex-row u-gap-5-fs-12">
                         <Icons.Dollar size={13} className="u-color-pos" />
                         <span className="pos mono u-fw-600">
                           {/* 2026-06-10: la moneda salía hardcodeada "ARS". Ahora
@@ -1239,7 +1239,7 @@ export default function Envios() {
                         )}
                       </div>
                       {it.tipo === 'pago' && (
-                        <span className="mono pos" style={{ fontWeight: 700, fontSize: 13 }}>
+                        <span className="mono pos u-fw-700-fs-13">
                           {/* 2026-06-10: antes hardcodeaba "ARS" en el detalle aunque
                               el pago fuera USD. Ahora usa la moneda real del item. */}
                           {it.moneda || 'ARS'} {fmt(it.monto)}
@@ -1347,7 +1347,7 @@ export default function Envios() {
                   2026-07-11: para que flex:1 realmente aplique al body, el <form>
                   padre tiene que ser flex column — ver comment arriba. */}
               <div className="modal-body">
-                <div className="stack" style={{ gap: 16 }}>
+                <div className="stack u-gap-16-only">
 
                   {/* Fila 1: fecha + estado + prioridad */}
                   <div className="row">

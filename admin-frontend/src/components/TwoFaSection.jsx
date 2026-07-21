@@ -228,7 +228,7 @@ export default function TwoFaSection({ onMessage }) {
         <div className="card u-p-18-mb-12">
           <div className="flex-between u-align-items-flex-start">
             <div>
-              <div className="flex-row" style={{ gap: 8, alignItems: 'center', marginBottom: 4 }}>
+              <div className="flex-row u-gap-8-center-mb-4">
                 <Badge tone="pos">Activo</Badge>
                 <strong>Autenticación de dos factores</strong>
               </div>
@@ -243,7 +243,7 @@ export default function TwoFaSection({ onMessage }) {
               </div>
             </div>
           </div>
-          <div className="flex-row" style={{ gap: 8, marginTop: 14, justifyContent: 'flex-end' }}>
+          <div className="flex-row u-gap-8-mt-14-end">
             <Btn kind="ghost" sm onClick={handleRegenerateRecovery}>
               Regenerar recovery codes
             </Btn>
@@ -398,7 +398,7 @@ export default function TwoFaSection({ onMessage }) {
             <Badge tone="warn">Setup pendiente</Badge>
             <strong>Autenticación de dos factores</strong>
           </div>
-          <div className="muted" style={{ fontSize: 12, lineHeight: 1.5, marginBottom: 14 }}>
+          <div className="muted u-fs-12-lh-15-mb-14">
             Empezaste a activar 2FA pero no completaste el paso final (ingresar
             el código de 6 dígitos de tu app autenticadora). Para terminar,
             continuá el setup. Si perdiste el QR o querés empezar de cero,
@@ -456,7 +456,7 @@ export default function TwoFaSection({ onMessage }) {
           <Badge>No activado</Badge>
           <strong>Autenticación de dos factores</strong>
         </div>
-        <div className="muted" style={{ fontSize: 12, lineHeight: 1.5, marginBottom: 14 }}>
+        <div className="muted u-fs-12-lh-15-mb-14">
           Agregá una capa extra de seguridad al back office. Cuando esté activo,
           el portal te va a pedir un código de 6 dígitos de tu app autenticadora
           (Google Authenticator, Authy, 1Password, etc.) después del password.

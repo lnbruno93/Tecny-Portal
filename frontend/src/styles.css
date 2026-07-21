@@ -3428,3 +3428,50 @@ body.modal-open { overflow: hidden; }
 .u-h-6                   { height: 6px; }
 .u-h-30-fs-12-td-right   { height: 30px; font-size: 12px; text-align: right; }
 .u-h-16-w-60             { height: 16px; width: 60px; }
+
+/* Sprint 14 (2026-07-21) — más 3-4-hit + 2-hit residuales */
+
+/* Composed 4-prop */
+.u-uppercase-label       { margin-bottom: 3px; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; }
+.u-uppercase-06-fw-700   { font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+
+/* Composed 3-prop */
+.u-gap-8-mt-14-end       { gap: 8px; margin-top: 14px; justify-content: flex-end; }
+.u-gap-8-center-mt-14    { gap: 8px; justify-content: center; margin-top: 14px; }
+.u-gap-8-center-mb-4     { gap: 8px; align-items: center; margin-bottom: 4px; }
+.u-gap-10-mb-14-wrap     { gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.u-gap-8-p-8-0-border-bottom-start { gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--hairline); align-items: flex-start; }
+.u-card-hover-row        { gap: 10px; cursor: pointer; padding: 10px 12px; background: var(--surface-2); border-radius: 8px; }
+.u-fw-600-fs-14-mb-4     { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+.u-fw-600-fs-135-mb-8    { font-weight: 600; font-size: 13.5px; margin-bottom: 8px; }
+.u-fw-600-fs-13-mb-6-muted { font-weight: 600; font-size: 13px; margin-bottom: 6px; color: var(--text-muted); }
+.u-fw-600-fs-13-mb-4     { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+.u-fs-22-fw-600-ls-mt-4  { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; margin-top: 4px; }
+.u-fs-18-fw-800-lh-11    { font-size: 18px; font-weight: 800; line-height: 1.1; }
+.u-fs-17-fw-600-mt-4     { font-size: 17px; font-weight: 600; margin-top: 4px; }
+.u-fs-16-fw-700-ls       { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
+.u-fs-13-text-center-24  { font-size: 13px; text-align: center; margin: 0 0 24px; }
+.u-fs-13-p-6-0-border-bottom { font-size: 13px; padding: 6px 0; border-bottom: 1px solid var(--hairline); }
+.u-fs-13-mt-0-mb-14      { font-size: 13px; margin-top: 0; margin-bottom: 14px; }
+.u-fs-125-muted-mt-2     { font-size: 12.5px; color: var(--text-muted); margin-top: 2px; }
+.u-fs-12-lh-15-mb-14     { font-size: 12px; line-height: 1.5px; margin-bottom: 14px; }
+.u-fs-12-fw-600-color-text-mb-8 { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+
+/* Composed 2-prop */
+.u-gap-6-mb-8            { gap: 6px; margin-bottom: 8px; }
+.u-gap-6-flex-shrink-0   { gap: 6px; flex-shrink: 0; }
+.u-gap-5-fs-12           { gap: 5px; font-size: 12px; }
+.u-gap-20-align-start    { gap: 20px; align-items: flex-start; }
+.u-fw-700-fs-13          { font-weight: 700; font-size: 13px; }
+.u-fw-600-cursor-pointer { font-weight: 600; cursor: pointer; }
+.u-fs-20-fw-700          { font-size: 20px; font-weight: 700; }
+.u-fs-135-lh-15          { font-size: 13.5px; line-height: 1.5; }
+.u-fs-12-mb-4            { font-size: 12px; margin-bottom: 4px; }
+.u-fs-12-p-6-8           { font-size: 12px; padding: 6px 8px; }
+.u-fs-12-p-4-10          { font-size: 12px; padding: 4px 10px; }
+.u-fs-12-p-2-0           { font-size: 12px; padding: 2px 0; }
+
+/* Composed 1-prop */
+.u-gap-16-only           { gap: 16px; }
+.u-fs-18-only            { font-size: 18px; }
+.u-grid-col-full         { grid-column: 1 / -1; }

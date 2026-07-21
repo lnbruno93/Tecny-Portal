@@ -490,14 +490,14 @@ export default function Cambios() {
                 paddingTop: 12,
               }}>
                 <div>
-                  <div className="muted tiny" style={{ marginBottom: 3, fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Fecha</div>
+                  <div className="muted tiny u-uppercase-label">Fecha</div>
                   <input type="date" className="input" value={mov.fecha} onChange={e => setMovField('fecha', e.target.value)} />
                 </div>
 
                 {/* Input del monto principal — depende del tipo */}
                 {(isEntregaLocal || isReciboLocal) && (
                   <div>
-                    <div className="muted tiny" style={{ marginBottom: 3, fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    <div className="muted tiny u-uppercase-label">
                       Monto {monedaLocal}
                     </div>
                     <input
@@ -513,7 +513,7 @@ export default function Cambios() {
                 )}
                 {(isEntregaUsd || isReciboUsd) && (
                   <div>
-                    <div className="muted tiny" style={{ marginBottom: 3, fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    <div className="muted tiny u-uppercase-label">
                       Monto USD {isEntregaUsd ? '(egreso)' : ''}
                     </div>
                     <input
@@ -531,7 +531,7 @@ export default function Cambios() {
                 {/* TC — solo entregas */}
                 {inputTcActivo && (
                   <div>
-                    <div className="muted tiny" style={{ marginBottom: 3, fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    <div className="muted tiny u-uppercase-label">
                       TC
                     </div>
                     <input
@@ -551,7 +551,7 @@ export default function Cambios() {
                 {/* Preview del equiv en la otra moneda (readonly, calculado) */}
                 {(isEntregaLocal || isEntregaUsd) && (
                   <div>
-                    <div className="muted tiny" style={{ marginBottom: 3, fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    <div className="muted tiny u-uppercase-label">
                       {isEntregaLocal ? 'Equiv. USD (te deben)' : `Equiv. ${monedaLocal} (te deben)`}
                     </div>
                     <input
@@ -565,7 +565,7 @@ export default function Cambios() {
 
                 {/* Caja destino/origen */}
                 <div>
-                  <div className="muted tiny" style={{ marginBottom: 3, fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  <div className="muted tiny u-uppercase-label">
                     Caja ({cajaMonedaEsperada})
                   </div>
                   <select
@@ -584,7 +584,7 @@ export default function Cambios() {
 
                 {/* Comentarios */}
                 <div>
-                  <div className="muted tiny" style={{ marginBottom: 3, fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  <div className="muted tiny u-uppercase-label">
                     Comentarios
                   </div>
                   <input className="input" placeholder="Opcional" value={mov.comentarios} onChange={e => setMovField('comentarios', e.target.value)} />

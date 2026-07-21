@@ -821,7 +821,7 @@ export default function Tarjetas() {
               background: selectedId === ALL_TARJETAS ? 'var(--surface-2)' : 'transparent',
               borderLeft: selectedId === ALL_TARJETAS ? '3px solid var(--accent)' : '3px solid transparent',
             }}>
-              <div style={{ fontWeight: 700, fontSize: 13 }}>Todas las tarjetas</div>
+              <div className="u-fw-700-fs-13">Todas las tarjetas</div>
               <div className="muted tiny u-mt-2">{list.length} {list.length === 1 ? 'modalidad' : 'modalidades'} · resumen + liquidación múltiple</div>
               <div className="mono tiny" style={{ marginTop: 2, color: saldoColor(global.saldo) }}>
                 Te deben: $ {fmt(global.saldo)}

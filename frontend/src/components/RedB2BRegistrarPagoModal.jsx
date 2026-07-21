@@ -144,7 +144,7 @@ export default function RedB2BRegistrarPagoModal({ operation, restanteUsd, onClo
 
         <form onSubmit={handleSubmit}>
           <div className="modal-body">
-            <p className="muted" style={{ fontSize: 13, marginTop: 0, marginBottom: 14 }}>
+            <p className="muted u-fs-13-mt-0-mb-14">
               Saldo restante: <strong>{fmtMoney(restanteUsd, 'USD')}</strong>{' '}
               (de {fmtMoney(operation?.total_usd, 'USD')}, TC venta: {operation?.tc_used})
             </p>

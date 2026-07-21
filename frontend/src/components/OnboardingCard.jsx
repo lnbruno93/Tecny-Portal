@@ -196,7 +196,7 @@ export default function OnboardingCard() {
               <div className="u-fs-14-fw-600">
                 Verificá tu email
               </div>
-              <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 2 }}>
+              <div className="u-fs-125-muted-mt-2">
                 {resendMsg
                   ? resendMsg
                   : 'Hasta que verifiques, no podés crear ni editar datos. Revisá tu casilla — el link vence en 24 h.'}
@@ -241,7 +241,7 @@ export default function OnboardingCard() {
                 }}>
                   {item.label}
                 </div>
-                <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 2 }}>
+                <div className="u-fs-125-muted-mt-2">
                   {item.desc}
                 </div>
               </div>

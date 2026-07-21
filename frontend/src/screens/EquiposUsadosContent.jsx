@@ -300,7 +300,7 @@ export default function EquiposUsadosContent({ onCountChange }) {
 
       {/* ── Paginación ───────────────────────────────────────── */}
       {!loading && pagination.pages > 1 && (
-        <div className="flex-row" style={{ gap: 8, justifyContent: 'center', marginTop: 14 }}>
+        <div className="flex-row u-gap-8-center-mt-14">
           <button className="btn btn-sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
             ‹ Anterior
           </button>

@@ -167,7 +167,7 @@ export function TabConfig({ config, onSaved }) {
     <>
       {settings.length > 0 && (
         <>
-          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6, color: 'var(--text-muted)' }}>
+          <div className="u-fw-600-fs-13-mb-6-muted">
             Settings globales
           </div>
           <div className="muted tiny u-mb-8">
@@ -180,7 +180,7 @@ export function TabConfig({ config, onSaved }) {
           <div style={{ height: 16 }} />
         </>
       )}
-      <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6, color: 'var(--text-muted)' }}>
+      <div className="u-fw-600-fs-13-mb-6-muted">
         Alertas evaluadas
       </div>
       <div className="muted tiny u-mb-8">

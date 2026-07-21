@@ -192,7 +192,7 @@ export default function CategoriasProductoModal({
               Complementaria a Categorías (tipo de producto). */}
           {colecciones !== undefined && (
             <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid var(--border)' }}>
-              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>Colecciones</div>
+              <div className="u-fw-600-fs-14-mb-4">Colecciones</div>
               <p className="muted tiny u-mb-12">
                 Agrupación libre auxiliar, independiente del tipo de producto. Útil para separar
                 "iPhones Nuevos", "Rebajados", "Promoción", etc. Un producto puede pertenecer a una
@@ -216,7 +216,7 @@ export default function CategoriasProductoModal({
                   const count = Number(c.productos_count ?? 0);
                   const stock = Number(c.stock_disponible ?? 0);
                   return (
-                    <div key={c.id} className="flex-between" style={{ fontSize: 13, padding: '6px 0', borderBottom: '1px solid var(--hairline)' }}>
+                    <div key={c.id} className="flex-between u-fs-13-p-6-0-border-bottom">
                       <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.nombre}>
                         {c.nombre}
                       </span>

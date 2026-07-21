@@ -241,7 +241,7 @@ export default function Dashboard({ d }) {
           {(d.top_productos || []).length === 0
             ? <div className="muted tiny">—</div>
             : d.top_productos.map((p, k) => (
-                <div key={k} className="flex-between" style={{ fontSize: 12, padding: '2px 0' }}>
+                <div key={k} className="flex-between u-fs-12-p-2-0">
                   <span>{p.descripcion}</span>
                   <span className="mono muted">{p.unidades}u</span>
                 </div>
@@ -252,7 +252,7 @@ export default function Dashboard({ d }) {
           {(d.top_vendedores || []).length === 0
             ? <div className="muted tiny">—</div>
             : d.top_vendedores.map((v, k) => (
-                <div key={k} className="flex-between" style={{ fontSize: 12, padding: '2px 0' }}>
+                <div key={k} className="flex-between u-fs-12-p-2-0">
                   <span>{v.vendedor}</span>
                   <span className="mono pos">u$s{fmt(v.total_usd)}</span>
                 </div>

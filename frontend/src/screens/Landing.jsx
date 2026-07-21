@@ -466,7 +466,7 @@ export default function Landing() {
             </div>
           </div>
           <div className="feat-visual">
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>iPhone 16 Pro · 256GB Natural</div>
+            <div className="u-fw-600-fs-14-mb-4">iPhone 16 Pro · 256GB Natural</div>
             <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16 }} className="mono">USD 1.185 · TC $1.200</div>
             <div className="calc-row"><span className="l">Contado</span><span className="v u-color-pos">$1.422.000</span></div>
             <div className="calc-row"><span className="l">Transferencia (+3%)</span><span className="v u-color-pos">$1.464.660</span></div>

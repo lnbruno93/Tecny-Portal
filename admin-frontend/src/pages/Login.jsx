@@ -177,8 +177,7 @@ export default function Login() {
           Tecny Admin
         </h1>
         <p
-          className="muted"
-          style={{ fontSize: 13, textAlign: 'center', margin: '0 0 24px' }}
+          className="muted u-fs-13-text-center-24"
         >
           {twofaRequired ? 'Verificación en dos pasos' : 'Back-office del SaaS'}
         </p>

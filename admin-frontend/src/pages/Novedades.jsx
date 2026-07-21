@@ -539,7 +539,7 @@ function Preview({ form }) {
       >
         Vista previa en el portal cliente
       </div>
-      <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>
+      <div className="u-fw-600-fs-13-mb-4">
         <span aria-hidden="true">{meta.emoji}</span> {titulo}
       </div>
       <div style={{ color: 'var(--text-2)', fontSize: 12, lineHeight: 1.5 }}>

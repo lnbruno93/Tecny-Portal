@@ -450,7 +450,7 @@ export default function Config() {
                   border: '1px solid var(--border)',
                 }}
               >
-                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>{t}</div>
+                <div className="u-fw-600-fs-13-mb-4">{t}</div>
                 <div className="muted tiny" style={{ lineHeight: 1.4 }}>{d}</div>
               </div>
             ))}

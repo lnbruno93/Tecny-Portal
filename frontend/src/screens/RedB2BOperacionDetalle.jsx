@@ -461,7 +461,7 @@ export default function RedB2BOperacionDetalle() {
 function KpiBox({ label, value }) {
   return (
     <div className="u-p-12-bg-subtle-r-4">
-      <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>{label}</div>
+      <div className="muted u-fs-12-mb-4">{label}</div>
       <div style={{ fontSize: 18, fontWeight: 600 }}>{value}</div>
     </div>
   );
