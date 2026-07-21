@@ -169,7 +169,7 @@ export default function Equipo() {
           >
             <div className="card-body" style={{ padding: 0 }}>
               {data.super_admins.length === 0 ? (
-                <div className="muted" style={{ padding: 16 }}>
+                <div className="muted u-p-16">
                   No hay super-admins activos.
                 </div>
               ) : (
@@ -246,7 +246,7 @@ export default function Equipo() {
           >
             <div className="card-body" style={{ padding: 0 }}>
               {data.pending_invites.length === 0 ? (
-                <div className="muted" style={{ padding: 16 }}>
+                <div className="muted u-p-16">
                   Podés invitar a más admins con el botón "Invitar admin".
                 </div>
               ) : (

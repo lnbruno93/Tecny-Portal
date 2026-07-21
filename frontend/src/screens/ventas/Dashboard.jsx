@@ -60,12 +60,12 @@ export default function Dashboard({ d }) {
   // igual debe verse. Owner/admin no entran acá — reciben todo.
   const showGanancias = d.ganancia_neta_usd !== undefined;
   return (
-    <div style={{ marginBottom: 18 }}>
+    <div className="u-mb-18">
       <div className="card" style={{ padding: 16, marginBottom: 12 }}>
         <div className="kpi-label">Ingresos totales</div>
         <div style={{ fontSize: 26, fontWeight: 700, margin: '4px 0' }}>
           <span className="mono">u$s{fmt(i.usd)}</span>{' '}
-          <span className="muted" style={{ fontSize: 17 }}>+ {localSymbol}{fmt(localAmt)} {monedaLocal}</span>
+          <span className="muted u-fs-17">+ {localSymbol}{fmt(localAmt)} {monedaLocal}</span>
         </div>
         <div className="muted u-fs-12">
           USD equivalente:{' '}
@@ -109,7 +109,7 @@ export default function Dashboard({ d }) {
               return (
                 <>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 4 }}>
-                    <span className="kpi-value mono" style={{ fontSize: 17 }}>{fmt(total)}</span>
+                    <span className="kpi-value mono u-fs-17">{fmt(total)}</span>
                     <span className="muted tiny">en {catsConVentas} {catsConVentas === 1 ? 'categoría' : 'categorías'}</span>
                   </div>
                   {top && (
@@ -130,7 +130,7 @@ export default function Dashboard({ d }) {
               );
             })()
           ) : (
-            <div className="kpi-value" style={{ fontSize: 17 }}>
+            <div className="kpi-value u-fs-17">
               📱 {d.unidades.celulares} · 🎧 {d.unidades.accesorios}
             </div>
           )}
@@ -138,7 +138,7 @@ export default function Dashboard({ d }) {
         {showGanancias && (
         <div className="card card-tight u-flex-1" data-testid="kpi-ganancia">
           <div className="kpi-label">Ganancia neta</div>
-          <div className="kpi-value mono pos" style={{ fontSize: 17 }}>u$s{fmt(d.ganancia_neta_usd)}</div>
+          <div className="kpi-value mono pos u-fs-17">u$s{fmt(d.ganancia_neta_usd)}</div>
           {/*
             Tema C.4 (2026-06-13): desglose de la cascada que llega a la neta.
             Lucas pidió aprobar "B" — ver bruta + costo financiero + neta para que
@@ -170,7 +170,7 @@ export default function Dashboard({ d }) {
         )}
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">Costos productos</div>
-          <div className="kpi-value mono" style={{ fontSize: 17 }}>u$s{fmt(d.costos_usd)}</div>
+          <div className="kpi-value mono u-fs-17">u$s{fmt(d.costos_usd)}</div>
         </div>
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">Inversión canjes</div>
@@ -231,7 +231,7 @@ export default function Dashboard({ d }) {
       <div className="row u-mt-12">
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">Ticket promedio</div>
-          <div className="kpi-value mono" style={{ fontSize: 17 }}>u$s{fmt(d.ticket_promedio_usd)}</div>
+          <div className="kpi-value mono u-fs-17">u$s{fmt(d.ticket_promedio_usd)}</div>
           <div className="muted tiny u-mt-4">
             {d.ventas_count} venta{d.ventas_count === 1 ? '' : 's'}
           </div>

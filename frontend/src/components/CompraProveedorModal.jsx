@@ -410,7 +410,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
               </select>
             </div>
             {cajaId && monedaCaja !== 'USD' && (
-              <div className="field" style={{ flex: '0 0 140px' }}>
+              <div className="field u-flex-0-0-140">
                 <label className="field-label">TC {monedaCaja}→USD <span className="u-color-neg">*</span></label>
                 <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" min="0" step="0.01"
                   value={tc} onChange={e => setTc(e.target.value)} placeholder="0" />
@@ -419,7 +419,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
             )}
             {/* TC también se pide si HAY filas en moneda no-USD aunque la caja sea CC */}
             {(!cajaId || monedaCaja === 'USD') && rows.some(r => isUsedRow(r) && r.costo_moneda !== 'USD') && (
-              <div className="field" style={{ flex: '0 0 140px' }}>
+              <div className="field u-flex-0-0-140">
                 <label className="field-label">TC ARS→USD <span className="u-color-neg">*</span></label>
                 <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" min="0" step="0.01"
                   value={tc} onChange={e => setTc(e.target.value)} placeholder="0" />

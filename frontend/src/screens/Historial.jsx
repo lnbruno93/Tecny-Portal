@@ -316,7 +316,7 @@ export default function Historial() {
                 const { tabla } = parseAccion(h.accion);
                 return (
                   <tr key={h.id} className="tbl-row-click">
-                    <td className="muted mono tiny" style={{ whiteSpace: 'nowrap' }}>
+                    <td className="muted mono tiny u-nowrap">
                       {rel(h.creado_en)}
                     </td>
                     <td className="u-fw-600">

@@ -249,7 +249,7 @@ export default function PaymentMethodsModal({ open, onClose, onSaved }) {
                     </Badge>
                   </td>
                   <td>
-                    <div className="flex-row" style={{ gap: 4, justifyContent: 'flex-end' }}>
+                    <div className="flex-row u-gap-4-justify-end">
                       <button
                         type="button"
                         className="btn btn-ghost btn-icon btn-sm"

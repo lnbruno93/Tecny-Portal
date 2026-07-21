@@ -95,7 +95,7 @@ const VentaRow = memo(function VentaRow({
           </div>
         )}
       </td>
-      <td className="muted tiny" style={{ whiteSpace: 'nowrap' }}>
+      <td className="muted tiny u-nowrap">
         {(v.fecha || '').substring(0, 10)}
         {v.hora ? <><br />{v.hora.substring(0, 5)}</> : ''}
       </td>

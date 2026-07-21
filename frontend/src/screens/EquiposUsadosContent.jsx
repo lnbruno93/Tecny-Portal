@@ -328,7 +328,7 @@ function UsadoRow({ p }) {
   return (
     <tr>
       <td>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <div className="u-flex-col-gap-2">
           <span className="u-fw-500">{p.nombre || '—'}</span>
           {p.clase_nombre && (
             <span className="muted tiny">
@@ -387,7 +387,7 @@ function UsadoRow({ p }) {
       </td>
       <td>
         {origenCanje ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div className="u-flex-col-gap-2">
             <span>{p.canje_origen.cliente_nombre || <span className="muted">Cliente no informado</span>}</span>
             {p.canje_origen.cliente_telefono && (
               <span className="muted tiny">{p.canje_origen.cliente_telefono}</span>

@@ -323,7 +323,7 @@ export default function Capital() {
                       <td>{m.caja_nombre} <span className="muted tiny">{m.moneda}</span></td>
                       <td><Badge tone={ORIGEN_TONE[m.origen] || 'default'}>{ORIGEN_LABEL[m.origen] || m.origen}</Badge></td>
                       <td className="muted tiny">{m.concepto || '—'}</td>
-                      <td className={'mono ' + tone} style={{ textAlign: 'right', fontWeight: 700 }}>{signo}{fmt(m.monto)}</td>
+                      <td className={'mono ' + tone} className="u-td-right-fw-700">{signo}{fmt(m.monto)}</td>
                       <td className="mono tiny u-text-right">{Number(m.monto_usd) > 0 ? 'u$s ' + fmt(m.monto_usd) : '—'}</td>
                     </tr>
                   );

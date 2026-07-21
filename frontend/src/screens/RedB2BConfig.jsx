@@ -131,12 +131,12 @@ export function RedB2BConfigContent() {
 
   if (loading) {
     return (
-      <div className="empty-state" style={{ padding: 32 }}>Cargando…</div>
+      <div className="empty-state u-p-32">Cargando…</div>
     );
   }
 
   return (
-    <section className="card" style={{ padding: 16 }}>
+    <section className="card u-p-16">
       <h2 style={{ marginTop: 0, fontSize: 16 }}>Caja default cross-tenant</h2>
       <p style={{ marginBottom: 12, fontSize: 14 }}>
         Cuando un partner Red B2B registra un pago de una operación nuestra,

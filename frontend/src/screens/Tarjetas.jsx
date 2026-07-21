@@ -654,7 +654,7 @@ export default function Tarjetas() {
       {!sinTarjetas && (
         <div className="card card-tight u-mb-14">
           <div className="flex-row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-            <span className="muted tiny" style={{ marginRight: 4 }}>Período (ledger):</span>
+            <span className="muted tiny u-mr-4">Período (ledger):</span>
             {RANGE_PRESETS.map(p => (
               <button key={p.v}
                       className={'btn btn-sm ' + (tarjRange.preset === p.v ? 'btn-primary' : 'btn-ghost')}
@@ -668,7 +668,7 @@ export default function Tarjetas() {
                        value={tarjRange.desde}
                        onChange={e => setTarjRange(r => ({ ...r, desde: e.target.value }))} />
                 <span className="muted tiny">a</span>
-                <input type="date" className="input" style={{ width: 140 }}
+                <input type="date" className="input u-w-140"
                        value={tarjRange.hasta}
                        onChange={e => setTarjRange(r => ({ ...r, hasta: e.target.value }))} />
               </>
@@ -754,7 +754,7 @@ export default function Tarjetas() {
                 </button>
               </div>
             </div>
-            <div style={{ overflow: 'auto' }}>
+            <div className="u-overflow-auto">
               <table className="tbl">
                 <thead>
                   <tr>
@@ -785,7 +785,7 @@ export default function Tarjetas() {
                       <td className="mono" style={{ textAlign: 'right', color: m.tipo === 'cobro' ? 'var(--accent)' : 'var(--neg)' }}>
                         {m.tipo === 'cobro' ? '+' : '−'} {sym(m.moneda)} {fmt(m.monto_neto)}
                       </td>
-                      <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>$ {fmt(m.saldo_acum)}</td>
+                      <td className="mono u-td-right-fw-700">$ {fmt(m.saldo_acum)}</td>
                       <td className="tiny">{m.venta_order_id ? `Venta ${m.venta_order_id}` : (m.caja_nombre || '—')}</td>
                       <td className="u-text-right-nowrap">
                         {canEdit(m) ? (
@@ -1098,7 +1098,7 @@ export default function Tarjetas() {
                     <span className="muted tiny" style={{ marginLeft: 8, fontWeight: 400 }}>· {rangeLabel(tarjRange)} ({estadoCuenta.length})</span>
                   </div>
                 </div>
-                <div style={{ overflow: 'auto' }}>
+                <div className="u-overflow-auto">
                   <table className="tbl">
                     <thead>
                       <tr>
@@ -1122,7 +1122,7 @@ export default function Tarjetas() {
                           <td className="mono tiny u-color-neg-text-right">
                             {Number(m.monto_comision) > 0 ? sym(m.moneda) + ' ' + fmt(m.monto_comision) : '—'}
                           </td>
-                          <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{sym(m.moneda)} {fmt(m.monto_neto)}</td>
+                          <td className="mono u-td-right-fw-700">{sym(m.moneda)} {fmt(m.monto_neto)}</td>
                           <td className="tiny">{m.venta_order_id ? `Venta ${m.venta_order_id}` : (m.caja_nombre || '—')}</td>
                         </tr>
                       ))}
@@ -1178,7 +1178,7 @@ export default function Tarjetas() {
 
               {/* Movimientos */}
               <div className="card card-flush">
-                <div style={{ overflow: 'auto' }}>
+                <div className="u-overflow-auto">
                   <table className="tbl">
                     <thead>
                       <tr>
@@ -1199,7 +1199,7 @@ export default function Tarjetas() {
                             {m.tipo === 'cobro' ? `${sym(m.moneda)} ${fmt(m.monto_bruto)}` : '—'}
                           </td>
                           <td className="mono tiny u-color-neg-text-right">{Number(m.monto_comision) > 0 ? sym(m.moneda) + ' ' + fmt(m.monto_comision) : '—'}</td>
-                          <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{sym(m.moneda)} {fmt(m.monto_neto)}</td>
+                          <td className="mono u-td-right-fw-700">{sym(m.moneda)} {fmt(m.monto_neto)}</td>
                           <td className="tiny">{m.venta_order_id ? `Venta ${m.venta_order_id}` : (m.caja_nombre || '—')}</td>
                           <td className="u-text-right-nowrap">
                             {canEdit(m) ? (

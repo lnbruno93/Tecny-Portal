@@ -389,8 +389,7 @@ export default function ResetPassword() {
               type="submit"
               kind="primary"
               disabled={busy || !newPassword || !confirmPassword}
-              className="btn-block"
-              style={{ width: '100%', marginTop: 4 }}
+              className="btn-block u-w-100-mt-4"
             >
               {busy ? 'Guardando…' : 'Cambiar contraseña'}
             </Btn>

@@ -307,7 +307,7 @@ export default function AcceptSuperAdminInvite() {
                   type="submit"
                   kind="primary"
                   disabled={step === STEPS.ACCEPTING || !pw || !pwConfirm}
-                  style={{ width: '100%', marginTop: 4 }}
+                  className="u-w-100-mt-4"
                 >
                   {step === STEPS.ACCEPTING ? 'Creando cuenta…' : 'Crear cuenta y entrar'}
                 </Btn>

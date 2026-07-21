@@ -86,7 +86,7 @@ export default function RedB2BOperaciones() {
 
       <section className="card" style={{ marginBottom: 16, padding: 16 }}>
         <div className="filters-row" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <label className="u-flex-col-gap-4">
             <span className="muted u-fs-12">Partner</span>
             <select
               value={filterPartner}
@@ -102,7 +102,7 @@ export default function RedB2BOperaciones() {
             </select>
           </label>
 
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <label className="u-flex-col-gap-4">
             <span className="muted u-fs-12">Estado</span>
             <select
               value={filterStatus}
@@ -116,7 +116,7 @@ export default function RedB2BOperaciones() {
             </select>
           </label>
 
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <label className="u-flex-col-gap-4">
             <span className="muted u-fs-12">Desde</span>
             <input
               type="date"
@@ -126,7 +126,7 @@ export default function RedB2BOperaciones() {
             />
           </label>
 
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <label className="u-flex-col-gap-4">
             <span className="muted u-fs-12">Hasta</span>
             <input
               type="date"

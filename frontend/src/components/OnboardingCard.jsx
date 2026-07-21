@@ -177,7 +177,7 @@ export default function OnboardingCard() {
         </button>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div className="u-flex-col-gap-4">
         {/* 2026-06-25 ONB-7: step 0 "Verificá tu email" — visible solo si el
             user todavía no verificó. NO es un Link (no hay pantalla destino),
             sino una row con CTA inline "Reenviar". */}
@@ -204,10 +204,9 @@ export default function OnboardingCard() {
             </div>
             <button
               type="button"
-              className="btn btn-sm"
+              className="btn btn-sm u-flex-shrink-0"
               onClick={handleResendVerification}
               disabled={resending}
-              style={{ flexShrink: 0 }}
             >
               {resending ? 'Reenviando…' : 'Reenviar link'}
             </button>

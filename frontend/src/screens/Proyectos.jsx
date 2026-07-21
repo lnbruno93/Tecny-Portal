@@ -360,7 +360,7 @@ export default function Proyectos() {
             {/* Tabla de movimientos */}
             <div className="card card-flush">
               <div className="card-hd"><div className="u-fs-14-fw-600">Hoja del proyecto — {r.cant_movimientos || 0} movimientos</div></div>
-              <div style={{ overflow: 'auto' }}>
+              <div className="u-overflow-auto">
                 <table className="tbl">
                   <thead>
                     <tr>
@@ -396,9 +396,9 @@ export default function Proyectos() {
 
                     {/* Fila de carga */}
                     <tr style={{ background: 'rgba(99,102,241,0.05)' }}>
-                      <td><input type="date" className="input" style={{ height: 30, fontSize: 12 }} value={mov.fecha} onChange={e => setMov(m => ({ ...m, fecha: e.target.value }))} /></td>
-                      <td><input className="input" style={{ height: 30, fontSize: 12 }} placeholder="Detalle…" value={mov.detalle} onChange={e => setMov(m => ({ ...m, detalle: e.target.value }))} /></td>
-                      <td><input className="input" list="proy-cats" style={{ height: 30, fontSize: 12 }} placeholder="Categoría" value={mov.categoria} onChange={e => setMov(m => ({ ...m, categoria: e.target.value }))} /></td>
+                      <td><input type="date" className="input u-h-30-fs-12" value={mov.fecha} onChange={e => setMov(m => ({ ...m, fecha: e.target.value }))} /></td>
+                      <td><input className="input u-h-30-fs-12" placeholder="Detalle…" value={mov.detalle} onChange={e => setMov(m => ({ ...m, detalle: e.target.value }))} /></td>
+                      <td><input className="input u-h-30-fs-12" list="proy-cats" placeholder="Categoría" value={mov.categoria} onChange={e => setMov(m => ({ ...m, categoria: e.target.value }))} /></td>
                       <td><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right' }} placeholder="0" value={mov.monto} onChange={e => setMov(m => ({ ...m, monto: e.target.value }))} /></td>
                       <td>
                         <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right' }} placeholder="TC" value={mov.tc} onChange={e => setMov(m => ({ ...m, tc: e.target.value }))} />
@@ -436,12 +436,12 @@ export default function Proyectos() {
                         </div>
                       </td>
                       <td>
-                        <select className="input" style={{ height: 30, fontSize: 12 }} value={mov.inversor_contacto_id} onChange={e => setMov(m => ({ ...m, inversor_contacto_id: e.target.value }))}>
+                        <select className="input u-h-30-fs-12" value={mov.inversor_contacto_id} onChange={e => setMov(m => ({ ...m, inversor_contacto_id: e.target.value }))}>
                           <option value="">Inversor…</option>
                           {contactos.map(c => <option key={c.id} value={c.id}>{nombreContacto(c)}</option>)}
                         </select>
                       </td>
-                      <td><input className="input" style={{ height: 30, fontSize: 12 }} placeholder="Comentarios" value={mov.comentarios} onChange={e => setMov(m => ({ ...m, comentarios: e.target.value }))} /></td>
+                      <td><input className="input u-h-30-fs-12" placeholder="Comentarios" value={mov.comentarios} onChange={e => setMov(m => ({ ...m, comentarios: e.target.value }))} /></td>
                       <td><button className="btn btn-primary btn-sm" disabled={savingMov} onClick={handleAddMov}>{savingMov ? '…' : 'Agregar'}</button></td>
                     </tr>
                   </tbody>

@@ -224,7 +224,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
                 <CajaSelectHint />
               </select>
             </div>
-            <div className="field" style={{ flex: '0 0 140px' }}>
+            <div className="field u-flex-0-0-140">
               <label className="field-label">TC por defecto</label>
               <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input mono"
                 value={tcDefault} onChange={e => setTCD(e.target.value)} placeholder="0" />

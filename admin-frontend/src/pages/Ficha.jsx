@@ -537,7 +537,7 @@ export default function Ficha() {
          tab Actividad para no contaminar el panel de drill-down. */}
       {activeTab === 'resumen' && (
         <div className="card u-mt-var-gap">
-          <h3 style={{ margin: '0 0 8px' }}>País del tenant</h3>
+          <h3 className="u-m-0-0-8">País del tenant</h3>
           <p style={{ margin: '0 0 6px' }}>
             Actualmente:{' '}
             <strong>
@@ -981,7 +981,7 @@ function ComprobanteEmailFooterCard({ tenant, onSaved }) {
 
   return (
     <div className="card u-mt-var-gap">
-      <h3 style={{ margin: '0 0 8px' }}>Footer email comprobante</h3>
+      <h3 className="u-m-0-0-8">Footer email comprobante</h3>
       <p className="muted tiny" style={{ margin: '0 0 12px' }}>
         Texto que aparece al final del email de comprobante de venta retail que
         recibe el cliente final. Plain-text — sin HTML (se escapa al renderizar).

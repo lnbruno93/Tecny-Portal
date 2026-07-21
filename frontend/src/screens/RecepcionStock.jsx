@@ -306,7 +306,7 @@ export default function RecepcionStock() {
           </label>
           <label>
             <div className="muted tiny u-mb-4">Costo unitario</div>
-            <div style={{ display: 'flex', gap: 4 }}>
+            <div className="u-flex-gap-4">
               <input className="input" inputMode="decimal" placeholder="0" value={mCosto} onChange={e => setMCosto(e.target.value)} className="u-flex-1" />
               {/* 2026-06-29 Multi-país F3: USD + moneda local del tenant. */}
               <select className="input" value={mCostoMoneda} onChange={e => setMCostoMoneda(e.target.value)} className="u-w-70px">
@@ -317,7 +317,7 @@ export default function RecepcionStock() {
           </label>
           <label>
             <div className="muted tiny u-mb-4">Precio venta</div>
-            <div style={{ display: 'flex', gap: 4 }}>
+            <div className="u-flex-gap-4">
               <input className="input" inputMode="decimal" placeholder="0" value={mPrecio} onChange={e => setMPrecio(e.target.value)} className="u-flex-1" />
               <select className="input" value={mPrecioMoneda} onChange={e => setMPrecioMoneda(e.target.value)} className="u-w-70px">
                 {Array.from(new Set(['USD', monedaLocal, mPrecioMoneda].filter(Boolean)))

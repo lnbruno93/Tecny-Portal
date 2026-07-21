@@ -429,7 +429,7 @@ export default function Usuarios() {
                       }
                     </td>
                     <td>
-                      <div className="flex-row" style={{ gap: 4, justifyContent: 'flex-end' }}>
+                      <div className="flex-row u-gap-4-justify-end">
                         {/* Owner NO se edita desde acá (lo gestiona el flujo de signup
                             + transferencia explícita). Admin global histórico del sistema
                             viejo (legacy_role='admin') tampoco — bypass lo hace innecesario. */}

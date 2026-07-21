@@ -1004,7 +1004,7 @@ export default function CuentasCC() {
           <div className="muted" style={{ padding: '12px 0', fontSize: 13 }}>Cargando…</div>
         ) : (
           <>
-            <div className="row" style={{ marginBottom: 20 }}>
+            <div className="row u-mb-20">
               {/*
                 Cada KPI declara su `unit` por separado. Antes el "USD " se
                 renderizaba hardcoded para TODOS los cards — incluyendo
@@ -1658,11 +1658,11 @@ function MovimientoDesglose({ mov, onDevolverItem }) {
             <th style={{ textAlign: 'left',  padding: '6px 8px' }}>Producto</th>
             <th style={{ textAlign: 'left',  padding: '6px 8px' }}>IMEI / Serial</th>
             <th style={{ textAlign: 'left',  padding: '6px 8px' }}>Var.</th>
-            <th style={{ textAlign: 'right', padding: '6px 8px' }}>Cant.</th>
-            <th style={{ textAlign: 'right', padding: '6px 8px' }}>Costo unit.</th>
-            <th style={{ textAlign: 'right', padding: '6px 8px' }}>P. mayorista unit.</th>
-            <th style={{ textAlign: 'right', padding: '6px 8px' }}>Subtotal</th>
-            <th style={{ textAlign: 'right', padding: '6px 8px' }}>Ganancia</th>
+            <th className="u-td-right-p-6-8">Cant.</th>
+            <th className="u-td-right-p-6-8">Costo unit.</th>
+            <th className="u-td-right-p-6-8">P. mayorista unit.</th>
+            <th className="u-td-right-p-6-8">Subtotal</th>
+            <th className="u-td-right-p-6-8">Ganancia</th>
             {movEsCompra && <th style={{ textAlign: 'center', padding: '6px 8px', width: 56 }}>↺</th>}
           </tr>
         </thead>
@@ -1701,7 +1701,7 @@ function MovimientoDesglose({ mov, onDevolverItem }) {
                 <td style={{ padding: '6px 8px' }} className="muted tiny">
                   {[it.tamano, it.color].filter(Boolean).join(' · ') || '—'}
                 </td>
-                <td style={{ padding: '6px 8px', textAlign: 'right' }}>{cant}</td>
+                <td className="u-td-right-p-6-8">{cant}</td>
                 <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace' }}>
                   {costoUnit != null ? `USD ${fmtMoney(costoUnit)}` : <span className="dim" title="Venta pre-migración — sin dato de costo histórico">—*</span>}
                 </td>

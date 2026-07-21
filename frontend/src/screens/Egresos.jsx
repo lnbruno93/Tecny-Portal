@@ -17,7 +17,7 @@ export default function Egresos() {
 
   return (
     <div>
-      <div className="page-head" style={{ marginBottom: 20 }}>
+      <div className="page-head u-mb-20">
         <div>
           <h1 className="page-title">Egresos y Movimientos</h1>
           <div className="page-sub">

@@ -3072,3 +3072,39 @@ body.modal-open { overflow: hidden; }
 /* Composed 3-prop */
 .u-color-neg-fs-12-mt-4     { color: var(--neg); font-size: 12px; margin-top: 4px; }
 .u-flex-end-gap-8           { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* Sprint 6 (2026-07-21) — patterns cross-file top hits residuales */
+
+/* Simple 1-prop */
+.u-p-16            { padding: 16px; }
+.u-p-32            { padding: 32px; }
+.u-fs-17           { font-size: 17px; }
+.u-pr-16           { padding-right: 16px; }
+.u-mr-4            { margin-right: 4px; }
+.u-mb-18           { margin-bottom: 18px; }
+.u-mb-20           { margin-bottom: 20px; }
+.u-w-140           { width: 140px; }
+.u-mw-420          { max-width: 420px; }
+.u-overflow-auto   { overflow: auto; }
+.u-flex-shrink-0   { flex-shrink: 0; }
+.u-text-none       { text-decoration: none; }
+.u-nowrap          { white-space: nowrap; }
+.u-flex-1-1-200    { flex: 1 1 200px; }
+.u-flex-0-0-140    { flex: 0 0 140px; }
+.u-m-0-0-8         { margin: 0 0 8px; }
+
+/* Composed 2-prop */
+.u-m-4-0-0-fs-13   { margin: 4px 0 0; font-size: 13px; }
+.u-flex-gap-4      { display: flex; gap: 4px; }
+.u-w-100-mt-4      { width: 100%; margin-top: 4px; }
+.u-td-right-p-6-8  { text-align: right; padding: 6px 8px; }
+.u-td-right-fw-700 { text-align: right; font-weight: 700; }
+.u-gap-8-flex-wrap { gap: 8px; flex-wrap: wrap; }
+.u-gap-4-justify-end { gap: 4px; justify-content: flex-end; }
+.u-h-30-fs-12      { height: 30px; font-size: 12px; }
+
+/* Composed 3-prop */
+.u-p-20-grid-gap-16 { padding: 20px; display: grid; gap: 16px; }
+.u-flex-col-gap-4   { display: flex; flex-direction: column; gap: 4px; }
+.u-flex-col-gap-2   { display: flex; flex-direction: column; gap: 2px; }
+.u-uppercase-06-fw-600 { font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }

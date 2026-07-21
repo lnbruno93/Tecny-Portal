@@ -2417,7 +2417,7 @@ Pago: Efectivo + Transferencia`}
       {/* ── Modal etiquetas ── */}
       {showEtiquetas && (
         <div ref={etiquetasModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowEtiquetas(false)} role="dialog" aria-modal="true" aria-labelledby="etiquetas-modal-title">
-          <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+          <div className="modal u-mw-420" onClick={e => e.stopPropagation()}>
             <div className="modal-hd"><h3 id="etiquetas-modal-title">Etiquetas de venta</h3><button className="icon-btn" title="Cerrar" aria-label="Cerrar" onClick={() => setShowEtiquetas(false)}><Icons.X size={16} /></button></div>
             <div className="modal-body">
               <div className="flex-row" style={{ gap: 6, marginBottom: 10 }}>

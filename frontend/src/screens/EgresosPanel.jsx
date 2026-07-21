@@ -272,7 +272,7 @@ function CategoriasModal({ categorias, onClose, onChange, toast, confirm }) {
   }
   return (
     <div ref={overlayRef} className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+      <div className="modal u-mw-420" onClick={e => e.stopPropagation()}>
         <div className="modal-hd"><h3>Categorías de egreso</h3><button className="icon-btn" onClick={onClose}><Icons.X size={16} /></button></div>
         <div className="modal-body">
           <div className="flex-row" style={{ gap: 6, marginBottom: 12 }}>

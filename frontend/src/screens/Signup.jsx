@@ -256,7 +256,7 @@ export default function Signup() {
                 </button>
               </div>
               <div className="lg-foot" style={{ marginTop: 20 }}>
-                <Link to="/" className="lg-link" style={{ textDecoration: 'none' }}>
+                <Link to="/" className="lg-link u-text-none">
                   Ir a iniciar sesión →
                 </Link>
               </div>
@@ -450,7 +450,7 @@ export default function Signup() {
 
               <div className="lg-foot">
                 <span>¿Ya tenés cuenta?</span>
-                <Link to="/" className="lg-link" style={{ textDecoration: 'none' }}>
+                <Link to="/" className="lg-link u-text-none">
                   Iniciar sesión
                 </Link>
               </div>
