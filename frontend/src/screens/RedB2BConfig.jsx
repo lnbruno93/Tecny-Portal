@@ -189,7 +189,7 @@ export function RedB2BConfigContent() {
           <p className="u-mb-12-fs-14">
             Decidí qué notificaciones de Red B2B querés recibir por mail.
           </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div className="u-flex-col-gap-8">
             {EMAIL_PREF_FLAGS.map(({ key, label }) => {
               const inputId = `email-pref-${key}`;
               const checked = !!emailPrefs[key];

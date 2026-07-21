@@ -184,7 +184,7 @@ export default function VendedoresCatalogModal({ open, onClose, onChange }) {
           ) : vendedores.length === 0 ? (
             <div className="empty">Sin vendedores registrados</div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div className="u-flex-col-gap-8">
               {vendedores.map(v => (
                 <div
                   key={v.id}

@@ -188,7 +188,7 @@ export function RedB2BConciliacionContent({
 
       <section className="card u-p-16-mb-16">
         <h3 className="u-mt-0-fs-16">Totales agregados</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
+        <div className="u-grid-autofit-180-16">
           <KpiBox label="Operaciones (USD)" value={fmtMoney(totales.operaciones_usd, 'USD')} sub={`${totales.ops_count} ops`} />
           <KpiBox label="Pagado (USD)" value={fmtMoney(totales.pagado_usd, 'USD')} sub={`${totales.pagos_count} pagos`} />
           <KpiBox

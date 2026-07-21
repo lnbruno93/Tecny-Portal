@@ -530,7 +530,7 @@ function ProyeccionGastosPanel({ onChange }) {
                         </td>
                         <td className="sanidad-num-cell u-text-right">
                           <div className="u-fw-600">${fmt(g.subtotal_usd, 2)} USD</div>
-                          <div className="muted tiny" style={{ fontSize: 11, marginTop: 2 }}>
+                          <div className="muted tiny u-fs-11-mt-2">
                             {pct.toFixed(1)}% del total
                           </div>
                         </td>
@@ -704,7 +704,7 @@ function RecurrenteEditRow({ draft, setDraft, categorias, onCreateCategoria, onS
               title="Tipo de cambio para pasar el monto ARS a USD"
               value={draft.tc}
               onChange={(e) => setDraft({ ...draft, tc: e.target.value })}
-              style={{ flex: 1, minWidth: 120, fontSize: 14, textAlign:'right', padding:'6px 10px' }}
+              className="u-flex-1-mw-120-fs-14-td-right-p-6-10"
             />
           ) : (
             <input
@@ -712,7 +712,7 @@ function RecurrenteEditRow({ draft, setDraft, categorias, onCreateCategoria, onS
               placeholder="Monto USD"
               value={draft.monto}
               onChange={(e) => setDraft({ ...draft, monto: e.target.value })}
-              style={{ flex: 1, minWidth: 120, fontSize: 14, textAlign:'right', padding:'6px 10px' }}
+              className="u-flex-1-mw-120-fs-14-td-right-p-6-10"
             />
           )}
         </div>
@@ -1071,7 +1071,7 @@ export default function Sanidad() {
             <tr className="sanidad-row-neto">
               <td className="sanidad-td-concepto">
                 <strong>Resultado neto</strong>
-                <div className="muted tiny" style={{ fontSize: 10, fontWeight: 400 }}>
+                <div className="muted tiny u-fs-10-fw-400">
                   Facturación bruta − Gastos e inversiones
                 </div>
               </td>
@@ -1101,7 +1101,7 @@ export default function Sanidad() {
             <tr className="sanidad-row-daily">
               <td className="sanidad-td-concepto">
                 Resultado neto diario
-                <div className="muted tiny" style={{ fontSize: 10 }}>Resultado neto / días</div>
+                <div className="muted tiny u-fs-10">Resultado neto / días</div>
               </td>
               {data.map((mes, idx) => {
                 const prev = data[idx - 1];

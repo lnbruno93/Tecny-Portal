@@ -413,7 +413,7 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
                 const esGrupoDolar = monedaCaja === 'USD' || monedaCaja === 'USDT';
                 return (
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>$ {monedaCaja}</span>
+                  <span className="u-fs-11-fw-700-muted-nowrap">$ {monedaCaja}</span>
                   {!esGrupoDolar && (
                     <>
                       <input
@@ -425,7 +425,7 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
                         onChange={e => upd(i, 'ars', e.target.value)}
                       />
                       <span className="u-color-muted-fs-14-nosel">÷</span>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>TC</span>
+                      <span className="u-fs-11-fw-700-muted-nowrap">TC</span>
                       <input
                         type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0"
                         style={{ ...inp, flex: '1 1 0', textAlign: 'right' }}
@@ -1090,7 +1090,7 @@ export default function CuentasCC() {
     : [];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div className="u-flex-col-h-100">
       {/* Page head */}
       <div className="page-head">
         <div>
@@ -1135,7 +1135,7 @@ export default function CuentasCC() {
               onChange={val => { setCatFilter(val); setSelectedId(null); }}
             />
           </div>
-          <div style={{ flex: 1, overflow: 'auto' }}>
+          <div className="u-flex-1-o-auto">
             {loadingClientes ? (
               <div className="empty">Cargando…</div>
             ) : filtered.length === 0 ? (
@@ -1184,7 +1184,7 @@ export default function CuentasCC() {
             Seleccioná un cliente
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
+          <div className="u-flex-col-mh-0-mw-0">
 
             {/* ── Header del cliente con KPIs inline ── */}
             <div className="u-p-12-16-bb-flex-shrink">

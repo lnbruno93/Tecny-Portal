@@ -283,7 +283,7 @@ export default function ChangePasswordModal({ open, onClose }) {
                 {fieldErrors.newPassword}
               </div>
             ) : (
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+              <div className="u-fs-12-muted-mt-4">
                 Mínimo {MIN_PASSWORD_LENGTH} caracteres, con letra y número.
               </div>
             )}
@@ -336,7 +336,7 @@ export default function ChangePasswordModal({ open, onClose }) {
                   {fieldErrors.twofaCode}
                 </div>
               ) : (
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                <div className="u-fs-12-muted-mt-4">
                   Abrí tu app de 2FA (Google Authenticator, Authy, etc.) y pegá el código actual.
                 </div>
               )}

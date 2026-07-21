@@ -288,7 +288,7 @@ export default function Proyectos() {
           <div className="u-p-10">
             <input className="input" placeholder="Buscar proyecto…" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
-          <div style={{ flex: 1, overflow: 'auto' }}>
+          <div className="u-flex-1-o-auto">
             {loadingList ? <div className="empty">Cargando…</div>
               : list.length === 0 ? <div className="empty">Sin proyectos. Creá el primero arriba.</div>
               : list.map((p, i) => (

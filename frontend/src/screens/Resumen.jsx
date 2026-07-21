@@ -303,7 +303,7 @@ export default function Resumen() {
 
           {/* ── Bloque 4: Top 5 productos / vendedores ── */}
           <div className="row" style={{ gap: 12, marginTop: 18, flexWrap: 'wrap' }}>
-            <div style={{ flex: '1 1 380px' }}>
+            <div className="u-flex-11-380">
               <div className="card card-flush">
                 <div className="card-hd"><h3>Top productos</h3></div>
                 <table className="tbl">
@@ -323,7 +323,7 @@ export default function Resumen() {
                 </table>
               </div>
             </div>
-            <div style={{ flex: '1 1 380px' }}>
+            <div className="u-flex-11-380">
               <div className="card card-flush">
                 <div className="card-hd"><h3>Top vendedores</h3></div>
                 <table className="tbl">

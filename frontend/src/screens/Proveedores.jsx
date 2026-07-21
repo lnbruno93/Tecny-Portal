@@ -328,7 +328,7 @@ export default function Proveedores() {
 
   // Inyectamos el proveedor seleccionado en las filas inline vía clave (remount)
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div className="u-flex-col-h-100">
       {/* Page head */}
       <div className="page-head">
         <div>
@@ -420,7 +420,7 @@ export default function Proveedores() {
             Seleccioná un proveedor
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
+          <div className="u-flex-col-mh-0-mw-0">
 
             {/* ── Header del proveedor con KPIs inline ── */}
             <div className="u-p-12-16-bb-flex-shrink">

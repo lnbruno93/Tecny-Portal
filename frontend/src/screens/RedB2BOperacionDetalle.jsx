@@ -211,7 +211,7 @@ export default function RedB2BOperacionDetalle() {
       </header>
 
       <section className="card u-p-16-mb-16">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
+        <div className="u-grid-autofit-180-16">
           <KpiBox label="Total USD" value={fmtMoney(op.total_usd, 'USD')} />
           <KpiBox label="Total ARS" value={fmtMoney(op.total_ars, 'ARS')} />
           <KpiBox label="TC usado" value={op.tc_used ? Number(op.tc_used).toFixed(2) : '—'} />

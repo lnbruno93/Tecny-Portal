@@ -282,7 +282,7 @@ export default function MovimientosCajaPanel() {
                         fmtMoney(t.monto, t.moneda)
                       )}
                       {isCross && (
-                        <div className="muted" style={{ fontSize: 10, fontWeight: 400 }}>TC {fmt(t.tc)}</div>
+                        <div className="muted u-fs-10-fw-400">TC {fmt(t.tc)}</div>
                       )}
                     </td>
                     <td className="mono" style={{ textAlign: 'right', color: Number(t.costo) > 0 ? 'var(--neg)' : 'var(--text-muted)' }}>

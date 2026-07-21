@@ -965,7 +965,7 @@ export default function Financiera() {
                     ref={fileInputRef}
                     type="file"
                     accept="image/*,.pdf"
-                    style={{ display: 'none' }}
+                    className="u-display-none"
                     onChange={e => handleFile(e.target.files[0])}
                   />
                   {ocrLoading ? (
@@ -1375,7 +1375,7 @@ export default function Financiera() {
                 {pagoForm.convertir_usd && (
                   <>
                   <div className="row u-mb-12-align-end">
-                    <div className="field" style={{ flex: '1 1 140px', minWidth: 140 }}>
+                    <div className="field u-flex-11-140-mw-140">
                       <label htmlFor="pago-usd" className="field-label">USD recibido (caja)</label>
                       <input id="pago-usd" type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
                         className="input mono" placeholder="0"
@@ -1383,7 +1383,7 @@ export default function Financiera() {
                         onChange={e => setPagoUsd(e.target.value)} />
                     </div>
                     <div aria-hidden="true" className="u-pb-8-color-muted-fw-700-fs-18">×</div>
-                    <div className="field" style={{ flex: '1 1 120px', minWidth: 120 }}>
+                    <div className="field u-flex-11-120-mw-120">
                       <label htmlFor="pago-tc" className="field-label">TC del día</label>
                       <input id="pago-tc" type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
                         className="input mono" placeholder="0"
@@ -1392,7 +1392,7 @@ export default function Financiera() {
                       <TcWarning tc={pagoForm.tc} />
                     </div>
                     <div aria-hidden="true" className="u-pb-8-color-muted-fw-700-fs-18">=</div>
-                    <div className="field" style={{ flex: '1 1 160px', minWidth: 160 }}>
+                    <div className="field u-flex-11-160-mw-160">
                       <label htmlFor="pago-ars" className="field-label">Total ARS (descuenta del saldo)</label>
                       <div className="input-group">
                         <span className="addon addon-l u-color-accent">$</span>

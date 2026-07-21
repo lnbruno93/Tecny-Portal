@@ -1735,7 +1735,7 @@ export default function Ventas() {
                         </div>
                       )}
                     </div>
-                    <div className="field u-flex-1"><label className="field-label" style={{ display: 'flex', justifyContent: 'space-between' }}>Etiqueta <button type="button" className="btn btn-sm" onClick={() => setShowEtiquetas(true)}><Icons.Settings size={11} /> Gestionar</button></label><select className="input" value={vForm.etiqueta_id} onChange={e => setVF('etiqueta_id', e.target.value)}><option value="">Sin etiqueta</option>{etiquetas.map(et => <option key={et.id} value={et.id}>{et.nombre}</option>)}</select></div>
+                    <div className="field u-flex-1"><label className="field-label u-flex-between">Etiqueta <button type="button" className="btn btn-sm" onClick={() => setShowEtiquetas(true)}><Icons.Settings size={11} /> Gestionar</button></label><select className="input" value={vForm.etiqueta_id} onChange={e => setVF('etiqueta_id', e.target.value)}><option value="">Sin etiqueta</option>{etiquetas.map(et => <option key={et.id} value={et.id}>{et.nombre}</option>)}</select></div>
                   </div>
                   <div className="field">
                     <label className="field-label">Cliente cuenta corriente <span className="muted tiny">(requerido si pagás en CC)</span></label>
@@ -1755,7 +1755,7 @@ export default function Ventas() {
                     <div className="field u-flex-1"><label className="field-label">Estado</label><select className="input" value={vForm.estado} onChange={e => setVF('estado', e.target.value)}><option value="pendiente">Pendiente</option><option value="acreditado">Acreditado</option></select></div>
                   </div>
                   <div className="field">
-                    <label className="field-label" style={{ display: 'flex', justifyContent: 'space-between' }}>Garantía (para el comprobante)
+                    <label className="field-label u-flex-between">Garantía (para el comprobante)
                       <button type="button" className="btn btn-sm" onClick={() => setShowGarantias(true)}><Icons.Settings size={11} /> Gestionar</button>
                     </label>
                     <select className="input" value={vForm.garantia_id} onChange={e => setVF('garantia_id', e.target.value)}>
@@ -1820,7 +1820,7 @@ export default function Ventas() {
 
                           {/* Fila 2: GB, color, batería, condición */}
                           <div className="row u-mb-8">
-                            <div className="field" style={{ flex: 0.7 }}>
+                            <div className="field u-flex-07">
                               <label className="field-label">GB</label>
                               <input className="input" placeholder="256"
                                      value={c.gb} onChange={e => setCanje(c._id, 'gb', e.target.value)} />
@@ -1830,7 +1830,7 @@ export default function Ventas() {
                               <input className="input" placeholder="Sierra Blue"
                                      value={c.color} onChange={e => setCanje(c._id, 'color', e.target.value)} />
                             </div>
-                            <div className="field" style={{ flex: 0.7 }}>
+                            <div className="field u-flex-07">
                               <label className="field-label">% Batería</label>
                               <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono"
                                      min="0" max="100" placeholder="100"
@@ -2093,7 +2093,7 @@ export default function Ventas() {
                       a la caja elegida — al cancelar la venta, se revierte
                       automáticamente. Colapsable: por defecto compacto con
                       link "Agregar vuelto"; se expande al hacer click. */}
-                  <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 6, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)' }}>
+                  <div className="u-card-hint-row">
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: vForm.vuelto_monto ? 8 : 0 }}>
                       <div className="u-fs-13-fw-600">
                         Vuelto/Cambio
@@ -2107,7 +2107,7 @@ export default function Ventas() {
                         }}>Quitar</button>
                       )}
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.5fr', gap: 8 }}>
+                    <div className="u-grid-3col-15fr-8">
                       <div>
                         <div className="muted tiny u-mb-2">Monto</div>
                         <input

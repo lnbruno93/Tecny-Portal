@@ -236,11 +236,11 @@ function Wizard({ cajas, onCancel, onCreated }) {
                 {cajas.map(c => <option key={c.id} value={c.id}>{c.nombre} ({c.moneda})</option>)}
               </select>
             </div>
-            <div className="field" style={{ flex: '0 0 160px' }}>
+            <div className="field u-flex-00-160">
               <label className="field-label">Desde <span className="u-color-neg">*</span></label>
               <input type="date" className="input" value={fechaDesde} max={todayISO()} onChange={e => setFechaDesde(e.target.value)} />
             </div>
-            <div className="field" style={{ flex: '0 0 160px' }}>
+            <div className="field u-flex-00-160">
               <label className="field-label">Hasta <span className="u-color-neg">*</span></label>
               <input type="date" className="input" value={fechaHasta} max={todayISO()} onChange={e => setFechaHasta(e.target.value)} />
             </div>
@@ -270,14 +270,14 @@ function Wizard({ cajas, onCancel, onCreated }) {
             <div className="muted tiny">Archivo: <strong>{archivoNombre}</strong> · {rows.length} filas detectadas</div>
           </div>
           <div className="row" style={{ gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
-            <div className="field" style={{ flex: '0 0 200px' }}>
+            <div className="field u-flex-00-200">
               <label className="field-label">Columna Fecha <span className="u-color-neg">*</span></label>
               <select className="input" value={map.fecha} onChange={e => setMap(m => ({ ...m, fecha: e.target.value }))}>
                 <option value="">— Elegí —</option>
                 {headers.map((h, i) => <option key={i} value={i}>{h || `Columna ${i + 1}`}</option>)}
               </select>
             </div>
-            <div className="field" style={{ flex: '0 0 200px' }}>
+            <div className="field u-flex-00-200">
               <label className="field-label">Columna Monto <span className="u-color-neg">*</span></label>
               <select className="input" value={map.monto} onChange={e => setMap(m => ({ ...m, monto: e.target.value }))}>
                 <option value="">— Elegí —</option>

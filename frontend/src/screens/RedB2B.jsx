@@ -333,7 +333,7 @@ function PartnershipRow({ p, acting, onAccept, onReject, onRevoke }) {
 
   return (
     <div className="card" style={{ marginBottom: 12, padding: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+      <div className="u-flex-between-start-16-wrap">
         <div className="u-flex-1-minw-0">
           <div style={{ fontWeight: 600, fontSize: '1.05em' }}>
             {partner.nombre || '— sin nombre —'}

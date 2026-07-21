@@ -264,7 +264,7 @@ function TabTarjetas() {
                   </button>
                 )}
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px', gap: 10 }}>
+              <div className="u-grid-1fr-140-10">
                 <div className="field">
                   <div className="field-label">Producto &amp; Detalle</div>
                   <input
@@ -562,7 +562,7 @@ function TabUsd() {
                   </button>
                 )}
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px', gap: 10 }}>
+              <div className="u-grid-1fr-140-10">
                 <div className="field">
                   <div className="field-label">Producto &amp; Detalle</div>
                   <input

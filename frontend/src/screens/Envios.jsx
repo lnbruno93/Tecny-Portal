@@ -1718,7 +1718,7 @@ export default function Envios() {
                       hardcodeado a true en el submit, siempre se propaga a la
                       venta que crea el envío. Al cancelar el envío, la venta
                       se cancela y el egreso del vuelto se revierte auto. */}
-                  <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 6, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)' }}>
+                  <div className="u-card-hint-row">
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: form.vuelto_monto ? 8 : 0 }}>
                       <div className="u-fs-13-fw-600">
                         Vuelto/Cambio
@@ -1732,7 +1732,7 @@ export default function Envios() {
                         }}>Quitar</button>
                       )}
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.5fr', gap: 8 }}>
+                    <div className="u-grid-3col-15fr-8">
                       <div>
                         <div className="muted tiny u-mb-2">Monto</div>
                         <input

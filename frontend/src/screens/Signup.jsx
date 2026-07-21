@@ -380,7 +380,7 @@ export default function Signup() {
                       className={pais === 'AR' ? 'on' : ''}
                       onClick={() => setPais('AR')}
                       disabled={loading}
-                      style={{ flex: 1, height: 36, fontSize: 14 }}
+                      className="u-flex-1-h-36-fs-14"
                     >
                       🇦🇷 Argentina
                     </button>
@@ -391,7 +391,7 @@ export default function Signup() {
                       className={pais === 'UY' ? 'on' : ''}
                       onClick={() => setPais('UY')}
                       disabled={loading}
-                      style={{ flex: 1, height: 36, fontSize: 14 }}
+                      className="u-flex-1-h-36-fs-14"
                     >
                       🇺🇾 Uruguay
                     </button>

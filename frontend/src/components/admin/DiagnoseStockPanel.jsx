@@ -98,7 +98,7 @@ function RestoreModal({ producto, onClose, onDone }) {
             </div>
           </div>
 
-          <label style={{ display: 'grid', gap: 4 }}>
+          <label className="u-grid-gap-4">
             <span className="u-fs-13-fw-600">Cantidad a restaurar</span>
             <input
               type="number" min="1" step="1"
@@ -109,7 +109,7 @@ function RestoreModal({ producto, onClose, onDone }) {
             <span className="tiny muted">Para unitarios (celulares, tablets) dejar en 1.</span>
           </label>
 
-          <label style={{ display: 'grid', gap: 4 }}>
+          <label className="u-grid-gap-4">
             <span className="u-fs-13-fw-600">
               Razón <span className="u-color-neg">*</span>
             </span>
