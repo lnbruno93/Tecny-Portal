@@ -512,13 +512,37 @@ export default function Landing() {
             refleja el valor nuevo en el próximo render (cache backend max 5min;
             Cache-Control HTTP max 60s). Fallback a FALLBACK_PRICES hardcoded
             si el fetch falla — definidos arriba del componente.
-              Solo   → backend slug 'starter' → USD prices.starter/mes
-              Equipo → backend slug 'pro'     → USD prices.pro/mes
-              Multi-local → 'enterprise' (custom_mrr_usd per-tenant) → "A medida"
+
+            2026-07-20 (Lucas): rename de nombres comerciales (Solo/Equipo/
+            Multi-local) a los slugs técnicos del backend (Starter/Pro/
+            Enterprise) + card Trial visible al inicio. Rationale:
+              - El back office admin/planes muestra Trial/Starter/Pro/Enterprise
+                y confunde ver nombres distintos en la landing.
+              - Trial expuesto explícito refuerza el value prop "empezá gratis
+                sin tarjeta" — antes vivía enterrado como subtitle de cada card.
+              - Los slugs coinciden 1:1 con tenants.plan de la DB, feature
+                flags per-plan (F2), y el JWT tenant_rol. Alinear naming
+                cross-layer reduce fricción operativa.
           */}
-          <div className="plans">
+          <div className="plans plans-4col">
             <div className="plan">
-              <div className="pname">Solo</div>
+              <div className="pname">Trial</div>
+              <div className="pdesc">Probá Tecny completo antes de elegir plan. Sin tarjeta.</div>
+              <div className="price"><span className="cur">USD </span><span className="num">0</span><span className="per">/14 días</span></div>
+              <div className="pnote">Sin compromiso</div>
+              <ul>
+                <li><Check /> Acceso completo a la plataforma</li>
+                <li><Check /> Sin tarjeta requerida</li>
+                <li><Check /> Cancelable en cualquier momento</li>
+                <li><Check /> Migrás sin perder datos</li>
+              </ul>
+              <Link to="/signup" className="btn"
+                    onClick={() => trackEvent('cta_click', { location: 'pricing', target: 'signup', plan: 'trial' })}>
+                Empezar prueba gratis
+              </Link>
+            </div>
+            <div className="plan">
+              <div className="pname">Starter</div>
               <div className="pdesc">Para el revendedor independiente que arranca a ordenarse.</div>
               <div className="price"><span className="cur">USD </span><span className="num">{prices.starter}</span><span className="per">/mes</span></div>
               <div className="pnote">14 días de prueba gratis</div>
@@ -529,13 +553,13 @@ export default function Landing() {
                 <li><Check /> 50 OCR / mes</li>
               </ul>
               <Link to="/signup" className="btn"
-                    onClick={() => trackEvent('cta_click', { location: 'pricing', target: 'signup', plan: 'solo' })}>
+                    onClick={() => trackEvent('cta_click', { location: 'pricing', target: 'signup', plan: 'starter' })}>
                 Empezar gratis
               </Link>
             </div>
             <div className="plan featured">
               <div className="tag-pop">Más elegido</div>
-              <div className="pname">Equipo</div>
+              <div className="pname">Pro</div>
               <div className="pdesc">Para el negocio con vendedores y cuentas corrientes activas.</div>
               <div className="price"><span className="cur">USD </span><span className="num">{prices.pro}</span><span className="per">/mes</span></div>
               <div className="pnote">14 días de prueba gratis</div>
@@ -546,12 +570,12 @@ export default function Landing() {
                 <li><Check /> OCR ilimitado + Historial</li>
               </ul>
               <Link to="/signup" className="btn btn-primary"
-                    onClick={() => trackEvent('cta_click', { location: 'pricing', target: 'signup', plan: 'equipo' })}>
+                    onClick={() => trackEvent('cta_click', { location: 'pricing', target: 'signup', plan: 'pro' })}>
                 Empezar gratis
               </Link>
             </div>
             <div className="plan">
-              <div className="pname">Multi-local</div>
+              <div className="pname">Enterprise</div>
               <div className="pdesc">Para cadenas con varias sucursales y administración central.</div>
               <div className="price"><span className="num" style={{ fontSize: 30 }}>A medida</span></div>
               <div className="pnote">Hablemos de tu operación</div>
