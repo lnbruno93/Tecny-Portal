@@ -426,7 +426,7 @@ export default function Proveedores() {
             <div className="u-p-12-16-bb-flex-shrink">
               <div className="flex-between u-mb-4">
                 <div>
-                  <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.01em' }}>
+                  <div className="u-fs-16-fw-700-ls">
                     {selected.nombre}
                   </div>
                   {([selected.contacto_nombre, selected.contacto_apellido].filter(Boolean).join(' ') || selected.whatsapp || selected.ubicacion) && (
@@ -440,11 +440,11 @@ export default function Proveedores() {
                   )}
                 </div>
 
-                <div className="flex-row" style={{ gap: 20, alignItems: 'flex-start' }}>
+                <div className="flex-row u-gap-20-align-start">
                   <div className="u-text-right">
                     <div className="muted tiny">Saldo</div>
                     <div className={'mono ' + (kpis.saldo > 0 ? 'neg' : kpis.saldo < 0 ? 'pos' : 'muted')}
-                      style={{ fontSize: 18, fontWeight: 800, lineHeight: 1.1 }}>
+                      className="u-fs-18-fw-800-lh-11">
                       USD {fmt(kpis.saldo)}
                     </div>
                   </div>

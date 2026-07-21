@@ -130,7 +130,7 @@ export default function TwoFaSetup({ onDone, onCancel, onError }) {
 
       {/* ── Paso 1: QR + secret manual ── */}
       <div className="u-mb-24">
-        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>
+        <div className="u-fs-12-fw-600-color-text-mb-8">
           Paso 1 — Escaneá el QR con tu app autenticadora
         </div>
         <div style={{
@@ -170,7 +170,7 @@ export default function TwoFaSetup({ onDone, onCancel, onError }) {
 
       {/* ── Paso 2: Recovery codes ── */}
       <div className="u-mb-24">
-        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>
+        <div className="u-fs-12-fw-600-color-text-mb-8">
           Paso 2 — Guardá estos recovery codes ⚠️
         </div>
         <div style={{

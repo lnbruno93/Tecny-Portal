@@ -491,7 +491,7 @@ export default function Usuarios() {
                 scrollea automáticamente. Ver Envios.jsx modal para el fix inicial. */}
             <form onSubmit={handleCreate} className="u-flex-col-flex-1-mh-0">
               <div className="modal-body">
-                <div className="stack" style={{ gap: 16 }}>
+                <div className="stack u-gap-16-only">
                   <div className="row">
                     <div className="field u-flex-1">
                       <label className="field-label">Nombre <span className="u-color-neg">*</span></label>

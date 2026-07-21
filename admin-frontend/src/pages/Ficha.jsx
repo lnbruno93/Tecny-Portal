@@ -429,7 +429,7 @@ export default function Ficha() {
 
         <Card tight>
           <div className="kpi-label">Última venta</div>
-          <div className="kpi-value" style={{ fontSize: 18 }}>
+          <div className="kpi-value u-fs-18-only">
             {tenant.last_venta_at ? ago(tenant.last_venta_at) : '—'}
           </div>
           <div className="muted tiny">

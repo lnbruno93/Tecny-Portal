@@ -1425,12 +1425,12 @@ export default function Ventas() {
         <div className="card" style={{ padding: 14, marginBottom: 14 }}>
           <div className="kpi-label" style={{ color: 'var(--warn)', marginBottom: 8 }}><Icons.Bolt size={12} /> Ventas rápidas pendientes ({rapidas.length})</div>
           {rapidas.map(r => (
-            <div key={r.id} className="flex-between" style={{ gap: 8, padding: '8px 0', borderBottom: '1px solid var(--hairline)', alignItems: 'flex-start' }}>
+            <div key={r.id} className="flex-between u-gap-8-p-8-0-border-bottom-start">
               <div className="u-fs-13">
                 <strong>{r.vendedor_nombre || '—'}</strong>{r.cliente_texto ? ' · ' + r.cliente_texto : ''}
                 <div className="muted" style={{ whiteSpace: 'pre-wrap' }}>{r.detalle}</div>
               </div>
-              <div className="flex-row" style={{ gap: 6, flexShrink: 0 }}>
+              <div className="flex-row u-gap-6-flex-shrink-0">
                 <button className="btn btn-sm" onClick={() => openVenta(r)}><Icons.Check size={13} /> Procesar</button>
                 <button className="icon-btn u-color-neg" title="Eliminar venta rápida" aria-label="Eliminar venta rápida" onClick={() => deleteRapida(r.id)}><Icons.Trash size={13} /></button>
               </div>
@@ -2375,11 +2375,11 @@ Pago: Efectivo + Transferencia`}
               <div className="stack" style={{ gap: 6, marginBottom: 14 }}>
                 {garantias.length === 0 && <div className="empty">Sin plantillas</div>}
                 {garantias.map(g => (
-                  <div key={g.id} className="flex-between" style={{ gap: 8, padding: '8px 0', borderBottom: '1px solid var(--hairline)', alignItems: 'flex-start' }}>
+                  <div key={g.id} className="flex-between u-gap-8-p-8-0-border-bottom-start">
                     {/* Preview renderiza `{{negocio}}` como el nombre del tenant así el
                         operador ve cómo va a quedar el comprobante final, no el placeholder crudo. */}
                     <div style={{ fontSize: 13, maxWidth: '78%' }}><strong>{g.nombre}</strong>{g.es_default && <> <Badge tone="pos">Predeterminada</Badge></>}<div className="muted tiny" style={{ whiteSpace: 'pre-wrap', maxHeight: 50, overflow: 'hidden' }}>{renderPlantilla(g.texto, tenantNombre)}</div></div>
-                    <div className="flex-row" style={{ gap: 6, flexShrink: 0 }}>
+                    <div className="flex-row u-gap-6-flex-shrink-0">
                       <button className="icon-btn" title="Editar plantilla" aria-label="Editar plantilla de garantía" onClick={() => setGForm({ id: g.id, nombre: g.nombre, texto: g.texto, es_default: !!g.es_default })}><Icons.Edit size={14} /></button>
                       <button className="icon-btn u-color-neg" title="Eliminar plantilla" aria-label="Eliminar plantilla de garantía" onClick={() => deleteGarantia(g.id)}><Icons.Trash size={14} /></button>
                     </div>

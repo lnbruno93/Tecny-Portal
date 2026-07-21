@@ -315,7 +315,7 @@ export default function Facturacion() {
                 return (
                   <tr key={c.id} title={`Cliente: ${c.tenant_nombre}`}>
                     <td
-                      style={{ fontWeight: 600, cursor: 'pointer' }}
+                      className="u-fw-600-cursor-pointer"
                       onClick={() => navigate('/clientes/' + c.tenant_id)}
                       title={`Ver ficha de ${c.tenant_nombre}`}
                     >
@@ -328,8 +328,7 @@ export default function Facturacion() {
                       <Badge tone={planTone(c.plan)}>{c.plan_label || c.plan}</Badge>
                     </td>
                     <td
-                      className="num mono"
-                      style={{ fontWeight: 600, cursor: 'pointer' }}
+                      className="num mono u-fw-600-cursor-pointer"
                       onClick={() => navigate('/clientes/' + c.tenant_id)}
                     >
                       {c.monto_usd > 0 ? fmtMoney(c.monto_usd) : '—'}

@@ -119,7 +119,7 @@ export default function SetPaidUntilModal({ tenant, open, onClose, onSaved }) {
         </>
       }
     >
-      <div className="flex-row" style={{ gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+      <div className="flex-row u-gap-10-mb-14-wrap">
         <span>
           Pagado hasta actual{' '}
           <strong>{tenant?.paid_until ? fmtDate(tenant.paid_until) : 'sin fecha (grandfathered)'}</strong>

@@ -123,7 +123,7 @@ export default function ExtendTrialModal({ tenant, open, onClose, onSaved }) {
         </>
       }
     >
-      <div className="flex-row" style={{ gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+      <div className="flex-row u-gap-10-mb-14-wrap">
         <span>
           Trial actual hasta{' '}
           <strong>{fmtDate(tenant?.trial_until) || 'sin fecha'}</strong>

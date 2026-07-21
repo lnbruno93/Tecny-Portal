@@ -1013,7 +1013,7 @@ export default function Financiera() {
                     <div className="muted tiny u-uppercase-06-fw-600">
                       Total ingresado
                     </div>
-                    <div className="mono" style={{ fontSize: 17, fontWeight: 600, marginTop: 4 }}>
+                    <div className="mono u-fs-17-fw-600-mt-4">
                       ${fmt(monto)}
                     </div>
                   </div>
@@ -1029,7 +1029,7 @@ export default function Financiera() {
                     <div className="muted tiny u-uppercase-06-fw-600">
                       Nos queda
                     </div>
-                    <div className="mono pos" style={{ fontSize: 17, fontWeight: 600, marginTop: 4 }}>
+                    <div className="mono pos u-fs-17-fw-600-mt-4">
                       ${fmt(netoCalc)}
                     </div>
                   </div>
@@ -1080,7 +1080,7 @@ export default function Financiera() {
                 <div className="muted tiny u-section-title">
                   Modelo
                 </div>
-                <div style={{ fontSize: 13.5, lineHeight: 1.5 }}>
+                <div className="u-fs-135-lh-15">
                   Por cada comprobante registrado, la financiera retiene un % global configurable.
                   El resto queda como saldo a cobrar — se liquida con pagos posteriores.
                 </div>
@@ -1090,7 +1090,7 @@ export default function Financiera() {
                 <div className="muted tiny u-section-title">
                   OCR automático
                 </div>
-                <div style={{ fontSize: 13.5, lineHeight: 1.5 }}>
+                <div className="u-fs-135-lh-15">
                   Subí una foto del comprobante y el sistema detecta el monto con Claude.
                   Si la confianza es alta (&gt;70%), se pre-llena. Si es baja, te avisa para que verifiques.
                 </div>
@@ -1485,7 +1485,7 @@ export default function Financiera() {
                       <div className="muted tiny u-uppercase-06-fw-600">
                         Recibido
                       </div>
-                      <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', marginTop: 4 }}>
+                      <div className="u-fs-22-fw-600-ls-mt-4">
                         <span className="muted u-fs-12">ARS </span>
                         <span className="mono pos">{fmt(pagosTotales.total_monto)}</span>
                       </div>
@@ -1494,7 +1494,7 @@ export default function Financiera() {
                       <div className="muted tiny u-uppercase-06-fw-600">
                         N° pagos
                       </div>
-                      <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', marginTop: 4 }}>
+                      <div className="u-fs-22-fw-600-ls-mt-4">
                         <span className="mono">{pagosTotales.count}</span>
                       </div>
                     </div>

@@ -1191,7 +1191,7 @@ export default function CuentasCC() {
               <div className="flex-between u-mb-8">
                 {/* Nombre e info */}
                 <div>
-                  <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.01em' }}>
+                  <div className="u-fs-16-fw-700-ls">
                     {cliente.nombre} {cliente.apellido || ''}
                     {' '}{catBadge(cliente.categoria)}
                   </div>
@@ -1203,7 +1203,7 @@ export default function CuentasCC() {
                 </div>
 
                 {/* KPIs compactos + botón editar */}
-                <div className="flex-row" style={{ gap: 20, alignItems: 'flex-start' }}>
+                <div className="flex-row u-gap-20-align-start">
                   <div className="u-text-right">
                     <div className="muted tiny">Saldo</div>
                     <div className={'mono ' + (Number(resumen.saldo) > 0 ? 'neg' : Number(resumen.saldo) < 0 ? 'pos' : 'muted')}
@@ -1212,7 +1212,7 @@ export default function CuentasCC() {
                       // cliente sea -650 (deuda). Múltiples nodos en la página
                       // pueden matchear "USD 650"; el testid lo desambigüa.
                       data-testid="b2b-cliente-saldo"
-                      style={{ fontSize: 18, fontWeight: 800, lineHeight: 1.1 }}>
+                      className="u-fs-18-fw-800-lh-11">
                       USD {fmt(resumen.saldo)}
                     </div>
                   </div>

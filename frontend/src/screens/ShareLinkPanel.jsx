@@ -180,7 +180,7 @@ export default function ShareLinkPanel() {
         }}
         aria-expanded={abierto}
       >
-        <span style={{ fontSize: 18 }}>🔗</span>
+        <span className="u-fs-18-only">🔗</span>
         <div className="u-flex-1">
           <div style={{ fontWeight: 600, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
             Link público de equipos usados
@@ -256,7 +256,7 @@ export default function ShareLinkPanel() {
 
           {/* Toggles */}
           <div style={{ marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <label className="flex-row" style={{ gap: 10, cursor: 'pointer', padding: '10px 12px', background: 'var(--surface-2)', borderRadius: 8 }}>
+            <label className="flex-row u-card-hover-row">
               <input
                 type="checkbox"
                 checked={mostrarBateria}
@@ -267,7 +267,7 @@ export default function ShareLinkPanel() {
                 <div className="muted tiny">Si preferís no mostrarla al público, apagalo.</div>
               </div>
             </label>
-            <label className="flex-row" style={{ gap: 10, cursor: 'pointer', padding: '10px 12px', background: 'var(--surface-2)', borderRadius: 8 }}>
+            <label className="flex-row u-card-hover-row">
               <input
                 type="checkbox"
                 checked={mostrarPrecio}
@@ -293,11 +293,11 @@ export default function ShareLinkPanel() {
             }}
           >
             <div className="u-text-center">
-              <div style={{ fontSize: 20, fontWeight: 700 }}>{stats.vistas_ult_mes ?? 0}</div>
+              <div className="u-fs-20-fw-700">{stats.vistas_ult_mes ?? 0}</div>
               <div className="muted tiny">Vistas último mes</div>
             </div>
             <div className="u-text-center">
-              <div style={{ fontSize: 20, fontWeight: 700 }}>{stats.unicos_hoy ?? 0}</div>
+              <div className="u-fs-20-fw-700">{stats.unicos_hoy ?? 0}</div>
               <div className="muted tiny">Únicos hoy</div>
             </div>
             <div className="u-text-center">

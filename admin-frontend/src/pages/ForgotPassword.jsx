@@ -173,8 +173,7 @@ export default function ForgotPassword() {
               Recuperar contraseña
             </h1>
             <p
-              className="muted"
-              style={{ fontSize: 13, textAlign: 'center', margin: '0 0 24px' }}
+              className="muted u-fs-13-text-center-24"
             >
               Pasanos tu email y te mandamos un link para elegir una nueva.
             </p>

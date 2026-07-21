@@ -591,8 +591,7 @@ export default function Cajas() {
             ))}
           </div>
           <button
-            className="btn btn-ghost"
-            style={{ fontSize: 12, padding: '4px 10px' }}
+            className="btn btn-ghost u-fs-12-p-4-10"
             onClick={() => { setCForm({ nombre: '', apellido: '', tipo: 'amigo' }); setCError(''); setShowContacto(true); }}
           >
             + Contacto
@@ -700,8 +699,7 @@ export default function Cajas() {
                   </div>
                   <div className="u-flex-gap-8">
                     <button
-                      className="btn btn-ghost"
-                      style={{ fontSize: 12, padding: '4px 10px' }}
+                      className="btn btn-ghost u-fs-12-p-4-10"
                       onClick={() => {
                         setDeudaForm({ ...EMPTY_DEUDA(), contacto_id: String(selectedContactoId) });
                         setDeudaError('');

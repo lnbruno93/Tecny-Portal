@@ -445,7 +445,7 @@ export function InvitePartnerModal({ onClose, onSuccess }) {
 
         <form onSubmit={handleSubmit}>
           <div className="modal-body">
-            <p className="muted" style={{ fontSize: 13, marginTop: 0, marginBottom: 14 }}>
+            <p className="muted u-fs-13-mt-0-mb-14">
               Ingresá el slug del tenant Tecny al que querés invitar.
             </p>
 

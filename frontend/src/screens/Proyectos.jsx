@@ -486,7 +486,7 @@ export default function Proyectos() {
                   <div className="field">
                     <label className="field-label">Participantes <span className="muted">(de tus contactos)</span></label>
                     {/* Quick-add: crear un contacto nuevo sin salir del modal */}
-                    <div className="flex-row" style={{ gap: 6, marginBottom: 8 }}>
+                    <div className="flex-row u-gap-6-mb-8">
                       <input className="input u-flex-1" placeholder="Nuevo contacto (nombre)…" value={nuevoContacto}
                         onChange={e => setNuevoContacto(e.target.value)}
                         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleQuickAddContacto(); } }} />

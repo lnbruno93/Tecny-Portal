@@ -255,7 +255,7 @@ function TabTarjetas() {
           {prods.map((p, i) => (
             <div key={p.id} className="card card-tight">
               <div className="flex-between u-mb-10">
-                <div className="muted tiny" style={{ fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                <div className="muted tiny u-uppercase-06-fw-700">
                   Producto {i + 1}
                 </div>
                 {prods.length > 1 && (
@@ -311,7 +311,7 @@ function TabTarjetas() {
               borderBottom: i < calculo.lines.length - 1 ? '1px solid var(--hairline)' : 0,
             }}
           >
-            <div style={{ fontWeight: 600, fontSize: 13.5, marginBottom: 8 }}>
+            <div className="u-fw-600-fs-135-mb-8">
               {p.nom || 'Producto'}{' '}
               {p.vari && (
                 <span className="muted u-fw-500">{p.vari}</span>
@@ -553,7 +553,7 @@ function TabUsd() {
           {prods.map((p, i) => (
             <div key={p.id} className="card card-tight">
               <div className="flex-between u-mb-10">
-                <div className="muted tiny" style={{ fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                <div className="muted tiny u-uppercase-06-fw-700">
                   Producto {i + 1}
                 </div>
                 {prods.length > 1 && (
@@ -656,7 +656,7 @@ function TabUsd() {
                 marginBottom: 12,
                 borderBottom: i < arr.length - 1 ? '1px solid var(--hairline)' : 0,
               }}>
-                <div style={{ fontWeight: 600, fontSize: 13.5, marginBottom: 8 }}>
+                <div className="u-fw-600-fs-135-mb-8">
                   {p.nom || 'Producto'}{' '}
                   <span className="muted tiny mono u-fw-500">
                     · USD {fmt(p.usd)}

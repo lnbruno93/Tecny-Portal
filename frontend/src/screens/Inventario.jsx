@@ -1548,7 +1548,7 @@ export default function Inventario() {
 
       {/* ── Paginación ── */}
       {!loading && pages > 1 && (
-        <div className="flex-row" style={{ gap: 8, justifyContent: 'center', marginTop: 14 }}>
+        <div className="flex-row u-gap-8-center-mt-14">
           <button className="btn btn-sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>‹ Anterior</button>
           <span className="muted tiny" style={{ alignSelf: 'center' }}>{page} / {pages} · {total} productos</span>
           <button className="btn btn-sm" disabled={page >= pages} onClick={() => setPage(p => p + 1)}>Siguiente ›</button>
@@ -2028,14 +2028,14 @@ export default function Inventario() {
                 Depósitos físicos donde guardás el stock. Útil si tenés más de un local o una separación
                 por almacén.
               </p>
-              <div className="flex-row" style={{ gap: 6, marginBottom: 8 }}>
+              <div className="flex-row u-gap-6-mb-8">
                 <input className="input" placeholder="Nuevo depósito" value={nuevoDep} onChange={e => setNuevoDep(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addDeposito(); } }} />
                 <button className="btn btn-sm" onClick={addDeposito}><Icons.Plus size={13} /></button>
               </div>
               <div className="stack u-gap-4">
                 {depositos.length === 0 && <div className="muted tiny">Sin depósitos</div>}
                 {depositos.map(d => (
-                  <div key={d.id} className="flex-between" style={{ fontSize: 13, padding: '6px 0', borderBottom: '1px solid var(--hairline)' }}>
+                  <div key={d.id} className="flex-between u-fs-13-p-6-0-border-bottom">
                     <span>{d.nombre}</span>
                     <button className="icon-btn u-color-neg" title="Eliminar depósito" aria-label="Eliminar depósito" onClick={() => delDeposito(d)}><Icons.Trash size={13} /></button>
                   </div>
@@ -2158,7 +2158,7 @@ function HistorialModalContent({ producto, data, loading, error, categorias, dep
             value={`${Number(producto.precio_venta).toLocaleString('es-AR')} ${producto.precio_moneda}`} mono />
           <DetalleField label="Cantidad" value={producto.cantidad} />
           {producto.observaciones && (
-            <div style={{ gridColumn: '1 / -1' }}>
+            <div className="u-grid-col-full">
               <DetalleField label="Observaciones" value={producto.observaciones} />
             </div>
           )}
@@ -2189,7 +2189,7 @@ function HistorialModalContent({ producto, data, loading, error, categorias, dep
                     <DetalleField label="Valor del ítem" value={fmtUSD(data.compra.valor_item)} mono />
                     <DetalleField label="Total compra" value={fmtUSD(data.compra.monto_usd)} mono />
                     {data.compra.descripcion && (
-                      <div style={{ gridColumn: '1 / -1' }}>
+                      <div className="u-grid-col-full">
                         <DetalleField label="Descripción" value={data.compra.descripcion} />
                       </div>
                     )}

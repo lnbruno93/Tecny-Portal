@@ -168,7 +168,7 @@ export default function TwoFaSection() {
         <div className="card card-tight u-p-18-mb-12">
           <div className="flex-between u-align-items-flex-start">
             <div>
-              <div className="flex-row" style={{ gap: 8, alignItems: 'center', marginBottom: 4 }}>
+              <div className="flex-row u-gap-8-center-mb-4">
                 <span className="badge badge-pos">Activo</span>
                 <strong>Autenticación de dos factores</strong>
               </div>
@@ -183,7 +183,7 @@ export default function TwoFaSection() {
               </div>
             </div>
           </div>
-          <div className="flex-row" style={{ gap: 8, marginTop: 14, justifyContent: 'flex-end' }}>
+          <div className="flex-row u-gap-8-mt-14-end">
             <button className="btn btn-ghost btn-sm" onClick={handleRegenerateRecovery}>
               Regenerar recovery codes
             </button>
