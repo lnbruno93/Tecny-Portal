@@ -581,7 +581,7 @@ export default function Cajas() {
           </div>
           <div className="page-sub">Deudas e inversiones por contacto</div>
         </div>
-        <div className="page-actions" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="page-actions u-flex-center-gap-8">
           <div className="tabs">
             {[{ value: 'config', label: 'Config Cajas' }, { value: 'deudas', label: 'Deudas a cobrar' }, { value: 'inversiones', label: 'Inversiones' }].map(t => (
               <button key={t.value} className={'tab' + (tab === t.value ? ' active' : '')}
@@ -692,13 +692,13 @@ export default function Cajas() {
                       <Badge tone={TIPO_TONE[selectedContacto.contacto_tipo] || 'default'}>
                         {TIPO_LABEL[selectedContacto.contacto_tipo] || selectedContacto.contacto_tipo}
                       </Badge>
-                      <span style={{ marginLeft: 8 }}>
+                      <span className="u-ml-8">
                         Saldo ARS: <strong className={selectedContacto.saldo_ars > 0 ? 'neg' : 'pos'}>{fmt(selectedContacto.saldo_ars)}</strong>
                         {selectedContacto.saldo_usd !== 0 && <> · USD: <strong>{fmt(selectedContacto.saldo_usd)}</strong></>}
                       </span>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
+                  <div className="u-flex-gap-8">
                     <button
                       className="btn btn-ghost"
                       style={{ fontSize: 12, padding: '4px 10px' }}
@@ -818,13 +818,13 @@ export default function Cajas() {
               <table className="tbl">
                 <thead>
                   <tr>
-                    <th style={{ width: 32 }} aria-label="Expandir"></th>
+                    <th className="u-w-32px" aria-label="Expandir"></th>
                     <th>Último ingreso</th>
                     <th>Inversor</th>
                     <th>Tipo</th>
                     <th>Tasa</th>
                     <th className="num">Total USD</th>
-                    <th className="num" style={{ width: 90 }}>Movs</th>
+                    <th className="num u-w-90px">Movs</th>
                     <th style={{ width: 40 }}></th>
                   </tr>
                 </thead>
@@ -986,7 +986,7 @@ export default function Cajas() {
                     <th>Estado</th>
                     <th>Financiera</th>
                     <th>Tarjeta</th>
-                    <th style={{ width: 80 }}></th>
+                    <th className="u-w-80px"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1068,7 +1068,7 @@ export default function Cajas() {
                   <div className="field u-w-110px"><label className="field-label">Monto</label>
                     <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} step="0.01" className="input" value={ajusteForm.monto} onChange={e => setAjusteForm(f => ({ ...f, monto: e.target.value }))} /></div>
                   {cajaSel.moneda === 'ARS' && (
-                    <div className="field" style={{ width: 90 }}><label className="field-label">TC</label>
+                    <div className="field u-w-90px"><label className="field-label">TC</label>
                       <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} step="0.01" className="input" value={ajusteForm.tc} onChange={e => setAjusteForm(f => ({ ...f, tc: e.target.value }))} /></div>
                   )}
                   <div className="field" style={{ flex: 1, minWidth: 120 }}><label className="field-label">Concepto</label>
@@ -1083,7 +1083,7 @@ export default function Cajas() {
                 <div className="empty">Sin movimientos todavía.</div>
               ) : (
                 <table className="tbl">
-                  <thead><tr><th>Fecha</th><th>Tipo</th><th>Origen</th><th>Concepto</th><th className="num">Monto</th><th style={{ width: 32 }}></th></tr></thead>
+                  <thead><tr><th>Fecha</th><th>Tipo</th><th>Origen</th><th>Concepto</th><th className="num">Monto</th><th className="u-w-32px"></th></tr></thead>
                   <tbody>
                     {cajaMovs.map(m => (
                       <tr key={m.id}>

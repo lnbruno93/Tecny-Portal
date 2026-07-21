@@ -304,7 +304,7 @@ export default function Usados() {
               <div className="modal-body">
                 <div className="stack u-gap-14">
                   <div className="row">
-                    <div className="field" style={{ flex: 2 }}>
+                    <div className="field u-flex-2">
                       <label className="field-label">Modelo <span className="u-color-neg">*</span></label>
                       <input
                         className="input"

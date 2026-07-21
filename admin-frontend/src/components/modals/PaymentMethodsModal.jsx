@@ -205,7 +205,7 @@ export default function PaymentMethodsModal({ open, onClose, onSaved }) {
               <th scope="col">Nombre</th>
               <th scope="col" className="num">Uso</th>
               <th scope="col">Estado</th>
-              <th scope="col" style={{ width: 60 }} aria-label="Acciones" />
+              <th scope="col" className="u-w-60px" aria-label="Acciones" />
             </tr>
           </thead>
           <tbody>

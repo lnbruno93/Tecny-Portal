@@ -3018,3 +3018,37 @@ body.modal-open { overflow: hidden; }
 /* Composed patterns adicionales */
 .u-color-neg-fs-13 { color: var(--neg); font-size: 13px; }
 .u-flex-1-minw-0   { flex: 1; min-width: 0; }
+
+/* Sprint 4 (2026-07-21) — patterns residuales del top-20 post-Sprint 3 */
+
+/* Colors adicionales */
+.u-color-pos        { color: var(--pos); }
+.u-color-text-muted { color: var(--text-muted); }
+
+/* Flex */
+.u-flex-2 { flex: 2; }
+
+/* Widths pequeños en px (columnas/inputs finos) */
+.u-w-32px { width: 32px; }
+.u-w-60px { width: 60px; }
+.u-w-70px { width: 70px; }
+.u-w-80px { width: 80px; }
+.u-w-90px { width: 90px; }
+
+/* Margins */
+.u-mt-8  { margin-top: 8px; }
+.u-mt-10 { margin-top: 10px; }
+.u-mt-var-gap { margin-top: var(--gap); }
+.u-ml-8  { margin-left: 8px; }
+
+/* Max width */
+.u-mw-480 { max-width: 480px; }
+
+/* Composed 2-prop */
+.u-color-neg-mt-4       { color: var(--neg); margin-top: 4px; }
+.u-color-accent-fw-600  { color: var(--accent); font-weight: 600; }
+.u-color-accent-fw-700  { color: var(--accent); font-weight: 700; }
+
+/* Composed 3-prop (patterns frecuentes de layout) */
+.u-flex-center-gap-8    { align-items: center; display: flex; gap: 8px; }
+.u-flex-gap-8           { display: flex; gap: 8px; }

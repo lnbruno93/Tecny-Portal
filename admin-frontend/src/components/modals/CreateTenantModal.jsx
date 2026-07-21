@@ -200,7 +200,7 @@ export default function CreateTenantModal({ open, onClose, onCreated }) {
             disabled={submitting}
           />
           {form.email && !emailOK && (
-            <div className="tiny" style={{ color: 'var(--neg)', marginTop: 4 }}>
+            <div className="tiny u-color-neg-mt-4">
               Email inválido.
             </div>
           )}

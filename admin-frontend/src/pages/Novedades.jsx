@@ -338,7 +338,7 @@ export default function Novedades() {
         <div style={{ position: 'sticky', top: 16 }}>
           <Card
             title={
-              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span className="u-flex-center-gap-8">
                 <span
                   aria-hidden="true"
                   style={{

@@ -458,18 +458,18 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
           <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 6 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1400, tableLayout: 'fixed' }}>
               <colgroup>
-                <col style={{ width: 32 }} />   {/* # */}
+                <col className="u-w-32px" />   {/* # */}
                 <col style={{ width: 320 }} />  {/* Producto (picker) */}
                 <col className="u-w-130px" />  {/* IMEI */}
-                <col style={{ width: 60 }} />   {/* GB */}
-                <col style={{ width: 90 }} />   {/* Color */}
-                <col style={{ width: 80 }} />   {/* Stock */}
+                <col className="u-w-60px" />   {/* GB */}
+                <col className="u-w-90px" />   {/* Color */}
+                <col className="u-w-80px" />   {/* Stock */}
                 <col className="u-w-100px" />  {/* Costo unit (2026-06-09) */}
-                <col style={{ width: 70 }} />   {/* Cant */}
+                <col className="u-w-70px" />   {/* Cant */}
                 <col className="u-w-100px" />  {/* Precio unit */}
                 <col style={{ width: 64 }} />   {/* M */}
                 <col className="u-w-100px" />  {/* Subtotal */}
-                <col style={{ width: 32 }} />   {/* X */}
+                <col className="u-w-32px" />   {/* X */}
               </colgroup>
               <thead>
                 <tr>

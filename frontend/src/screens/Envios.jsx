@@ -849,7 +849,7 @@ export default function Envios() {
           <h1 className="page-title">Envíos</h1>
           <div className="page-sub">Despachos a domicilio · prioridad · items producto y pago</div>
         </div>
-        <div className="page-actions" style={{ display: 'flex', gap: 8 }}>
+        <div className="page-actions u-flex-gap-8">
           <button
             className="btn"
             onClick={() => {
@@ -1096,7 +1096,7 @@ export default function Envios() {
                     )}
                     {pagos.length > 0 && (
                       <div className="flex-row" style={{ gap: 5, fontSize: 12 }}>
-                        <Icons.Dollar size={13} style={{ color: 'var(--pos)' }} />
+                        <Icons.Dollar size={13} className="u-color-pos" />
                         <span className="pos mono u-fw-600">
                           {/* 2026-06-10: la moneda salía hardcodeada "ARS". Ahora
                               usa la del primer pago (caso 99%: todos los pagos del
@@ -1127,7 +1127,7 @@ export default function Envios() {
               {/* Panel header */}
               <div className="card-hd">
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div className="u-flex-center-gap-8">
                     <span
                       className="mono"
                       style={{ fontWeight: 700, color: 'var(--accent)', fontSize: 13 }}
@@ -1232,7 +1232,7 @@ export default function Envios() {
                           </>
                         ) : (
                           <>
-                            <Icons.Dollar size={14} style={{ color: 'var(--pos)' }} />
+                            <Icons.Dollar size={14} className="u-color-pos" />
                             <span className="pos u-fs-13-fw-600">
                               Cobrar: {it.metodo_pago || 'efectivo'}
                             </span>
@@ -1381,7 +1381,7 @@ export default function Envios() {
 
                   {/* Fila 2: cliente + teléfono */}
                   <div className="row">
-                    <div className="field" style={{ flex: 2 }}>
+                    <div className="field u-flex-2">
                       <label className="field-label">Cliente <span className="u-color-neg">*</span></label>
                       <input className={'input' + (fieldErrors.cliente ? ' input-error' : '')} placeholder="Nombre del cliente"
                         value={form.cliente} onChange={e => setF('cliente', e.target.value)} autoFocus
@@ -1397,7 +1397,7 @@ export default function Envios() {
 
                   {/* Fila 3: dirección + barrio */}
                   <div className="row">
-                    <div className="field" style={{ flex: 2 }}>
+                    <div className="field u-flex-2">
                       <label className="field-label">Dirección <span className="u-color-neg">*</span></label>
                       <input className={'input' + (fieldErrors.direccion ? ' input-error' : '')} placeholder="ej. San Martín 450"
                         value={form.direccion} onChange={e => setF('direccion', e.target.value)}
@@ -1662,7 +1662,7 @@ export default function Envios() {
                               }}>
                                 <div>
                                   <div className="muted tiny" style={{ marginBottom: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
-                                    <span>Le cobrás al cliente <span style={{ color: 'var(--text-muted)' }}>(editable)</span></span>
+                                    <span>Le cobrás al cliente <span className="u-color-text-muted">(editable)</span></span>
                                     {it.bruto_manual && (
                                       <span
                                         title="Estás editando el monto manualmente. Al cambiar USD/TC/método el cálculo vuelve a la fórmula."
@@ -1692,7 +1692,7 @@ export default function Envios() {
                                   <div className="mono neg u-fs-13-fw-600">−{sym(it.moneda)}{fmt(det.costoFinOrig)}</div>
                                 </div>
                                 <div>
-                                  <div className="muted tiny u-mb-2">Entra a tu caja <span style={{ color: 'var(--text-muted)' }}>(editable)</span></div>
+                                  <div className="muted tiny u-mb-2">Entra a tu caja <span className="u-color-text-muted">(editable)</span></div>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
                                     <input
                                       type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
@@ -1806,7 +1806,7 @@ export default function Envios() {
                         </div>
                       )}
                       {ocrSugerencia.status === 'error' && (
-                        <div className="muted tiny" style={{ marginTop: 4, color: 'var(--neg)' }}>No se pudo leer el monto. Cargalo a mano.</div>
+                        <div className="muted tiny u-color-neg-mt-4">No se pudo leer el monto. Cargalo a mano.</div>
                       )}
                     </div>
                   )}

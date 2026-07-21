@@ -280,7 +280,7 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
          onClick={(e) => { if (e.target === e.currentTarget) tryClose(); }}>
       <div className="modal" style={{ maxWidth: 1200, width: '96vw' }} onClick={e => e.stopPropagation()}>
         <div className="modal-hd">
-          <h3 id="mercaderia-recibida-modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <h3 id="mercaderia-recibida-modal-title" className="u-flex-center-gap-8">
             <Icons.Box size={16} /> Recibir mercadería · {nombreCliente}
           </h3>
           <button className="icon-btn" onClick={tryClose} aria-label="Cerrar modal">
@@ -497,7 +497,7 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
                 <div className="u-flex-1">
                   {saldoCierraEnCero ? (
                     <>
-                      Después de la entrega: <strong style={{ color: 'var(--pos)' }}>saldo {primerNombre} = {fmtUSD(0)}</strong> (deuda cancelada).
+                      Después de la entrega: <strong className="u-color-pos">saldo {primerNombre} = {fmtUSD(0)}</strong> (deuda cancelada).
                     </>
                   ) : saldoInvertido ? (
                     <>

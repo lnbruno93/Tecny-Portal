@@ -247,7 +247,7 @@ export default function Facturacion() {
         flush
         title="Clientes"
         subtitle="Estado de cuenta de cada tenant · click en fila para ver la ficha"
-        style={{ marginTop: 'var(--gap)' }}
+        className="u-mt-var-gap"
         actions={
           <Tabs
             value={tab}

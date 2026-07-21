@@ -279,7 +279,7 @@ export default function EquiposUsadosContent({ onCountChange }) {
               <tr>
                 <th style={{ minWidth: 180 }}>Equipo</th>
                 <th style={{ width: 120 }}>GB · Color</th>
-                <th style={{ width: 90 }}>Batería</th>
+                <th className="u-w-90px">Batería</th>
                 <th style={{ width: 142, whiteSpace: 'nowrap' }}>IMEI / Serial</th>
                 <th style={{ width: 100, textAlign: 'right' }}>Costo</th>
                 <th style={{ width: 100, textAlign: 'right' }}>Precio venta</th>
@@ -382,7 +382,7 @@ function UsadoRow({ p }) {
             <Icons.ArrowUpRight size={11} />
           </Link>
         ) : (
-          <span className="badge" style={{ color: 'var(--text-muted)' }}>Manual</span>
+          <span className="badge u-color-text-muted">Manual</span>
         )}
       </td>
       <td>

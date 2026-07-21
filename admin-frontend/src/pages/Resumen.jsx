@@ -383,7 +383,7 @@ export default function Resumen() {
       </div>
 
       {/* Split 1: chart de evolución + activity feed */}
-      <div className="split-2" style={{ marginTop: 'var(--gap)' }}>
+      <div className="split-2 u-mt-var-gap">
         <Card
           title="Evolución (90 días)"
           subtitle="Signups y suspensiones diarias"
@@ -402,7 +402,7 @@ export default function Resumen() {
           {/* #451: el MRR histórico se visualiza en la KPI MRR arriba (últimos
               30 días). Acá no lo dibujamos para no duplicar — este card es
               sobre cambios de cohort (altas/bajas), no sobre dinero. */}
-          <div className="muted tiny" style={{ marginTop: 8 }}>
+          <div className="muted tiny u-mt-8">
             MRR histórico: ver mini-gráfico en la KPI MRR arriba.
           </div>
         </Card>
@@ -445,7 +445,7 @@ export default function Resumen() {
       </div>
 
       {/* Split 2: top tenants + distribución por plan */}
-      <div className="split-2" style={{ marginTop: 'var(--gap)' }}>
+      <div className="split-2 u-mt-var-gap">
         <Card
           flush
           title="Top clientes por usuarios"

@@ -194,7 +194,7 @@ export default function EditTenantModal({ tenant, open, onClose, onSaved }) {
             disabled={submitting}
           />
           {!nombreIsValid && (
-            <div className="tiny" style={{ color: 'var(--neg)', marginTop: 4 }}>
+            <div className="tiny u-color-neg-mt-4">
               Nombre no puede estar vacío.
             </div>
           )}
@@ -219,7 +219,7 @@ export default function EditTenantModal({ tenant, open, onClose, onSaved }) {
             disabled={submitting}
           />
           {!slugIsValid && (
-            <div className="tiny" style={{ color: 'var(--neg)', marginTop: 4 }}>
+            <div className="tiny u-color-neg-mt-4">
               Inválido: lowercase, números y hyphens; sin hyphens al inicio/fin.
             </div>
           )}

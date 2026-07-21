@@ -62,7 +62,7 @@ export default function DiffModal({ state, onClose }) {
           <div style={{ borderTop: '1px solid var(--hairline)', borderBottom: '1px solid var(--hairline)', padding: '14px 0' }}>
             <div className="flex-between" style={{ fontSize: 14, marginBottom: 8 }}>
               <strong>Total de la venta:</strong>
-              <span className="mono" style={{ color: 'var(--accent)', fontWeight: 700 }}>u$s {state.items.toFixed(2)}</span>
+              <span className="mono u-color-accent-fw-700">u$s {state.items.toFixed(2)}</span>
             </div>
             <div className="flex-between" style={{ fontSize: 14, marginBottom: 8 }}>
               <strong>Total pagado:</strong>

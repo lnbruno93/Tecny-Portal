@@ -309,7 +309,7 @@ export default function RecepcionStock() {
             <div style={{ display: 'flex', gap: 4 }}>
               <input className="input" inputMode="decimal" placeholder="0" value={mCosto} onChange={e => setMCosto(e.target.value)} className="u-flex-1" />
               {/* 2026-06-29 Multi-país F3: USD + moneda local del tenant. */}
-              <select className="input" value={mCostoMoneda} onChange={e => setMCostoMoneda(e.target.value)} style={{ width: 70 }}>
+              <select className="input" value={mCostoMoneda} onChange={e => setMCostoMoneda(e.target.value)} className="u-w-70px">
                 {Array.from(new Set(['USD', monedaLocal, mCostoMoneda].filter(Boolean)))
                   .map(m => <option key={m} value={m}>{m}</option>)}
               </select>
@@ -319,7 +319,7 @@ export default function RecepcionStock() {
             <div className="muted tiny u-mb-4">Precio venta</div>
             <div style={{ display: 'flex', gap: 4 }}>
               <input className="input" inputMode="decimal" placeholder="0" value={mPrecio} onChange={e => setMPrecio(e.target.value)} className="u-flex-1" />
-              <select className="input" value={mPrecioMoneda} onChange={e => setMPrecioMoneda(e.target.value)} style={{ width: 70 }}>
+              <select className="input" value={mPrecioMoneda} onChange={e => setMPrecioMoneda(e.target.value)} className="u-w-70px">
                 {Array.from(new Set(['USD', monedaLocal, mPrecioMoneda].filter(Boolean)))
                   .map(m => <option key={m} value={m}>{m}</option>)}
               </select>
@@ -348,7 +348,7 @@ export default function RecepcionStock() {
           >
             <Icons.Camera size={18} /> Escanear con cámara
           </button>
-          <form onSubmit={onSubmitManual} style={{ display: 'flex', gap: 8 }}>
+          <form onSubmit={onSubmitManual} className="u-flex-gap-8">
             <input
               className="input"
               type="text"
@@ -376,7 +376,7 @@ export default function RecepcionStock() {
         <div className="card u-mb-14">
           <div className="card-hd">
             <h3>4. Productos a cargar ({items.length})</h3>
-            <div className="muted tiny" style={{ marginLeft: 8 }}>
+            <div className="muted tiny u-ml-8">
               Tocá costo o precio para ajustarlo individualmente.
             </div>
           </div>
@@ -414,7 +414,7 @@ export default function RecepcionStock() {
                   </button>
                 </div>
                 {/* Costo + Precio editables */}
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div className="u-flex-gap-8">
                   <label className="u-flex-1">
                     <div className="muted tiny u-mb-2">Costo</div>
                     <div style={{ display: 'flex', gap: 2 }}>
@@ -433,7 +433,7 @@ export default function RecepcionStock() {
                         value={it.costo_moneda}
                         onChange={e => editarItem(idx, 'costo_moneda', e.target.value)}
                         aria-label="Moneda del costo"
-                        style={{ width: 60 }}
+                        className="u-w-60px"
                       >
                         {Array.from(new Set(['USD', monedaLocal, it.costo_moneda].filter(Boolean)))
                           .map(m => <option key={m} value={m}>{m}</option>)}
@@ -457,7 +457,7 @@ export default function RecepcionStock() {
                         value={it.precio_moneda}
                         onChange={e => editarItem(idx, 'precio_moneda', e.target.value)}
                         aria-label="Moneda del precio"
-                        style={{ width: 60 }}
+                        className="u-w-60px"
                       >
                         {Array.from(new Set(['USD', monedaLocal, it.precio_moneda].filter(Boolean)))
                           .map(m => <option key={m} value={m}>{m}</option>)}
@@ -482,10 +482,9 @@ export default function RecepcionStock() {
           Cancelar
         </button>
         <button
-          className="btn btn-primary"
+          className="btn btn-primary u-flex-2"
           onClick={guardar}
           disabled={guardando || items.length === 0}
-          style={{ flex: 2 }}
         >
           <Icons.Check size={14} />
           {guardando ? ' Guardando…' : ` Guardar ${items.length} productos`}

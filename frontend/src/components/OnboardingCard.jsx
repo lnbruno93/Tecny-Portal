@@ -247,7 +247,7 @@ export default function OnboardingCard() {
                 </div>
               </div>
               {!done && (
-                <div style={{ color: 'var(--text-muted)' }}>
+                <div className="u-color-text-muted">
                   <IconChevronRight />
                 </div>
               )}

@@ -1098,7 +1098,7 @@ export default function Inventario() {
         >
           Equipos usados
           {usadosCount != null && usadosCount > 0 && (
-            <span className="badge" style={{ marginLeft: 8 }}>{usadosCount}</span>
+            <span className="badge u-ml-8">{usadosCount}</span>
           )}
         </button>
         {canSeeRedB2B && (
@@ -1111,7 +1111,7 @@ export default function Inventario() {
           >
             Pendientes Red B2B
             {pendingCount != null && pendingCount > 0 && (
-              <span className="badge" style={{ marginLeft: 8 }}>{pendingCount}</span>
+              <span className="badge u-ml-8">{pendingCount}</span>
             )}
           </button>
         )}
@@ -1426,10 +1426,10 @@ export default function Inventario() {
                   piso por columna; el resto del ancho se reparte entre las que
                   más lo necesitan (Nombre, Categoría, Proveedor). */}
               <tr>
-                <th style={{ width: 32 }} aria-label="Historial"></th>
+                <th className="u-w-32px" aria-label="Historial"></th>
                 <th style={{ minWidth: 180 }}>Nombre</th>
                 <th style={{ width: 56 }}>GB</th>
-                <th style={{ width: 70 }}>Batería</th>
+                <th className="u-w-70px">Batería</th>
                 <th style={{ width: 96 }}>Color</th>
                 <th style={{ width: 84, textAlign: 'right' }}>Costo</th>
                 <th style={{ width: 68 }}>Mon. Costo</th>
@@ -1509,10 +1509,10 @@ export default function Inventario() {
                   piso por columna; el resto del ancho se reparte entre las que
                   más lo necesitan (Nombre, Categoría, Proveedor). */}
               <tr>
-                <th style={{ width: 32 }} aria-label="Historial"></th>
+                <th className="u-w-32px" aria-label="Historial"></th>
                 <th style={{ minWidth: 180 }}>Nombre</th>
                 <th style={{ width: 56 }}>GB</th>
-                <th style={{ width: 70 }}>Batería</th>
+                <th className="u-w-70px">Batería</th>
                 <th style={{ width: 96 }}>Color</th>
                 <th style={{ width: 84, textAlign: 'right' }}>Costo</th>
                 <th style={{ width: 68 }}>Mon. Costo</th>
@@ -1684,7 +1684,7 @@ export default function Inventario() {
                       <div className="flex-row u-gap-6">
                         <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0" value={form.costo} onChange={e => setF('costo', e.target.value)} className="u-flex-1" />
                         {/* 2026-06-29 Multi-país F3: USD + moneda local del tenant. */}
-                        <select className="input" style={{ width: 80 }} value={form.costo_moneda} onChange={e => setF('costo_moneda', e.target.value)}>
+                        <select className="input u-w-80px" value={form.costo_moneda} onChange={e => setF('costo_moneda', e.target.value)}>
                           {Array.from(new Set(['USD', monedaLocal, form.costo_moneda].filter(Boolean)))
                             .map(m => <option key={m} value={m}>{m}</option>)}
                         </select>
@@ -1694,7 +1694,7 @@ export default function Inventario() {
                       <label className="field-label">Precio de venta</label>
                       <div className="flex-row u-gap-6">
                         <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0" value={form.precio_venta} onChange={e => setF('precio_venta', e.target.value)} className="u-flex-1" />
-                        <select className="input" style={{ width: 80 }} value={form.precio_moneda} onChange={e => setF('precio_moneda', e.target.value)}>
+                        <select className="input u-w-80px" value={form.precio_moneda} onChange={e => setF('precio_moneda', e.target.value)}>
                           {Array.from(new Set(['USD', monedaLocal, form.precio_moneda].filter(Boolean)))
                             .map(m => <option key={m} value={m}>{m}</option>)}
                         </select>
@@ -1881,7 +1881,7 @@ export default function Inventario() {
                             </div>
 
                             <div className="row">
-                              <div className="field" style={{ flex: 2 }}>
+                              <div className="field u-flex-2">
                                 <label className="field-label">
                                   Proveedor <span className="u-color-neg">*</span>
                                 </label>
@@ -2013,7 +2013,7 @@ export default function Inventario() {
 
       {showCatalogos && (
         <div ref={catalogosModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowCatalogos(false)}>
-          <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+          <div className="modal u-mw-480" onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
               <h3>Depósitos</h3>
               <button type="button" className="icon-btn" onClick={() => setShowCatalogos(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button>

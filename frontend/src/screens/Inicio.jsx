@@ -280,7 +280,7 @@ export default function Inicio() {
           full-width — la grilla de tools ocupa todo el ancho disponible. */}
       <div
         className={userHasCap(user, 'inicio.actividad_reciente') ? 'split-2' : ''}
-        style={{ marginTop: 'var(--gap)' }}
+        className="u-mt-var-gap"
       >
         {/* Tools column */}
         <div className="col">
