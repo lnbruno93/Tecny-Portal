@@ -239,11 +239,11 @@ export default function Clientes() {
                 <tr key={`skel-${i}`} className="tbl-skel-row">
                   <td><div className="skeleton" style={{ height: 16, width: '60%' }} /></td>
                   <td><div className="skeleton" style={{ height: 16, width: 48 }} /></td>
-                  <td><div className="skeleton" style={{ height: 16, width: 60 }} /></td>
+                  <td><div className="skeleton u-h-16-w-60" /></td>
                   <td><div className="skeleton" style={{ height: 16, width: 30 }} /></td>
                   <td><div className="skeleton" style={{ height: 16, width: 80 }} /></td>
                   <td><div className="skeleton" style={{ height: 16, width: 70 }} /></td>
-                  <td><div className="skeleton" style={{ height: 16, width: 60 }} /></td>
+                  <td><div className="skeleton u-h-16-w-60" /></td>
                   <td />
                 </tr>
               ))

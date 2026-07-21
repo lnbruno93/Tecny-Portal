@@ -312,7 +312,7 @@ export default function Proyectos() {
 
         {/* ── Detalle ── */}
         {!detalle ? (
-          <div className="card" style={{ minHeight: 200, display: 'grid', placeItems: 'center', color: 'var(--text-muted)' }}>
+          <div className="card u-empty-state-grid">
             Elegí un proyecto
           </div>
         ) : (
@@ -399,9 +399,9 @@ export default function Proyectos() {
                       <td><input type="date" className="input u-h-30-fs-12" value={mov.fecha} onChange={e => setMov(m => ({ ...m, fecha: e.target.value }))} /></td>
                       <td><input className="input u-h-30-fs-12" placeholder="Detalle…" value={mov.detalle} onChange={e => setMov(m => ({ ...m, detalle: e.target.value }))} /></td>
                       <td><input className="input u-h-30-fs-12" list="proy-cats" placeholder="Categoría" value={mov.categoria} onChange={e => setMov(m => ({ ...m, categoria: e.target.value }))} /></td>
-                      <td><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right' }} placeholder="0" value={mov.monto} onChange={e => setMov(m => ({ ...m, monto: e.target.value }))} /></td>
+                      <td><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono u-h-30-fs-12-td-right" placeholder="0" value={mov.monto} onChange={e => setMov(m => ({ ...m, monto: e.target.value }))} /></td>
                       <td>
-                        <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right' }} placeholder="TC" value={mov.tc} onChange={e => setMov(m => ({ ...m, tc: e.target.value }))} />
+                        <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono u-h-30-fs-12-td-right" placeholder="TC" value={mov.tc} onChange={e => setMov(m => ({ ...m, tc: e.target.value }))} />
                         <TcWarning tc={mov.tc} />
                       </td>
                       <td>

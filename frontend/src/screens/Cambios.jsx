@@ -384,7 +384,7 @@ export default function Cambios() {
 
         {/* Detalle */}
         {!detalle ? (
-          <div className="card" style={{ minHeight: 200, display: 'grid', placeItems: 'center', color: 'var(--text-muted)' }}>Elegí una financiera</div>
+          <div className="card u-empty-state-grid">Elegí una financiera</div>
         ) : (
           <div className="stack u-gap-14">
             <div className="card">

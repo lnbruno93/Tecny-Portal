@@ -500,7 +500,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
                       borderTop: '1px solid var(--hairline)',
                     }}
                     title={dup ? 'IMEI duplicado en otra fila — eliminá una' : undefined}>
-                      <td style={{ padding: '3px 6px', textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>{idx + 1}</td>
+                      <td className="u-badge-mini-muted">{idx + 1}</td>
                       <td className="u-p-3-4">
                         <ProductoPicker
                           value={r.nombre}

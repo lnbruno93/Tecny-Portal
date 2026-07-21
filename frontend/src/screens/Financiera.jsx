@@ -1077,7 +1077,7 @@ export default function Financiera() {
             </div>
             <div style={{ padding: '0 18px 18px', display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div>
-                <div className="muted tiny" style={{ fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>
+                <div className="muted tiny u-section-title">
                   Modelo
                 </div>
                 <div style={{ fontSize: 13.5, lineHeight: 1.5 }}>
@@ -1087,7 +1087,7 @@ export default function Financiera() {
               </div>
               <hr className="hr-divider" />
               <div>
-                <div className="muted tiny" style={{ fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>
+                <div className="muted tiny u-section-title">
                   OCR automático
                 </div>
                 <div style={{ fontSize: 13.5, lineHeight: 1.5 }}>
@@ -1110,7 +1110,7 @@ export default function Financiera() {
               </div>
               <hr className="hr-divider" />
               <div>
-                <div className="muted tiny" style={{ fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>
+                <div className="muted tiny u-section-title">
                   Porcentaje actual
                 </div>
                 <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--accent)' }}>
@@ -1336,7 +1336,7 @@ export default function Financiera() {
                     className="u-p-0-18-18">
                 {/* Fila 1: fecha + referencia + toggle USD. La elección se
                     persiste en localStorage (default según última vez). */}
-                <div className="row" style={{ marginBottom: 12, alignItems: 'flex-end' }}>
+                <div className="row u-mb-12-align-end">
                   <div className="field u-w-150px">
                     <div className="field-label">Fecha</div>
                     <input type="date" className="input mono"
@@ -1374,7 +1374,7 @@ export default function Financiera() {
                     descalce USD×TC vs ARS. */}
                 {pagoForm.convertir_usd && (
                   <>
-                  <div className="row" style={{ marginBottom: 12, alignItems: 'flex-end' }}>
+                  <div className="row u-mb-12-align-end">
                     <div className="field" style={{ flex: '1 1 140px', minWidth: 140 }}>
                       <label htmlFor="pago-usd" className="field-label">USD recibido (caja)</label>
                       <input id="pago-usd" type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"

@@ -385,7 +385,7 @@ export default function SitioPublico() {
           <Card>
             <div className="u-p-20-grid-gap-16">
               <div>
-                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <h3 className="u-modal-title">
                   Hero (top de la landing)
                   {dirtyHeroKeys.length > 0 && (
                     <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px',
@@ -436,7 +436,7 @@ export default function SitioPublico() {
           <Card>
             <div className="u-p-20-grid-gap-16">
               <div>
-                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <h3 className="u-modal-title">
                   CTA final
                   {dirtyCtaKeys.length > 0 && (
                     <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px',
@@ -486,9 +486,9 @@ export default function SitioPublico() {
           {/* ── SECCIÓN FAQ (Fase 3) ── */}
           <Card>
             <div className="u-p-20-grid-gap-16">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
+              <div className="u-flex-between-start-16">
                 <div>
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <h3 className="u-modal-title">
                     Preguntas frecuentes (FAQ)
                     {faqDirty && (
                       <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px',
@@ -565,7 +565,7 @@ export default function SitioPublico() {
             <div className="u-p-20-grid-gap-16">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <h3 className="u-modal-title">
                     Reseñas de Google
                     {googleEnabledDirty && (
                       <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px',
@@ -681,7 +681,7 @@ export default function SitioPublico() {
           {/* ── SECCIÓN RESEÑAS (Fase 2) ── */}
           <Card>
             <div className="u-p-20-grid-gap-16">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
+              <div className="u-flex-between-start-16">
                 <div>
                   <h3 className="u-m-0-fs-16-fw-600">
                     Reseñas de clientes

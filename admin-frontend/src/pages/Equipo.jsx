@@ -280,7 +280,7 @@ export default function Equipo() {
                         disabled={busyInvites.has(inv.id)}
                       >
                         <Icons.Refresh size={14} />
-                        <span style={{ marginLeft: 4 }}>Reenviar</span>
+                        <span className="u-ml-4">Reenviar</span>
                       </Btn>
                       <Btn
                         kind="danger"

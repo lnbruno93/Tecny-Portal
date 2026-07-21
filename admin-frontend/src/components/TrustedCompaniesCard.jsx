@@ -215,7 +215,7 @@ export default function TrustedCompaniesCard() {
   return (
     <Card>
       <div className="u-p-20-grid-gap-16">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
+        <div className="u-flex-between-start-16">
           <div>
             <h3 className="u-m-0-fs-16-fw-600">
               Empresas que confiaron en Tecny
@@ -370,7 +370,7 @@ export default function TrustedCompaniesCard() {
             </div>
 
             <div className="field">
-              <label className="muted tiny" style={{ marginBottom: 4, display: 'block' }}>
+              <label className="muted tiny u-mb-4-block">
                 Nombre de la empresa
               </label>
               <input
@@ -385,7 +385,7 @@ export default function TrustedCompaniesCard() {
             </div>
 
             <div className="field">
-              <label className="muted tiny" style={{ marginBottom: 4, display: 'block' }}>
+              <label className="muted tiny u-mb-4-block">
                 Logo (PNG, JPG, WebP, GIF o SVG — máx 4MB)
               </label>
               <input

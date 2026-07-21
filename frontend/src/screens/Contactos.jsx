@@ -282,7 +282,7 @@ export default function Contactos() {
           <option value="">Todos los orígenes</option>
           {ORIGENES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
-        <span className="muted tiny" style={{ marginLeft: 'auto' }}>{total} contacto{total === 1 ? '' : 's'}</span>
+        <span className="muted tiny u-ml-auto">{total} contacto{total === 1 ? '' : 's'}</span>
         {/* 2026-07-04 (#508): dropdown Exportar mails con 3 acciones.
             Menú se cierra por click-outside (registrado condicionalmente en useEffect). */}
         <div ref={exportMenuRef} className="u-pos-rel">
@@ -316,8 +316,7 @@ export default function Contactos() {
               <button
                 type="button"
                 role="menuitem"
-                className="btn btn-ghost"
-                style={{ width: '100%', justifyContent: 'flex-start', textAlign: 'left', padding: '8px 10px' }}
+                className="btn btn-ghost u-btn-left-fill"
                 onClick={copiarMails}
               >
                 <Icons.Copy size={13} />
@@ -329,8 +328,7 @@ export default function Contactos() {
               <button
                 type="button"
                 role="menuitem"
-                className="btn btn-ghost"
-                style={{ width: '100%', justifyContent: 'flex-start', textAlign: 'left', padding: '8px 10px' }}
+                className="btn btn-ghost u-btn-left-fill"
                 onClick={descargarCsv}
               >
                 <Icons.Download size={13} />
@@ -342,8 +340,7 @@ export default function Contactos() {
               <button
                 type="button"
                 role="menuitem"
-                className="btn btn-ghost"
-                style={{ width: '100%', justifyContent: 'flex-start', textAlign: 'left', padding: '8px 10px' }}
+                className="btn btn-ghost u-btn-left-fill"
                 onClick={descargarXlsx}
               >
                 <Icons.Download size={13} />

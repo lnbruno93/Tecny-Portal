@@ -160,9 +160,9 @@ const VentaRow = memo(function VentaRow({
             <div key={'c' + k} style={{ color: 'var(--warn)', fontSize: 11, marginTop: 4 }}>
               <div>
                 ↺ {c.descripcion}
-                {c.imei && <span className="muted tiny mono" style={{ marginLeft: 6, color: 'var(--warn)' }}>IMEI {fmtImei(c.imei)}</span>}
+                {c.imei && <span className="muted tiny mono u-ml-6-color-warn">IMEI {fmtImei(c.imei)}</span>}
                 {c.bateria != null && c.bateria > 0 && (
-                  <span className="muted tiny" style={{ marginLeft: 6, color: 'var(--warn)' }}>· 🔋 {c.bateria}%</span>
+                  <span className="muted tiny u-ml-6-color-warn">· 🔋 {c.bateria}%</span>
                 )}
               </div>
               {valTom > 0 && (

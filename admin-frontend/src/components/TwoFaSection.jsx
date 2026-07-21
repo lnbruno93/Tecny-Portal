@@ -313,7 +313,7 @@ export default function TwoFaSection({ onMessage }) {
             </>
           }
         >
-          <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5 }}>
+          <p className="u-m-0-fs-13-lh-15">
             {confirmMsg}
           </p>
         </Modal>
@@ -439,7 +439,7 @@ export default function TwoFaSection({ onMessage }) {
             </>
           }
         >
-          <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5 }}>
+          <p className="u-m-0-fs-13-lh-15">
             Se borra el setup incompleto y podrás empezar de cero. ¿Continuar?
           </p>
         </Modal>

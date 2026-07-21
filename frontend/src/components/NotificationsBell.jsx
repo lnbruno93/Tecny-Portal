@@ -474,7 +474,7 @@ export default function NotificationsBell() {
                 </div>
 
                 {novedadesItems.length === 0 ? (
-                  <div style={{ padding: '16px 14px', textAlign: 'center', color: 'var(--text-muted, #7c87a5)', fontSize: 12 }}>
+                  <div className="u-empty-p-16-14">
                     Sin novedades por ahora.
                   </div>
                 ) : (
@@ -565,7 +565,7 @@ export default function NotificationsBell() {
                   )}
                 </div>
                 {b2bItems.length === 0 ? (
-                  <div style={{ padding: '16px 14px', textAlign: 'center', color: 'var(--text-muted, #7c87a5)', fontSize: 12 }}>
+                  <div className="u-empty-p-16-14">
                     Sin notificaciones Red B2B.
                   </div>
                 ) : (
