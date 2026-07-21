@@ -227,7 +227,7 @@ export default function Clientes() {
               <th scope="col">Salud</th>
               <th scope="col">Estado</th>
               <th scope="col">Actividad</th>
-              <th scope="col" style={{ width: 36 }}>
+              <th scope="col" className="u-w-36">
                 <span className="sr-only">Acciones</span>
               </th>
             </tr>

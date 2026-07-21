@@ -215,7 +215,7 @@ export default function Resumen() {
           )}
           <span className="muted tiny u-ml-8">vs</span>
           <input
-            type="month" className="input mono" style={{ width: 160 }}
+            type="month" className="input mono u-w-160"
             value={periodoComp}
             onChange={e => setPeriodoComp(e.target.value)}
             max={periodoActual}

@@ -177,7 +177,7 @@ export default function ResetPassword() {
           Una vez confirmada, vas a poder iniciar sesión con la nueva.
         </p>
 
-        <form onSubmit={handleSubmit} style={{ textAlign: 'left' }}>
+        <form onSubmit={handleSubmit} className="u-td-left">
           <div className="field">
             <label htmlFor="reset-new">Contraseña nueva <span className="u-color-neg">*</span></label>
             <div className="iw">

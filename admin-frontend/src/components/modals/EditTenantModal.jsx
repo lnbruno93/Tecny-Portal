@@ -279,7 +279,7 @@ export default function EditTenantModal({ tenant, open, onClose, onSaved }) {
             onChange={(e) => update('notes', e.target.value)}
             placeholder="Contexto del cliente, deals, etc."
             disabled={submitting}
-            style={{ resize: 'vertical', minHeight: 84 }}
+            className="u-resize-v-mh-84"
           />
         </div>
 

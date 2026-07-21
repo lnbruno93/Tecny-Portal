@@ -342,8 +342,7 @@ export default function Login() {
             resetear. Si perdió acceso al 2FA hay que ir por otro flow (soporte). */}
         {!twofaRequired && (
           <p
-            className="muted tiny"
-            style={{ textAlign: 'center', margin: '16px 0 0' }}
+            className="muted tiny u-text-center-m-16-0-0"
           >
             <Link
               to="/forgot-password"

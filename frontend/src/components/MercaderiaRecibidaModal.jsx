@@ -308,7 +308,7 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
               </div>
             )}
             <div style={bannerSaldoStyle}>
-              <span style={{ color: 'var(--text-2)' }}>
+              <span className="u-color-text-2">
                 Saldo actual {Number(saldoActual || 0) > 0 ? '(cliente nos debe)' : Number(saldoActual || 0) < 0 ? '(a favor del cliente)' : ''}
               </span>
               <span style={{

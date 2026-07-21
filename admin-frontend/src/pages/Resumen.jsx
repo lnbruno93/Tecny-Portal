@@ -335,7 +335,7 @@ export default function Resumen() {
             <div className="kpi-value">
               {loading ? <span className="skeleton u-inline-block-w-60-h-22" /> : k.value}
               {k.unit && (
-                <span className="muted" style={{ fontSize: 12, fontWeight: 500, marginLeft: 4 }}>
+                <span className="muted u-fs-12-fw-500-ml-4-b">
                   {k.unit}
                 </span>
               )}

@@ -407,7 +407,7 @@ export default function Ficha() {
           <div className="kpi-label">MRR</div>
           <div className="kpi-value">
             {fmtMoney(tenant.mrr_usd ?? 0)}
-            <span className="muted" style={{ fontSize: 12, fontWeight: 500, marginLeft: 4 }}>/mes</span>
+            <span className="muted u-fs-12-fw-500-ml-4-b">/mes</span>
           </div>
           <div className="muted tiny">Plan {planLabel(tenant.plan)}</div>
         </Card>
@@ -422,7 +422,7 @@ export default function Ficha() {
           <div className="kpi-label">Salud (proxy)</div>
           <div className="kpi-value" style={{ color: hColor }}>
             {health}
-            <span className="muted" style={{ fontSize: 12, fontWeight: 500, marginLeft: 4 }}>/100</span>
+            <span className="muted u-fs-12-fw-500-ml-4-b">/100</span>
           </div>
           <div className="muted tiny">{hDesc}</div>
         </Card>

@@ -489,16 +489,16 @@ export default function Proveedores() {
                 fontSize: 13,
               }}>
                 <colgroup>
-                  <col style={{ width: 88  }} />{/* Fecha        */}
-                  <col style={{ width: 108 }} />{/* Tipo         */}
+                  <col className="u-w-88" />{/* Fecha        */}
+                  <col className="u-w-108" />{/* Tipo         */}
                   <col className="u-w-90px" />{/* Producto     */}
                   <col className="u-w-130px" />{/* Modelo       */}
-                  <col style={{ width: 66  }} />{/* Cap.         */}
-                  <col style={{ width: 76  }} />{/* Color        */}
+                  <col className="u-w-66" />{/* Cap.         */}
+                  <col className="u-w-76" />{/* Color        */}
                   <col className="u-w-130px" />{/* IMEI/Serial  */}
-                  <col style={{ width: 94  }} />{/* Monto USD    */}
-                  <col style={{ width: 30  }} />{/* ✓            */}
-                  <col style={{ width: 48  }} />{/* Acción       */}
+                  <col className="u-w-94" />{/* Monto USD    */}
+                  <col className="u-w-30" />{/* ✓            */}
+                  <col className="u-w-48" />{/* Acción       */}
                 </colgroup>
 
                 <thead>
@@ -577,7 +577,7 @@ export default function Proveedores() {
 
                   {movsPag.page < movsPag.pages && (
                     <tr>
-                      <td colSpan={11} style={{ textAlign: 'center', padding: '8px' }}>
+                      <td colSpan={11} className="u-p-8-text-center">
                         <button className="btn btn-ghost btn-sm" onClick={loadMasMovs} disabled={loadingMasMovs}>
                           {loadingMasMovs ? 'Cargando…' : `Ver movimientos más antiguos (${movs.length} de ${movsPag.total})`}
                         </button>
@@ -651,7 +651,7 @@ export default function Proveedores() {
                     <input type="text" className="input" placeholder="Ej: paga a 30 días"
                       value={provForm.notas} onChange={e => setProvForm(f => ({ ...f, notas: e.target.value }))} />
                   </div>
-                  <div className="field" style={{ width: 160 }}>
+                  <div className="field u-w-160">
                     <label className="field-label">Saldo inicial (USD)</label>
                     <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input" placeholder="0"
                       value={provForm.saldo_inicial} onChange={e => setProvForm(f => ({ ...f, saldo_inicial: e.target.value }))} />

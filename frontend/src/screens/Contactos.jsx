@@ -376,7 +376,7 @@ export default function Contactos() {
           // mismo mensaje sin importar si el user filtró o si aún no
           // cargó contactos. Ahora sabemos qué caso es y damos la acción
           // correcta (crear vs limpiar filtros).
-          <div className="empty" style={{ textAlign: 'center', padding: '32px 20px' }}>
+          <div className="empty u-p-32-20-text-center">
             {(dSearch || origenFilter) ? (
               <>
                 <div className="u-fs-14-mb-8">

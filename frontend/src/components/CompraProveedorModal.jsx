@@ -498,10 +498,10 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
                 <col className="u-w-60px" />   {/* GB */}
                 <col className="u-w-90px" />   {/* Color */}
                 <col className="u-w-60px" />   {/* Bat % */}
-                <col style={{ width: 88 }} />   {/* Tipo */}
+                <col className="u-w-88" />   {/* Tipo */}
                 <col className="u-w-120px" />  {/* Categoría */}
                 <col className="u-w-120px" />  {/* Depósito */}
-                <col style={{ width: 88 }} />   {/* Condición */}
+                <col className="u-w-88" />   {/* Condición */}
                 <col className="u-w-96" />   {/* Tipo carga */}
                 <col className="u-w-60px" />   {/* Cant */}
                 <col className="u-w-80px" />   {/* Costo */}

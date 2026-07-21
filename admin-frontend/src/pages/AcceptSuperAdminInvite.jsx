@@ -167,7 +167,7 @@ export default function AcceptSuperAdminInvite() {
 
         {step === STEPS.VERIFYING && (
           <>
-            <h1 style={{ textAlign: 'center', fontSize: 20, margin: '0 0 8px' }}>
+            <h1 className="u-text-center-fs-20-m-0-0-8">
               Verificando invitación…
             </h1>
             <p className="muted" style={{ textAlign: 'center', fontSize: 13, margin: 0 }}>
@@ -192,7 +192,7 @@ export default function AcceptSuperAdminInvite() {
 
         {step === STEPS.DONE && (
           <>
-            <h1 style={{ textAlign: 'center', fontSize: 20, margin: '0 0 8px' }}>
+            <h1 className="u-text-center-fs-20-m-0-0-8">
               Redirigiendo…
             </h1>
           </>

@@ -257,7 +257,7 @@ function PartnersTab() {
       </div>
 
       {loading ? (
-        <div className="muted" style={{ padding: 24, textAlign: 'center' }}>
+        <div className="muted u-p-24-text-center">
           Cargando partnerships...
         </div>
       ) : partnerships.length === 0 ? (

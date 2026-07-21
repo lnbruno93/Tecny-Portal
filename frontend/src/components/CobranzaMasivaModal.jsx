@@ -262,14 +262,14 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1200, tableLayout: 'fixed' }}>
               <colgroup>
                 <col className="u-w-32px" />   {/* # */}
-                <col style={{ width: 280 }} />  {/* Cliente */}
+                <col className="u-w-280" />  {/* Cliente */}
                 <col className="u-w-100px" />  {/* Saldo */}
                 <col className="u-w-110px" />  {/* Monto */}
                 <col className="u-w-200" />  {/* Caja */}
                 <col className="u-w-90px" />   {/* TC */}
                 <col className="u-w-110px" />  {/* Subtotal USD */}
                 <col className="u-w-110px" />  {/* Tipo */}
-                <col style={{ width: 36 }} />   {/* X */}
+                <col className="u-w-36" />   {/* X */}
               </colgroup>
               <thead>
                 <tr>

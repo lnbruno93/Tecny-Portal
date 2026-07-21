@@ -995,7 +995,7 @@ export default function Tarjetas() {
 
                   {/* Si no se convierte a USD: solo input ARS (flujo simple). */}
                   {!multiLiq.convertir_usd && (
-                    <div className="field" style={{ width: 220 }}>
+                    <div className="field u-w-220">
                       <label htmlFor="multiliq-ars-only" className="field-label tiny">Total ARS recibido</label>
                       <input id="multiliq-ars-only" type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono"
                              placeholder="0"
@@ -1237,7 +1237,7 @@ export default function Tarjetas() {
             </div>
             <form onSubmit={handleCobroPrevSave}>
               <div className="modal-body">
-                <fieldset disabled={savingCobroPrev} style={{ border: 0, padding: 0, margin: 0 }}>
+                <fieldset disabled={savingCobroPrev} className="fieldset-inline">
                 <div className="muted tiny u-lh-15-mb-14">
                   Para saldos pendientes de ventas anteriores al sistema. NO genera
                   una venta — solo agrega saldo a cobrar de la financiera. Una
@@ -1330,7 +1330,7 @@ export default function Tarjetas() {
                 {/* fieldset[disabled] propaga a todos los inputs/selects internos:
                     durante el save no se puede seguir tipeando (evita race con
                     el toast de éxito + cierre que pisaba cambios). */}
-                <fieldset disabled={savingEdit} style={{ border: 0, padding: 0, margin: 0 }}>
+                <fieldset disabled={savingEdit} className="fieldset-inline">
                 <div className="muted tiny u-lh-15-mb-14">
                   Tarjeta: <b>{editMov.metodo_nombre}</b>
                   {editMov.tipo === 'liquidacion' && (

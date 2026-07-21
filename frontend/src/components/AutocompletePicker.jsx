@@ -131,9 +131,9 @@ export default function AutocompletePicker({
           borderRadius: 4, zIndex: 50, maxHeight: 260, overflowY: 'auto',
           boxShadow: '0 6px 20px rgba(0,0,0,0.4)',
         }}>
-          {loading && <div style={{ padding: 8, fontSize: 12, color: 'var(--text-muted)' }}>Buscando…</div>}
+          {loading && <div className="u-p-8-fs-12-color-muted">Buscando…</div>}
           {!loading && items.length === 0 && (
-            <div style={{ padding: 8, fontSize: 12, color: 'var(--text-muted)' }}>{emptyText}</div>
+            <div className="u-p-8-fs-12-color-muted">{emptyText}</div>
           )}
           {items.map((opt, i) => (
             <div key={getOptionKey(opt)}
