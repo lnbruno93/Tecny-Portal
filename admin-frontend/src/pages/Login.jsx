@@ -347,7 +347,7 @@ export default function Login() {
           >
             <Link
               to="/forgot-password"
-              style={{ color: 'var(--muted)', textDecoration: 'underline' }}
+              className="u-color-muted-underline"
             >
               ¿Olvidaste tu contraseña?
             </Link>

@@ -223,7 +223,7 @@ export default function Signup() {
                   {/* TANDA 2 fix U4 auditoría 2026-06-17: word-break para
                       emails largos en mobile (≤375px). Sin esto el card
                       desborda el viewport. */}
-                  <strong style={{ wordBreak: 'break-all' }}>{submittedEmail}</strong>{' '}
+                  <strong className="u-word-break-all">{submittedEmail}</strong>{' '}
                   es válido, te enviamos un link de verificación. Hacé click en el
                   link para activar tu cuenta y poder iniciar sesión.
                 </p>

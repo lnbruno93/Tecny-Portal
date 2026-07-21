@@ -1777,7 +1777,7 @@ export default function Ventas() {
                       </button>
                     </div>
                     {(vForm.canjes || []).length === 0 && (
-                      <div className="muted tiny" style={{ padding: '6px 0' }}>
+                      <div className="muted tiny u-p-6-0">
                         Sin equipos en canje. Si el cliente entrega uno como parte de pago, agregalo acá.
                       </div>
                     )}
@@ -1789,7 +1789,7 @@ export default function Ventas() {
                           borderRadius: 8,
                         }}>
                           {/* Header del canje: índice + botón quitar */}
-                          <div className="flex-between" style={{ alignItems: 'center', marginBottom: 8 }}>
+                          <div className="flex-between u-align-center-mb-8">
                             <div className="muted tiny u-fw-600">
                               Equipo {i + 1}
                               {c._existing && <span style={{ marginLeft: 6, color: 'var(--accent)' }}>(ya en Inventario)</span>}
@@ -1860,7 +1860,7 @@ export default function Ventas() {
                               → el operador no podía cambiar la categoría del producto
                               asociado desde el modal de edición de venta. */}
                           <div className="row u-mb-8">
-                            <div className="field" style={{ flex: 1.5 }}>
+                            <div className="field u-flex-15">
                               <label className="field-label">Categoría</label>
                               <select className="input" value={c.clase_id}
                                       onChange={e => setCanje(c._id, 'clase_id', e.target.value)}>

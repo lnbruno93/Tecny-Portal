@@ -103,7 +103,7 @@ export default function AutocompletePicker({
 
   return (
     <div ref={boxRef} className="u-pos-rel">
-      <div className="u-flex-gap-4" style={{ alignItems: 'center' }}>
+      <div className="u-flex-gap-4 u-align-items-center">
         <input
           className="cell-inp"
           style={{

@@ -1461,7 +1461,7 @@ export default function Inventario() {
           const hasFilters = !!(dSearch || vistaFiltro !== 'todos' || hasDrillDown);
           if (hasFilters) {
             return (
-              <div className="empty" style={{ padding: '28px 16px' }}>
+              <div className="empty u-p-28-16">
                 <div className="u-fw-600-mb-6">Sin resultados</div>
                 <div className="muted tiny u-mb-14">
                   No hay productos que coincidan con los filtros aplicados.
@@ -1773,7 +1773,7 @@ export default function Inventario() {
                   <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>
                     <span className="pos">{importValidos.length} válidos</span>
                     {importWarnings.length > 0 && (
-                      <> · <span style={{ color: 'var(--warn, #d97706)' }}>{importWarnings.length} con aviso</span></>
+                      <> · <span className="u-color-warn-hex">{importWarnings.length} con aviso</span></>
                     )}
                     {' · '}<span className="neg">{importErrores.length} con error</span> · {importRows.length} filas
                     {importGroups.length > 0 && (

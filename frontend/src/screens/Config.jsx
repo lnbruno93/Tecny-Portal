@@ -307,7 +307,7 @@ export default function Config() {
             <div className="u-mb-16">
               <div className="field-label u-mb-8">Tarjetas de crédito</div>
               {tarjetas.length === 0 ? (
-                <div className="muted tiny" style={{ padding: '6px 0' }}>
+                <div className="muted tiny u-p-6-0">
                   No hay tarjetas configuradas. Creá una en Cajas → Config marcándola como tarjeta.
                 </div>
               ) : (

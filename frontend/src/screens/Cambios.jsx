@@ -434,7 +434,7 @@ export default function Cambios() {
                espacio propio. La tabla del histórico queda para lectura. */}
             <div className="card" style={{ padding: 14 }}>
               <div style={{ display: 'grid', gap: 10, marginBottom: 12 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div className="u-flex-center-gap-12-wrap">
                   <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', minWidth: 78 }}>Dirección:</span>
                   <Seg
                     value={dirDeTipo(mov.tipo)}
@@ -456,7 +456,7 @@ export default function Cambios() {
                     }}
                   />
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div className="u-flex-center-gap-12-wrap">
                   <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', minWidth: 78 }}>Operación:</span>
                   <Seg
                     value={opDeTipo(mov.tipo)}

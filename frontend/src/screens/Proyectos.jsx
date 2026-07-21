@@ -500,7 +500,7 @@ export default function Proyectos() {
                         const on = form.participantes.includes(c.id);
                         return (
                           <label key={c.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 10px', border: `1px solid ${on ? 'var(--border-strong)' : 'var(--border)'}`, borderRadius: 8, cursor: 'pointer', background: on ? 'var(--surface-2)' : 'var(--surface)' }}>
-                            <input type="checkbox" checked={on} onChange={e => setForm(f => ({ ...f, participantes: e.target.checked ? [...f.participantes, c.id] : f.participantes.filter(x => x !== c.id) }))} style={{ accentColor: 'var(--accent)' }} />
+                            <input type="checkbox" checked={on} onChange={e => setForm(f => ({ ...f, participantes: e.target.checked ? [...f.participantes, c.id] : f.participantes.filter(x => x !== c.id) }))} className="u-accent-color" />
                             <span className="u-fs-12">{nombreContacto(c)}</span>
                           </label>
                         );

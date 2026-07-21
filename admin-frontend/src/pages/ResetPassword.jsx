@@ -400,7 +400,7 @@ export default function ResetPassword() {
         >
           <Link
             to="/login"
-            style={{ color: 'var(--muted)', textDecoration: 'underline' }}
+            className="u-color-muted-underline"
           >
             Volver al login
           </Link>

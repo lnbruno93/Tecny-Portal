@@ -58,7 +58,7 @@ function ProtectedRoute({ children }) {
   if (loading) {
     return (
       <div
-        style={{ display: 'grid', placeItems: 'center', height: '100vh' }}
+        className="loading-full"
         role="status"
         aria-live="polite"
         aria-busy="true"
@@ -130,7 +130,7 @@ export default function App() {
       <Route
         path="/aceptar-invitacion"
         element={
-          <Suspense fallback={<div style={{ display:'grid', placeItems:'center', height:'100vh' }}><div className="muted">Cargando…</div></div>}>
+          <Suspense fallback={<div className="loading-full"><div className="muted">Cargando…</div></div>}>
             <AcceptSuperAdminInvite />
           </Suspense>
         }
@@ -144,7 +144,7 @@ export default function App() {
       <Route
         path="/forgot-password"
         element={
-          <Suspense fallback={<div style={{ display:'grid', placeItems:'center', height:'100vh' }}><div className="muted">Cargando…</div></div>}>
+          <Suspense fallback={<div className="loading-full"><div className="muted">Cargando…</div></div>}>
             <ForgotPassword />
           </Suspense>
         }
@@ -152,7 +152,7 @@ export default function App() {
       <Route
         path="/reset-password"
         element={
-          <Suspense fallback={<div style={{ display:'grid', placeItems:'center', height:'100vh' }}><div className="muted">Cargando…</div></div>}>
+          <Suspense fallback={<div className="loading-full"><div className="muted">Cargando…</div></div>}>
             <ResetPassword />
           </Suspense>
         }

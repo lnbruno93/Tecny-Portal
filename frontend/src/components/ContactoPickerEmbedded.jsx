@@ -27,13 +27,13 @@ export default function ContactoPickerEmbedded({ form, setForm, allContacts }) {
       <div className="flex-row" style={{ gap: 4, marginBottom: 8, background: 'var(--surface-2)', padding: 3, borderRadius: 6, width: 'fit-content' }}>
         <button type="button"
                 className={'btn btn-sm ' + (form.contactoMode === 'existente' ? 'btn-primary' : 'btn-ghost')}
-                style={{ padding: '4px 12px' }}
+                className="u-p-4-12"
                 onClick={() => setForm(f => ({ ...f, contactoMode: 'existente' }))}>
           Existente
         </button>
         <button type="button"
                 className={'btn btn-sm ' + (form.contactoMode === 'nuevo' ? 'btn-primary' : 'btn-ghost')}
-                style={{ padding: '4px 12px' }}
+                className="u-p-4-12"
                 onClick={() => setForm(f => ({ ...f, contactoMode: 'nuevo' }))}>
           <Icons.Plus size={11} /> Nuevo
         </button>
@@ -52,13 +52,13 @@ export default function ContactoPickerEmbedded({ form, setForm, allContacts }) {
         </select>
       ) : (
         <div className="row u-gap-8">
-          <div className="field" style={{ flex: 1.5 }}>
+          <div className="field u-flex-15">
             <label className="field-label tiny">Nombre <span className="u-color-neg">*</span></label>
             <input className="input" placeholder="ej. Martín" autoFocus
                    value={form.nuevoNombre}
                    onChange={e => setForm(f => ({ ...f, nuevoNombre: e.target.value }))} />
           </div>
-          <div className="field" style={{ flex: 1.5 }}>
+          <div className="field u-flex-15">
             <label className="field-label tiny">Apellido</label>
             <input className="input" placeholder="ej. García"
                    value={form.nuevoApellido}

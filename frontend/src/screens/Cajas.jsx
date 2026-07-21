@@ -638,7 +638,7 @@ export default function Cajas() {
                   versión es más descubrible para users nuevos. Útil sobre todo
                   cuando NO hay contacto seleccionado: el "+Movimiento" del
                   detalle a la derecha requiere primero clickear un contacto. */}
-              <div className="card-hd flex-between" style={{ alignItems: 'center' }}>
+              <div className="card-hd flex-between u-align-items-center">
                 <h3 className="u-m-0">Por contacto</h3>
                 <button className="btn btn-primary btn-sm"
                         onClick={() => { setDeudaForm(EMPTY_DEUDA()); setDeudaError(''); setShowDeuda(true); }}>
@@ -803,7 +803,7 @@ export default function Cajas() {
                 El mismo botón existe en el Shell (icono "+" arriba a la derecha)
                 — esta versión es más descubrible para users nuevos que esperan
                 el botón DENTRO de la pantalla, al lado del título. */}
-            <div className="card-hd flex-between" style={{ alignItems: 'center' }}>
+            <div className="card-hd flex-between u-align-items-center">
               <h3 className="u-m-0">Inversiones — {inversiones.length}</h3>
               <button className="btn btn-primary btn-sm"
                       onClick={() => { setInvForm(EMPTY_INV()); setInvError(''); setShowInv(true); }}>
@@ -883,7 +883,7 @@ export default function Cajas() {
 
                         {/* Sub-filas: solo si está expandido y hay >1 movs */}
                         {expandido && g.items.length > 1 && g.items.map(m => (
-                          <tr key={m.id} style={{ background: 'var(--surface-2)' }}>
+                          <tr key={m.id} className="u-bg-surface-2">
                             <td></td>
                             <td className="muted mono tiny" style={{ paddingLeft: 24 }}>
                               └ {fmtFecha(m.fecha)}
@@ -940,7 +940,7 @@ export default function Cajas() {
                        value={cajaForm.saldo_inicial} onChange={e => setCajaForm(f => ({ ...f, saldo_inicial: e.target.value }))} />
               </div>
               <label className="field" style={{ width: 'auto', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <input type="checkbox" checked={cajaForm.es_tarjeta} onChange={e => setCajaForm(f => ({ ...f, es_tarjeta: e.target.checked, comision_pct: '' }))} style={{ accentColor: 'var(--accent)' }} />
+                <input type="checkbox" checked={cajaForm.es_tarjeta} onChange={e => setCajaForm(f => ({ ...f, es_tarjeta: e.target.checked, comision_pct: '' }))} className="u-accent-color" />
                 <span className="u-fs-12">Es tarjeta</span>
               </label>
               {cajaForm.es_tarjeta && (
