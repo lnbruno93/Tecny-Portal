@@ -907,7 +907,7 @@ export default function Envios() {
       {/* 2026-06-24 mobile lote E: flex-wrap + gap mayor para que en
           <=414px las dos mitades (date nav + search/filtros) caigan a
           líneas separadas en vez de squeezear horizontalmente. */}
-      <div className="flex-between" className="u-mb-14-wrap-rowgap-10">
+      <div className="flex-between u-mb-14-wrap-rowgap-10">
         <div className="flex-row u-gap-8-flex-wrap">
           <button
             className="icon-btn"
@@ -945,7 +945,7 @@ export default function Envios() {
           {/* 2026-06-24 mobile lote E: width 280 fijo no entra en 375px viewport
               (junto con el Seg al lado). flex-grow + min-width 200 hace que
               se estire en desktop pero achique a 200px mínimo en mobile. */}
-          <div className="input-group" className="u-flex-11-200-mw-mw">
+          <div className="input-group u-flex-11-200-mw-mw">
             <span className="addon addon-l"><Icons.Search size={14} /></span>
             <input
               className="input"
@@ -1029,7 +1029,7 @@ export default function Envios() {
                 const hasFilters = !!(search || estadoFilter !== 'todos' || dateFilter);
                 if (hasFilters) {
                   return (
-                    <div className="empty" className="u-p-24-16-only">
+                    <div className="empty u-p-24-16-only">
                       <div className="u-fw-600-mb-6">Sin resultados</div>
                       <div className="muted tiny u-mb-14">
                         No hay envíos que coincidan con los filtros aplicados.
@@ -1087,7 +1087,7 @@ export default function Envios() {
                   </div>
                   <div className="u-fs-14-fw-600">{e.cliente}</div>
                   <div className="muted tiny u-mt-2">{e.direccion}{e.barrio ? ' · ' + e.barrio : ''}</div>
-                  <div className="flex-row" className="u-gap-14-mt-8-wrap">
+                  <div className="flex-row u-gap-14-mt-8-wrap">
                     {productos.length > 0 && (
                       <div className="flex-row u-gap-5-fs-12">
                         <Icons.Box size={13} className="muted" />
@@ -1107,7 +1107,7 @@ export default function Envios() {
                       </div>
                     )}
                     {e.operador && (
-                      <div className="flex-row" className="u-gap-5-fs-12-ml-auto">
+                      <div className="flex-row u-gap-5-fs-12-ml-auto">
                         <Icons.Users size={13} className="muted" />
                         <span className="muted">{e.operador}</span>
                       </div>
@@ -1352,7 +1352,7 @@ export default function Envios() {
                   {/* Fila 1: fecha + estado + prioridad */}
                   <div className="row">
                     <div className="field u-flex-1">
-                      <label className="field-label">Fecha <span className="u-color-neg">*</span></label>
+                      <label className="field-label u-color-neg">Fecha <span>*</span></label>
                       <input type="date" className="input" value={form.fecha}
                         onChange={e => setF('fecha', e.target.value)} />
                     </div>
@@ -1379,7 +1379,7 @@ export default function Envios() {
                   {/* Fila 2: cliente + teléfono */}
                   <div className="row">
                     <div className="field u-flex-2">
-                      <label className="field-label">Cliente <span className="u-color-neg">*</span></label>
+                      <label className="field-label u-color-neg">Cliente <span>*</span></label>
                       <input className={'input' + (fieldErrors.cliente ? ' input-error' : '')} placeholder="Nombre del cliente"
                         value={form.cliente} onChange={e => setF('cliente', e.target.value)} autoFocus
                         aria-invalid={!!fieldErrors.cliente} />
@@ -1395,7 +1395,7 @@ export default function Envios() {
                   {/* Fila 3: dirección + barrio */}
                   <div className="row">
                     <div className="field u-flex-2">
-                      <label className="field-label">Dirección <span className="u-color-neg">*</span></label>
+                      <label className="field-label u-color-neg">Dirección <span>*</span></label>
                       <input className={'input' + (fieldErrors.direccion ? ' input-error' : '')} placeholder="ej. San Martín 450"
                         value={form.direccion} onChange={e => setF('direccion', e.target.value)}
                         aria-invalid={!!fieldErrors.direccion} />
@@ -1446,7 +1446,7 @@ export default function Envios() {
                     <div className="stack u-gap-8">
                       {/* Auditoría 2026-06-30 F-13/14: key={_id} estable. */}
                       {items.map((it, idx) => ({ it, idx })).filter(({ it }) => it.tipo === 'producto').map(({ it, idx }) => (
-                        <div key={it._id} className="card card-tight" className="u-p-12-14">
+                        <div key={it._id} className="card card-tight u-p-12-14">
                           {/* 2026-06-10 (Lucas eligió layout "Hero card con chips"):
                               · Sin linkear → grilla compacta de 4 col: buscador + monto + moneda + ✕.
                               · Linkeado → 2 niveles:
@@ -1456,14 +1456,14 @@ export default function Envios() {
                           {!it.producto_id ? (
                             // 2026-06-24 mobile lote C: .item-grid responsive
                             <div className="item-grid" style={{ '--cols': '1fr 140px 90px auto', gap: 8, alignItems: 'end' }}>
-                              <div className="field" className="u-mb-0-relative">
-                                <label className="field-label">Buscar producto del inventario <span className="muted tiny">(nombre, IMEI, color, GB…)</span></label>
+                              <div className="field u-mb-0-relative">
+                                <label className="field-label muted tiny">Buscar producto del inventario <span>(nombre, IMEI, color, GB…)</span></label>
                                 <input className="input" placeholder="Empezá a tipear…"
                                        value={prodSearch.itemIdx === idx ? prodSearch.q : ''}
                                        onChange={e => searchProductos(idx, e.target.value)}
                                        onFocus={() => setProdSearch(s => ({ ...s, itemIdx: idx }))} />
                                 {prodSearch.itemIdx === idx && prodSearch.q.trim().length >= 2 && (
-                                  <div className="card card-tight" className="u-dropdown-abs-large">
+                                  <div className="card card-tight u-dropdown-abs-large">
                                     {prodSearch.loading && <div className="muted tiny u-p-8-10">Buscando…</div>}
                                     {!prodSearch.loading && prodSearch.results.length === 0 && <div className="muted tiny u-p-8-10">Sin resultados</div>}
                                     {prodSearch.results.map(p => (
@@ -1530,7 +1530,7 @@ export default function Envios() {
                                     </span>
                                   )}
                                   {it._imei && (
-                                    <span className="mono" className="u-color-muted-fs-115-ml-2">
+                                    <span className="mono u-color-muted-fs-115-ml-2">
                                       IMEI {it._imei}
                                     </span>
                                   )}
@@ -1689,7 +1689,7 @@ export default function Envios() {
                                   <div className="mono neg u-fs-13-fw-600">−{sym(it.moneda)}{fmt(det.costoFinOrig)}</div>
                                 </div>
                                 <div>
-                                  <div className="muted tiny u-mb-2">Entra a tu caja <span className="u-color-text-muted">(editable)</span></div>
+                                  <div className="muted tiny u-mb-2 u-color-text-muted">Entra a tu caja <span>(editable)</span></div>
                                   <div className="u-flex-center-gap-4-wrap">
                                     <input
                                       type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
@@ -1708,7 +1708,7 @@ export default function Envios() {
                         );
                       })}
                       {items.filter(i => i.tipo === 'pago').length === 0 && (
-                        <div className="muted tiny" className="u-p-4-0-only">Sin pagos cargados. Sumá un método con "Agregar método".</div>
+                        <div className="muted tiny u-p-4-0-only">Sin pagos cargados. Sumá un método con "Agregar método".</div>
                       )}
                     </div>
                   </div>
@@ -1787,7 +1787,7 @@ export default function Envios() {
                       syncFinancieraComprobante en backend. */}
                   {modalMode === 'create' && (
                     <div className="field">
-                      <label className="field-label">Comprobantes de pago <span className="muted tiny">(imágenes/PDF, máx 6MB c/u · requerido si cobrás por Transferencia)</span></label>
+                      <label className="field-label muted tiny">Comprobantes de pago <span>(imágenes/PDF, máx 6MB c/u · requerido si cobrás por Transferencia)</span></label>
                       <input type="file" multiple accept="image/*,application/pdf" className="input" onChange={onComprobFiles} />
                       {comprobantes.length > 0 && <div className="muted tiny u-mt-4">{comprobantes.length} archivo(s) listo(s)</div>}
                       {/* OCR del comprobante (Tema C rev5 — mismo patrón que Ventas
@@ -1809,7 +1809,7 @@ export default function Envios() {
                   )}
 
                   {/* Resumen tipo Ventas: Total venta · Pagos · Diferencia (Cubierto ✓) */}
-                  <div className="card card-tight" className="u-p-10-12-bg-2">
+                  <div className="card card-tight u-p-10-12-bg-2">
                     <div className="u-flex-between-fs-13">
                       <span className="muted">Total venta</span>
                       <span className="mono">u$s {summary.totalUsd.toFixed(2)}</span>
@@ -1832,7 +1832,7 @@ export default function Envios() {
                       footgun: si el operador no lo tickeaba, el envío nunca aparecía
                       en el dashboard de ventas. */}
                   <div className="field u-mb-0">
-                    <label className="field-label">Tipo de cambio (TC) del envío <span className="muted tiny">opcional · necesario si hay items en ARS</span></label>
+                    <label className="field-label muted tiny">Tipo de cambio (TC) del envío <span>opcional · necesario si hay items en ARS</span></label>
                     <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Ej: 1000"
                            value={form.tc} onChange={e => setF('tc', e.target.value)} />
                   </div>
