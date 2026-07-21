@@ -876,22 +876,22 @@ export default function Envios() {
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">Total</div>
           <div className="kpi-value mono">{kpiTotal}</div>
-          <div className="muted tiny" style={{ marginTop: 6 }}>en sistema</div>
+          <div className="muted tiny u-mt-6">en sistema</div>
         </div>
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">Entregados</div>
           <div className="kpi-value mono pos">{kpiEntregados}</div>
-          <div className="muted tiny" style={{ marginTop: 6 }}>esta semana</div>
+          <div className="muted tiny u-mt-6">esta semana</div>
         </div>
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">En camino</div>
           <div className="kpi-value mono" style={{ color: 'var(--info)' }}>{kpiEnCamino}</div>
-          <div className="muted tiny" style={{ marginTop: 6 }}>ahora</div>
+          <div className="muted tiny u-mt-6">ahora</div>
         </div>
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">Pendientes</div>
           <div className="kpi-value mono" style={{ color: 'var(--warn)' }}>{kpiPendientes}</div>
-          <div className="muted tiny" style={{ marginTop: 6 }}>por despachar</div>
+          <div className="muted tiny u-mt-6">por despachar</div>
         </div>
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">Cobros en ruta</div>
@@ -899,7 +899,7 @@ export default function Envios() {
             <span className="ccy">u$s</span>
             <span className="mono pos">{fmt(kpiCobros)}</span>
           </div>
-          <div className="muted tiny" style={{ marginTop: 6 }}>items tipo "pago"</div>
+          <div className="muted tiny u-mt-6">items tipo "pago"</div>
         </div>
       </div>
 
@@ -983,11 +983,11 @@ export default function Envios() {
         >
           {Array.from({ length: 5 }).map((_, i) => (
             <div key={i} className="card card-tight">
-              <div className="flex-between" style={{ marginBottom: 8 }}>
+              <div className="flex-between u-mb-8">
                 <Skeleton width={120} height={14} />
                 <Skeleton width={60} height={12} />
               </div>
-              <Skeleton width="60%" height={16} style={{ marginBottom: 4 }} />
+              <Skeleton width="60%" height={16} className="u-mb-4" />
               <Skeleton width="80%" height={12} />
             </div>
           ))}
@@ -1031,7 +1031,7 @@ export default function Envios() {
                   return (
                     <div className="empty" style={{ padding: '24px 16px' }}>
                       <div style={{ fontWeight: 600, marginBottom: 6 }}>Sin resultados</div>
-                      <div className="muted tiny" style={{ marginBottom: 14 }}>
+                      <div className="muted tiny u-mb-14">
                         No hay envíos que coincidan con los filtros aplicados.
                       </div>
                       <button
@@ -1046,7 +1046,7 @@ export default function Envios() {
                 return (
                   <div className="empty" style={{ padding: '28px 16px' }}>
                     <div style={{ fontWeight: 600, marginBottom: 6 }}>Todavía no cargaste envíos</div>
-                    <div className="muted tiny" style={{ marginBottom: 14 }}>
+                    <div className="muted tiny u-mb-14">
                       Los envíos a domicilio se cargan acá. Cada uno puede luego acreditarse como venta.
                     </div>
                     <button className="btn btn-primary btn-sm" onClick={openCreate}>
@@ -1072,8 +1072,8 @@ export default function Envios() {
                     borderLeft: isSelected ? '3px solid var(--accent)' : '3px solid transparent',
                   }}
                 >
-                  <div className="flex-between" style={{ marginBottom: 8 }}>
-                    <div className="flex-row" style={{ gap: 8 }}>
+                  <div className="flex-between u-mb-8">
+                    <div className="flex-row u-gap-8">
                       <span
                         className="mono tiny"
                         style={{ fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.04em' }}
@@ -1085,8 +1085,8 @@ export default function Envios() {
                     </div>
                     <div className="muted tiny mono">{e.horario || fmtFecha(e.fecha)}</div>
                   </div>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>{e.cliente}</div>
-                  <div className="muted tiny" style={{ marginTop: 2 }}>{e.direccion}{e.barrio ? ' · ' + e.barrio : ''}</div>
+                  <div className="u-fs-14-fw-600">{e.cliente}</div>
+                  <div className="muted tiny u-mt-2">{e.direccion}{e.barrio ? ' · ' + e.barrio : ''}</div>
                   <div className="flex-row" style={{ gap: 14, marginTop: 8, flexWrap: 'wrap' }}>
                     {productos.length > 0 && (
                       <div className="flex-row" style={{ gap: 5, fontSize: 12 }}>
@@ -1097,7 +1097,7 @@ export default function Envios() {
                     {pagos.length > 0 && (
                       <div className="flex-row" style={{ gap: 5, fontSize: 12 }}>
                         <Icons.Dollar size={13} style={{ color: 'var(--pos)' }} />
-                        <span className="pos mono" style={{ fontWeight: 600 }}>
+                        <span className="pos mono u-fw-600">
                           {/* 2026-06-10: la moneda salía hardcodeada "ARS". Ahora
                               usa la del primer pago (caso 99%: todos los pagos del
                               envío comparten moneda). Si hay mixto, muestra la del
@@ -1143,7 +1143,7 @@ export default function Envios() {
 
               {/* Data rows */}
               <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>
-                <div className="stack" style={{ gap: 8 }}>
+                <div className="stack u-gap-8">
                   {[
                     ['Fecha',     fmtFecha(selected.fecha) + (selected.horario ? ' · ' + selected.horario : '')],
                     ['Dirección', selected.direccion + (selected.barrio ? ' · ' + selected.barrio : '')],
@@ -1226,14 +1226,14 @@ export default function Envios() {
                         {it.tipo === 'producto' ? (
                           <>
                             <Icons.Box size={14} className="muted" />
-                            <span style={{ fontWeight: 600, fontSize: 13 }}>
+                            <span className="u-fs-13-fw-600">
                               {it.descripcion || '(sin descripción)'}
                             </span>
                           </>
                         ) : (
                           <>
                             <Icons.Dollar size={14} style={{ color: 'var(--pos)' }} />
-                            <span style={{ fontWeight: 600, fontSize: 13 }} className="pos">
+                            <span className="pos u-fs-13-fw-600">
                               Cobrar: {it.metodo_pago || 'efectivo'}
                             </span>
                           </>
@@ -1355,7 +1355,7 @@ export default function Envios() {
                   {/* Fila 1: fecha + estado + prioridad */}
                   <div className="row">
                     <div className="field u-flex-1">
-                      <label className="field-label">Fecha <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <label className="field-label">Fecha <span className="u-color-neg">*</span></label>
                       <input type="date" className="input" value={form.fecha}
                         onChange={e => setF('fecha', e.target.value)} />
                     </div>
@@ -1382,7 +1382,7 @@ export default function Envios() {
                   {/* Fila 2: cliente + teléfono */}
                   <div className="row">
                     <div className="field" style={{ flex: 2 }}>
-                      <label className="field-label">Cliente <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <label className="field-label">Cliente <span className="u-color-neg">*</span></label>
                       <input className={'input' + (fieldErrors.cliente ? ' input-error' : '')} placeholder="Nombre del cliente"
                         value={form.cliente} onChange={e => setF('cliente', e.target.value)} autoFocus
                         aria-invalid={!!fieldErrors.cliente} />
@@ -1398,7 +1398,7 @@ export default function Envios() {
                   {/* Fila 3: dirección + barrio */}
                   <div className="row">
                     <div className="field" style={{ flex: 2 }}>
-                      <label className="field-label">Dirección <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <label className="field-label">Dirección <span className="u-color-neg">*</span></label>
                       <input className={'input' + (fieldErrors.direccion ? ' input-error' : '')} placeholder="ej. San Martín 450"
                         value={form.direccion} onChange={e => setF('direccion', e.target.value)}
                         aria-invalid={!!fieldErrors.direccion} />
@@ -1440,13 +1440,13 @@ export default function Envios() {
 
                   {/* Items del envío — solo productos (linkeados al stock con búsqueda) */}
                   <div>
-                    <div className="flex-between" style={{ marginBottom: 10 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>Items del envío</div>
+                    <div className="flex-between u-mb-10">
+                      <div className="u-fs-13-fw-600">Items del envío</div>
                       <button type="button" className="btn btn-sm" onClick={addProducto}>
                         <Icons.Plus size={13} /> Agregar producto
                       </button>
                     </div>
-                    <div className="stack" style={{ gap: 8 }}>
+                    <div className="stack u-gap-8">
                       {/* Auditoría 2026-06-30 F-13/14: key={_id} estable. */}
                       {items.map((it, idx) => ({ it, idx })).filter(({ it }) => it.tipo === 'producto').map(({ it, idx }) => (
                         <div key={it._id} className="card card-tight" style={{ padding: '12px 14px' }}>
@@ -1473,7 +1473,7 @@ export default function Envios() {
                                       <button type="button" key={p.id}
                                               onClick={() => pickProducto(idx, p)}
                                               style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', border: 'none', background: 'transparent', cursor: 'pointer', borderBottom: '1px solid var(--hairline)', color: 'var(--text)' }}>
-                                        <div style={{ fontWeight: 600, fontSize: 13 }}>{[p.nombre, gbLabel(p.gb), p.color].filter(Boolean).join(' · ')}</div>
+                                        <div className="u-fs-13-fw-600">{[p.nombre, gbLabel(p.gb), p.color].filter(Boolean).join(' · ')}</div>
                                         <div className="muted tiny mono">{p.imei ? 'IMEI ' + fmtImei(p.imei) : '—'} · cantidad {p.cantidad ?? 0} · ${fmt(p.precio_venta)}</div>
                                       </button>
                                     ))}
@@ -1564,8 +1564,8 @@ export default function Envios() {
 
                   {/* Pagos — sección separada como Ventas: select de método (incluye CC), monto, moneda, TC */}
                   <div>
-                    <div className="flex-between" style={{ marginBottom: 10 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>Pagos</div>
+                    <div className="flex-between u-mb-10">
+                      <div className="u-fs-13-fw-600">Pagos</div>
                       <button type="button" className="btn btn-sm" onClick={addPago}>
                         <Icons.Plus size={13} /> Agregar método
                       </button>
@@ -1677,7 +1677,7 @@ export default function Envios() {
                                     )}
                                   </div>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                    <span className="mono" style={{ fontWeight: 600, fontSize: 13 }}>{sym(it.moneda)}</span>
+                                    <span className="mono u-fs-13-fw-600">{sym(it.moneda)}</span>
                                     <input
                                       type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                                       className="input mono"
@@ -1688,11 +1688,11 @@ export default function Envios() {
                                   </div>
                                 </div>
                                 <div>
-                                  <div className="muted tiny" style={{ marginBottom: 2 }} title={m?.nombre || ''}>Financiera ({det.pct}%)</div>
-                                  <div className="mono neg" style={{ fontWeight: 600, fontSize: 13 }}>−{sym(it.moneda)}{fmt(det.costoFinOrig)}</div>
+                                  <div className="muted tiny u-mb-2" title={m?.nombre || ''}>Financiera ({det.pct}%)</div>
+                                  <div className="mono neg u-fs-13-fw-600">−{sym(it.moneda)}{fmt(det.costoFinOrig)}</div>
                                 </div>
                                 <div>
-                                  <div className="muted tiny" style={{ marginBottom: 2 }}>Entra a tu caja <span style={{ color: 'var(--text-muted)' }}>(editable)</span></div>
+                                  <div className="muted tiny u-mb-2">Entra a tu caja <span style={{ color: 'var(--text-muted)' }}>(editable)</span></div>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
                                     <input
                                       type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
@@ -1723,7 +1723,7 @@ export default function Envios() {
                       se cancela y el egreso del vuelto se revierte auto. */}
                   <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 6, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: form.vuelto_monto ? 8 : 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>
+                      <div className="u-fs-13-fw-600">
                         Vuelto/Cambio
                         <span className="muted tiny" style={{ marginLeft: 8, fontWeight: 400 }}>
                           (opcional — dinero que entregás al cliente)
@@ -1737,23 +1737,23 @@ export default function Envios() {
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.5fr', gap: 8 }}>
                       <div>
-                        <div className="muted tiny" style={{ marginBottom: 2 }}>Monto</div>
+                        <div className="muted tiny u-mb-2">Monto</div>
                         <input
                           type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                           className="input mono"
                           value={form.vuelto_monto}
                           onChange={e => setForm(f => ({ ...f, vuelto_monto: e.target.value }))}
                           placeholder="0"
-                          style={{ width: '100%' }}
+                          className="u-w-100"
                         />
                       </div>
                       <div>
-                        <div className="muted tiny" style={{ marginBottom: 2 }}>Moneda</div>
+                        <div className="muted tiny u-mb-2">Moneda</div>
                         <select
                           className="input"
                           value={form.vuelto_moneda}
                           onChange={e => setForm(f => ({ ...f, vuelto_moneda: e.target.value }))}
-                          style={{ width: '100%' }}
+                          className="u-w-100"
                         >
                           <option value="ARS">ARS</option>
                           <option value="UYU">UYU</option>
@@ -1762,17 +1762,17 @@ export default function Envios() {
                         </select>
                       </div>
                       <div>
-                        <div className="muted tiny" style={{ marginBottom: 2 }}>
+                        <div className="muted tiny u-mb-2">
                           Sale de{' '}
                           {form.vuelto_monto && !form.vuelto_caja_id && (
-                            <span className="warn" style={{ fontWeight: 600 }}>· elegí caja</span>
+                            <span className="warn u-fw-600">· elegí caja</span>
                           )}
                         </div>
                         <select
                           className="input"
                           value={form.vuelto_caja_id}
                           onChange={e => setForm(f => ({ ...f, vuelto_caja_id: e.target.value }))}
-                          style={{ width: '100%' }}
+                          className="u-w-100"
                         >
                           <option value="">— Elegí caja —</option>
                           {cajasPago.filter(c => !c.deleted_at).map(c => (
@@ -1792,16 +1792,16 @@ export default function Envios() {
                     <div className="field">
                       <label className="field-label">Comprobantes de pago <span className="muted tiny">(imágenes/PDF, máx 6MB c/u · requerido si cobrás por Transferencia)</span></label>
                       <input type="file" multiple accept="image/*,application/pdf" className="input" onChange={onComprobFiles} />
-                      {comprobantes.length > 0 && <div className="muted tiny" style={{ marginTop: 4 }}>{comprobantes.length} archivo(s) listo(s)</div>}
+                      {comprobantes.length > 0 && <div className="muted tiny u-mt-4">{comprobantes.length} archivo(s) listo(s)</div>}
                       {/* OCR del comprobante (Tema C rev5 — mismo patrón que Ventas
                           y Financiera). Aplica al "Entra a tu caja" del pago. */}
                       {ocrSugerencia.status === 'pending' && (
-                        <div className="muted tiny" style={{ marginTop: 4 }}>Leyendo monto del comprobante…</div>
+                        <div className="muted tiny u-mt-4">Leyendo monto del comprobante…</div>
                       )}
                       {ocrSugerencia.status === 'done' && ocrSugerencia.monto > 0 && (
                         <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                           <span className="muted tiny">Detectamos en el comprobante:</span>
-                          <span className="mono" style={{ fontWeight: 600 }}>${fmt(ocrSugerencia.monto)}</span>
+                          <span className="mono u-fw-600">${fmt(ocrSugerencia.monto)}</span>
                           <button type="button" className="btn btn-sm" onClick={aplicarOcrMonto}>Aplicar al pago</button>
                         </div>
                       )}

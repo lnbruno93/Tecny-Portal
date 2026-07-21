@@ -160,13 +160,13 @@ export default function CategoriasProductoModal({
         </div>
 
         <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
-          <p className="muted tiny" style={{ marginBottom: 12 }}>
+          <p className="muted tiny u-mb-12">
             Tipo de producto que aparece en el dropdown del alta de Inventario y en los chips del Dashboard.
             Arrastrá filas para reordenar. La categoría <strong>"Sin categoría"</strong> es del sistema
             (fallback del import) — no se puede editar ni borrar.
           </p>
 
-          <div style={{ marginBottom: 12 }}>
+          <div className="u-mb-12">
             <button
               type="button"
               className="btn btn-sm"
@@ -179,7 +179,7 @@ export default function CategoriasProductoModal({
           {loading ? (
             <p className="muted">Cargando...</p>
           ) : error ? (
-            <p style={{ color: 'var(--neg)' }}>{error}</p>
+            <p className="u-color-neg">{error}</p>
           ) : items.length === 0 ? (
             <p className="muted">No hay categorías todavía.</p>
           ) : (
@@ -194,7 +194,7 @@ export default function CategoriasProductoModal({
           {colecciones !== undefined && (
             <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid var(--border)' }}>
               <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>Colecciones</div>
-              <p className="muted tiny" style={{ marginBottom: 12 }}>
+              <p className="muted tiny u-mb-12">
                 Agrupación libre auxiliar, independiente del tipo de producto. Útil para separar
                 "iPhones Nuevos", "Rebajados", "Promoción", etc. Un producto puede pertenecer a una
                 colección además de tener su categoría.
@@ -224,7 +224,7 @@ export default function CategoriasProductoModal({
                       <span className="muted tiny" style={{ marginRight: 8, whiteSpace: 'nowrap' }} title={`${count} producto${count === 1 ? '' : 's'} cargado${count === 1 ? '' : 's'} · ${stock} unidad${stock === 1 ? '' : 'es'} en stock`}>
                         {count} prod · {stock} u
                       </span>
-                      <button type="button" className="icon-btn" style={{ color: 'var(--neg)' }} onClick={() => onDelColeccion?.(c)}>
+                      <button type="button" className="icon-btn u-color-neg" onClick={() => onDelColeccion?.(c)}>
                         <Icons.Trash size={13} />
                       </button>
                     </div>
@@ -343,7 +343,7 @@ function CatList({ items, onEdit, onDelete, onReorder }) {
                   onClick={() => onDelete(row)}
                   aria-label="Borrar"
                   title="Borrar"
-                  style={{ color: 'var(--neg)' }}
+                  className="u-color-neg"
                 >
                   <Icons.Trash size={14} />
                 </button>
@@ -422,7 +422,7 @@ function EditModal({ row, onSave, onCancel }) {
 
         <div className="modal-body">
           <label className="field-label" htmlFor="cat-nombre">
-            Nombre <span style={{ color: 'var(--neg)' }}>*</span>
+            Nombre <span className="u-color-neg">*</span>
           </label>
           <input
             id="cat-nombre"
@@ -435,7 +435,7 @@ function EditModal({ row, onSave, onCancel }) {
             disabled={saving}
           />
 
-          <label className="field-label" htmlFor="cat-emoji" style={{ marginTop: 12 }}>
+          <label className="field-label u-mt-12" htmlFor="cat-emoji">
             Emoji <span className="muted tiny">(opcional)</span>
           </label>
           <input
@@ -447,7 +447,7 @@ function EditModal({ row, onSave, onCancel }) {
             placeholder="🔧 🎽 📦..."
             disabled={saving}
           />
-          <p className="muted tiny" style={{ marginTop: 4 }}>
+          <p className="muted tiny u-mt-4">
             En Mac: <kbd>Ctrl</kbd>+<kbd>Cmd</kbd>+<kbd>Espacio</kbd> abre el picker del sistema.
           </p>
 

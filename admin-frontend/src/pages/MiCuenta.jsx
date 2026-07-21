@@ -134,7 +134,7 @@ export default function MiCuenta() {
         >
           <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr', rowGap: 10, columnGap: 16, fontSize: 13 }}>
             <div className="muted">Usuario</div>
-            <div style={{ fontWeight: 600 }}>{displayName}</div>
+            <div className="u-fw-600">{displayName}</div>
 
             {user?.email && (
               <>

@@ -176,7 +176,7 @@ export default function Historial() {
       </div>
 
       {/* ── KPI cards ─────────────────────────────────────────────────────── */}
-      <div className="row" style={{ marginBottom: 16 }}>
+      <div className="row u-mb-16">
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">Total eventos</div>
           <div className="kpi-value mono">{fmt(totalRows)}</div>
@@ -184,29 +184,29 @@ export default function Historial() {
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">INSERT</div>
           <div className="kpi-value mono"><span className="pos">{countByType('INSERT')}</span></div>
-          <div className="muted tiny" style={{ marginTop: 2 }}>en esta página</div>
+          <div className="muted tiny u-mt-2">en esta página</div>
         </div>
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">UPDATE</div>
           <div className="kpi-value mono" style={{ color: 'var(--info)' }}>{countByType('UPDATE')}</div>
-          <div className="muted tiny" style={{ marginTop: 2 }}>en esta página</div>
+          <div className="muted tiny u-mt-2">en esta página</div>
         </div>
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">DELETE</div>
           <div className="kpi-value mono"><span className="neg">{countByType('DELETE')}</span></div>
-          <div className="muted tiny" style={{ marginTop: 2 }}>en esta página</div>
+          <div className="muted tiny u-mt-2">en esta página</div>
         </div>
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">OCR</div>
-          <div className="kpi-value mono" style={{ color: 'var(--accent)' }}>{countByType('OCR')}</div>
-          <div className="muted tiny" style={{ marginTop: 2 }}>en esta página</div>
+          <div className="kpi-value mono u-color-accent">{countByType('OCR')}</div>
+          <div className="muted tiny u-mt-2">en esta página</div>
         </div>
       </div>
 
       {/* ── Table card ────────────────────────────────────────────────────── */}
       <div className="card card-flush">
         <div className="card-hd" style={{ flexWrap: 'wrap', gap: 10 }}>
-          <div style={{ fontWeight: 600, fontSize: 14 }}>
+          <div className="u-fs-14-fw-600">
             Eventos{hayFiltros ? ' · filtrado' : ''} — {fmt(totalRows)} resultado{totalRows !== 1 ? 's' : ''}
           </div>
 
@@ -319,7 +319,7 @@ export default function Historial() {
                     <td className="muted mono tiny" style={{ whiteSpace: 'nowrap' }}>
                       {rel(h.creado_en)}
                     </td>
-                    <td style={{ fontWeight: 600 }}>
+                    <td className="u-fw-600">
                       {h.usuario_nombre || <span className="dim">Sistema</span>}
                     </td>
                     <td><AccionBadge raw={h.accion} /></td>
@@ -383,7 +383,7 @@ export default function Historial() {
         <div ref={detailModalRef} className="modal-overlay" onClick={() => setDetail(null)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
-              <span style={{ fontWeight: 600 }}>Detalle del evento #{detail.id}</span>
+              <span className="u-fw-600">Detalle del evento #{detail.id}</span>
               <button className="icon-btn" aria-label="Cerrar" onClick={() => setDetail(null)}>
                 <Icons.X size={16} />
               </button>
@@ -456,7 +456,7 @@ function DetailField({ label, children }) {
       >
         {label}
       </div>
-      <div style={{ fontSize: 13 }}>{children}</div>
+      <div className="u-fs-13">{children}</div>
     </div>
   );
 }

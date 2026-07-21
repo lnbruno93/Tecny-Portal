@@ -139,14 +139,14 @@ export function RedB2BPendingReviewContent({ onCountChange } = {}) {
         <EmptyState />
       ) : (
         <div className="card">
-          <table className="table" style={{ width: '100%' }}>
+          <table className="table u-w-100">
             <thead>
               <tr>
                 <th>Partner</th>
                 <th>Producto</th>
-                <th style={{ textAlign: 'right' }}>Stock recibido</th>
+                <th className="u-text-right">Stock recibido</th>
                 <th>Recibido</th>
-                <th style={{ textAlign: 'right' }}>Acciones</th>
+                <th className="u-text-right">Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -195,7 +195,7 @@ function EmptyState() {
   return (
     <div className="empty-state" style={{ padding: 32, textAlign: 'center' }}>
       <p style={{ fontWeight: 600, marginBottom: 4 }}>Sin productos pendientes</p>
-      <p className="muted" style={{ marginBottom: 12 }}>
+      <p className="muted u-mb-12">
         Cuando un partner Red B2B te envíe una venta cross-tenant, los productos
         nuevos aparecerán acá para que los confirmes en tu catálogo o los
         mergees con productos que ya tenés.
@@ -211,7 +211,7 @@ function PendingRow({ p, acting, onConfirm, onMerge }) {
       <td>
         {partner.nombre ? (
           <>
-            <div style={{ fontWeight: 600 }}>{partner.nombre}</div>
+            <div className="u-fw-600">{partner.nombre}</div>
             <div className="muted tiny">{partner.slug}</div>
           </>
         ) : (
@@ -219,15 +219,15 @@ function PendingRow({ p, acting, onConfirm, onMerge }) {
         )}
       </td>
       <td>
-        <div style={{ fontWeight: 600 }}>{p.nombre}</div>
+        <div className="u-fw-600">{p.nombre}</div>
         {p.sku && <div className="muted tiny">SKU: {p.sku}</div>}
         {p.precio != null && (
           <div className="muted tiny">Precio: {formatPrice(p.precio)}</div>
         )}
       </td>
-      <td style={{ textAlign: 'right' }}>{p.stock ?? 0}</td>
+      <td className="u-text-right">{p.stock ?? 0}</td>
       <td>{formatDate(p.created_at)}</td>
-      <td style={{ textAlign: 'right' }}>
+      <td className="u-text-right">
         <div style={{ display: 'inline-flex', gap: 6 }}>
           <button
             type="button"
@@ -377,7 +377,7 @@ function MergeModal({ source, onClose, onSubmit }) {
                     style={{ marginRight: 10 }}
                   />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600 }}>{p.nombre}</div>
+                    <div className="u-fw-600">{p.nombre}</div>
                     <div className="muted tiny">
                       Stock actual: {p.cantidad ?? 0}
                       {p.imei && ` · IMEI: ${fmtImei(p.imei)}`}

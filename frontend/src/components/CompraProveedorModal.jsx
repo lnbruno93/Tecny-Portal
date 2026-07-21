@@ -396,7 +396,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
             </div>
           )}
           {/* ── Cabecera: fecha + caja + tc ── */}
-          <div className="row" style={{ marginBottom: 12 }}>
+          <div className="row u-mb-12">
             <div className="field" style={{ flex: '0 0 150px' }}>
               <label className="field-label">Fecha</label>
               <input type="date" className="input" value={fecha} onChange={e => setFecha(e.target.value)} />
@@ -411,7 +411,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
             </div>
             {cajaId && monedaCaja !== 'USD' && (
               <div className="field" style={{ flex: '0 0 140px' }}>
-                <label className="field-label">TC {monedaCaja}→USD <span style={{ color: 'var(--neg)' }}>*</span></label>
+                <label className="field-label">TC {monedaCaja}→USD <span className="u-color-neg">*</span></label>
                 <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" min="0" step="0.01"
                   value={tc} onChange={e => setTc(e.target.value)} placeholder="0" />
                 <TcWarning tc={tc} />
@@ -420,7 +420,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
             {/* TC también se pide si HAY filas en moneda no-USD aunque la caja sea CC */}
             {(!cajaId || monedaCaja === 'USD') && rows.some(r => isUsedRow(r) && r.costo_moneda !== 'USD') && (
               <div className="field" style={{ flex: '0 0 140px' }}>
-                <label className="field-label">TC ARS→USD <span style={{ color: 'var(--neg)' }}>*</span></label>
+                <label className="field-label">TC ARS→USD <span className="u-color-neg">*</span></label>
                 <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" min="0" step="0.01"
                   value={tc} onChange={e => setTc(e.target.value)} placeholder="0" />
                 <TcWarning tc={tc} />
@@ -430,7 +430,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
 
           {/* ── Defaults para nuevas filas ── */}
           <div className="card card-tight" style={{ padding: 10, marginBottom: 12, background: 'var(--surface-2)' }}>
-            <div className="flex-between" style={{ marginBottom: 8 }}>
+            <div className="flex-between u-mb-8">
               <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
                 Defaults para nuevas filas
               </div>
@@ -439,7 +439,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
                 Aplicar a vacías
               </button>
             </div>
-            <div className="row" style={{ gap: 8 }}>
+            <div className="row u-gap-8">
               <Field label="Categoría"><select className="input" value={defs.clase_id} onChange={e => setDef('clase_id', e.target.value)}>
                 <option value="">— Sin default —</option>
                 {clases.filter(c => c.activa && !c.es_sin_categoria).map(c => (
@@ -469,8 +469,8 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
           </div>
 
           {/* ── Acciones de la planilla ── */}
-          <div className="flex-between" style={{ marginBottom: 8 }}>
-            <div style={{ fontWeight: 600, fontSize: 13 }}>
+          <div className="flex-between u-mb-8">
+            <div className="u-fs-13-fw-600">
               Items · {rows.filter(isUsedRow).length} usadas / {rows.length} filas
             </div>
             <div className="flex-row" style={{ gap: 6 }}>

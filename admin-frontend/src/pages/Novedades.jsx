@@ -243,14 +243,14 @@ export default function Novedades() {
           ) : error ? (
             <div style={{ padding: 24, textAlign: 'center', color: 'var(--neg)', fontSize: 13 }}>
               {error}
-              <div style={{ marginTop: 12 }}>
+              <div className="u-mt-12">
                 <Btn sm onClick={load}>Reintentar</Btn>
               </div>
             </div>
           ) : notas.length === 0 ? (
             <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
               No hay notas publicadas todavía.
-              <div style={{ marginTop: 12 }}>
+              <div className="u-mt-12">
                 <Btn sm kind="primary" icon="Plus" onClick={startNew}>
                   Crear la primera
                 </Btn>
@@ -270,7 +270,7 @@ export default function Novedades() {
                     <th>Tipo</th>
                     <th>Título / Descripción</th>
                     <th>Publicada</th>
-                    <th style={{ textAlign: 'right' }}>Acciones</th>
+                    <th className="u-text-right">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>

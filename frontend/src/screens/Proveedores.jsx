@@ -342,8 +342,7 @@ export default function Proveedores() {
               para protección visual. Backend re-valida adminOnly. */}
           {isAdmin && (
             <button
-              className="btn btn-ghost"
-              style={{ color: 'var(--neg)' }}
+              className="btn btn-ghost u-color-neg"
               onClick={handleBulkDeleteAll}
               title="Admin · borra todos los proveedores + compras + revierte cajas"
             >
@@ -426,13 +425,13 @@ export default function Proveedores() {
 
             {/* ── Header del proveedor con KPIs inline ── */}
             <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-              <div className="flex-between" style={{ marginBottom: 4 }}>
+              <div className="flex-between u-mb-4">
                 <div>
                   <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.01em' }}>
                     {selected.nombre}
                   </div>
                   {([selected.contacto_nombre, selected.contacto_apellido].filter(Boolean).join(' ') || selected.whatsapp || selected.ubicacion) && (
-                    <div className="muted tiny" style={{ marginTop: 2 }}>
+                    <div className="muted tiny u-mt-2">
                       {[
                         [selected.contacto_nombre, selected.contacto_apellido].filter(Boolean).join(' '),
                         selected.whatsapp,
@@ -443,20 +442,20 @@ export default function Proveedores() {
                 </div>
 
                 <div className="flex-row" style={{ gap: 20, alignItems: 'flex-start' }}>
-                  <div style={{ textAlign: 'right' }}>
+                  <div className="u-text-right">
                     <div className="muted tiny">Saldo</div>
                     <div className={'mono ' + (kpis.saldo > 0 ? 'neg' : kpis.saldo < 0 ? 'pos' : 'muted')}
                       style={{ fontSize: 18, fontWeight: 800, lineHeight: 1.1 }}>
                       USD {fmt(kpis.saldo)}
                     </div>
                   </div>
-                  <div style={{ textAlign: 'right' }}>
+                  <div className="u-text-right">
                     <div className="muted tiny">Total comprado</div>
                     <div className="mono" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.1 }}>
                       USD {fmt(kpis.totalCompras)}
                     </div>
                   </div>
-                  <div style={{ textAlign: 'right' }}>
+                  <div className="u-text-right">
                     <div className="muted tiny">Movimientos</div>
                     <div className="mono" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.1 }}>
                       {kpis.cantMovimientos}
@@ -617,13 +616,13 @@ export default function Proveedores() {
               <button type="button" className="icon-btn" onClick={() => setShowProv(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button>
             </div>
             <div className="modal-body">
-              <div className="stack" style={{ gap: 12 }}>
+              <div className="stack u-gap-12">
                 <div className="field">
-                  <label className="field-label">Proveedor <span style={{ color: 'var(--neg)' }}>*</span></label>
+                  <label className="field-label">Proveedor <span className="u-color-neg">*</span></label>
                   <input type="text" className="input" placeholder="Ej: Mayorista Apple SRL" autoFocus
                     value={provForm.nombre} onChange={e => setProvForm(f => ({ ...f, nombre: e.target.value }))} />
                 </div>
-                <div className="row" style={{ gap: 12 }}>
+                <div className="row u-gap-12">
                   <div className="field u-flex-1">
                     <label className="field-label">Contacto (nombre)</label>
                     <input type="text" className="input" placeholder="Ej: Juan"
@@ -635,7 +634,7 @@ export default function Proveedores() {
                       value={provForm.contacto_apellido} onChange={e => setProvForm(f => ({ ...f, contacto_apellido: e.target.value }))} />
                   </div>
                 </div>
-                <div className="row" style={{ gap: 12 }}>
+                <div className="row u-gap-12">
                   <div className="field u-flex-1">
                     <label className="field-label">WhatsApp</label>
                     <input type="text" className="input" placeholder="+54 9 11 …"
@@ -647,7 +646,7 @@ export default function Proveedores() {
                       value={provForm.ubicacion} onChange={e => setProvForm(f => ({ ...f, ubicacion: e.target.value }))} />
                   </div>
                 </div>
-                <div className="row" style={{ gap: 12 }}>
+                <div className="row u-gap-12">
                   <div className="field u-flex-1">
                     <label className="field-label">Notas internas</label>
                     <input type="text" className="input" placeholder="Ej: paga a 30 días"
@@ -657,7 +656,7 @@ export default function Proveedores() {
                     <label className="field-label">Saldo inicial (USD)</label>
                     <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input" placeholder="0"
                       value={provForm.saldo_inicial} onChange={e => setProvForm(f => ({ ...f, saldo_inicial: e.target.value }))} />
-                    <div className="muted tiny" style={{ marginTop: 4 }}>{editId ? 'Ajusta la apertura (0 = sin saldo inicial).' : 'Lo que ya le debés (opcional).'}</div>
+                    <div className="muted tiny u-mt-4">{editId ? 'Ajusta la apertura (0 = sin saldo inicial).' : 'Lo que ya le debés (opcional).'}</div>
                   </div>
                 </div>
                 {provError && <div style={{ color: 'var(--neg)', fontSize: 13 }}>{provError}</div>}
@@ -700,7 +699,7 @@ export default function Proveedores() {
                     onChange={e => setPagoForm(f => ({ ...f, fecha: e.target.value }))} />
                 </div>
                 <div className="field u-flex-1">
-                  <label className="field-label">Pagar con <span style={{ color: 'var(--neg)' }}>*</span></label>
+                  <label className="field-label">Pagar con <span className="u-color-neg">*</span></label>
                   <select className="input" value={pagoForm.caja_id}
                     onChange={e => setPagoForm(f => ({ ...f, caja_id: e.target.value }))}>
                     <option value="">— Elegí caja —</option>
@@ -715,14 +714,14 @@ export default function Proveedores() {
                 return (
                   <div className="row">
                     <div className="field u-flex-1">
-                      <label className="field-label">Monto ({monedaSel}) <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <label className="field-label">Monto ({monedaSel}) <span className="u-color-neg">*</span></label>
                       <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono"
                         value={pagoForm.monto} placeholder="0"
                         onChange={e => setPagoForm(f => ({ ...f, monto: e.target.value }))} />
                     </div>
                     {monedaSel !== 'USD' && (
                       <div className="field" style={{ flex: '0 0 140px' }}>
-                        <label className="field-label">TC {monedaSel}→USD <span style={{ color: 'var(--neg)' }}>*</span></label>
+                        <label className="field-label">TC {monedaSel}→USD <span className="u-color-neg">*</span></label>
                         <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input mono"
                           value={pagoForm.tc}
                           onChange={e => setPagoForm(f => ({ ...f, tc: e.target.value }))} />

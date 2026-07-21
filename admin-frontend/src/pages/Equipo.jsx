@@ -210,7 +210,7 @@ export default function Equipo() {
                             2FA {a.twofa_enabled ? 'Activo' : 'Pendiente'}
                           </Badge>
                         </div>
-                        <div className="muted tiny" style={{ marginTop: 2 }}>
+                        <div className="muted tiny u-mt-2">
                           {a.email}
                           {a.created_at && ` · agregado ${fmtDateTime(a.created_at)}`}
                         </div>
@@ -267,7 +267,7 @@ export default function Equipo() {
                           <strong>{inv.email}</strong>
                           <span className="muted tiny">· {inv.nombre}</span>
                         </div>
-                        <div className="muted tiny" style={{ marginTop: 2 }}>
+                        <div className="muted tiny u-mt-2">
                           Invitado por @{inv.invited_by_username || '—'} · {ago(inv.invited_at)}
                           {' · '}
                           Expira en {expiresIn(inv.expires_at)}

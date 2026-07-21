@@ -67,9 +67,9 @@ export default function Dashboard({ d }) {
           <span className="mono">u$s{fmt(i.usd)}</span>{' '}
           <span className="muted" style={{ fontSize: 17 }}>+ {localSymbol}{fmt(localAmt)} {monedaLocal}</span>
         </div>
-        <div className="muted" style={{ fontSize: 12 }}>
+        <div className="muted u-fs-12">
           USD equivalente:{' '}
-          <span className="pos mono" style={{ fontWeight: 600 }}>u$s{fmt(i.total_usd_equiv)}</span>
+          <span className="pos mono u-fw-600">u$s{fmt(i.total_usd_equiv)}</span>
           {' · '}
           {d.ventas_count} venta{d.ventas_count === 1 ? '' : 's'}
         </div>
@@ -78,7 +78,7 @@ export default function Dashboard({ d }) {
       {/* 2026-06-24 mobile fix: .row → .kpi-grid. Antes los 4 cards quedaban
           exprimidos en 4 cols estrechas en <414px, los labels wrappeaban a
           3 líneas y se veía horrible. Reportado por Lucas con screenshot. */}
-      <div className="kpi-grid" style={{ marginBottom: 12 }}>
+      <div className="kpi-grid u-mb-12">
         <div className="card card-tight u-flex-1" data-testid="kpi-unidades">
           <div className="kpi-label">Unidades vendidas</div>
           {/*
@@ -113,7 +113,7 @@ export default function Dashboard({ d }) {
                     <span className="muted tiny">en {catsConVentas} {catsConVentas === 1 ? 'categoría' : 'categorías'}</span>
                   </div>
                   {top && (
-                    <div className="muted tiny" style={{ marginTop: 4 }} title={`Top: ${top.nombre} (${top.n} unidades)`}>
+                    <div className="muted tiny u-mt-4" title={`Top: ${top.nombre} (${top.n} unidades)`}>
                       Top: {top.emoji ? `${top.emoji} ` : ''}{top.nombre} <strong style={{ color: 'var(--fg)' }}>{top.n}</strong>
                     </div>
                   )}
@@ -147,7 +147,7 @@ export default function Dashboard({ d }) {
             neto). Si el backend trae 0 en costo_financiero, no agregamos esa
             línea para no ruidar (ej. periodos sin ventas con tarjeta).
           */}
-          <div className="muted tiny" style={{ marginTop: 4 }}>
+          <div className="muted tiny u-mt-4">
             Bruta <span className="mono">u$s{fmt(d.ganancia_bruta_acreditada_usd)}</span>
             {Number(d.costo_financiero_acreditado_usd) > 0 && (
               <>
@@ -163,7 +163,7 @@ export default function Dashboard({ d }) {
             {' · '}
             <span className="neg">−egr <span className="mono">u$s{fmt(d.egresos_usd)}</span></span>
           </div>
-          <div className="muted tiny" style={{ marginTop: 2 }}>
+          <div className="muted tiny u-mt-2">
             {d.margen_pct}% margen
           </div>
         </div>
@@ -187,8 +187,8 @@ export default function Dashboard({ d }) {
           distribuye 50/50 en desktop. */}
       <div className="row">
         <div className="card card-tight u-flex-1">
-          <div className="kpi-label" style={{ marginBottom: 8 }}>Métodos de pago</div>
-          <table className="table" style={{ fontSize: 12 }}>
+          <div className="kpi-label u-mb-8">Métodos de pago</div>
+          <table className="table u-fs-12">
             <tbody>
               {d.metodos_pago.length === 0 && <tr><td className="muted">Sin pagos</td></tr>}
               {d.metodos_pago.map((m, k) => (
@@ -210,7 +210,7 @@ export default function Dashboard({ d }) {
           </div>
         </div>
         <div className="card card-tight u-flex-1">
-          <div className="kpi-label" style={{ marginBottom: 8 }}>Ventas por horario</div>
+          <div className="kpi-label u-mb-8">Ventas por horario</div>
           <HourChart data={d.por_horario} />
           <div className="muted" style={{ fontSize: 11, marginTop: 10 }}>
             Etiquetas:{' '}
@@ -228,16 +228,16 @@ export default function Dashboard({ d }) {
       {/* 2026-06-24 mobile (corrige sobre-fix anterior): .row es correcto acá.
           Mismo razonamiento que arriba — 3 cards en grid-4 dejan hueco a la
           derecha. .row distribuye 33/33/33 en desktop, colapsa en mobile. */}
-      <div className="row" style={{ marginTop: 12 }}>
+      <div className="row u-mt-12">
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">Ticket promedio</div>
           <div className="kpi-value mono" style={{ fontSize: 17 }}>u$s{fmt(d.ticket_promedio_usd)}</div>
-          <div className="muted tiny" style={{ marginTop: 4 }}>
+          <div className="muted tiny u-mt-4">
             {d.ventas_count} venta{d.ventas_count === 1 ? '' : 's'}
           </div>
         </div>
         <div className="card card-tight u-flex-1">
-          <div className="kpi-label" style={{ marginBottom: 8 }}>Top productos</div>
+          <div className="kpi-label u-mb-8">Top productos</div>
           {(d.top_productos || []).length === 0
             ? <div className="muted tiny">—</div>
             : d.top_productos.map((p, k) => (
@@ -248,7 +248,7 @@ export default function Dashboard({ d }) {
               ))}
         </div>
         <div className="card card-tight u-flex-1">
-          <div className="kpi-label" style={{ marginBottom: 8 }}>Top vendedores</div>
+          <div className="kpi-label u-mb-8">Top vendedores</div>
           {(d.top_vendedores || []).length === 0
             ? <div className="muted tiny">—</div>
             : d.top_vendedores.map((v, k) => (

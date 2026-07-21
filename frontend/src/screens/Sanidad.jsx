@@ -186,7 +186,7 @@ function GastoProyectadoCell({ periodo, recurrente_id, value, isOverride, defaul
       }}
     >
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
-        <span className="sanidad-money" style={{ fontSize: 13 }}>
+        <span className="sanidad-money u-fs-13">
           <span className="sanidad-money-prefix">USD</span>
           <span className="sanidad-money-amount">{fmt(value, 0)}</span>
           {isOverride && (
@@ -489,8 +489,8 @@ function ProyeccionGastosPanel({ onChange }) {
               <thead>
                 <tr>
                   <th style={{ textAlign: 'left' }}>Detalle</th>
-                  <th style={{ textAlign: 'right' }}>Monto $ (ARS)</th>
-                  <th style={{ textAlign: 'right' }}>Monto USD</th>
+                  <th className="u-text-right">Monto $ (ARS)</th>
+                  <th className="u-text-right">Monto USD</th>
                   <th></th>
                 </tr>
               </thead>
@@ -524,12 +524,12 @@ function ProyeccionGastosPanel({ onChange }) {
                                 opacity: 0.7,
                               }}
                             />
-                            <span style={{ fontWeight: 600, fontSize: 13 }}>{g.nombre}</span>
+                            <span className="u-fs-13-fw-600">{g.nombre}</span>
                             <span className="muted tiny">{g.items.length} ítem{g.items.length === 1 ? '' : 's'}</span>
                           </div>
                         </td>
-                        <td className="sanidad-num-cell" style={{ textAlign: 'right' }}>
-                          <div style={{ fontWeight: 600 }}>${fmt(g.subtotal_usd, 2)} USD</div>
+                        <td className="sanidad-num-cell u-text-right">
+                          <div className="u-fw-600">${fmt(g.subtotal_usd, 2)} USD</div>
                           <div className="muted tiny" style={{ fontSize: 11, marginTop: 2 }}>
                             {pct.toFixed(1)}% del total
                           </div>
@@ -551,7 +551,7 @@ function ProyeccionGastosPanel({ onChange }) {
                       ) : (
                         <tr key={r.id}>
                           <td style={{ paddingLeft: 36 }}>{r.concepto}</td>
-                          <td className="sanidad-num-cell" style={{ textAlign:'right' }}>
+                          <td className="sanidad-num-cell u-text-right">
                             {r.moneda === 'ARS'
                               ? <span className="sanidad-money"><span className="sanidad-money-prefix">ARS</span><span className="sanidad-money-amount">{fmt(Number(r.monto), 0)}</span></span>
                               : <span className="muted tiny">—</span>}
@@ -565,7 +565,7 @@ function ProyeccionGastosPanel({ onChange }) {
                                 <Icons.Edit size={12} />
                               </button>
                               <button className="btn btn-sm" onClick={() => remove(r)} title="Borrar"
-                                      style={{ color: 'var(--neg)' }}>
+                                      className="u-color-neg">
                                 <Icons.Trash size={12} />
                               </button>
                             </div>
@@ -746,7 +746,7 @@ function RecurrenteEditRow({ draft, setDraft, categorias, onCreateCategoria, onS
               </button>
             </div>
             <div className="modal-body">
-              <label className="lbl">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label>
+              <label className="lbl">Nombre <span className="u-color-neg">*</span></label>
               <input
                 className="input"
                 autoFocus
@@ -895,14 +895,14 @@ export default function Sanidad() {
 
   return (
     <div>
-      <div className="page-head" style={{ marginBottom: 16 }}>
+      <div className="page-head u-mb-16">
         <div>
           <h1 className="page-title">Sanidad del Negocio</h1>
           <div className="page-sub">
             Presupuesto vs ejecución mes a mes · cierra en USD · cargá tu bruto y proyectá tus gastos
           </div>
         </div>
-        <div className="flex-row" style={{ gap: 8 }}>
+        <div className="flex-row u-gap-8">
           <button
             className={'btn ' + (meses === 6 ? 'btn-primary' : '')}
             onClick={() => setMeses(6)}

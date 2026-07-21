@@ -503,7 +503,7 @@ function Topbar({ onMenuClick, onSearchClick }) {
           title={primaryAction.label || 'Nuevo'}
           aria-label={primaryAction.label || 'Nuevo'}
           onClick={() => primaryAction.onClick?.()}
-          style={{ color: 'var(--accent)' }}
+          className="u-color-accent"
         >
           <Icons.Plus size={17} />
         </button>

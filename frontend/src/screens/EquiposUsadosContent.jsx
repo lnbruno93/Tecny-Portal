@@ -188,7 +188,7 @@ export default function EquiposUsadosContent({ onCountChange }) {
       <ShareLinkPanel />
 
       {/* ── KPIs mini ─────────────────────────────────────────── */}
-      <div className="kpi-grid" style={{ marginBottom: 16 }}>
+      <div className="kpi-grid u-mb-16">
         <div className="card card-tight">
           <div className="kpi-label">Equipos usados</div>
           <div className="kpi-value">{fmtN(kpis.totalGlobal)}</div>

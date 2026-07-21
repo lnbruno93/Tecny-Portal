@@ -198,7 +198,7 @@ export default function ForgotPassword() {
             )}
 
             <form onSubmit={onSubmit} noValidate>
-              <div className="stack" style={{ gap: 12 }}>
+              <div className="stack u-gap-12">
                 <div className="input-group">
                   <span className="addon addon-l">
                     <Icons.Users size={14} />

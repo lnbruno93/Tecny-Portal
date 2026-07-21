@@ -221,11 +221,11 @@ function TabTarjetas() {
       {/* ── Left: inputs ── */}
       <div>
         {/* TC card */}
-        <div className="card card-tight" style={{ marginBottom: 14 }}>
+        <div className="card card-tight u-mb-14">
           <div className="field" style={{ marginBottom: 0 }}>
             <div className="field-label">Tipo de cambio (USD → {monedaLocal})</div>
             <div className="input-group" style={{ maxWidth: 240 }}>
-              <span className="addon addon-l" style={{ color: 'var(--accent)' }}>{symLocal}</span>
+              <span className="addon addon-l u-color-accent">{symLocal}</span>
               <input
                 type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                 className="input mono"
@@ -242,8 +242,8 @@ function TabTarjetas() {
         </div>
 
         {/* Products header */}
-        <div className="flex-between" style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 13, fontWeight: 600 }}>Productos a cotizar</div>
+        <div className="flex-between u-mb-10">
+          <div className="u-fs-13-fw-600">Productos a cotizar</div>
           <button className="btn btn-sm" onClick={addProd}>
             <span className="ico"><Icons.Plus size={13} /></span>
             Agregar producto
@@ -254,7 +254,7 @@ function TabTarjetas() {
         <div className="stack" style={{ gap: 10 }}>
           {prods.map((p, i) => (
             <div key={p.id} className="card card-tight">
-              <div className="flex-between" style={{ marginBottom: 10 }}>
+              <div className="flex-between u-mb-10">
                 <div className="muted tiny" style={{ fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
                   Producto {i + 1}
                 </div>
@@ -292,8 +292,8 @@ function TabTarjetas() {
 
       {/* ── Right: resultado sticky ── */}
       <div className="quote-sticky">
-        <div className="flex-between" style={{ marginBottom: 14 }}>
-          <div style={{ fontWeight: 600, fontSize: 14 }}>Resultado</div>
+        <div className="flex-between u-mb-14">
+          <div className="u-fs-14-fw-600">Resultado</div>
           <button className="btn btn-sm btn-primary" onClick={copyText}>
             <span className="ico">
               {copiado ? <Icons.Check size={13} /> : <Icons.Share size={13} />}
@@ -319,13 +319,13 @@ function TabTarjetas() {
             </div>
             <div className="quote-line">
               <span className="lbl">Contado</span>
-              <span className="val mono pos" style={{ fontWeight: 600 }}>{symLocal}{fmt(contado)}</span>
+              <span className="val mono pos u-fw-600">{symLocal}{fmt(contado)}</span>
             </div>
             <div className="quote-line">
               <span className="lbl">Transferencia (+{pctEfectivo(COMISIONES.transf)}%)</span>
-              <span className="val mono pos" style={{ fontWeight: 600 }}>{symLocal}{fmt(transf)}</span>
+              <span className="val mono pos u-fw-600">{symLocal}{fmt(transf)}</span>
             </div>
-            <div className="quote-line" style={{ marginTop: 6 }}>
+            <div className="quote-line u-mt-6">
               <span className="lbl">💳 1 cuota (+{pctEfectivo(COMISIONES.c1)}%)</span>
               <span className="val mono" style={{ fontWeight: 600, color: 'var(--accent)' }}>
                 {symLocal}{fmt(c1)}
@@ -356,9 +356,9 @@ function TabTarjetas() {
             </div>
             <div className="quote-line">
               <span className="lbl">Total transferencia</span>
-              <span className="val mono pos" style={{ fontWeight: 600 }}>{symLocal}{fmt(calculo.tots.transf)}</span>
+              <span className="val mono pos u-fw-600">{symLocal}{fmt(calculo.tots.transf)}</span>
             </div>
-            <div className="quote-line" style={{ marginTop: 4 }}>
+            <div className="quote-line u-mt-4">
               <span className="lbl">💳 Total 1 cuota</span>
               <span className="val mono" style={{ fontWeight: 600, color: 'var(--accent)' }}>{symLocal}{fmt(calculo.tots.c1)}</span>
             </div>
@@ -519,11 +519,11 @@ function TabUsd() {
       {/* ── Left: inputs ── */}
       <div>
         {/* TC card */}
-        <div className="card card-tight" style={{ marginBottom: 14 }}>
+        <div className="card card-tight u-mb-14">
           <div className="field" style={{ marginBottom: 0 }}>
             <div className="field-label">Tipo de cambio (USD → {monedaLocal})</div>
             <div className="input-group" style={{ maxWidth: 240 }}>
-              <span className="addon addon-l" style={{ color: 'var(--accent)' }}>{symLocal}</span>
+              <span className="addon addon-l u-color-accent">{symLocal}</span>
               <input
                 type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                 className="input mono"
@@ -540,8 +540,8 @@ function TabUsd() {
         </div>
 
         {/* Products header */}
-        <div className="flex-between" style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 13, fontWeight: 600 }}>Productos a cotizar</div>
+        <div className="flex-between u-mb-10">
+          <div className="u-fs-13-fw-600">Productos a cotizar</div>
           <button className="btn btn-sm" onClick={addProd}>
             <span className="ico"><Icons.Plus size={13} /></span>
             Agregar producto
@@ -552,7 +552,7 @@ function TabUsd() {
         <div className="stack" style={{ gap: 10, marginBottom: 16 }}>
           {prods.map((p, i) => (
             <div key={p.id} className="card card-tight">
-              <div className="flex-between" style={{ marginBottom: 10 }}>
+              <div className="flex-between u-mb-10">
                 <div className="muted tiny" style={{ fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
                   Producto {i + 1}
                 </div>
@@ -589,10 +589,10 @@ function TabUsd() {
 
         {/* Formas de pago — mismo widget que antes, ahora abajo de la lista. */}
         <div className="card card-tight">
-          <div className="field-label" style={{ marginBottom: 10 }}>
+          <div className="field-label u-mb-10">
             Formas de pago a incluir en el mensaje
           </div>
-          <div className="stack" style={{ gap: 8 }}>
+          <div className="stack u-gap-8">
             {opciones.map(o => (
               <label
                 key={o.key}
@@ -616,7 +616,7 @@ function TabUsd() {
                 />
                 <div className="u-flex-1">
                   <div style={{ fontWeight: 600, fontSize: 13.5 }}>{o.label}</div>
-                  <div className="muted tiny" style={{ marginTop: 2 }}>{o.sub}</div>
+                  <div className="muted tiny u-mt-2">{o.sub}</div>
                 </div>
               </label>
             ))}
@@ -626,8 +626,8 @@ function TabUsd() {
 
       {/* ── Right: resultado sticky ── */}
       <div className="quote-sticky">
-        <div className="flex-between" style={{ marginBottom: 14 }}>
-          <div style={{ fontWeight: 600, fontSize: 14 }}>Resumen para el cliente</div>
+        <div className="flex-between u-mb-14">
+          <div className="u-fs-14-fw-600">Resumen para el cliente</div>
           <button
             className="btn btn-sm btn-primary"
             onClick={copyUsd}
@@ -713,7 +713,7 @@ function TabUsd() {
 
             <hr className="h-rule" />
 
-            <div className="muted tiny mono" style={{ marginBottom: 8 }}>
+            <div className="muted tiny mono u-mb-8">
               Total USD {fmt(calculo.tots.usdRaw)} × TC {symLocal}{fmt(tc)}
             </div>
             <div

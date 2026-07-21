@@ -182,7 +182,7 @@ export default function Usados() {
       </div>
 
       {/* ── KPI cards ─────────────────────────────────────────────────────── */}
-      <div className="row" style={{ marginBottom: 16 }}>
+      <div className="row u-mb-16">
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">Equipos en catálogo</div>
           <div className="kpi-value mono">{rows.length}</div>
@@ -196,7 +196,7 @@ export default function Usados() {
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">Precio promedio</div>
           <div className="kpi-value">
-            <span className="muted" style={{ fontSize: 13 }}>USD </span>
+            <span className="muted u-fs-13">USD </span>
             <span className="mono">{fmt(avgPrecio)}</span>
           </div>
         </div>
@@ -205,7 +205,7 @@ export default function Usados() {
           <div className="kpi-value mono">
             <span className={editCount > 0 ? 'neg' : 'muted'}>{editCount}</span>
           </div>
-          <div className="muted tiny" style={{ marginTop: 2 }}>
+          <div className="muted tiny u-mt-2">
             {editCount > 0 ? 'Presioná Guardar para aplicar' : 'Todo al día'}
           </div>
         </div>
@@ -214,7 +214,7 @@ export default function Usados() {
       {/* ── Table card ────────────────────────────────────────────────────── */}
       <div className="card card-flush">
         <div className="card-hd flex-between">
-          <div style={{ fontWeight: 600, fontSize: 14 }}>
+          <div className="u-fs-14-fw-600">
             Catálogo — {filtered.length} equipo{filtered.length !== 1 ? 's' : ''}
           </div>
           <div className="input-group" style={{ width: 240 }}>
@@ -246,7 +246,7 @@ export default function Usados() {
             <tbody>
               {filtered.map(r => (
                 <tr key={r.id}>
-                  <td style={{ fontWeight: 600 }}>{r.equipo}</td>
+                  <td className="u-fw-600">{r.equipo}</td>
                   <td className="mono">{r.capacidad || <span className="dim">—</span>}</td>
                   <td>
                     <input
@@ -302,10 +302,10 @@ export default function Usados() {
             </div>
             <form onSubmit={handleCreate}>
               <div className="modal-body">
-                <div className="stack" style={{ gap: 14 }}>
+                <div className="stack u-gap-14">
                   <div className="row">
                     <div className="field" style={{ flex: 2 }}>
-                      <label className="field-label">Modelo <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <label className="field-label">Modelo <span className="u-color-neg">*</span></label>
                       <input
                         className="input"
                         placeholder="ej. iPhone 14"
@@ -335,7 +335,7 @@ export default function Usados() {
                       />
                     </div>
                     <div className="field u-flex-1">
-                      <label className="field-label">Precio USD <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <label className="field-label">Precio USD <span className="u-color-neg">*</span></label>
                       <div className="input-group">
                         <span className="addon addon-l muted tiny" style={{ padding: '0 8px' }}>USD</span>
                         <input

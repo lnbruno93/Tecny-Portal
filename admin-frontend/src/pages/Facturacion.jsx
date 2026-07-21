@@ -233,7 +233,7 @@ export default function Facturacion() {
               (kpis.trials_por_vencer_7d ?? 0) > 0
                 ? 'status s-warn'
                 : 'muted'
-            } style={{ fontSize: 12 }}>
+            } className="u-fs-12">
               {loading ? '' : (kpis.trials_por_vencer_7d ?? 0) > 0
                 ? `${kpis.trials_por_vencer_7d} vencen en 7d`
                 : 'sin urgencias'}

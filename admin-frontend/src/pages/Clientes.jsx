@@ -188,7 +188,7 @@ export default function Clientes() {
         flush
         title={`Listado · ${data.length}`}
         actions={
-          <div className="flex-row" style={{ gap: 8 }}>
+          <div className="flex-row u-gap-8">
             <div className="input-group" style={{ width: 240 }}>
               <span className="addon addon-l"><Icons.Search size={14} /></span>
               <input
@@ -285,7 +285,7 @@ export default function Clientes() {
                       <div className="flex-row" style={{ gap: 10 }}>
                         <div className="company-logo">{tenantInitials(t.nombre)}</div>
                         <div>
-                          <div style={{ fontWeight: 600 }}>{t.nombre || '—'}</div>
+                          <div className="u-fw-600">{t.nombre || '—'}</div>
                           <div className="muted tiny">{t.slug || ''}</div>
                         </div>
                       </div>
@@ -293,7 +293,7 @@ export default function Clientes() {
                     <td>
                       <Badge tone={planTone(t.plan)}>{planLabel(t.plan)}</Badge>
                     </td>
-                    <td className="num mono" style={{ fontWeight: 600 }}>
+                    <td className="num mono u-fw-600">
                       {(t.mrr_usd ?? 0) > 0 ? fmtMoney(t.mrr_usd) : '—'}
                     </td>
                     <td className="mono">{fmt(t.users_count ?? 0)}</td>

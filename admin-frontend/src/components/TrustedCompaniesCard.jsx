@@ -298,7 +298,7 @@ export default function TrustedCompaniesCard() {
                       onBlur={() => handleRename(c.id)}
                       disabled={busyId === c.id}
                       maxLength={120}
-                      style={{ fontSize: 13 }}
+                      className="u-fs-13"
                     />
                     <button type="submit" className="icon-btn" title="Guardar"
                             disabled={busyId === c.id}>✓</button>

@@ -127,7 +127,7 @@ export function Card({
         </header>
       )}
       {hasHeader && !flush && (
-        <header className="flex-between" style={{ marginBottom: 12 }}>
+        <header className="flex-between u-mb-12">
           <div>
             {title && <div className="card-title">{title}</div>}
             {subtitle && <div className="card-sub">{subtitle}</div>}

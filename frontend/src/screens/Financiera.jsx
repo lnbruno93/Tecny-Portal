@@ -738,7 +738,7 @@ export default function Financiera() {
           {/* Presets de rango: Hoy / Este mes / Mes pasado / Personalizado.
               Persistido en localStorage. Si elegís Personalizado, aparecen 2
               inputs date adicionales para Desde/Hasta. */}
-          <div className="card card-tight" style={{ marginBottom: 14 }}>
+          <div className="card card-tight u-mb-14">
             <div className="flex-row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
               <span className="muted tiny" style={{ marginRight: 4 }}>Período:</span>
               {[
@@ -768,14 +768,14 @@ export default function Financiera() {
             </div>
           </div>
           {/* KPI cards */}
-          <div className="row" style={{ marginBottom: 16 }}>
+          <div className="row u-mb-16">
             <div className="card card-tight u-flex-1">
               <div className="kpi-label">Monto bruto · {rangeLabel(dashRange)}</div>
               <div className="kpi-value">
                 <span className="ccy">ARS </span>
                 <span className="mono">{fmt(dashData?.total_monto ?? 0)}</span>
               </div>
-              <div className="muted tiny" style={{ marginTop: 6 }}>
+              <div className="muted tiny u-mt-6">
                 {dashData?.count ?? 0} comprobantes
               </div>
             </div>
@@ -783,11 +783,11 @@ export default function Financiera() {
               <div className="kpi-label">Retención financiera</div>
               <div className="kpi-value">
                 <span className="ccy">ARS </span>
-                <span className="mono" style={{ color: 'var(--accent)' }}>
+                <span className="mono u-color-accent">
                   {fmt(dashData?.total_financiera ?? 0)}
                 </span>
               </div>
-              <div className="muted tiny" style={{ marginTop: 6 }}>
+              <div className="muted tiny u-mt-6">
                 {pct.toFixed(1)}% del bruto
               </div>
             </div>
@@ -797,14 +797,14 @@ export default function Financiera() {
                 <span className="ccy">ARS </span>
                 <span className="mono pos">{fmt(dashData?.total_neto ?? 0)}</span>
               </div>
-              <div className="muted tiny" style={{ marginTop: 6 }}>
+              <div className="muted tiny u-mt-6">
                 bruto − retención
               </div>
             </div>
             <div className="card card-tight u-flex-1">
               <div className="kpi-label">Vendedores activos</div>
               <div className="kpi-value mono">{vendedores.length}</div>
-              <div className="muted tiny" style={{ marginTop: 6 }}>
+              <div className="muted tiny u-mt-6">
                 en el equipo
               </div>
             </div>
@@ -814,7 +814,7 @@ export default function Financiera() {
           <div className="card card-flush">
             <div className="card-hd">
               <h3>Comprobantes — {rangeLabel(dashRange)}</h3>
-              <div className="flex-row" style={{ gap: 8 }}>
+              <div className="flex-row u-gap-8">
                 <button
                   className="btn btn-sm"
                   onClick={() => exportCsv(
@@ -853,18 +853,18 @@ export default function Financiera() {
                   {recentComps.map(c => (
                     <tr key={c.id} className="tbl-row-click">
                       <td className="muted">{fmtFecha(c.fecha)}</td>
-                      <td style={{ fontWeight: 600 }}>{c.cliente || <span className="muted">Sin cliente</span>}</td>
+                      <td className="u-fw-600">{c.cliente || <span className="muted">Sin cliente</span>}</td>
                       <td className="muted">{c.vendedor_nombre || vendName(c.vendedor_id)}</td>
                       <td><Badge>{c.referencia || '—'}</Badge></td>
                       <td className="num mono">
                         <span className="muted" style={{ fontWeight: 500 }}>ARS </span>
                         {fmt(c.monto)}
                       </td>
-                      <td className="num mono" style={{ color: 'var(--accent)' }}>
+                      <td className="num mono u-color-accent">
                         <span className="muted" style={{ fontWeight: 500 }}>ARS </span>
                         {fmt(c.monto_financiera)}
                       </td>
-                      <td className="num mono pos" style={{ fontWeight: 600 }}>
+                      <td className="num mono pos u-fw-600">
                         <span className="muted" style={{ fontWeight: 500 }}>ARS </span>
                         {fmt(c.monto_neto)}
                       </td>
@@ -900,7 +900,7 @@ export default function Financiera() {
             </div>
             <div style={{ padding: '0 18px 18px' }}>
               {/* Row 1: fecha + cliente */}
-              <div className="row" style={{ marginBottom: 12 }}>
+              <div className="row u-mb-12">
                 <div className="field u-flex-1">
                   <div className="field-label">Fecha de pago</div>
                   <input
@@ -922,7 +922,7 @@ export default function Financiera() {
               </div>
 
               {/* Row 2: vendedor + monto */}
-              <div className="row" style={{ marginBottom: 12 }}>
+              <div className="row u-mb-12">
                 <div className="field u-flex-1">
                   <div className="field-label">Vendedor</div>
                   <select
@@ -939,7 +939,7 @@ export default function Financiera() {
                 <div className="field u-flex-1">
                   <div className="field-label">Monto bruto (ARS)</div>
                   <div className="input-group">
-                    <span className="addon addon-l" style={{ color: 'var(--accent)' }}>$</span>
+                    <span className="addon addon-l u-color-accent">$</span>
                     <input
                       type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                       className="input mono"
@@ -970,14 +970,14 @@ export default function Financiera() {
                   />
                   {ocrLoading ? (
                     <>
-                      <Icons.Sparkle size={28} style={{ color: 'var(--accent)' }} />
-                      <div style={{ fontWeight: 600, fontSize: 14 }}>Procesando OCR…</div>
+                      <Icons.Sparkle size={28} className="u-color-accent" />
+                      <div className="u-fs-14-fw-600">Procesando OCR…</div>
                       <div className="muted tiny">Claude está extrayendo el monto</div>
                     </>
                   ) : cFile ? (
                     <>
-                      <Icons.Sparkle size={28} style={{ color: 'var(--accent)' }} />
-                      <div style={{ fontWeight: 600, fontSize: 14 }}>{cFile.name}</div>
+                      <Icons.Sparkle size={28} className="u-color-accent" />
+                      <div className="u-fs-14-fw-600">{cFile.name}</div>
                       <div className="muted tiny">
                         {(cFile.size / 1024).toFixed(0)} KB
                         {ocrResult && ocrResult.monto && ` · OCR extrajo ${fmtARS(ocrResult.monto)}`}
@@ -986,7 +986,7 @@ export default function Financiera() {
                   ) : (
                     <>
                       <Icons.Camera size={32} />
-                      <div style={{ fontWeight: 600, fontSize: 14 }}>
+                      <div className="u-fs-14-fw-600">
                         Imagen o PDF · OCR automático
                       </div>
                       <div className="muted tiny">
@@ -1008,7 +1008,7 @@ export default function Financiera() {
                 {/* 2026-06-24 mobile lote D: usar .kpi-grid que respeta el
                     breakpoint <=640px (1 col en mobile) en vez de 3 fijas
                     que truncan los valores numéricos. */}
-                <div className="kpi-grid" style={{ gap: 14 }}>
+                <div className="kpi-grid u-gap-14">
                   <div>
                     <div className="muted tiny" style={{ fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
                       Total ingresado
@@ -1044,7 +1044,7 @@ export default function Financiera() {
               )}
 
               {/* Actions */}
-              <div className="flex-row" style={{ gap: 8 }}>
+              <div className="flex-row u-gap-8">
                 <button
                   className="btn btn-primary"
                   onClick={handleSaveComprobante}
@@ -1116,7 +1116,7 @@ export default function Financiera() {
                 <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--accent)' }}>
                   {pct.toFixed(1)}%
                 </div>
-                <div className="muted tiny" style={{ marginTop: 4 }}>
+                <div className="muted tiny u-mt-4">
                   Configurable en Ajustes del portal
                 </div>
               </div>
@@ -1133,7 +1133,7 @@ export default function Financiera() {
         {/* Barra de presets de rango (misma estética que Dashboard).
             Persistida en localStorage con clave distinta (fin_comps_range)
             para que cada tab recuerde su scope sin pisarse. */}
-        <div className="card card-tight" style={{ marginBottom: 14 }}>
+        <div className="card card-tight u-mb-14">
           <div className="flex-row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
             <span className="muted tiny" style={{ marginRight: 4 }}>Período:</span>
             {[
@@ -1261,7 +1261,7 @@ export default function Financiera() {
                   return (
                   <tr key={c.id} className="tbl-row-click">
                     <td className="muted">{fmtFecha(c.fecha)}</td>
-                    <td style={{ fontWeight: 600 }}>{c.cliente || <span className="muted">Sin cliente</span>}</td>
+                    <td className="u-fw-600">{c.cliente || <span className="muted">Sin cliente</span>}</td>
                     <td>{c.vendedor_nombre || vendName(c.vendedor_id)}</td>
                     <td>
                       {esManual
@@ -1273,10 +1273,10 @@ export default function Financiera() {
                       <span className="muted" style={{ fontWeight: 500 }}>ARS </span>
                       {fmt(c.monto)}
                     </td>
-                    <td className="num mono" style={{ color: 'var(--accent)' }}>
+                    <td className="num mono u-color-accent">
                       {fmt(c.monto_financiera)}
                     </td>
-                    <td className="num mono pos" style={{ fontWeight: 600 }}>
+                    <td className="num mono pos u-fw-600">
                       {fmt(c.monto_neto)}
                     </td>
                     <td>
@@ -1295,8 +1295,7 @@ export default function Financiera() {
                                     onClick={() => openManualEdit(c)}>
                               <Icons.Edit size={14} />
                             </button>
-                            <button className="icon-btn" title="Eliminar venta previa" aria-label="Eliminar venta previa"
-                                    style={{ color: 'var(--neg)' }} onClick={() => handleDeleteComp(c)}>
+                            <button className="icon-btn u-color-neg" title="Eliminar venta previa" aria-label="Eliminar venta previa" onClick={() => handleDeleteComp(c)}>
                               <Icons.Trash size={14} />
                             </button>
                           </>
@@ -1364,7 +1363,7 @@ export default function Financiera() {
                         caja_id: '',
                         ...(e.target.checked ? {} : { tc: '', usd_recibido: '' }),
                       }))} />
-                    <span style={{ fontSize: 13, fontWeight: 600 }}>Convertir a USD</span>
+                    <span className="u-fs-13-fw-600">Convertir a USD</span>
                   </label>
                 </div>
 
@@ -1397,7 +1396,7 @@ export default function Financiera() {
                     <div className="field" style={{ flex: '1 1 160px', minWidth: 160 }}>
                       <label htmlFor="pago-ars" className="field-label">Total ARS (descuenta del saldo)</label>
                       <div className="input-group">
-                        <span className="addon addon-l" style={{ color: 'var(--accent)' }}>$</span>
+                        <span className="addon addon-l u-color-accent">$</span>
                         <input id="pago-ars" type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0"
                           className="input mono" placeholder="0,00"
                           value={pagoForm.monto}
@@ -1430,10 +1429,10 @@ export default function Financiera() {
 
                 {/* Sin conversión: solo input ARS. */}
                 {!pagoForm.convertir_usd && (
-                  <div className="field" style={{ marginBottom: 12 }}>
+                  <div className="field u-mb-12">
                     <label htmlFor="pago-ars-only" className="field-label">Monto (ARS)</label>
                     <div className="input-group">
-                      <span className="addon addon-l" style={{ color: 'var(--accent)' }}>$</span>
+                      <span className="addon addon-l u-color-accent">$</span>
                       <input id="pago-ars-only" type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0"
                         className="input mono" placeholder="0,00"
                         value={pagoForm.monto}
@@ -1446,7 +1445,7 @@ export default function Financiera() {
                     F5: el branch "no convertir USD" filtra por moneda LOCAL del
                     tenant (ARS para AR, UYU para UY). Antes era ARS hardcoded
                     — para tenants UY no aparecía ninguna caja válida. */}
-                <div className="field" style={{ marginBottom: 14 }}>
+                <div className="field u-mb-14">
                   <div className="field-label">Entra a la caja {pagoForm.convertir_usd ? '(USD)' : `(${monedaLocal})`}</div>
                   <select className="input"
                     value={pagoForm.caja_id}
@@ -1482,13 +1481,13 @@ export default function Financiera() {
                   <h3>Estado de cuenta</h3>
                 </div>
                 <div style={{ padding: '0 18px 18px' }}>
-                  <div className="row" style={{ marginBottom: 16 }}>
+                  <div className="row u-mb-16">
                     <div className="u-flex-1">
                       <div className="muted tiny" style={{ fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
                         Recibido
                       </div>
                       <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', marginTop: 4 }}>
-                        <span className="muted" style={{ fontSize: 12 }}>ARS </span>
+                        <span className="muted u-fs-12">ARS </span>
                         <span className="mono pos">{fmt(pagosTotales.total_monto)}</span>
                       </div>
                     </div>
@@ -1527,7 +1526,7 @@ export default function Financiera() {
                     <tr key={p.id}>
                       <td className="muted">{fmtFecha(p.fecha)}</td>
                       <td>{p.referencia || <span className="dim">—</span>}</td>
-                      <td className="num mono pos" style={{ fontWeight: 600 }}>
+                      <td className="num mono pos u-fw-600">
                         +{fmt(p.monto)}
                       </td>
                     </tr>
@@ -1592,15 +1591,15 @@ export default function Financiera() {
                   (bruto, retención, neto). Cargá el % efectivo que la financiera
                   aplicó en esa venta (por default usa el {pct}% global).
                 </div>
-                <div className="stack" style={{ gap: 12 }}>
-                  <div className="row" style={{ gap: 8 }}>
+                <div className="stack u-gap-12">
+                  <div className="row u-gap-8">
                     <div className="field" style={{ width: 150 }}>
                       <label className="field-label">Fecha</label>
                       <input type="date" className="input" value={manualForm.fecha}
                              onChange={e => setManualForm(f => ({ ...f, fecha: e.target.value }))} />
                     </div>
                     <div className="field u-flex-1">
-                      <label className="field-label">Cliente <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <label className="field-label">Cliente <span className="u-color-neg">*</span></label>
                       <input className="input" placeholder="Nombre del cliente" autoFocus
                              value={manualForm.cliente}
                              onChange={e => setManualForm(f => ({ ...f, cliente: e.target.value }))} />
@@ -1614,9 +1613,9 @@ export default function Financiera() {
                       {vendedores.map(v => <option key={v.id} value={v.id}>{v.nombre}</option>)}
                     </select>
                   </div>
-                  <div className="row" style={{ gap: 8 }}>
+                  <div className="row u-gap-8">
                     <div className="field u-flex-1">
-                      <label className="field-label">Monto bruto <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <label className="field-label">Monto bruto <span className="u-color-neg">*</span></label>
                       <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
                              className="input mono" placeholder="0"
                              value={manualForm.monto_bruto}
@@ -1636,7 +1635,7 @@ export default function Financiera() {
                       fontSize: 13, lineHeight: 1.6,
                     }}>
                       <div className="flex-between"><span className="muted">Bruto:</span><span className="mono">ARS {fmt(manualBruto)}</span></div>
-                      <div className="flex-between"><span className="muted">Retención ({manualPct}%):</span><span className="mono" style={{ color: 'var(--accent)' }}>− ARS {fmt(manualFinCalc)}</span></div>
+                      <div className="flex-between"><span className="muted">Retención ({manualPct}%):</span><span className="mono u-color-accent">− ARS {fmt(manualFinCalc)}</span></div>
                       <div className="flex-between" style={{ paddingTop: 4, borderTop: '1px solid var(--hairline)', marginTop: 4 }}>
                         <strong>Neto recibido:</strong>
                         <span className="mono pos" style={{ fontWeight: 700 }}>ARS {fmt(manualNetoCalc)}</span>

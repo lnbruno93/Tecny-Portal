@@ -143,11 +143,11 @@ export default function CreateTenantModal({ open, onClose, onCreated }) {
         para que elija su password (vence en 24 hs).
       </p>
 
-      <div className="stack" style={{ gap: 14 }}>
+      <div className="stack u-gap-14">
         {/* Empresa */}
         <div>
           <label className="form-label" htmlFor={tenantNombreId}>
-            Nombre de la empresa <span style={{ color: 'var(--neg)' }}>*</span>
+            Nombre de la empresa <span className="u-color-neg">*</span>
           </label>
           <input
             id={tenantNombreId}
@@ -160,7 +160,7 @@ export default function CreateTenantModal({ open, onClose, onCreated }) {
             disabled={submitting}
             autoFocus
           />
-          <div className="muted tiny" style={{ marginTop: 4 }}>
+          <div className="muted tiny u-mt-4">
             El slug se genera automáticamente desde el nombre.
           </div>
         </div>
@@ -168,7 +168,7 @@ export default function CreateTenantModal({ open, onClose, onCreated }) {
         {/* Owner — nombre */}
         <div>
           <label className="form-label" htmlFor={nombreId}>
-            Nombre del owner <span style={{ color: 'var(--neg)' }}>*</span>
+            Nombre del owner <span className="u-color-neg">*</span>
           </label>
           <input
             id={nombreId}
@@ -185,7 +185,7 @@ export default function CreateTenantModal({ open, onClose, onCreated }) {
         {/* Owner — email */}
         <div>
           <label className="form-label" htmlFor={emailId}>
-            Email del owner <span style={{ color: 'var(--neg)' }}>*</span>
+            Email del owner <span className="u-color-neg">*</span>
           </label>
           <input
             id={emailId}
@@ -204,7 +204,7 @@ export default function CreateTenantModal({ open, onClose, onCreated }) {
               Email inválido.
             </div>
           )}
-          <div className="muted tiny" style={{ marginTop: 4 }}>
+          <div className="muted tiny u-mt-4">
             Le mandamos el link para elegir password a este email.
           </div>
         </div>
@@ -229,7 +229,7 @@ export default function CreateTenantModal({ open, onClose, onCreated }) {
         {isEnterprise && (
           <div>
             <label className="form-label" htmlFor={mrrId}>
-              MRR custom (USD/mes) <span style={{ color: 'var(--neg)' }}>*</span>
+              MRR custom (USD/mes) <span className="u-color-neg">*</span>
             </label>
             <input
               id={mrrId}
@@ -242,7 +242,7 @@ export default function CreateTenantModal({ open, onClose, onCreated }) {
               placeholder="Ej: 250"
               disabled={submitting}
             />
-            <div className="muted tiny" style={{ marginTop: 4 }}>
+            <div className="muted tiny u-mt-4">
               Enterprise no tiene precio fijo — definí el negociado.
             </div>
           </div>
@@ -261,7 +261,7 @@ export default function CreateTenantModal({ open, onClose, onCreated }) {
             maxLength={500}
             disabled={submitting}
           />
-          <div className="muted tiny" style={{ marginTop: 4 }}>
+          <div className="muted tiny u-mt-4">
             Va al audit trail. Útil para forensics futuras.
           </div>
         </div>

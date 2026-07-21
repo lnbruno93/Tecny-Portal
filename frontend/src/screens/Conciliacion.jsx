@@ -82,7 +82,7 @@ export default function Conciliacion() {
 function Lista({ loading, items, onNueva, onAbrir }) {
   return (
     <>
-      <div className="flex-between" style={{ marginBottom: 12 }}>
+      <div className="flex-between u-mb-12">
         <div className="muted tiny">{items.length} conciliaciones</div>
         <button className="btn btn-primary" onClick={onNueva}>
           <Icons.Plus size={14} /> Nueva conciliación
@@ -95,8 +95,8 @@ function Lista({ loading, items, onNueva, onAbrir }) {
            <thead>
              <tr>
                <th>Caja</th><th>Período</th>
-               <th style={{ textAlign: 'right' }}>Líneas</th>
-               <th style={{ textAlign: 'right' }}>Matched</th>
+               <th className="u-text-right">Líneas</th>
+               <th className="u-text-right">Matched</th>
                <th>Estado</th><th></th>
              </tr>
            </thead>
@@ -105,8 +105,8 @@ function Lista({ loading, items, onNueva, onAbrir }) {
                <tr key={c.id} style={{ cursor: 'pointer' }} onClick={() => onAbrir(c.id)}>
                  <td>{c.caja_nombre} <span className="muted tiny">({c.caja_moneda})</span></td>
                  <td className="mono tiny">{fmtFecha(c.fecha_desde)} → {fmtFecha(c.fecha_hasta)}</td>
-                 <td className="mono" style={{ textAlign: 'right' }}>{c.lineas_total}</td>
-                 <td className="mono" style={{ textAlign: 'right' }}>
+                 <td className="mono u-text-right">{c.lineas_total}</td>
+                 <td className="mono u-text-right">
                    {c.lineas_matched} / {c.lineas_total}
                  </td>
                  <td>
@@ -230,18 +230,18 @@ function Wizard({ cajas, onCancel, onCreated }) {
         <>
           <div className="row" style={{ gap: 12, marginBottom: 12 }}>
             <div className="field" style={{ flex: '0 0 240px' }}>
-              <label className="field-label">Caja a conciliar <span style={{ color: 'var(--neg)' }}>*</span></label>
+              <label className="field-label">Caja a conciliar <span className="u-color-neg">*</span></label>
               <select className="input" value={cajaId} onChange={e => setCajaId(e.target.value)}>
                 <option value="">— Elegí caja —</option>
                 {cajas.map(c => <option key={c.id} value={c.id}>{c.nombre} ({c.moneda})</option>)}
               </select>
             </div>
             <div className="field" style={{ flex: '0 0 160px' }}>
-              <label className="field-label">Desde <span style={{ color: 'var(--neg)' }}>*</span></label>
+              <label className="field-label">Desde <span className="u-color-neg">*</span></label>
               <input type="date" className="input" value={fechaDesde} max={todayISO()} onChange={e => setFechaDesde(e.target.value)} />
             </div>
             <div className="field" style={{ flex: '0 0 160px' }}>
-              <label className="field-label">Hasta <span style={{ color: 'var(--neg)' }}>*</span></label>
+              <label className="field-label">Hasta <span className="u-color-neg">*</span></label>
               <input type="date" className="input" value={fechaHasta} max={todayISO()} onChange={e => setFechaHasta(e.target.value)} />
             </div>
             <div className="field" style={{ flex: '0 0 140px' }}>
@@ -249,15 +249,15 @@ function Wizard({ cajas, onCancel, onCreated }) {
               <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" max="30"
                      className="input mono" value={tolerancia}
                      onChange={e => setTolerancia(e.target.value)} />
-              <div className="muted tiny" style={{ marginTop: 2 }}>± días para auto-match</div>
+              <div className="muted tiny u-mt-2">± días para auto-match</div>
             </div>
           </div>
           <div className="field" style={{ marginTop: 8 }}>
-            <label className="field-label">Archivo del extracto (CSV o XLSX) <span style={{ color: 'var(--neg)' }}>*</span></label>
+            <label className="field-label">Archivo del extracto (CSV o XLSX) <span className="u-color-neg">*</span></label>
             <input type="file" accept=".csv,.xlsx" onChange={handleArchivo}
                    disabled={!cajaId || !fechaDesde || !fechaHasta}
                    style={{ padding: '6px 0' }} />
-            <div className="muted tiny" style={{ marginTop: 4 }}>
+            <div className="muted tiny u-mt-4">
               El archivo se procesa en tu navegador. Solo se mandan al servidor las líneas válidas (fecha + monto).
             </div>
           </div>
@@ -266,19 +266,19 @@ function Wizard({ cajas, onCancel, onCreated }) {
 
       {paso === 2 && (
         <>
-          <div style={{ marginBottom: 10 }}>
+          <div className="u-mb-10">
             <div className="muted tiny">Archivo: <strong>{archivoNombre}</strong> · {rows.length} filas detectadas</div>
           </div>
           <div className="row" style={{ gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
             <div className="field" style={{ flex: '0 0 200px' }}>
-              <label className="field-label">Columna Fecha <span style={{ color: 'var(--neg)' }}>*</span></label>
+              <label className="field-label">Columna Fecha <span className="u-color-neg">*</span></label>
               <select className="input" value={map.fecha} onChange={e => setMap(m => ({ ...m, fecha: e.target.value }))}>
                 <option value="">— Elegí —</option>
                 {headers.map((h, i) => <option key={i} value={i}>{h || `Columna ${i + 1}`}</option>)}
               </select>
             </div>
             <div className="field" style={{ flex: '0 0 200px' }}>
-              <label className="field-label">Columna Monto <span style={{ color: 'var(--neg)' }}>*</span></label>
+              <label className="field-label">Columna Monto <span className="u-color-neg">*</span></label>
               <select className="input" value={map.monto} onChange={e => setMap(m => ({ ...m, monto: e.target.value }))}>
                 <option value="">— Elegí —</option>
                 {headers.map((h, i) => <option key={i} value={i}>{h || `Columna ${i + 1}`}</option>)}
@@ -400,23 +400,23 @@ function Detalle({ id, onVolver }) {
 
   return (
     <>
-      <div className="flex-between" style={{ marginBottom: 12 }}>
+      <div className="flex-between u-mb-12">
         <button className="btn btn-ghost btn-sm" onClick={onVolver}>← Volver al listado</button>
-        <div className="flex-row" style={{ gap: 8 }}>
+        <div className="flex-row u-gap-8">
           {!cerrada && pendientes === 0 && (
             <button className="btn btn-primary" disabled={saving} onClick={cerrar}>
               {saving ? 'Cerrando…' : 'Cerrar conciliación'}
             </button>
           )}
-          <button className="btn" style={{ color: 'var(--neg)' }} onClick={eliminar}>Eliminar</button>
+          <button className="btn u-color-neg" onClick={eliminar}>Eliminar</button>
         </div>
       </div>
 
-      <div className="card card-tight" style={{ marginBottom: 12 }}>
+      <div className="card card-tight u-mb-12">
         <div className="flex-row" style={{ gap: 24, flexWrap: 'wrap' }}>
           <div>
             <div className="muted tiny">Caja</div>
-            <div style={{ fontWeight: 600 }}>{data.caja_nombre} <span className="muted tiny">({data.caja_moneda})</span></div>
+            <div className="u-fw-600">{data.caja_nombre} <span className="muted tiny">({data.caja_moneda})</span></div>
           </div>
           <div>
             <div className="muted tiny">Período</div>
@@ -451,7 +451,7 @@ function Detalle({ id, onVolver }) {
               <tr>
                 <th>Fecha</th>
                 <th>Descripción</th>
-                <th style={{ textAlign: 'right' }}>Monto</th>
+                <th className="u-text-right">Monto</th>
                 <th>Match con movimiento</th>
                 <th></th>
               </tr>

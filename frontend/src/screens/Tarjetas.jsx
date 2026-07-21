@@ -652,7 +652,7 @@ export default function Tarjetas() {
           neto del período (puede dar negativo si se liquidaron más cobros
           de los que entraron en ese rango). */}
       {!sinTarjetas && (
-        <div className="card card-tight" style={{ marginBottom: 14 }}>
+        <div className="card card-tight u-mb-14">
           <div className="flex-row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
             <span className="muted tiny" style={{ marginRight: 4 }}>Período (ledger):</span>
             {RANGE_PRESETS.map(p => (
@@ -681,7 +681,7 @@ export default function Tarjetas() {
         // 2026-06-24 lote F: padding fluido — 14px mobile / 24px desktop.
         <div className="card" style={{ padding: 'clamp(14px, 4vw, 24px)' }}>
           <div style={{ fontWeight: 600, marginBottom: 6 }}>Todavía no hay tarjetas configuradas</div>
-          <div className="muted" style={{ fontSize: 13 }}>
+          <div className="muted u-fs-13">
             Creá los métodos de pago tarjeta en <b>Cajas → Config Cajas</b> (tildá "Es tarjeta" y poné su % de comisión).
             Después, cada venta cobrada con ellos impacta acá automáticamente.
           </div>
@@ -689,14 +689,14 @@ export default function Tarjetas() {
       ) : vista === 'general' ? (
         <>
           {/* KPIs globales */}
-          <div className="row" style={{ marginBottom: 14 }}>
+          <div className="row u-mb-14">
             <div className="card card-tight u-flex-1">
               <div className="kpi-label">Saldo a tu favor</div>
               <div className="kpi-value mono" style={{ color: saldoColor(global.saldo) }}>$ {fmt(global.saldo)}</div>
             </div>
             <div className="card card-tight u-flex-1">
               <div className="kpi-label">Comisión financiera</div>
-              <div className="kpi-value mono" style={{ color: 'var(--neg)' }}>$ {fmt(global.comision)}</div>
+              <div className="kpi-value mono u-color-neg">$ {fmt(global.comision)}</div>
             </div>
             <div className="card card-tight u-flex-1">
               <div className="kpi-label">Ya recibido (liquidado)</div>
@@ -709,21 +709,21 @@ export default function Tarjetas() {
           </div>
 
           {/* Resumen por tarjeta */}
-          <div className="card card-flush" style={{ marginBottom: 14 }}>
-            <div className="card-hd"><div style={{ fontWeight: 600, fontSize: 14 }}>Por tarjeta</div></div>
+          <div className="card card-flush u-mb-14">
+            <div className="card-hd"><div className="u-fs-14-fw-600">Por tarjeta</div></div>
             <table className="tbl">
               <thead>
                 <tr>
-                  <th>Tarjeta</th><th style={{ textAlign: 'right' }}>Comisión</th>
-                  <th style={{ textAlign: 'right' }}>Cobrado bruto</th><th style={{ textAlign: 'right' }}>Comisión $</th><th style={{ textAlign: 'right' }}>Te deben</th>
+                  <th>Tarjeta</th><th className="u-text-right">Comisión</th>
+                  <th className="u-text-right">Cobrado bruto</th><th className="u-text-right">Comisión $</th><th className="u-text-right">Te deben</th>
                 </tr>
               </thead>
               <tbody>
                 {list.map(t => (
                   <tr key={t.id} style={{ cursor: 'pointer' }} onClick={() => { setSelectedId(t.id); setVista('detalle'); }}>
-                    <td style={{ fontWeight: 600 }}>{t.nombre}</td>
-                    <td className="mono tiny" style={{ textAlign: 'right' }}>{Number(t.comision_pct || 0)}%</td>
-                    <td className="mono" style={{ textAlign: 'right' }}>$ {fmt(t.bruto_total)}</td>
+                    <td className="u-fw-600">{t.nombre}</td>
+                    <td className="mono tiny u-text-right">{Number(t.comision_pct || 0)}%</td>
+                    <td className="mono u-text-right">$ {fmt(t.bruto_total)}</td>
                     <td className="mono" style={{ textAlign: 'right', color: 'var(--neg)' }}>$ {fmt(t.comision_total)}</td>
                     <td className="mono" style={{ textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>$ {fmt(t.saldo)}</td>
                   </tr>
@@ -735,13 +735,13 @@ export default function Tarjetas() {
           {/* Estado de cuenta unificado */}
           <div className="card card-flush">
             <div className="card-hd">
-              <div style={{ fontWeight: 600, fontSize: 14 }}>
+              <div className="u-fs-14-fw-600">
                 Estado de cuenta
                 <span className="muted tiny" style={{ marginLeft: 8, fontWeight: 400 }}>· {rangeLabel(tarjRange)} ({estadoCuenta.length})</span>
               </div>
               {/* Export del período actual — mismo patrón que Comprobantes/Financiera.
                   Sin ZIP porque Tarjetas no tiene archivos físicos asociados. */}
-              <div className="flex-row" style={{ gap: 8 }}>
+              <div className="flex-row u-gap-8">
                 <button className="btn btn-sm btn-ghost" onClick={exportPdfTarj}
                         disabled={!!exportingTarj} title="PDF con KPIs + tabla detalle del período">
                   <Icons.FileText size={13} />
@@ -762,9 +762,9 @@ export default function Tarjetas() {
                     {/* Bruto: para que el operador pueda chequear cupón por cupón
                         contra el resumen físico de la financiera. El neto solo no
                         alcanza porque la financiera factura sobre el bruto. */}
-                    <th style={{ textAlign: 'right' }}>Bruto</th>
-                    <th style={{ textAlign: 'right' }}>Neto</th>
-                    <th style={{ textAlign: 'right' }}>Saldo acum.</th>
+                    <th className="u-text-right">Bruto</th>
+                    <th className="u-text-right">Neto</th>
+                    <th className="u-text-right">Saldo acum.</th>
                     <th>Origen</th>
                     {/* Acciones: editar + eliminar. Solo para cobros previos y liquidaciones —
                         los cobros de venta (venta_id != null) NO se tocan acá. */}
@@ -779,7 +779,7 @@ export default function Tarjetas() {
                       <td className="tiny">{m.metodo_nombre}</td>
                       <td><span className={'badge ' + (m.tipo === 'cobro' ? '' : 'badge-info')}>{m.tipo === 'cobro' ? 'Cobro' : 'Liquidación'}</span></td>
                       {/* Bruto: solo tiene sentido en cobros (en liquidaciones bruto=neto y se entiende como neto recibido). */}
-                      <td className="mono tiny" style={{ textAlign: 'right' }}>
+                      <td className="mono tiny u-text-right">
                         {m.tipo === 'cobro' ? `${sym(m.moneda)} ${fmt(m.monto_bruto)}` : '—'}
                       </td>
                       <td className="mono" style={{ textAlign: 'right', color: m.tipo === 'cobro' ? 'var(--accent)' : 'var(--neg)' }}>
@@ -793,7 +793,7 @@ export default function Tarjetas() {
                             <button className="icon-btn" title="Editar" aria-label="Editar movimiento" onClick={() => openEdit(m)}>
                               <Icons.Edit size={13} />
                             </button>
-                            <button className="icon-btn" title="Eliminar" aria-label="Eliminar movimiento" style={{ color: 'var(--neg)' }} onClick={() => handleDeleteMov(m)}>
+                            <button className="icon-btn u-color-neg" title="Eliminar" aria-label="Eliminar movimiento" onClick={() => handleDeleteMov(m)}>
                               <Icons.Trash size={13} />
                             </button>
                           </>
@@ -822,7 +822,7 @@ export default function Tarjetas() {
               borderLeft: selectedId === ALL_TARJETAS ? '3px solid var(--accent)' : '3px solid transparent',
             }}>
               <div style={{ fontWeight: 700, fontSize: 13 }}>Todas las tarjetas</div>
-              <div className="muted tiny" style={{ marginTop: 2 }}>{list.length} {list.length === 1 ? 'modalidad' : 'modalidades'} · resumen + liquidación múltiple</div>
+              <div className="muted tiny u-mt-2">{list.length} {list.length === 1 ? 'modalidad' : 'modalidades'} · resumen + liquidación múltiple</div>
               <div className="mono tiny" style={{ marginTop: 2, color: saldoColor(global.saldo) }}>
                 Te deben: $ {fmt(global.saldo)}
               </div>
@@ -834,8 +834,8 @@ export default function Tarjetas() {
                 background: selectedId === t.id ? 'var(--surface-2)' : 'transparent',
                 borderLeft: selectedId === t.id ? '3px solid var(--accent)' : '3px solid transparent',
               }}>
-                <div style={{ fontWeight: 600, fontSize: 13 }}>{t.nombre}</div>
-                <div className="muted tiny" style={{ marginTop: 2 }}>Comisión {Number(t.comision_pct || 0)}%</div>
+                <div className="u-fs-13-fw-600">{t.nombre}</div>
+                <div className="muted tiny u-mt-2">Comisión {Number(t.comision_pct || 0)}%</div>
                 <div className="mono tiny" style={{ marginTop: 2, color: saldoColor(t.saldo) }}>
                   Te deben: {sym(t.moneda)} {fmt(t.saldo)}
                 </div>
@@ -848,10 +848,10 @@ export default function Tarjetas() {
             // ── Vista "Todas las tarjetas" — KPIs sumados + form de liquidación
             //    múltiple + ledger unificado. Pensada para registrar el depósito
             //    de la financiera que cubre N modalidades en una sola operación. ──
-            <div className="stack" style={{ gap: 14 }}>
+            <div className="stack u-gap-14">
               <div className="card">
                 <div style={{ fontWeight: 700, fontSize: 18 }}>Todas las tarjetas</div>
-                <div className="muted tiny" style={{ marginTop: 4 }}>
+                <div className="muted tiny u-mt-4">
                   Resumen agregado de las {list.length} {list.length === 1 ? 'modalidad activa' : 'modalidades activas'}.
                 </div>
               </div>
@@ -861,11 +861,11 @@ export default function Tarjetas() {
               <div className="row">
                 <div className="card card-tight u-flex-1">
                   <div className="kpi-label">Te deben (falta cobrar)</div>
-                  <div className="kpi-value mono" style={{ color: 'var(--accent)' }}>$ {fmt(global.saldo)}</div>
+                  <div className="kpi-value mono u-color-accent">$ {fmt(global.saldo)}</div>
                 </div>
                 <div className="card card-tight u-flex-1">
                   <div className="kpi-label">Comisión financiera</div>
-                  <div className="kpi-value mono" style={{ color: 'var(--neg)' }}>$ {fmt(global.comision)}</div>
+                  <div className="kpi-value mono u-color-neg">$ {fmt(global.comision)}</div>
                 </div>
                 <div className="card card-tight u-flex-1">
                   <div className="kpi-label">Cobrado (bruto)</div>
@@ -883,7 +883,7 @@ export default function Tarjetas() {
                   comprobante). Form: total + caja + N inputs por modalidad
                   con validación en vivo de "suma === total". */}
               <div className="card">
-                <div className="card-hd"><div style={{ fontWeight: 600, fontSize: 14 }}>Registrar liquidación múltiple</div></div>
+                <div className="card-hd"><div className="u-fs-14-fw-600">Registrar liquidación múltiple</div></div>
                 <form onSubmit={handleLiquidarMultiple} className="stack" style={{ gap: 10 }}>
                   {/* Fila 1: fecha del depósito + período cubierto (opcional,
                       lo que la planilla de la financiera dice tipo "26-27/5"). */}
@@ -919,7 +919,7 @@ export default function Tarjetas() {
                                caja_id: '',
                                ...(e.target.checked ? {} : { tc: '', usd_recibido: '' }),
                              }))} />
-                      <span style={{ fontSize: 13, fontWeight: 600 }}>Convertir a USD</span>
+                      <span className="u-fs-13-fw-600">Convertir a USD</span>
                     </label>
                   </div>
 
@@ -1006,7 +1006,7 @@ export default function Tarjetas() {
 
                   {/* Fila 3: caja destino. El filtro depende del toggle —
                       cuando convertís a USD solo mostramos cajas USD/USDT. */}
-                  <div className="field" style={{ width: '100%' }}>
+                  <div className="field u-w-100">
                     <label className="field-label tiny">Entra a la caja {multiLiq.convertir_usd ? '(USD)' : '(ARS)'}</label>
                     <select className="input"
                             value={multiLiq.caja_id}
@@ -1040,7 +1040,7 @@ export default function Tarjetas() {
                         {list.filter(t => Number(t.saldo) > 0).map(t => (
                           <div key={t.id} className="flex-row" style={{ gap: 8, alignItems: 'center' }}>
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontWeight: 600, fontSize: 13 }}>{t.nombre}</div>
+                              <div className="u-fs-13-fw-600">{t.nombre}</div>
                               <div className="muted tiny mono">Saldo pendiente: {sym(t.moneda)} {fmt(t.saldo)}</div>
                             </div>
                             <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono"
@@ -1093,7 +1093,7 @@ export default function Tarjetas() {
                   saldo acumulado real (window calculado en el server). */}
               <div className="card card-flush">
                 <div className="card-hd">
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>
+                  <div className="u-fs-14-fw-600">
                     Estado de cuenta unificado
                     <span className="muted tiny" style={{ marginLeft: 8, fontWeight: 400 }}>· {rangeLabel(tarjRange)} ({estadoCuenta.length})</span>
                   </div>
@@ -1103,9 +1103,9 @@ export default function Tarjetas() {
                     <thead>
                       <tr>
                         <th>Fecha</th><th>Tarjeta</th><th>Tipo</th>
-                        <th style={{ textAlign: 'right' }}>Bruto</th>
-                        <th style={{ textAlign: 'right' }}>Comisión</th>
-                        <th style={{ textAlign: 'right' }}>Neto</th>
+                        <th className="u-text-right">Bruto</th>
+                        <th className="u-text-right">Comisión</th>
+                        <th className="u-text-right">Neto</th>
                         <th>Origen</th>
                       </tr>
                     </thead>
@@ -1116,7 +1116,7 @@ export default function Tarjetas() {
                           <td className="mono tiny">{fmtFecha(m.fecha)}</td>
                           <td className="tiny">{m.metodo_nombre}</td>
                           <td><span className={'badge ' + (m.tipo === 'cobro' ? '' : 'badge-info')}>{m.tipo === 'cobro' ? 'Cobro' : 'Liquidación'}</span></td>
-                          <td className="mono" style={{ textAlign: 'right' }}>
+                          <td className="mono u-text-right">
                             {m.tipo === 'cobro' ? `${sym(m.moneda)} ${fmt(m.monto_bruto)}` : '—'}
                           </td>
                           <td className="mono tiny" style={{ textAlign: 'right', color: 'var(--neg)' }}>
@@ -1134,10 +1134,10 @@ export default function Tarjetas() {
           ) : !detalle ? (
             <div className="card" style={{ minHeight: 200, display: 'grid', placeItems: 'center', color: 'var(--text-muted)' }}>Elegí una tarjeta</div>
           ) : (
-            <div className="stack" style={{ gap: 14 }}>
+            <div className="stack u-gap-14">
               <div className="card">
                 <div style={{ fontWeight: 700, fontSize: 18 }}>{detalle.nombre}</div>
-                <div className="muted tiny" style={{ marginTop: 4 }}>Comisión de la financiera: {Number(detalle.comision_pct || 0)}%</div>
+                <div className="muted tiny u-mt-4">Comisión de la financiera: {Number(detalle.comision_pct || 0)}%</div>
               </div>
 
               <div className="row">
@@ -1147,7 +1147,7 @@ export default function Tarjetas() {
                 </div>
                 <div className="card card-tight u-flex-1">
                   <div className="kpi-label">Comisión financiera</div>
-                  <div className="kpi-value mono" style={{ color: 'var(--neg)' }}>{sym(mon)} {fmt(r.comision_total)}</div>
+                  <div className="kpi-value mono u-color-neg">{sym(mon)} {fmt(r.comision_total)}</div>
                 </div>
                 <div className="card card-tight u-flex-1">
                   <div className="kpi-label">Cobrado (bruto)</div>
@@ -1161,7 +1161,7 @@ export default function Tarjetas() {
 
               {/* Registrar liquidación (cuando nos pagan) */}
               <div className="card">
-                <div className="card-hd"><div style={{ fontWeight: 600, fontSize: 14 }}>Registrar liquidación (te pagaron)</div></div>
+                <div className="card-hd"><div className="u-fs-14-fw-600">Registrar liquidación (te pagaron)</div></div>
                 <form onSubmit={handleLiquidar} className="flex-row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
                   <div className="field" style={{ width: 150 }}><label className="field-label tiny">Fecha</label><input type="date" className="input" value={liq.fecha} onChange={e => setLiq(f => ({ ...f, fecha: e.target.value }))} /></div>
                   <div className="field" style={{ width: 150 }}><label className="field-label tiny">Monto recibido</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="0" value={liq.monto} onChange={e => setLiq(f => ({ ...f, monto: e.target.value }))} /></div>
@@ -1182,8 +1182,8 @@ export default function Tarjetas() {
                   <table className="tbl">
                     <thead>
                       <tr>
-                        <th>Fecha</th><th>Tipo</th><th style={{ textAlign: 'right' }}>Bruto</th><th style={{ textAlign: 'right' }}>Comisión</th>
-                        <th style={{ textAlign: 'right' }}>Neto</th><th>Origen</th><th></th>
+                        <th>Fecha</th><th>Tipo</th><th className="u-text-right">Bruto</th><th className="u-text-right">Comisión</th>
+                        <th className="u-text-right">Neto</th><th>Origen</th><th></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1195,7 +1195,7 @@ export default function Tarjetas() {
                           {/* Bruto: solo tiene sentido en cobros (en liquidaciones bruto=neto y es ruido).
                               Mismo criterio que la vista General de Estado de cuenta — antes esta
                               tabla mostraba el monto para liquidaciones también, inconsistente. */}
-                          <td className="mono" style={{ textAlign: 'right' }}>
+                          <td className="mono u-text-right">
                             {m.tipo === 'cobro' ? `${sym(m.moneda)} ${fmt(m.monto_bruto)}` : '—'}
                           </td>
                           <td className="mono tiny" style={{ textAlign: 'right', color: 'var(--neg)' }}>{Number(m.monto_comision) > 0 ? sym(m.moneda) + ' ' + fmt(m.monto_comision) : '—'}</td>
@@ -1207,7 +1207,7 @@ export default function Tarjetas() {
                                 <button className="icon-btn" title="Editar" aria-label="Editar movimiento" onClick={() => openEdit(m)}>
                                   <Icons.Edit size={13} />
                                 </button>
-                                <button className="icon-btn" title="Eliminar" aria-label="Eliminar movimiento" style={{ color: 'var(--neg)' }} onClick={() => handleDeleteMov(m)}>
+                                <button className="icon-btn u-color-neg" title="Eliminar" aria-label="Eliminar movimiento" onClick={() => handleDeleteMov(m)}>
                                   <Icons.Trash size={13} />
                                 </button>
                               </>
@@ -1243,9 +1243,9 @@ export default function Tarjetas() {
                   una venta — solo agrega saldo a cobrar de la financiera. Una
                   liquidación futura lo cancela igual que cualquier otro cobro.
                 </div>
-                <div className="stack" style={{ gap: 12 }}>
+                <div className="stack u-gap-12">
                   <div className="field">
-                    <label className="field-label">Tarjeta <span style={{ color: 'var(--neg)' }}>*</span></label>
+                    <label className="field-label">Tarjeta <span className="u-color-neg">*</span></label>
                     <select className="input" value={cobroPrev.metodo_pago_id}
                             onChange={e => setCobroPrevTarjeta(e.target.value)} autoFocus>
                       <option value="">— Seleccionar —</option>
@@ -1256,14 +1256,14 @@ export default function Tarjetas() {
                       ))}
                     </select>
                   </div>
-                  <div className="row" style={{ gap: 8 }}>
+                  <div className="row u-gap-8">
                     <div className="field u-flex-1">
                       <label className="field-label">Fecha del cobro</label>
                       <input type="date" className="input" value={cobroPrev.fecha}
                              onChange={e => setCobroPrev(f => ({ ...f, fecha: e.target.value }))} />
                     </div>
                     <div className="field u-flex-1">
-                      <label className="field-label">Monto bruto <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <label className="field-label">Monto bruto <span className="u-color-neg">*</span></label>
                       <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
                              className="input mono" placeholder="0"
                              value={cobroPrev.monto_bruto}
@@ -1284,7 +1284,7 @@ export default function Tarjetas() {
                       fontSize: 13, lineHeight: 1.6,
                     }}>
                       <div className="flex-between"><span className="muted">Bruto:</span><span className="mono">{fmt(cobroPrevCalc.bruto)}</span></div>
-                      <div className="flex-between"><span className="muted">Comisión ({cobroPrev.pct || 0}%):</span><span className="mono" style={{ color: 'var(--neg)' }}>− {fmt(cobroPrevCalc.comision)}</span></div>
+                      <div className="flex-between"><span className="muted">Comisión ({cobroPrev.pct || 0}%):</span><span className="mono u-color-neg">− {fmt(cobroPrevCalc.comision)}</span></div>
                       <div className="flex-between" style={{ paddingTop: 4, borderTop: '1px solid var(--hairline)', marginTop: 4 }}>
                         <strong>Neto a cobrar:</strong>
                         <span className="mono" style={{ fontWeight: 700, color: 'var(--accent)' }}>{fmt(cobroPrevCalc.neto)}</span>
@@ -1337,17 +1337,17 @@ export default function Tarjetas() {
                     <> · Si cambiás caja o monto, se revierte el ingreso anterior y se postea el nuevo.</>
                   )}
                 </div>
-                <div className="stack" style={{ gap: 12 }}>
+                <div className="stack u-gap-12">
                   {editMov.tipo === 'cobro' ? (
                     <>
-                      <div className="row" style={{ gap: 8 }}>
+                      <div className="row u-gap-8">
                         <div className="field u-flex-1">
                           <label className="field-label">Fecha</label>
                           <input type="date" className="input" value={editForm.fecha || ''}
                                  onChange={e => setEditForm(f => ({ ...f, fecha: e.target.value }))} />
                         </div>
                         <div className="field u-flex-1">
-                          <label className="field-label">Monto bruto <span style={{ color: 'var(--neg)' }}>*</span></label>
+                          <label className="field-label">Monto bruto <span className="u-color-neg">*</span></label>
                           <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
                                  className="input mono" value={editForm.monto_bruto || ''}
                                  onChange={e => setEditForm(f => ({ ...f, monto_bruto: e.target.value }))} />
@@ -1365,7 +1365,7 @@ export default function Tarjetas() {
                           fontSize: 13, lineHeight: 1.6,
                         }}>
                           <div className="flex-between"><span className="muted">Bruto:</span><span className="mono">{fmt(editCobroCalc.bruto)}</span></div>
-                          <div className="flex-between"><span className="muted">Comisión ({editForm.pct || 0}%):</span><span className="mono" style={{ color: 'var(--neg)' }}>− {fmt(editCobroCalc.comision)}</span></div>
+                          <div className="flex-between"><span className="muted">Comisión ({editForm.pct || 0}%):</span><span className="mono u-color-neg">− {fmt(editCobroCalc.comision)}</span></div>
                           <div className="flex-between" style={{ paddingTop: 4, borderTop: '1px solid var(--hairline)', marginTop: 4 }}>
                             <strong>Neto a cobrar:</strong>
                             <span className="mono" style={{ fontWeight: 700, color: 'var(--accent)' }}>{fmt(editCobroCalc.neto)}</span>
@@ -1374,14 +1374,14 @@ export default function Tarjetas() {
                       )}
                     </>
                   ) : (
-                    <div className="row" style={{ gap: 8 }}>
+                    <div className="row u-gap-8">
                       <div className="field" style={{ width: 150 }}>
                         <label className="field-label">Fecha</label>
                         <input type="date" className="input" value={editForm.fecha || ''}
                                onChange={e => setEditForm(f => ({ ...f, fecha: e.target.value }))} />
                       </div>
                       <div className="field" style={{ width: 150 }}>
-                        <label className="field-label">Monto recibido <span style={{ color: 'var(--neg)' }}>*</span></label>
+                        <label className="field-label">Monto recibido <span className="u-color-neg">*</span></label>
                         <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
                                className="input mono" value={editForm.monto || ''}
                                onChange={e => setEditForm(f => ({ ...f, monto: e.target.value }))} />

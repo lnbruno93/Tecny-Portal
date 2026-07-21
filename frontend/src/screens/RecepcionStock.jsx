@@ -231,7 +231,7 @@ export default function RecepcionStock() {
   return (
     <div className="content" style={{ paddingBottom: 80 }}>
       {/* Header */}
-      <div className="page-head" style={{ marginBottom: 16 }}>
+      <div className="page-head u-mb-16">
         <div>
           <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
             <Icons.Box size={20} /> Recepción de stock
@@ -246,18 +246,18 @@ export default function RecepcionStock() {
       </div>
 
       {/* 1. Datos comunes */}
-      <div className="card" style={{ marginBottom: 14 }}>
+      <div className="card u-mb-14">
         <div className="card-hd"><h3>1. Datos comunes de la recepción</h3></div>
         <div style={{ padding: 14, display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
           <label>
-            <div className="muted tiny" style={{ marginBottom: 4 }}>Depósito</div>
+            <div className="muted tiny u-mb-4">Depósito</div>
             <select className="input" value={deposito_id} onChange={e => setDepositoId(e.target.value)} disabled={loadingCats}>
               <option value="">— Sin asignar —</option>
               {deps.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}
             </select>
           </label>
           <label>
-            <div className="muted tiny" style={{ marginBottom: 4 }}>Proveedor</div>
+            <div className="muted tiny u-mb-4">Proveedor</div>
             <input
               className="input"
               list="provs-recepcion"
@@ -273,39 +273,39 @@ export default function RecepcionStock() {
       </div>
 
       {/* 2. Modelo activo */}
-      <div className="card" style={{ marginBottom: 14 }}>
+      <div className="card u-mb-14">
         <div className="card-hd">
           <h3>2. Modelo activo <span className="muted tiny" style={{ marginLeft: 6 }}>(se aplica a los próximos scans)</span></h3>
         </div>
         <div style={{ padding: 14, display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
           <label style={{ gridColumn: 'span 2' }}>
-            <div className="muted tiny" style={{ marginBottom: 4 }}>Nombre / Modelo *</div>
+            <div className="muted tiny u-mb-4">Nombre / Modelo *</div>
             <input className="input" placeholder="Ej: Samsung Galaxy A55" value={mNombre} onChange={e => setMNombre(e.target.value)} />
           </label>
           <label>
-            <div className="muted tiny" style={{ marginBottom: 4 }}>Categoría *</div>
+            <div className="muted tiny u-mb-4">Categoría *</div>
             <select className="input" value={mCategoria} onChange={e => setMCategoria(e.target.value)} disabled={loadingCats}>
               <option value="">— Elegir —</option>
               {cats.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
             </select>
           </label>
           <label>
-            <div className="muted tiny" style={{ marginBottom: 4 }}>Color</div>
+            <div className="muted tiny u-mb-4">Color</div>
             <input className="input" placeholder="Negro / Blanco / …" value={mColor} onChange={e => setMColor(e.target.value)} />
           </label>
           <label>
-            <div className="muted tiny" style={{ marginBottom: 4 }}>Capacidad</div>
+            <div className="muted tiny u-mb-4">Capacidad</div>
             <input className="input" placeholder="128GB / 256GB" value={mGb} onChange={e => setMGb(e.target.value)} />
           </label>
           <label>
-            <div className="muted tiny" style={{ marginBottom: 4 }}>Condición</div>
+            <div className="muted tiny u-mb-4">Condición</div>
             <select className="input" value={mCondicion} onChange={e => setMCondicion(e.target.value)}>
               <option value="nuevo">Nuevo</option>
               <option value="usado">Usado</option>
             </select>
           </label>
           <label>
-            <div className="muted tiny" style={{ marginBottom: 4 }}>Costo unitario</div>
+            <div className="muted tiny u-mb-4">Costo unitario</div>
             <div style={{ display: 'flex', gap: 4 }}>
               <input className="input" inputMode="decimal" placeholder="0" value={mCosto} onChange={e => setMCosto(e.target.value)} className="u-flex-1" />
               {/* 2026-06-29 Multi-país F3: USD + moneda local del tenant. */}
@@ -316,7 +316,7 @@ export default function RecepcionStock() {
             </div>
           </label>
           <label>
-            <div className="muted tiny" style={{ marginBottom: 4 }}>Precio venta</div>
+            <div className="muted tiny u-mb-4">Precio venta</div>
             <div style={{ display: 'flex', gap: 4 }}>
               <input className="input" inputMode="decimal" placeholder="0" value={mPrecio} onChange={e => setMPrecio(e.target.value)} className="u-flex-1" />
               <select className="input" value={mPrecioMoneda} onChange={e => setMPrecioMoneda(e.target.value)} style={{ width: 70 }}>
@@ -334,7 +334,7 @@ export default function RecepcionStock() {
       </div>
 
       {/* 3. Scanner + manual */}
-      <div className="card" style={{ marginBottom: 14 }}>
+      <div className="card u-mb-14">
         <div className="card-hd">
           <h3>3. Escanear IMEI <span className="muted tiny" style={{ marginLeft: 6 }}>({items.length} cargados)</span></h3>
         </div>
@@ -373,7 +373,7 @@ export default function RecepcionStock() {
           + edit inline son incómodos en celdas estrechas. Cada card = un
           producto, ocupa todo el ancho y es fácil de tocar con el pulgar. */}
       {items.length > 0 && (
-        <div className="card" style={{ marginBottom: 14 }}>
+        <div className="card u-mb-14">
           <div className="card-hd">
             <h3>4. Productos a cargar ({items.length})</h3>
             <div className="muted tiny" style={{ marginLeft: 8 }}>
@@ -416,7 +416,7 @@ export default function RecepcionStock() {
                 {/* Costo + Precio editables */}
                 <div style={{ display: 'flex', gap: 8 }}>
                   <label className="u-flex-1">
-                    <div className="muted tiny" style={{ marginBottom: 2 }}>Costo</div>
+                    <div className="muted tiny u-mb-2">Costo</div>
                     <div style={{ display: 'flex', gap: 2 }}>
                       <input
                         className="input"
@@ -441,7 +441,7 @@ export default function RecepcionStock() {
                     </div>
                   </label>
                   <label className="u-flex-1">
-                    <div className="muted tiny" style={{ marginBottom: 2 }}>Precio venta</div>
+                    <div className="muted tiny u-mb-2">Precio venta</div>
                     <div style={{ display: 'flex', gap: 2 }}>
                       <input
                         className="input"

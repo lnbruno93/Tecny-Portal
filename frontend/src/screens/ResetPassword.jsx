@@ -179,7 +179,7 @@ export default function ResetPassword() {
 
         <form onSubmit={handleSubmit} style={{ textAlign: 'left' }}>
           <div className="field">
-            <label htmlFor="reset-new">Contraseña nueva <span style={{ color: 'var(--neg)' }}>*</span></label>
+            <label htmlFor="reset-new">Contraseña nueva <span className="u-color-neg">*</span></label>
             <div className="iw">
               <span className="lead"><IconLock /></span>
               <input
@@ -204,7 +204,7 @@ export default function ResetPassword() {
               </button>
             </div>
             {fieldErrors.newPassword ? (
-              <div className="field-note" style={{ color: 'var(--neg)' }}>
+              <div className="field-note u-color-neg">
                 {fieldErrors.newPassword}
               </div>
             ) : (
@@ -215,7 +215,7 @@ export default function ResetPassword() {
           </div>
 
           <div className="field">
-            <label htmlFor="reset-confirm">Confirmar contraseña <span style={{ color: 'var(--neg)' }}>*</span></label>
+            <label htmlFor="reset-confirm">Confirmar contraseña <span className="u-color-neg">*</span></label>
             <div className="iw">
               <span className="lead"><IconLock /></span>
               <input
@@ -229,7 +229,7 @@ export default function ResetPassword() {
               />
             </div>
             {fieldErrors.confirmPassword && (
-              <div className="field-note" style={{ color: 'var(--neg)' }}>
+              <div className="field-note u-color-neg">
                 {fieldErrors.confirmPassword}
               </div>
             )}
@@ -240,7 +240,7 @@ export default function ResetPassword() {
           </button>
 
           {error && (
-            <div className="login-err" role="alert" aria-live="assertive" style={{ marginTop: 12 }}>
+            <div className="login-err u-mt-12" role="alert" aria-live="assertive">
               {error}
             </div>
           )}

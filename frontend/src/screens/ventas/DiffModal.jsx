@@ -68,7 +68,7 @@ export default function DiffModal({ state, onClose }) {
               <strong>Total pagado:</strong>
               <span className="mono pos" style={{ fontWeight: 700 }}>u$s {state.cubierto.toFixed(2)}</span>
             </div>
-            <div className="flex-between" style={{ fontSize: 14 }}>
+            <div className="flex-between u-fs-14">
               <strong>{aFavor ? 'Sobrante:' : 'Restante:'}</strong>
               <span className="mono" style={{ fontWeight: 700, color: aFavor ? 'var(--pos)' : 'var(--neg)' }}>
                 u$s {aFavor ? '+' : '-'}{Math.abs(dif).toFixed(2)}

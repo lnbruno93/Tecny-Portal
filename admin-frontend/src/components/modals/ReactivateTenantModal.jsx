@@ -73,7 +73,7 @@ export default function ReactivateTenantModal({ tenant, open, onClose, onSaved }
         Los usuarios podrán volver a operar la plataforma de inmediato.
       </p>
 
-      <div className="muted tiny" style={{ marginBottom: 14 }}>
+      <div className="muted tiny u-mb-14">
         Razón actual de suspensión: &quot;{tenant?.suspended_reason || '—'}&quot;,
         desde {fmtDate(tenant?.suspended_at)}
       </div>
@@ -92,7 +92,7 @@ export default function ReactivateTenantModal({ tenant, open, onClose, onSaved }
       </div>
 
       {error && (
-        <div className="banner banner-neg" role="alert" style={{ marginTop: 12 }}>
+        <div className="banner banner-neg u-mt-12" role="alert">
           {error}
         </div>
       )}

@@ -374,7 +374,7 @@ export default function SitioPublico() {
                            placeholder={f.placeholder} pattern={f.pattern}
                            value={contact[f.key]}
                            onChange={e => setContact(x => ({ ...x, [f.key]: e.target.value }))}
-                           disabled={saving} style={{ width: '100%' }} />
+                           disabled={saving} className="u-w-100" />
                     {f.hint && <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>{f.hint}</div>}
                   </div>
                 );
@@ -422,7 +422,7 @@ export default function SitioPublico() {
                       <input id={`sc-${f.key}`} type={f.type} className="input" maxLength={f.maxLength}
                              placeholder={f.placeholder} value={hero[f.key]}
                              onChange={e => setHero(x => ({ ...x, [f.key]: e.target.value }))}
-                             disabled={saving} style={{ width: '100%' }} />
+                             disabled={saving} className="u-w-100" />
                     )}
                     <div className="muted" style={{ fontSize: 11, marginTop: 4, display: 'flex', justifyContent: 'space-between' }}>
                       <span>{f.hint}</span>
@@ -474,7 +474,7 @@ export default function SitioPublico() {
                       <input id={`sc-${f.key}`} type={f.type} className="input" maxLength={f.maxLength}
                              placeholder={f.placeholder} value={cta[f.key]}
                              onChange={e => setCta(x => ({ ...x, [f.key]: e.target.value }))}
-                             disabled={saving} style={{ width: '100%' }} />
+                             disabled={saving} className="u-w-100" />
                     )}
                     <div className="muted" style={{ fontSize: 11, marginTop: 4, display: 'flex', justifyContent: 'space-between' }}>
                       <span>{f.hint}</span>
@@ -524,7 +524,7 @@ export default function SitioPublico() {
                       display: 'grid', gap: 10,
                     }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div className="muted" style={{ fontSize: 12 }}>
+                        <div className="muted u-fs-12">
                           #{idx + 1} — {q.question ? q.question.slice(0, 60) : 'Sin pregunta'}
                         </div>
                         <div style={{ display: 'flex', gap: 4 }}>
@@ -539,14 +539,14 @@ export default function SitioPublico() {
                         </div>
                       </div>
                       <div className="field">
-                        <div className="muted tiny" style={{ marginBottom: 2 }}>Pregunta</div>
+                        <div className="muted tiny u-mb-2">Pregunta</div>
                         <input className="input" maxLength={200}
                                placeholder="Ej. ¿Necesito instalar algo?"
                                value={q.question} disabled={saving}
                                onChange={e => updateFaq(idx, 'question', e.target.value)} />
                       </div>
                       <div className="field">
-                        <div className="muted tiny" style={{ marginBottom: 2 }}>Respuesta</div>
+                        <div className="muted tiny u-mb-2">Respuesta</div>
                         <textarea className="input" rows={3} maxLength={1000}
                                   placeholder="Ej. No. Tecny funciona desde el navegador..."
                                   value={q.answer} disabled={saving}
@@ -605,20 +605,20 @@ export default function SitioPublico() {
                               border: '1px solid var(--hairline)' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
                     <div>
-                      <div className="muted tiny" style={{ marginBottom: 2 }}>Reseñas en Google</div>
+                      <div className="muted tiny u-mb-2">Reseñas en Google</div>
                       <div style={{ fontSize: 16, fontWeight: 600 }}>
                         {googleStatus.count > 0 ? googleStatus.count : '—'}
                       </div>
                     </div>
                     <div>
-                      <div className="muted tiny" style={{ marginBottom: 2 }}>Rating agregado</div>
+                      <div className="muted tiny u-mb-2">Rating agregado</div>
                       <div style={{ fontSize: 16, fontWeight: 600 }}>
                         {typeof googleStatus.rating === 'number' ? googleStatus.rating.toFixed(1) + ' ★' : '—'}
                       </div>
                     </div>
                     <div>
-                      <div className="muted tiny" style={{ marginBottom: 2 }}>Última carga</div>
-                      <div style={{ fontSize: 13 }}>
+                      <div className="muted tiny u-mb-2">Última carga</div>
+                      <div className="u-fs-13">
                         {googleStatus.cached_at ? fmtDateTime(googleStatus.cached_at) : '—'}
                       </div>
                     </div>
@@ -660,9 +660,9 @@ export default function SitioPublico() {
                               border: '1px solid var(--hairline)' }}>
                 <input type="checkbox" checked={googleEnabled} disabled={saving}
                        onChange={e => setGoogleEnabled(e.target.checked)}
-                       style={{ marginTop: 2 }} />
+                       className="u-mt-2" />
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>
+                  <div className="u-fs-13-fw-600">
                     Mostrar reseñas de Google en la landing
                   </div>
                   <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
@@ -730,7 +730,7 @@ export default function SitioPublico() {
                           }}>
                             {(t.initial || '?').toUpperCase()}
                           </div>
-                          <div className="muted" style={{ fontSize: 12 }}>
+                          <div className="muted u-fs-12">
                             #{idx + 1} — {t.name || 'Sin nombre'}
                           </div>
                         </div>
@@ -748,25 +748,25 @@ export default function SitioPublico() {
 
                       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1.5fr', gap: 8 }}>
                         <div className="field">
-                          <div className="muted tiny" style={{ marginBottom: 2 }}>Nombre</div>
+                          <div className="muted tiny u-mb-2">Nombre</div>
                           <input className="input" placeholder="Ej. Tomás R."
                                  value={t.name} disabled={saving}
                                  onChange={e => updateTestimonial(idx, 'name', e.target.value)} />
                         </div>
                         <div className="field">
-                          <div className="muted tiny" style={{ marginBottom: 2 }}>Inicial (1-2 chars)</div>
+                          <div className="muted tiny u-mb-2">Inicial (1-2 chars)</div>
                           <input className="input mono" maxLength={2} placeholder="T"
                                  value={t.initial} disabled={saving}
                                  onChange={e => updateTestimonial(idx, 'initial', e.target.value.toUpperCase())} />
                         </div>
                         <div className="field">
-                          <div className="muted tiny" style={{ marginBottom: 2 }}>Color</div>
+                          <div className="muted tiny u-mb-2">Color</div>
                           <input type="color" className="input" style={{ padding: 2, height: 32 }}
                                  value={t.color || '#4285F4'} disabled={saving}
                                  onChange={e => updateTestimonial(idx, 'color', e.target.value)} />
                         </div>
                         <div className="field">
-                          <div className="muted tiny" style={{ marginBottom: 2 }}>Tiempo</div>
+                          <div className="muted tiny u-mb-2">Tiempo</div>
                           <input className="input" placeholder="hace 3 días"
                                  value={t.time} disabled={saving}
                                  onChange={e => updateTestimonial(idx, 'time', e.target.value)} />
@@ -774,7 +774,7 @@ export default function SitioPublico() {
                       </div>
 
                       <div className="field">
-                        <div className="muted tiny" style={{ marginBottom: 2 }}>Texto del testimonio</div>
+                        <div className="muted tiny u-mb-2">Texto del testimonio</div>
                         <textarea className="input" rows={3} maxLength={1000}
                                   placeholder="Ej. Excelente atención, me atendieron por WhatsApp rápidamente y coordiné la visita el mismo día."
                                   value={t.text} disabled={saving}

@@ -93,7 +93,7 @@ export default function BusinessProfileSection({ isAdmin }) {
 
   if (loading) {
     return (
-      <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card u-mb-16">
         <div className="muted tiny">Cargando perfil del negocio…</div>
       </div>
     );
@@ -103,14 +103,14 @@ export default function BusinessProfileSection({ isAdmin }) {
   // que el admin lo configure si todavía está en defaults.
   if (!isAdmin) {
     return (
-      <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card u-mb-16">
         <div className="card-hd">
           <div style={{ fontWeight: 600, fontSize: 15 }}>Perfil del negocio</div>
-          <div className="muted tiny" style={{ marginTop: 2 }}>
+          <div className="muted tiny u-mt-2">
             Datos que se usan en los mensajes generados por el Cotizador.
           </div>
         </div>
-        <div className="stack" style={{ gap: 8 }}>
+        <div className="stack u-gap-8">
           <div>
             <div className="muted tiny">Ficha de Google</div>
             <div>{profile?.google_business_enabled ? 'Habilitada' : 'Sin configurar'}</div>
@@ -127,7 +127,7 @@ export default function BusinessProfileSection({ isAdmin }) {
               </div>
             </>
           )}
-          <div className="muted tiny" style={{ marginTop: 6 }}>
+          <div className="muted tiny u-mt-6">
             Pedile a un administrador del equipo que actualice estos datos si están desactualizados.
           </div>
         </div>
@@ -136,16 +136,16 @@ export default function BusinessProfileSection({ isAdmin }) {
   }
 
   return (
-    <div className="card" style={{ marginBottom: 16 }}>
+    <div className="card u-mb-16">
       <div className="card-hd">
         <div style={{ fontWeight: 600, fontSize: 15 }}>Perfil del negocio</div>
-        <div className="muted tiny" style={{ marginTop: 2 }}>
+        <div className="muted tiny u-mt-2">
           Datos que se usan en los mensajes generados por el Cotizador y otras
           partes del portal donde aparece el nombre del negocio.
         </div>
       </div>
 
-      <div className="stack" style={{ gap: 14 }}>
+      <div className="stack u-gap-14">
         {/* Toggle: ¿tenés ficha de Google? */}
         <label className="flex-row" style={{ gap: 10, alignItems: 'center', cursor: 'pointer' }}>
           <input
@@ -176,7 +176,7 @@ export default function BusinessProfileSection({ isAdmin }) {
             disabled={!enabled || saving}
             maxLength={200}
           />
-          <div className="muted tiny" style={{ marginTop: 4 }}>
+          <div className="muted tiny u-mt-4">
             Tal cual aparece en tu ficha de Google Maps / Google Business.
           </div>
         </div>
@@ -195,7 +195,7 @@ export default function BusinessProfileSection({ isAdmin }) {
             step="1"
             style={{ maxWidth: 200 }}
           />
-          <div className="muted tiny" style={{ marginTop: 4 }}>
+          <div className="muted tiny u-mt-4">
             Actualizá este número cuando tu ficha crezca. Si lo dejás vacío, el
             mensaje menciona Google pero sin números.
           </div>

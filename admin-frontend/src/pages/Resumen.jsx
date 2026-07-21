@@ -351,7 +351,7 @@ export default function Resumen() {
                 tan crítico como MRR), mantenemos el slot vacío para no romper
                 el ritmo visual del grid. */}
             {i === 0 && pricesPending ? (
-              <div className="muted tiny" style={{ marginTop: 4 }}>
+              <div className="muted tiny u-mt-4">
                 (precios pendientes de configurar)
               </div>
             ) : i === 0 && mrrSpark.length > 0 ? (
@@ -486,7 +486,7 @@ export default function Resumen() {
                       <div className="flex-row" style={{ gap: 10 }}>
                         <div className="company-logo">{tenantInitials(t.nombre)}</div>
                         <div>
-                          <div style={{ fontWeight: 600 }}>{t.nombre || '—'}</div>
+                          <div className="u-fw-600">{t.nombre || '—'}</div>
                           <div className="muted tiny">{t.slug || ''}</div>
                         </div>
                       </div>
@@ -494,7 +494,7 @@ export default function Resumen() {
                     <td>
                       <Badge tone={planTone(t.plan)}>{planLabel(t.plan)}</Badge>
                     </td>
-                    <td className="num mono" style={{ fontWeight: 600 }}>
+                    <td className="num mono u-fw-600">
                       {fmt(t.users_count ?? 0)}
                     </td>
                     <td className="muted tiny">{t.last_venta_at ? ago(t.last_venta_at) : '—'}</td>
@@ -511,7 +511,7 @@ export default function Resumen() {
               <div className="empty-title">Sin datos de planes.</div>
             </div>
           ) : (
-            <div className="stack" style={{ gap: 14 }}>
+            <div className="stack u-gap-14">
               {planDist.map((p) => {
                 const price = metrics?.plan_prices_usd?.[p.plan] ?? 0;
                 // % de la barra basado en MRR. Si totalMrr=0 (precios
@@ -523,13 +523,13 @@ export default function Resumen() {
                 return (
                   <div key={p.plan}>
                     <div className="flex-between" style={{ marginBottom: 6 }}>
-                      <span className="flex-row" style={{ gap: 8 }}>
+                      <span className="flex-row u-gap-8">
                         <Badge tone={planTone(p.plan)}>{planLabel(p.plan)}</Badge>
                         <span className="muted tiny">
                           {p.count ?? 0} clientes · {fmtMoney(price)} precio/mes
                         </span>
                       </span>
-                      <span className="mono" style={{ fontWeight: 600 }}>
+                      <span className="mono u-fw-600">
                         {fmtMoney(p.mrr_usd ?? 0)} MRR
                       </span>
                     </div>

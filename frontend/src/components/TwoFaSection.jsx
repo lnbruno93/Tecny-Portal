@@ -187,7 +187,7 @@ export default function TwoFaSection() {
             <button className="btn btn-ghost btn-sm" onClick={handleRegenerateRecovery}>
               Regenerar recovery codes
             </button>
-            <button className="btn btn-sm" style={{ color: 'var(--neg)' }} onClick={handleDisable}>
+            <button className="btn btn-sm u-color-neg" onClick={handleDisable}>
               Desactivar 2FA
             </button>
           </div>
@@ -198,7 +198,7 @@ export default function TwoFaSection() {
             padding: 14, background: 'rgba(234, 179, 8, 0.08)',
             border: '1px solid rgba(234, 179, 8, 0.3)',
           }}>
-            <div className="field-label" style={{ marginBottom: 8 }}>
+            <div className="field-label u-mb-8">
               ⚠️ Nuevos recovery codes — guardalos AHORA
             </div>
             <div className="tiny" style={{ marginBottom: 10, lineHeight: 1.4 }}>
@@ -214,7 +214,7 @@ export default function TwoFaSection() {
                 }}>{c}</div>
               ))}
             </div>
-            <div className="flex-row" style={{ gap: 8 }}>
+            <div className="flex-row u-gap-8">
               <button
                 className="btn btn-ghost btn-sm"
                 onClick={async () => {

@@ -201,7 +201,7 @@ export default function Login() {
         )}
 
         <form onSubmit={onSubmit} noValidate>
-          <div className="stack" style={{ gap: 12 }}>
+          <div className="stack u-gap-12">
             {!twofaRequired && (
               <>
                 <div className="input-group">

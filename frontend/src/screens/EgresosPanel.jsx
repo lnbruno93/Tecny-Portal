@@ -142,14 +142,14 @@ export default function EgresosPanel() {
       </div>
 
       {/* KPIs */}
-      <div className="row" style={{ marginBottom: 14 }}>
+      <div className="row u-mb-14">
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">Pendiente · USD</div>
           <div className="kpi-value mono" style={{ color: 'var(--warn, #d97706)' }}>u$s {fmt(totales.pendiente)}</div>
         </div>
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">Pagado · USD</div>
-          <div className="kpi-value mono" style={{ color: 'var(--neg)' }}>u$s {fmt(totales.pagado)}</div>
+          <div className="kpi-value mono u-color-neg">u$s {fmt(totales.pagado)}</div>
         </div>
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">Total del mes · USD</div>
@@ -165,17 +165,17 @@ export default function EgresosPanel() {
               <thead>
                 <tr>
                   <th>Fecha</th><th>Concepto</th><th>Categoría</th><th>Caja</th>
-                  <th style={{ textAlign: 'right' }}>Monto</th><th style={{ textAlign: 'right' }}>USD</th><th>Estado</th><th></th>
+                  <th className="u-text-right">Monto</th><th className="u-text-right">USD</th><th>Estado</th><th></th>
                 </tr>
               </thead>
               <tbody>
                 {list.map(e => (
                   <tr key={e.id}>
                     <td className="mono tiny">{fmtFecha(e.fecha)}</td>
-                    <td style={{ fontWeight: 600 }}>{e.concepto}{e.recurrente_id ? <span className="muted tiny" title="Generado de un recurrente"> ↻</span> : ''}</td>
+                    <td className="u-fw-600">{e.concepto}{e.recurrente_id ? <span className="muted tiny" title="Generado de un recurrente"> ↻</span> : ''}</td>
                     <td>{e.categoria_nombre ? <span className="badge">{e.categoria_nombre}</span> : '—'}</td>
                     <td className="tiny">{e.caja_nombre || '—'}</td>
-                    <td className="mono" style={{ textAlign: 'right' }}>{Number(e.monto) > 0 ? `${e.moneda === 'ARS' ? '$' : 'u$s'} ${fmt(e.monto)}` : '—'}</td>
+                    <td className="mono u-text-right">{Number(e.monto) > 0 ? `${e.moneda === 'ARS' ? '$' : 'u$s'} ${fmt(e.monto)}` : '—'}</td>
                     <td className="mono" style={{ textAlign: 'right', color: 'var(--neg)' }}>u$s {fmt(e.monto_usd)}</td>
                     <td>
                       <button className={'badge ' + (e.estado === 'pagado' ? 'badge-info' : '')} style={{ cursor: 'pointer', border: 'none' }}
@@ -185,7 +185,7 @@ export default function EgresosPanel() {
                     </td>
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                       <button className="icon-btn" title="Editar" onClick={() => openEdit(e)}><Icons.Edit size={14} /></button>
-                      <button className="icon-btn" title="Eliminar" style={{ color: 'var(--neg)' }} onClick={() => handleDelete(e)}><Icons.Trash size={14} /></button>
+                      <button className="icon-btn u-color-neg" title="Eliminar" onClick={() => handleDelete(e)}><Icons.Trash size={14} /></button>
                     </td>
                   </tr>
                 ))}
@@ -201,16 +201,16 @@ export default function EgresosPanel() {
             <div className="modal-hd"><h3>{editId ? 'Editar egreso' : 'Nuevo egreso'}</h3><button className="icon-btn" onClick={() => setShowForm(false)}><Icons.X size={16} /></button></div>
             <form onSubmit={handleSubmit}>
               <div className="modal-body">
-                <div className="stack" style={{ gap: 12 }}>
-                  <div className="row" style={{ gap: 12 }}>
+                <div className="stack u-gap-12">
+                  <div className="row u-gap-12">
                     {/* 2026-06-25 UX-6 (audit pre-live): marker `*` rojo consistente
                         con el patrón usado en el resto del proyecto (Contactos,
                         Usuarios, CuentasCC). EgresosPanel era el único que usaba
                         `*` plano sin estilizar — desprolijo visto lado a lado. */}
-                    <div className="field u-flex-1"><label className="field-label">Fecha <span style={{ color: 'var(--neg)' }}>*</span></label><input type="date" className="input" value={form.fecha} onChange={e => setForm(f => ({ ...f, fecha: e.target.value }))} /></div>
-                    <div className="field" style={{ flex: 2 }}><label className="field-label">Concepto <span style={{ color: 'var(--neg)' }}>*</span></label><input className="input" placeholder="Alquiler, sueldos…" value={form.concepto} onChange={e => setForm(f => ({ ...f, concepto: e.target.value }))} autoFocus /></div>
+                    <div className="field u-flex-1"><label className="field-label">Fecha <span className="u-color-neg">*</span></label><input type="date" className="input" value={form.fecha} onChange={e => setForm(f => ({ ...f, fecha: e.target.value }))} /></div>
+                    <div className="field" style={{ flex: 2 }}><label className="field-label">Concepto <span className="u-color-neg">*</span></label><input className="input" placeholder="Alquiler, sueldos…" value={form.concepto} onChange={e => setForm(f => ({ ...f, concepto: e.target.value }))} autoFocus /></div>
                   </div>
-                  <div className="row" style={{ gap: 12 }}>
+                  <div className="row u-gap-12">
                     <div className="field u-flex-1"><label className="field-label">Categoría</label>
                       <select className="input" value={form.categoria_id} onChange={e => setForm(f => ({ ...f, categoria_id: e.target.value }))}>
                         <option value="">— Sin categoría —</option>
@@ -225,8 +225,8 @@ export default function EgresosPanel() {
                     </div>
                     <div className="field u-flex-1"><label className="field-label">TC (si es ARS)</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="1425" value={form.tc} onChange={e => setForm(f => ({ ...f, tc: e.target.value }))} /><TcWarning tc={form.tc} /></div>
                   </div>
-                  <div className="row" style={{ gap: 12 }}>
-                    <div className="field u-flex-1"><label className="field-label">Caja {form.estado === 'pagado' && <span style={{ color: 'var(--neg)' }}>*</span>}</label>
+                  <div className="row u-gap-12">
+                    <div className="field u-flex-1"><label className="field-label">Caja {form.estado === 'pagado' && <span className="u-color-neg">*</span>}</label>
                       <select className="input" value={form.metodo_pago_id} onChange={e => setForm(f => ({ ...f, metodo_pago_id: e.target.value }))}>
                         <option value="">— Elegir caja —</option>
                         {cajas.map(c => <option key={c.id} value={c.id}>{cajaNombre(c)}</option>)}
@@ -283,8 +283,8 @@ function CategoriasModal({ categorias, onClose, onChange, toast, confirm }) {
             {categorias.length === 0 && <div className="muted tiny">Sin categorías.</div>}
             {categorias.map(c => (
               <div key={c.id} className="flex-between" style={{ padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 8 }}>
-                <span style={{ fontSize: 13 }}>{c.nombre}</span>
-                <button className="icon-btn" style={{ color: 'var(--neg)' }} onClick={() => del(c)}><Icons.Trash size={13} /></button>
+                <span className="u-fs-13">{c.nombre}</span>
+                <button className="icon-btn u-color-neg" onClick={() => del(c)}><Icons.Trash size={13} /></button>
               </div>
             ))}
           </div>
@@ -342,8 +342,8 @@ function RecurrentesModal({ recurrentes, categorias, cajas, onClose, onChange, t
             {recurrentes.length === 0 && <div className="muted tiny">Sin recurrentes. Agregá uno y usá "Generar del mes".</div>}
             {recurrentes.map(r => (
               <div key={r.id} className="flex-between" style={{ padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 8 }}>
-                <span style={{ fontSize: 13 }}>{r.concepto} · <span className="mono">{r.moneda === 'ARS' ? '$' : 'u$s'} {fmt(r.monto)}</span> <span className="muted tiny">· día {r.dia_del_mes}{r.categoria_nombre ? ' · ' + r.categoria_nombre : ''}</span></span>
-                <button className="icon-btn" style={{ color: 'var(--neg)' }} onClick={() => del(r)}><Icons.Trash size={13} /></button>
+                <span className="u-fs-13">{r.concepto} · <span className="mono">{r.moneda === 'ARS' ? '$' : 'u$s'} {fmt(r.monto)}</span> <span className="muted tiny">· día {r.dia_del_mes}{r.categoria_nombre ? ' · ' + r.categoria_nombre : ''}</span></span>
+                <button className="icon-btn u-color-neg" onClick={() => del(r)}><Icons.Trash size={13} /></button>
               </div>
             ))}
           </div>

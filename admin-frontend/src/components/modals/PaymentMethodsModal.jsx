@@ -177,9 +177,8 @@ export default function PaymentMethodsModal({ open, onClose, onSaved }) {
 
       {error && (
         <div
-          className="banner banner-neg"
+          className="banner banner-neg u-mb-12"
           role="alert"
-          style={{ marginBottom: 12 }}
         >
           {error}
         </div>
@@ -215,7 +214,7 @@ export default function PaymentMethodsModal({ open, onClose, onSaved }) {
               const isSaving = savingId === item.id;
               return (
                 <tr key={item.id}>
-                  <td style={{ fontWeight: 600 }}>
+                  <td className="u-fw-600">
                     {isEditing ? (
                       <input
                         className="input"

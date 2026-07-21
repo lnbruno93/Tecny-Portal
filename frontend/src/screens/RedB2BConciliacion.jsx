@@ -110,7 +110,7 @@ export function RedB2BConciliacionContent({
         ) : partnerships.length === 0 ? (
           <div className="empty-state" style={{ padding: 32 }}>
             <p>No tenés partnerships activos.</p>
-            <Link to="/red-b2b" className="btn-primary" style={{ marginTop: 12 }}>
+            <Link to="/red-b2b" className="btn-primary u-mt-12">
               Ir a Partnerships
             </Link>
           </div>
@@ -126,7 +126,7 @@ export function RedB2BConciliacionContent({
                   }}>
                     <div>
                       <strong>{partner?.nombre || `Partnership #${p.id}`}</strong>
-                      <div className="muted" style={{ fontSize: 13 }}>
+                      <div className="muted u-fs-13">
                         Plan: {partner?.plan || '—'}
                       </div>
                     </div>
@@ -172,7 +172,7 @@ export function RedB2BConciliacionContent({
             ← Conciliación
           </button>
           <h2 style={{ marginBottom: 4, marginTop: 6 }}>Conciliación con {partner?.nombre || '—'}</h2>
-          <div className="muted" style={{ fontSize: 13 }}>
+          <div className="muted u-fs-13">
             Partnership #{partnership.id} · Datos en vivo
           </div>
         </div>
@@ -233,9 +233,9 @@ export function RedB2BConciliacionContent({
               <thead>
                 <tr>
                   <th>Op #</th>
-                  <th style={{ textAlign: 'right' }}>Total USD</th>
-                  <th style={{ textAlign: 'right' }}>Pagado USD</th>
-                  <th style={{ textAlign: 'right' }}>Restante USD</th>
+                  <th className="u-text-right">Total USD</th>
+                  <th className="u-text-right">Pagado USD</th>
+                  <th className="u-text-right">Restante USD</th>
                   <th>Tipo</th>
                   <th>Última actividad</th>
                   <th></th>
@@ -245,16 +245,15 @@ export function RedB2BConciliacionContent({
                 {ops_diferencias.map((o) => (
                   <tr key={o.op_id}>
                     <td>#{o.op_id}</td>
-                    <td style={{ textAlign: 'right' }}>{fmtMoney(o.total_usd, 'USD')}</td>
-                    <td style={{ textAlign: 'right' }}>{fmtMoney(o.pagado_usd, 'USD')}</td>
-                    <td style={{ textAlign: 'right' }}>{fmtMoney(o.restante_usd, 'USD')}</td>
+                    <td className="u-text-right">{fmtMoney(o.total_usd, 'USD')}</td>
+                    <td className="u-text-right">{fmtMoney(o.pagado_usd, 'USD')}</td>
+                    <td className="u-text-right">{fmtMoney(o.restante_usd, 'USD')}</td>
                     <td>{o.is_devolucion ? <span className="muted">Devolución</span> : 'Venta'}</td>
                     <td>{o.ultima_actividad ? fmtFecha(o.ultima_actividad) : '—'}</td>
                     <td>
                       <Link
                         to={`/red-b2b/operaciones/${o.op_id}`}
-                        className="btn-link"
-                        style={{ fontSize: 13 }}
+                        className="btn-link u-fs-13"
                       >
                         Ver →
                       </Link>
