@@ -328,7 +328,7 @@ export default function MovimientosCajaPanel() {
               </button>
             </div>
 
-            <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
+            <div className="modal-body u-grid-gap-12-nocol">
               <div className="field">
                 <label className="field-label">Fecha</label>
                 <input type="date" className="input" value={form.fecha} onChange={e => setF('fecha', e.target.value)} />

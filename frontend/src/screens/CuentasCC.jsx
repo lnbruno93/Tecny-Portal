@@ -372,7 +372,7 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
           }}>
 
             {/* Fecha */}
-            <td style={{ padding: '4px 5px' }}>
+            <td className="u-p-4-5">
               <input type="date" style={inp}
                 value={row.fecha}
                 onChange={e => upd(i, 'fecha', e.target.value)} />
@@ -381,7 +381,7 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
             {/* Tipo — la planilla inline ya sólo carga pagos.
                   Ventas (compras/devoluciones/entregas) se hacen vía
                   "Cargar venta" arriba. */}
-            <td style={{ padding: '4px 5px' }}>
+            <td className="u-p-4-5">
               {/* 2026-07-17: 3 opciones cubren los pagos B2B monetarios:
                     Me pagan → `pago` — cliente me paga (INGRESO caja, baja saldo)
                     Le pago  → `pago_a_cliente` — le devuelvo/reintegro (EGRESO caja, sube saldo)
@@ -404,7 +404,7 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
                 si la caja es ARS/UYU muestra el flow "$ Moneda ÷ TC → USD"
                 (los saldos B2B se persisten en USD). Columnas Producto/Modelo/
                 Cap/Color/IMEI quedan absorbidas por el colSpan. */}
-            <td colSpan={6} style={{ padding: '4px 12px' }}>
+            <td colSpan={6} className="u-p-4-12">
               {(() => {
                 const monedaCaja = monedaDeCaja(row);
                 // Grupo "dólar": USD y USDT. Para estas cajas el saldo B2B ya
@@ -424,7 +424,7 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
                         value={row.ars}
                         onChange={e => upd(i, 'ars', e.target.value)}
                       />
-                      <span style={{ color: 'var(--text-muted)', fontSize: 14, userSelect: 'none' }}>÷</span>
+                      <span className="u-color-muted-fs-14-nosel">÷</span>
                       <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>TC</span>
                       <input
                         type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0"
@@ -433,7 +433,7 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
                         value={row.tc}
                         onChange={e => upd(i, 'tc', e.target.value)}
                       />
-                      <span style={{ color: 'var(--text-muted)', fontSize: 14, userSelect: 'none' }}>→</span>
+                      <span className="u-color-muted-fs-14-nosel">→</span>
                       <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--pos)', whiteSpace: 'nowrap' }}>USD</span>
                     </>
                   )}
@@ -454,7 +454,7 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
                       else handleLastKey(e, i);
                     }}
                   />
-                  <span style={{ color: 'var(--text-muted)', fontSize: 14, userSelect: 'none' }}>→</span>
+                  <span className="u-color-muted-fs-14-nosel">→</span>
                   <select
                     style={{ ...inp, flex: '1.4 1 0', cursor: 'pointer' }}
                     title="Caja donde ingresa/sale el pago"
@@ -500,7 +500,7 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
             </td>
 
             {/* 2026-07-17: Comentarios opcionales por movimiento */}
-            <td style={{ padding: '4px 5px' }}>
+            <td className="u-p-4-5">
               <input
                 type="text"
                 className="input"
@@ -1261,7 +1261,7 @@ export default function CuentasCC() {
             </div>
 
             {/* ── Tabla spreadsheet ── */}
-            <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+            <div className="u-flex-1-overflow-mh-0">
               <table style={{
                 width: '100%', borderCollapse: 'collapse',
                 tableLayout: 'fixed', minWidth: 860,

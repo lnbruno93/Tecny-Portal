@@ -126,7 +126,7 @@ export default function ForgotPassword() {
                 <h1>Revisá tu email</h1>
                 <p>
                   Si{' '}
-                  <strong style={{ wordBreak: 'break-all' }}>{submittedEmail}</strong>{' '}
+                  <strong className="u-word-break-all">{submittedEmail}</strong>{' '}
                   está registrado, te mandamos un link para resetear la
                   contraseña. Abrilo desde el email para elegir una nueva.
                 </p>

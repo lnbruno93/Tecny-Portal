@@ -102,7 +102,7 @@ function MoneyCell({ value, className = '', placeholder = '—', variacion = nul
     else         pctClass = variacion > 0 ? 'sanidad-pct-pos' : 'sanidad-pct-neg';
   }
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+    <div className="u-flex-col-end-gap-2">
       <span className={'sanidad-money ' + (isNeg ? 'sanidad-money-neg ' : '') + className}>
         <span className="sanidad-money-prefix">USD</span>
         <span className="sanidad-money-amount">
@@ -185,7 +185,7 @@ function GastoProyectadoCell({ periodo, recurrente_id, value, isOverride, defaul
         position: 'relative',
       }}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+      <div className="u-flex-col-end-gap-2">
         <span className="sanidad-money u-fs-13">
           <span className="sanidad-money-prefix">USD</span>
           <span className="sanidad-money-amount">{fmt(value, 0)}</span>
@@ -264,7 +264,7 @@ function BrutoProyectadoEditable({ periodo, value, onSave, variacion = null, isG
                   : (variacion > 0 ? 'sanidad-pct-pos' : 'sanidad-pct-neg'))
               : '';
             return (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+              <div className="u-flex-col-end-gap-2">
                 <span className="sanidad-money">
                   <span className="sanidad-money-prefix">USD</span>
                   <span className="sanidad-money-amount">{fmt(value, 0)}</span>
@@ -647,7 +647,7 @@ function RecurrenteEditRow({ draft, setDraft, categorias, onCreateCategoria, onS
 
   return (
     <Fragment>
-    <tr style={{ background: 'var(--surface-2)' }}>
+    <tr className="u-bg-surface-2">
       <td>
         <div className="flex-row" style={{ gap: 6, flexDirection: 'column', alignItems: 'stretch' }}>
           <input
@@ -1027,7 +1027,7 @@ export default function Sanidad() {
             {showGastosDetail && data[0]?.gastos
               ?.filter(g => g.recurrente_id != null) // skip "Otros" (no se puede override)
               .map(refGasto => (
-                <tr key={refGasto.recurrente_id} style={{ background: 'var(--surface-2)' }}>
+                <tr key={refGasto.recurrente_id} className="u-bg-surface-2">
                   <td className="sanidad-td-concepto" style={{ paddingLeft: 24, fontSize: 12, fontWeight: 400 }}>
                     {refGasto.concepto}
                   </td>

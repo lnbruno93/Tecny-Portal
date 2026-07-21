@@ -478,7 +478,7 @@ export function InvitePartnerModal({ onClose, onSuccess }) {
                 rows={3}
                 maxLength={500}
                 disabled={submitting}
-                style={{ fontFamily: 'inherit', resize: 'vertical' }}
+                className="u-font-inherit-resize-v"
               />
               <div className="muted tiny u-mt-4">
                 {message.length}/500 caracteres

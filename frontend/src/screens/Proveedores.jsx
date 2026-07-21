@@ -381,7 +381,7 @@ export default function Proveedores() {
                 onChange={e => setSearch(e.target.value)} />
             </div>
           </div>
-          <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+          <div className="u-flex-1-overflow-mh-0">
             {loadingList ? (
               <div className="empty">Cargando…</div>
             ) : filtered.length === 0 ? (
@@ -482,7 +482,7 @@ export default function Proveedores() {
             {/* 2026-06-24 mobile lote E: tabla compras con minWidth: 860.
                 Hint visible solo en <=640px para indicar scroll horizontal. */}
             <div className="bulk-spreadsheet-hint">↔ Desliza horizontalmente para ver todas las columnas</div>
-            <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+            <div className="u-flex-1-overflow-mh-0">
               <table style={{
                 width: '100%', borderCollapse: 'collapse',
                 tableLayout: 'fixed', minWidth: 860,

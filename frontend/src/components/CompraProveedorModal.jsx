@@ -626,7 +626,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
                       </td>
                       <td className="u-p-3-4-text-center">
                         {rows.length > 1 && (
-                          <button className="icon-btn" style={{ color: 'var(--neg)', padding: 2 }}
+                          <button className="icon-btn u-color-neg-p-2"
                             onClick={() => removeRow(idx)} title="Quitar fila">
                             <Icons.Trash size={12} />
                           </button>

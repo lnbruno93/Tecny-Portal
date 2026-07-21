@@ -898,7 +898,7 @@ export default function Financiera() {
                 <div className="muted tiny">Los porcentajes se calculan automáticamente</div>
               </div>
             </div>
-            <div style={{ padding: '0 18px 18px' }}>
+            <div className="u-p-0-18-18">
               {/* Row 1: fecha + cliente */}
               <div className="row u-mb-12">
                 <div className="field u-flex-1">
@@ -1085,7 +1085,7 @@ export default function Financiera() {
                   El resto queda como saldo a cobrar — se liquida con pagos posteriores.
                 </div>
               </div>
-              <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: 0 }} />
+              <hr className="hr-divider" />
               <div>
                 <div className="muted tiny" style={{ fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>
                   OCR automático
@@ -1095,7 +1095,7 @@ export default function Financiera() {
                   Si la confianza es alta (&gt;70%), se pre-llena. Si es baja, te avisa para que verifiques.
                 </div>
               </div>
-              <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: 0 }} />
+              <hr className="hr-divider" />
               <div>
                 <div className="muted tiny" style={{ fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>
                   Formatos aceptados
@@ -1108,7 +1108,7 @@ export default function Financiera() {
                   <Badge tone="info">máx 5 MB</Badge>
                 </div>
               </div>
-              <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: 0 }} />
+              <hr className="hr-divider" />
               <div>
                 <div className="muted tiny" style={{ fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>
                   Porcentaje actual
@@ -1333,7 +1333,7 @@ export default function Financiera() {
               {/* Envolver en <form> para que Enter submitee (espejo del form
                   Tarjetas). Antes era un <div> y Enter no hacía nada → fricción. */}
               <form onSubmit={e => { e.preventDefault(); if (!savingPago) handleSavePago(); }}
-                    style={{ padding: '0 18px 18px' }}>
+                    className="u-p-0-18-18">
                 {/* Fila 1: fecha + referencia + toggle USD. La elección se
                     persiste en localStorage (default según última vez). */}
                 <div className="row" style={{ marginBottom: 12, alignItems: 'flex-end' }}>
@@ -1479,7 +1479,7 @@ export default function Financiera() {
                 <div className="card-hd">
                   <h3>Estado de cuenta</h3>
                 </div>
-                <div style={{ padding: '0 18px 18px' }}>
+                <div className="u-p-0-18-18">
                   <div className="row u-mb-16">
                     <div className="u-flex-1">
                       <div className="muted tiny u-uppercase-06-fw-600">

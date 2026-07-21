@@ -264,7 +264,7 @@ export default function EquiposUsadosContent({ onCountChange }) {
           <div className="muted u-p-20-text-center">Cargando equipos usados…</div>
         </div>
       ) : items.length === 0 ? (
-        <div className="empty" style={{ padding: '28px 16px' }}>
+        <div className="empty u-p-28-16">
           <div className="u-fw-600-mb-6">Sin resultados</div>
           <div className="muted tiny">
             {buscar || origen !== 'todos' || estado

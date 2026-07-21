@@ -145,7 +145,7 @@ export default function EgresosPanel() {
       <div className="row u-mb-14">
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">Pendiente · USD</div>
-          <div className="kpi-value mono" style={{ color: 'var(--warn, #d97706)' }}>u$s {fmt(totales.pendiente)}</div>
+          <div className="kpi-value mono u-color-warn-hex">u$s {fmt(totales.pendiente)}</div>
         </div>
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">Pagado · USD</div>

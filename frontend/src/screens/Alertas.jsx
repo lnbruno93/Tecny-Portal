@@ -249,7 +249,7 @@ function ConfigRow({ cfg, onSaved }) {
         </div>
         <label className="flex-row" style={{ gap: 6, alignItems: 'center', cursor: 'pointer' }}>
           <input type="checkbox" checked={activa} onChange={toggleActiva} disabled={saving}
-                 style={{ accentColor: 'var(--accent)' }} />
+                 className="u-accent-color" />
           <span className="u-fs-13">{activa ? 'Activa' : 'Desactivada'}</span>
         </label>
       </div>
@@ -258,7 +258,7 @@ function ConfigRow({ cfg, onSaved }) {
           {parametrosKeys.map(k => {
             const meta = PARAMETROS_META[k] || { label: k, tipo: 'text' };
             return (
-              <div key={k} className="field" style={{ flex: '0 0 240px' }}>
+              <div key={k} className="field u-flex-0-0-240">
                 <label className="field-label">{meta.label}</label>
                 <input
                   type={meta.tipo}

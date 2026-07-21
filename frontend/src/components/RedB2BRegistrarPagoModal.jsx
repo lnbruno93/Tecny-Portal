@@ -293,7 +293,7 @@ export default function RedB2BRegistrarPagoModal({ operation, restanteUsd, onClo
                 onChange={(e) => setNotas(e.target.value)}
                 maxLength={500}
                 rows={2}
-                style={{ fontFamily: 'inherit', resize: 'vertical' }}
+                className="u-font-inherit-resize-v"
               />
             </div>
           </div>

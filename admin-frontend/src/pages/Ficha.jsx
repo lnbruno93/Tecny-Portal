@@ -999,7 +999,7 @@ function ComprobanteEmailFooterCard({ tenant, onSaved }) {
           placeholder={`Ej:\nAv. Corrientes 1234, CABA\nWhatsApp: 11-2233-4455\n@miempresa_ok`}
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          style={{ fontFamily: 'inherit', resize: 'vertical' }}
+          className="u-font-inherit-resize-v"
         />
         {overLimit && (
           <div className="tiny u-color-neg-mt-4">

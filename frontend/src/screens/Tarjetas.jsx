@@ -944,7 +944,7 @@ export default function Tarjetas() {
                                value={multiLiq.usd_recibido}
                                onChange={e => setUsdRecibido(e.target.value)} />
                       </div>
-                      <div className="flex-row" aria-hidden="true" style={{ alignItems: 'center', marginBottom: 8 }}>
+                      <div className="flex-row u-align-center-mb-8" aria-hidden="true">
                         <span className="muted u-fs-18-fw-700">×</span>
                       </div>
                       <div className="field" style={{ flex: '1 1 120px', minWidth: 120 }}>
@@ -957,7 +957,7 @@ export default function Tarjetas() {
                             configuró un TC de referencia en Alertas. */}
                         <TcWarning tc={multiLiq.tc} />
                       </div>
-                      <div className="flex-row" aria-hidden="true" style={{ alignItems: 'center', marginBottom: 8 }}>
+                      <div className="flex-row u-align-center-mb-8" aria-hidden="true">
                         <span className="muted u-fs-18-fw-700">=</span>
                       </div>
                       <div className="field" style={{ flex: '1 1 160px', minWidth: 160 }}>

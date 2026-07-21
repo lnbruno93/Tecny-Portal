@@ -1044,7 +1044,7 @@ export default function Envios() {
                   );
                 }
                 return (
-                  <div className="empty" style={{ padding: '28px 16px' }}>
+                  <div className="empty u-p-28-16">
                     <div className="u-fw-600-mb-6">Todavía no cargaste envíos</div>
                     <div className="muted tiny u-mb-14">
                       Los envíos a domicilio se cargan acá. Cada uno puede luego acreditarse como venta.
@@ -1811,15 +1811,15 @@ export default function Envios() {
 
                   {/* Resumen tipo Ventas: Total venta · Pagos · Diferencia (Cubierto ✓) */}
                   <div className="card card-tight" style={{ padding: '10px 12px', background: 'var(--surface-2)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                    <div className="u-flex-between-fs-13">
                       <span className="muted">Total venta</span>
                       <span className="mono">u$s {summary.totalUsd.toFixed(2)}</span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                    <div className="u-flex-between-fs-13">
                       <span className="muted">Pagos</span>
                       <span className="mono">u$s {summary.pagosUsd.toFixed(2)}</span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                    <div className="u-flex-between-fs-13">
                       <span className="muted">Diferencia</span>
                       <span className="mono" style={{ color: cubierto ? 'var(--pos)' : 'var(--neg)' }}>
                         {cubierto ? 'Cubierto ✓' : `u$s ${summary.diferenciaUsd.toFixed(2)}`}

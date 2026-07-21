@@ -89,7 +89,7 @@ function RestoreModal({ producto, onClose, onDone }) {
         <div className="modal-hd">
           <h3 id="restore-modal-title" className="u-m-0">Restaurar producto al stock</h3>
         </div>
-        <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
+        <div className="modal-body u-grid-gap-12-nocol">
           <div style={{ padding: 10, background: 'var(--surface-2)', borderRadius: 6, fontSize: 13 }}>
             <div><b>{producto.nombre}</b></div>
             <div className="tiny muted">IMEI: <span className="mono">{producto.imei || '—'}</span></div>
@@ -119,7 +119,7 @@ function RestoreModal({ producto, onClose, onDone }) {
               onChange={(e) => setReason(e.target.value)}
               placeholder='Ej: "limpieza bug venta B2B iConnect 2026-06-09"'
               disabled={submitting}
-              style={{ resize: 'vertical', fontFamily: 'inherit' }}
+              className="u-font-inherit-resize-v"
               data-autofocus
             />
             <span className="tiny muted">

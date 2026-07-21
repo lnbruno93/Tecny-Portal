@@ -151,7 +151,7 @@ export default function Desglose360() {
       {/* ── Header ── */}
       <div className="page-head">
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <div className="u-flex-center-gap-12-wrap">
             <Link to="/inventario" className="btn btn-sm" title="Volver a Inventario">
               <Icons.ArrowRight size={13} className="u-rotate-180" /> Inventario
             </Link>

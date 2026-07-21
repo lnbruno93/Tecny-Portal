@@ -512,7 +512,7 @@ export default function SitioPublico() {
                   Todavía no cargaste ninguna pregunta. La landing muestra su set default hardcodeado.
                 </div>
               ) : (
-                <div style={{ display: 'grid', gap: 12 }}>
+                <div className="u-grid-gap-12-nocol">
                   {faq.map((q, idx) => (
                     <div key={q.id || q._tempId} style={{
                       padding: 14, borderRadius: 8,
@@ -636,7 +636,7 @@ export default function SitioPublico() {
                     </div>
                   )}
                   {googleStatus.error && (
-                    <div className="muted tiny" style={{ color: 'var(--warn, #d97706)' }}>
+                    <div className="muted tiny u-color-warn-hex">
                       ⚠ Último fetch falló: {googleStatus.error} (fallback usa reseñas manuales)
                     </div>
                   )}
@@ -708,7 +708,7 @@ export default function SitioPublico() {
                   Todavía no cargaste ninguna reseña. La landing muestra su set default hardcodeado.
                 </div>
               ) : (
-                <div style={{ display: 'grid', gap: 12 }}>
+                <div className="u-grid-gap-12-nocol">
                   {testimonials.map((t, idx) => (
                     <div key={t.id || t._tempId} style={{
                       padding: 14, borderRadius: 8,

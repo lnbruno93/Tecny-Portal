@@ -229,7 +229,7 @@ function Wizard({ cajas, onCancel, onCreated }) {
       {paso === 1 && (
         <>
           <div className="row" style={{ gap: 12, marginBottom: 12 }}>
-            <div className="field" style={{ flex: '0 0 240px' }}>
+            <div className="field u-flex-0-0-240">
               <label className="field-label">Caja a conciliar <span className="u-color-neg">*</span></label>
               <select className="input" value={cajaId} onChange={e => setCajaId(e.target.value)}>
                 <option value="">— Elegí caja —</option>
@@ -256,7 +256,7 @@ function Wizard({ cajas, onCancel, onCreated }) {
             <label className="field-label">Archivo del extracto (CSV o XLSX) <span className="u-color-neg">*</span></label>
             <input type="file" accept=".csv,.xlsx" onChange={handleArchivo}
                    disabled={!cajaId || !fechaDesde || !fechaHasta}
-                   style={{ padding: '6px 0' }} />
+                   className="u-p-6-0" />
             <div className="muted tiny u-mt-4">
               El archivo se procesa en tu navegador. Solo se mandan al servidor las líneas válidas (fecha + monto).
             </div>
@@ -284,7 +284,7 @@ function Wizard({ cajas, onCancel, onCreated }) {
                 {headers.map((h, i) => <option key={i} value={i}>{h || `Columna ${i + 1}`}</option>)}
               </select>
             </div>
-            <div className="field" style={{ flex: '0 0 240px' }}>
+            <div className="field u-flex-0-0-240">
               <label className="field-label">Columna Descripción (opcional)</label>
               <select className="input" value={map.desc} onChange={e => setMap(m => ({ ...m, desc: e.target.value }))}>
                 <option value="">— Ninguna —</option>
