@@ -90,7 +90,7 @@ const VentaRow = memo(function VentaRow({
         </select>
         <div className="muted tiny mono" style={{ marginTop: 3 }}>{v.order_id}</div>
         {esB2B && (
-          <div style={{ marginTop: 4 }}>
+          <div className="u-mt-4">
             <Badge tone="primary">B2B</Badge>
           </div>
         )}
@@ -103,7 +103,7 @@ const VentaRow = memo(function VentaRow({
         {v.cliente_nombre || '—'}
         {!esB2B && v.etiqueta_nombre && <><br /><Badge tone="default">{v.etiqueta_nombre}</Badge></>}
       </td>
-      <td style={{ fontSize: 12 }}>
+      <td className="u-fs-12">
         {(v.items || []).map((i, k) => {
           // 2026-06-09: costo + precio bajo el nombre del producto. Lucas
           // pidió ver de un vistazo cuánto le costó vs cuánto vendió cada
@@ -174,7 +174,7 @@ const VentaRow = memo(function VentaRow({
           );
         })}
       </td>
-      <td className="muted" style={{ fontSize: 12 }}>
+      <td className="muted u-fs-12">
         {esB2B
           ? <span className="tiny">Cuenta corriente</span>
           : (v.pagos || []).map((p, k) => (
@@ -182,9 +182,9 @@ const VentaRow = memo(function VentaRow({
             ))}
       </td>
       {showGanancia && (
-        <td className="mono pos" style={{ fontWeight: 600 }}>u$s{fmt(v.ganancia_usd)}</td>
+        <td className="mono pos u-fw-600">u$s{fmt(v.ganancia_usd)}</td>
       )}
-      <td className="mono" style={{ fontWeight: 600 }}>u$s{fmt(v.total_usd)}</td>
+      <td className="mono u-fw-600">u$s{fmt(v.total_usd)}</td>
       <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
         {/* 2026-06-10: select de estado movido al badge de la izquierda.
             Esta celda solo tiene íconos de acción ahora. */}
@@ -223,8 +223,7 @@ const VentaRow = memo(function VentaRow({
           </button>
         )}
         <button
-          className="icon-btn"
-          style={{ color: 'var(--neg)' }}
+          className="icon-btn u-color-neg"
           title="Eliminar"
           onClick={() => deleteVenta(v)}
         >

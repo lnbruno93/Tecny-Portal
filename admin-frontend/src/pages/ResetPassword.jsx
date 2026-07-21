@@ -227,12 +227,12 @@ export default function ResetPassword() {
           <p className="muted" style={{ fontSize: 13, margin: '0 0 20px' }}>
             {error}
           </p>
-          <div className="stack" style={{ gap: 8 }}>
+          <div className="stack u-gap-8">
             <Btn
               type="button"
               kind="primary"
               onClick={() => navigate('/forgot-password')}
-              style={{ width: '100%' }}
+              className="u-w-100"
             >
               Pedir un link nuevo
             </Btn>
@@ -323,7 +323,7 @@ export default function ResetPassword() {
         )}
 
         <form onSubmit={handleSubmit} noValidate>
-          <div className="stack" style={{ gap: 12 }}>
+          <div className="stack u-gap-12">
             <div>
               <label className="form-label" htmlFor="reset-new">
                 Contraseña nueva

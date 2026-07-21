@@ -299,7 +299,7 @@ export default function Usuarios() {
           es informativo (no force) — el owner los completa cuando puede
           editando cada user. */}
       {users.filter(u => (u.email || '').endsWith('@placeholder.local')).length > 0 && (
-        <div className="banner banner-warn" style={{ marginBottom: 14 }}>
+        <div className="banner banner-warn u-mb-14">
           <Icons.Bell size={16} />
           <span>
             <strong>
@@ -314,30 +314,30 @@ export default function Usuarios() {
       )}
 
       {/* ── KPI cards ─────────────────────────────────────────────────────── */}
-      <div className="row" style={{ marginBottom: 16 }}>
+      <div className="row u-mb-16">
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">Total usuarios</div>
           <div className="kpi-value mono">{users.length}</div>
         </div>
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">Owners + Admins</div>
-          <div className="kpi-value mono" style={{ color: 'var(--accent)' }}>{owners + admins}</div>
-          <div className="muted tiny" style={{ marginTop: 2 }}>bypass total</div>
+          <div className="kpi-value mono u-color-accent">{owners + admins}</div>
+          <div className="muted tiny u-mt-2">bypass total</div>
         </div>
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">Resto del equipo</div>
           <div className="kpi-value mono">{operadores}</div>
-          <div className="muted tiny" style={{ marginTop: 2 }}>permisos por capability</div>
+          <div className="muted tiny u-mt-2">permisos por capability</div>
         </div>
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">Capabilities disponibles</div>
           <div className="kpi-value mono">{totalCaps}</div>
-          <div className="muted tiny" style={{ marginTop: 2 }}>en {pantallas.length} pantallas</div>
+          <div className="muted tiny u-mt-2">en {pantallas.length} pantallas</div>
         </div>
       </div>
 
       {/* ── Filtro por rol ────────────────────────────────────────────────── */}
-      <div style={{ marginBottom: 12 }}>
+      <div className="u-mb-12">
         <div className="seg">
           {[
             { value: 'todos',     label: 'Todos' },
@@ -361,7 +361,7 @@ export default function Usuarios() {
       {/* ── Tabla ─────────────────────────────────────────────────────────── */}
       <div className="card card-flush">
         <div className="card-hd">
-          <div style={{ fontWeight: 600, fontSize: 14 }}>
+          <div className="u-fs-14-fw-600">
             Equipo — {filtered.length} usuario{filtered.length !== 1 ? 's' : ''}
           </div>
         </div>
@@ -403,7 +403,7 @@ export default function Usuarios() {
                           {initials(u.nombre)}
                         </div>
                         <div>
-                          <div style={{ fontWeight: 600 }}>{u.nombre}</div>
+                          <div className="u-fw-600">{u.nombre}</div>
                           <div className="muted tiny mono">
                             @{u.username}
                             {u.email && ` · ${u.email}`}
@@ -445,10 +445,9 @@ export default function Usuarios() {
                         )}
                         {u.rol !== 'owner' && (
                           <button
-                            className="icon-btn"
+                            className="icon-btn u-color-neg"
                             title="Eliminar usuario"
                             aria-label="Eliminar usuario"
-                            style={{ color: 'var(--neg)' }}
                             onClick={() => handleDelete(u)}
                           >
                             <Icons.Trash size={14} />
@@ -495,13 +494,13 @@ export default function Usuarios() {
                 <div className="stack" style={{ gap: 16 }}>
                   <div className="row">
                     <div className="field u-flex-1">
-                      <label className="field-label">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <label className="field-label">Nombre <span className="u-color-neg">*</span></label>
                       <input className={'input' + (fieldErrors.nombre ? ' input-error' : '')} placeholder="Juan Pérez" value={newUser.nombre}
                         onChange={e => setNU('nombre', e.target.value)} autoFocus aria-invalid={!!fieldErrors.nombre} />
                       {fieldErrors.nombre && <div className="field-error">{fieldErrors.nombre}</div>}
                     </div>
                     <div className="field u-flex-1">
-                      <label className="field-label">Usuario <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <label className="field-label">Usuario <span className="u-color-neg">*</span></label>
                       <input className={'input mono' + (fieldErrors.username ? ' input-error' : '')} placeholder="juanp" value={newUser.username}
                         onChange={e => setNU('username', e.target.value.toLowerCase())} aria-invalid={!!fieldErrors.username} />
                       {fieldErrors.username
@@ -515,13 +514,13 @@ export default function Usuarios() {
                       {/* 2026-06-26 (#446): email pasa de opcional a obligatorio.
                           Sin email no podemos invitarlo, mandarle resets de pass,
                           ni notificaciones. */}
-                      <label className="field-label">Email <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <label className="field-label">Email <span className="u-color-neg">*</span></label>
                       <input type="email" className={'input' + (fieldErrors.email ? ' input-error' : '')} placeholder="juan@empresa.com" value={newUser.email}
                         onChange={e => setNU('email', e.target.value)} required aria-invalid={!!fieldErrors.email} />
                       {fieldErrors.email && <div className="field-error">{fieldErrors.email}</div>}
                     </div>
                     <div className="field u-flex-1">
-                      <label className="field-label">Contraseña <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <label className="field-label">Contraseña <span className="u-color-neg">*</span></label>
                       <input type="password" className={'input' + (fieldErrors.password ? ' input-error' : '')} placeholder="••••••••" value={newUser.password}
                         onChange={e => setNU('password', e.target.value)} autoComplete="new-password" aria-invalid={!!fieldErrors.password} />
                       {fieldErrors.password
@@ -536,7 +535,7 @@ export default function Usuarios() {
                       className="input"
                       value={newUser.rol}
                       onChange={e => setNU('rol', e.target.value)}
-                      style={{ fontSize: 14 }}
+                      className="u-fs-14"
                     >
                       {ROLES_EDITABLES.map(r => (
                         <option key={r} value={r}>{ROL_LABELS[r]}</option>
@@ -545,7 +544,7 @@ export default function Usuarios() {
                     <div className="muted tiny" style={{ marginTop: 4, lineHeight: 1.5 }}>
                       {ROL_DESCRIPCION[newUser.rol]}
                     </div>
-                    <div className="muted tiny" style={{ marginTop: 4 }}>
+                    <div className="muted tiny u-mt-4">
                       Después podés ajustar permisos específicos desde la lista.
                     </div>
                   </div>
@@ -677,7 +676,7 @@ function EditorPermisos({ usuario, pantallas, onClose, onSaved }) {
           <div className="flex-row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
               <div style={{ fontWeight: 600, fontSize: 16 }}>Permisos: {usuario.nombre}</div>
-              <div className="muted tiny" style={{ marginTop: 4 }}>@{usuario.username}{usuario.email && ` · ${usuario.email}`}</div>
+              <div className="muted tiny u-mt-4">@{usuario.username}{usuario.email && ` · ${usuario.email}`}</div>
             </div>
             <button className="icon-btn" onClick={onClose} aria-label="Cerrar">
               <Icons.X size={16} />
@@ -709,7 +708,7 @@ function EditorPermisos({ usuario, pantallas, onClose, onSaved }) {
         {/* Capabilities por pantalla */}
         <div style={{ padding: '16px 22px', flex: 1, overflow: 'auto' }}>
           <div className="flex-row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <div style={{ fontWeight: 600, fontSize: 13 }}>Permisos por pantalla</div>
+            <div className="u-fs-13-fw-600">Permisos por pantalla</div>
             {!bypass && overrides.length > 0 && (
               <button className="btn btn-sm" onClick={restaurarAlRol} disabled={saving}>
                 ↺ Restaurar al rol base
@@ -751,7 +750,7 @@ function EditorPermisos({ usuario, pantallas, onClose, onSaved }) {
                   borderBottom: '1px solid var(--hairline)',
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>{pantalla.label}</div>
+                  <div className="u-fs-13-fw-600">{pantalla.label}</div>
                   <div className="muted tiny">
                     {capsOn}/{total} {capsOn === total ? '✓ acceso completo' : capsOn === 0 ? '✕ sin acceso' : 'parcial'}
                   </div>

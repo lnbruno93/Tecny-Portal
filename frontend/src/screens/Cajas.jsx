@@ -614,7 +614,7 @@ export default function Cajas() {
               <div key={k.label} className="card card-tight u-flex-1">
                 <div className="kpi-label">{k.label}</div>
                 <div className="kpi-value">{k.value}</div>
-                <div className="muted tiny" style={{ marginTop: 6 }}>{k.sub}</div>
+                <div className="muted tiny u-mt-6">{k.sub}</div>
               </div>
             ))}
           </div>
@@ -666,7 +666,7 @@ export default function Cajas() {
                           className="tbl-row-click"
                           onClick={() => setSelectedContactoId(c.contacto_id === selectedContactoId ? null : c.contacto_id)}
                           style={{ background: c.contacto_id === selectedContactoId ? 'var(--surface-2)' : undefined }}>
-                        <td style={{ fontWeight: 600 }}>{c.nombre} {c.apellido || ''}</td>
+                        <td className="u-fw-600">{c.nombre} {c.apellido || ''}</td>
                         <td><Badge tone={TIPO_TONE[c.contacto_tipo] || 'default'}>{TIPO_LABEL[c.contacto_tipo] || c.contacto_tipo}</Badge></td>
                         <td className="num mono" style={{ color: c.saldo_ars > 0 ? 'var(--neg)' : c.saldo_ars < 0 ? 'var(--pos)' : 'var(--text-muted)', fontWeight: 600 }}>
                           {c.saldo_ars !== 0 ? fmt(c.saldo_ars) : <span className="dim">—</span>}
@@ -688,7 +688,7 @@ export default function Cajas() {
                 <div className="card-hd">
                   <div>
                     <h3>{selectedContacto.nombre} {selectedContacto.apellido || ''}</h3>
-                    <div className="muted tiny" style={{ marginTop: 2 }}>
+                    <div className="muted tiny u-mt-2">
                       <Badge tone={TIPO_TONE[selectedContacto.contacto_tipo] || 'default'}>
                         {TIPO_LABEL[selectedContacto.contacto_tipo] || selectedContacto.contacto_tipo}
                       </Badge>
@@ -793,7 +793,7 @@ export default function Cajas() {
               <div key={k.label} className="card card-tight u-flex-1">
                 <div className="kpi-label">{k.label}</div>
                 <div className="kpi-value">{k.value}</div>
-                <div className="muted tiny" style={{ marginTop: 6 }}>{k.sub}</div>
+                <div className="muted tiny u-mt-6">{k.sub}</div>
               </div>
             ))}
           </div>
@@ -857,7 +857,7 @@ export default function Cajas() {
                             )}
                           </td>
                           <td className="muted mono tiny">{fmtFecha(g.ultimaFecha)}</td>
-                          <td style={{ fontWeight: 600 }}>{g.nombre}</td>
+                          <td className="u-fw-600">{g.nombre}</td>
                           <td><Badge tone={TIPO_TONE[g.contacto_tipo] || 'default'}>{TIPO_LABEL[g.contacto_tipo] || g.contacto_tipo}</Badge></td>
                           <td>
                             {tasaResumen
@@ -918,7 +918,7 @@ export default function Cajas() {
       {/* ── CONFIG CAJAS TAB ───────────────────────────────────────────── */}
       {tab === 'config' && (
         <>
-          <div className="card card-tight" style={{ marginBottom: 16 }}>
+          <div className="card card-tight u-mb-16">
             <div className="card-hd"><h3>Nueva caja</h3></div>
             <form onSubmit={handleCreateCaja} style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap', padding: '4px 2px' }}>
               <div className="field" style={{ flex: 2, minWidth: 220 }}>
@@ -941,7 +941,7 @@ export default function Cajas() {
               </div>
               <label className="field" style={{ width: 'auto', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <input type="checkbox" checked={cajaForm.es_tarjeta} onChange={e => setCajaForm(f => ({ ...f, es_tarjeta: e.target.checked, comision_pct: '' }))} style={{ accentColor: 'var(--accent)' }} />
-                <span style={{ fontSize: 12 }}>Es tarjeta</span>
+                <span className="u-fs-12">Es tarjeta</span>
               </label>
               {cajaForm.es_tarjeta && (
                 <div className="field" style={{ width: 120 }}>
@@ -992,7 +992,7 @@ export default function Cajas() {
                 <tbody>
                   {cajasList.map(c => (
                     <tr key={c.id} style={{ opacity: c.activo ? 1 : 0.55 }}>
-                      <td style={{ fontWeight: 600 }}>{c.nombre}</td>
+                      <td className="u-fw-600">{c.nombre}</td>
                       <td><span className="ccy">{c.moneda}</span></td>
                       <td className="num">
                         <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} step="0.01" defaultValue={Number(c.saldo_inicial) || 0}
@@ -1056,7 +1056,7 @@ export default function Cajas() {
             </div>
             <div className="modal-body">
               {/* Ajuste manual */}
-              <form onSubmit={handleCreateAjuste} className="card card-tight" style={{ marginBottom: 14 }}>
+              <form onSubmit={handleCreateAjuste} className="card card-tight u-mb-14">
                 <div className="row" style={{ gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
                   <div className="field" style={{ width: 120 }}><label className="field-label">Tipo</label>
                     <select className="input" value={ajusteForm.tipo} onChange={e => setAjusteForm(f => ({ ...f, tipo: e.target.value }))}>
@@ -1075,7 +1075,7 @@ export default function Cajas() {
                     <input className="input" placeholder="ej. arqueo, retiro" value={ajusteForm.concepto} onChange={e => setAjusteForm(f => ({ ...f, concepto: e.target.value }))} /></div>
                   <button className="btn btn-primary btn-sm" type="submit" disabled={ajusteSaving}>{ajusteSaving ? '…' : 'Agregar'}</button>
                 </div>
-                <div className="muted tiny" style={{ marginTop: 6 }}>Ajuste manual de caja (arqueo, corrección, retiro). Los movimientos de otros módulos se reflejan automáticamente (Fase 2b).</div>
+                <div className="muted tiny u-mt-6">Ajuste manual de caja (arqueo, corrección, retiro). Los movimientos de otros módulos se reflejan automáticamente (Fase 2b).</div>
               </form>
 
               {/* Historial */}
@@ -1091,7 +1091,7 @@ export default function Cajas() {
                         <td><span className={'badge ' + (m.tipo === 'ingreso' ? 'badge-pos' : 'badge-warn')}>{m.tipo === 'ingreso' ? 'Ingreso' : 'Egreso'}</span></td>
                         <td className="tiny muted">{m.origen}</td>
                         <td className="tiny">{m.concepto || '—'}</td>
-                        <td className="num mono" style={{ fontWeight: 600 }}>
+                        <td className="num mono u-fw-600">
                           <span className={m.tipo === 'ingreso' ? 'pos' : 'neg'}>{m.tipo === 'ingreso' ? '+' : '−'}{Number(m.monto).toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
                         </td>
                         <td>{m.origen === 'ajuste' && <button className="icon-btn" onClick={() => handleDeleteCajaMov(m)}><Icons.Trash size={12} /></button>}</td>
@@ -1124,10 +1124,10 @@ export default function Cajas() {
             </div>
             <form onSubmit={handleCreateContacto}>
               <div className="modal-body">
-                <div className="stack" style={{ gap: 14 }}>
+                <div className="stack u-gap-14">
                   <div className="row">
                     <div className="field u-flex-1">
-                      <label className="field-label">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <label className="field-label">Nombre <span className="u-color-neg">*</span></label>
                       <input className="input" placeholder="ej. Martín"
                         value={cForm.nombre} onChange={e => setCForm(f => ({ ...f, nombre: e.target.value }))} autoFocus />
                     </div>
@@ -1177,16 +1177,16 @@ export default function Cajas() {
             </div>
             <form onSubmit={handleCreateDeuda}>
               <div className="modal-body">
-                <div className="stack" style={{ gap: 14 }}>
+                <div className="stack u-gap-14">
                   <div className="row">
                     <div className="field u-flex-1">
-                      <label className="field-label">Fecha <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <label className="field-label">Fecha <span className="u-color-neg">*</span></label>
                       <input type="date" className="input"
                         value={deudaForm.fecha}
                         onChange={e => setDeudaForm(f => ({ ...f, fecha: e.target.value }))} />
                     </div>
                     <div className="field u-flex-1">
-                      <label className="field-label">Tipo <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <label className="field-label">Tipo <span className="u-color-neg">*</span></label>
                       <select className="input"
                         value={deudaForm.tipo}
                         onChange={e => setDeudaForm(f => ({ ...f, tipo: e.target.value }))}>
@@ -1246,9 +1246,9 @@ export default function Cajas() {
             </div>
             <form onSubmit={handleCreateInversion}>
               <div className="modal-body">
-                <div className="stack" style={{ gap: 14 }}>
+                <div className="stack u-gap-14">
                   <div className="field">
-                    <label className="field-label">Fecha <span style={{ color: 'var(--neg)' }}>*</span></label>
+                    <label className="field-label">Fecha <span className="u-color-neg">*</span></label>
                     <input type="date" className="input"
                       value={invForm.fecha}
                       onChange={e => setInvForm(f => ({ ...f, fecha: e.target.value }))} />
@@ -1256,7 +1256,7 @@ export default function Cajas() {
                   {/* Picker compartido con modal Deuda — toggle Existente/+Nuevo. */}
                   <ContactoPickerEmbedded form={invForm} setForm={setInvForm} allContacts={allContacts} />
                   <div className="field">
-                    <label className="field-label">Monto USD <span style={{ color: 'var(--neg)' }}>*</span></label>
+                    <label className="field-label">Monto USD <span className="u-color-neg">*</span></label>
                     <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="1" step="0.01" className="input" placeholder="ej. 5000"
                       value={invForm.monto}
                       onChange={e => setInvForm(f => ({ ...f, monto: e.target.value }))} />

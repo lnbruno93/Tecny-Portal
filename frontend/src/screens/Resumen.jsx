@@ -96,7 +96,7 @@ function KpiCard({ label, valor, unidad = '', comparado, formatter = fmt, invert
   }
   return (
     <div className="card card-tight" style={{ minWidth: 0 }} role="figure" aria-label={`KPI: ${label}`}>
-      <div className="muted tiny" style={{ marginBottom: 4 }}>{label}</div>
+      <div className="muted tiny u-mb-4">{label}</div>
       <div className="mono" style={{ fontSize: 22, fontWeight: 700 }}>
         {unidad && !valorIndefinido && <span style={{ fontSize: 14, color: 'var(--text-muted)', marginRight: 4 }}>{unidad}</span>}
         {valorIndefinido ? '—' : formatter(valor)}
@@ -185,7 +185,7 @@ export default function Resumen() {
           <input type=month> pelado. Mismo estilo visual que Tarjetas y
           Transferencias para consistencia entre módulos. El comparativo
           queda siempre visible (auto-rellena al mes anterior, editable). */}
-      <div className="card card-tight" style={{ marginBottom: 16 }}>
+      <div className="card card-tight u-mb-16">
         <div className="flex-row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           <span className="muted tiny" style={{ marginRight: 4 }}>Período:</span>
           {MES_PRESETS.map(p => {
@@ -307,13 +307,13 @@ export default function Resumen() {
               <div className="card card-flush">
                 <div className="card-hd"><h3>Top productos</h3></div>
                 <table className="tbl">
-                  <thead><tr><th>Producto</th><th style={{ textAlign: 'right' }}>Cantidad</th><th style={{ textAlign: 'right' }}>USD</th></tr></thead>
+                  <thead><tr><th>Producto</th><th className="u-text-right">Cantidad</th><th className="u-text-right">USD</th></tr></thead>
                   <tbody>
                     {(actual.ventas.top_productos || []).map((p, i) => (
                       <tr key={i}>
                         <td>{p.producto}</td>
-                        <td className="mono" style={{ textAlign: 'right' }}>{p.cantidad}</td>
-                        <td className="mono" style={{ textAlign: 'right' }}>{fmt(p.total_usd)}</td>
+                        <td className="mono u-text-right">{p.cantidad}</td>
+                        <td className="mono u-text-right">{fmt(p.total_usd)}</td>
                       </tr>
                     ))}
                     {(actual.ventas.top_productos || []).length === 0 && (
@@ -327,13 +327,13 @@ export default function Resumen() {
               <div className="card card-flush">
                 <div className="card-hd"><h3>Top vendedores</h3></div>
                 <table className="tbl">
-                  <thead><tr><th>Vendedor</th><th style={{ textAlign: 'right' }}>Ventas</th><th style={{ textAlign: 'right' }}>USD</th></tr></thead>
+                  <thead><tr><th>Vendedor</th><th className="u-text-right">Ventas</th><th className="u-text-right">USD</th></tr></thead>
                   <tbody>
                     {(actual.ventas.top_vendedores || []).map((v, i) => (
                       <tr key={i}>
                         <td>{v.vendedor}</td>
-                        <td className="mono" style={{ textAlign: 'right' }}>{v.ventas}</td>
-                        <td className="mono" style={{ textAlign: 'right' }}>{fmt(v.total_usd)}</td>
+                        <td className="mono u-text-right">{v.ventas}</td>
+                        <td className="mono u-text-right">{fmt(v.total_usd)}</td>
                       </tr>
                     ))}
                     {(actual.ventas.top_vendedores || []).length === 0 && (
@@ -349,13 +349,13 @@ export default function Resumen() {
           <div className="card card-flush" style={{ marginTop: 18 }}>
             <div className="card-hd"><h3>Pagos por método</h3></div>
             <table className="tbl">
-              <thead><tr><th>Método</th><th>Moneda</th><th style={{ textAlign: 'right' }}>USD</th></tr></thead>
+              <thead><tr><th>Método</th><th>Moneda</th><th className="u-text-right">USD</th></tr></thead>
               <tbody>
                 {(actual.ventas.pagos_por_metodo || []).map((p, i) => (
                   <tr key={i}>
                     <td>{p.metodo}</td>
                     <td className="muted tiny">{p.moneda}</td>
-                    <td className="mono" style={{ textAlign: 'right' }}>{fmt(p.total_usd)}</td>
+                    <td className="mono u-text-right">{fmt(p.total_usd)}</td>
                   </tr>
                 ))}
                 {(actual.ventas.pagos_por_metodo || []).length === 0 && (

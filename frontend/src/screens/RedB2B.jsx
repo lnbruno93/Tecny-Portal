@@ -78,7 +78,7 @@ export default function RedB2B() {
 
   return (
     <div>
-      <div className="page-head" style={{ marginBottom: 16 }}>
+      <div className="page-head u-mb-16">
         <h1>Red B2B</h1>
       </div>
       <p className="muted" style={{ marginTop: -8, marginBottom: 16 }}>
@@ -86,7 +86,7 @@ export default function RedB2B() {
         automática de inventario, cuentas corrientes y pagos.
       </p>
 
-      <div className="tabs" role="tablist" aria-label="Secciones de Red B2B" style={{ marginBottom: 16 }}>
+      <div className="tabs u-mb-16" role="tablist" aria-label="Secciones de Red B2B">
         {HUB_TABS.map((t) => (
           <button
             key={t.id}
@@ -230,7 +230,7 @@ function PartnersTab() {
         </button>
       </div>
 
-      <div className="tabs" role="tablist" aria-label="Filtros de partnerships" style={{ marginBottom: 16 }}>
+      <div className="tabs u-mb-16" role="tablist" aria-label="Filtros de partnerships">
         {PARTNER_TABS.map((t) => {
           const count = (
             t.id === 'active'           ? counts.active_count :
@@ -304,7 +304,7 @@ function EmptyState({ tab, onInvite }) {
   return (
     <div className="empty-state" style={{ padding: 32, textAlign: 'center' }}>
       <p style={{ fontWeight: 600, marginBottom: 4 }}>{msg.title}</p>
-      <p className="muted" style={{ marginBottom: 16 }}>{msg.body}</p>
+      <p className="muted u-mb-16">{msg.body}</p>
       {(tab.id === 'active' || tab.id === 'pending_sent') && (
         <button type="button" className="btn btn-primary" onClick={onInvite}>
           Invitar partner
@@ -342,7 +342,7 @@ function PartnershipRow({ p, acting, onAccept, onReject, onRevoke }) {
               ({partner.slug || '?'})
             </span>
           </div>
-          <div className="muted tiny" style={{ marginTop: 4 }}>
+          <div className="muted tiny u-mt-4">
             Plan {planLabel(partner.plan)} · {dateLabel}: {dateValue}
           </div>
           {p.invitation_message && (
@@ -351,7 +351,7 @@ function PartnershipRow({ p, acting, onAccept, onReject, onRevoke }) {
             </div>
           )}
           {p.revoked_reason && (
-            <div className="tiny muted" style={{ marginTop: 6 }}>
+            <div className="tiny muted u-mt-6">
               Motivo: {p.revoked_reason}
             </div>
           )}
@@ -449,7 +449,7 @@ export function InvitePartnerModal({ onClose, onSuccess }) {
               Ingresá el slug del tenant Tecny al que querés invitar.
             </p>
 
-            <div className="field" style={{ marginBottom: 12 }}>
+            <div className="field u-mb-12">
               <label className="field-label" htmlFor="invite-slug">
                 Slug del partner
               </label>
@@ -465,7 +465,7 @@ export function InvitePartnerModal({ onClose, onSuccess }) {
               />
             </div>
 
-            <div className="field" style={{ marginBottom: 8 }}>
+            <div className="field u-mb-8">
               <label className="field-label" htmlFor="invite-message">
                 Mensaje (opcional)
               </label>
@@ -480,7 +480,7 @@ export function InvitePartnerModal({ onClose, onSuccess }) {
                 disabled={submitting}
                 style={{ fontFamily: 'inherit', resize: 'vertical' }}
               />
-              <div className="muted tiny" style={{ marginTop: 4 }}>
+              <div className="muted tiny u-mt-4">
                 {message.length}/500 caracteres
               </div>
             </div>

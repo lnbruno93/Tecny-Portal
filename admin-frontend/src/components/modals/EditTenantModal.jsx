@@ -170,7 +170,7 @@ export default function EditTenantModal({ tenant, open, onClose, onSaved }) {
       </p>
 
       {planChanged && (
-        <div className="banner banner-warn" style={{ marginBottom: 12 }}>
+        <div className="banner banner-warn u-mb-12">
           <Badge tone="warn">Plan</Badge>
           <span>
             Cambiar plan limpia automáticamente trial_until / custom_mrr_usd
@@ -179,7 +179,7 @@ export default function EditTenantModal({ tenant, open, onClose, onSaved }) {
         </div>
       )}
 
-      <div className="stack" style={{ gap: 14 }}>
+      <div className="stack u-gap-14">
         {/* Nombre — display, sin restricciones más allá de no-vacío. */}
         <div>
           <label className="form-label" htmlFor={nombreId}>Nombre de la empresa</label>
@@ -263,7 +263,7 @@ export default function EditTenantModal({ tenant, open, onClose, onSaved }) {
               placeholder="ej: 250"
               disabled={submitting}
             />
-            <div className="muted tiny" style={{ marginTop: 4 }}>
+            <div className="muted tiny u-mt-4">
               Vacío = sin override; se calcula desde precio del plan.
             </div>
           </div>
@@ -294,7 +294,7 @@ export default function EditTenantModal({ tenant, open, onClose, onSaved }) {
             placeholder="Ej: upgrade pactado por mail"
             disabled={submitting}
           />
-          <div className="muted tiny" style={{ marginTop: 4 }}>
+          <div className="muted tiny u-mt-4">
             Para el audit trail (opcional pero útil).
           </div>
         </div>

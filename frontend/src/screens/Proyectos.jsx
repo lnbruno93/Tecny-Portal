@@ -224,14 +224,14 @@ export default function Proyectos() {
       {/* ── PANORAMA: todos los proyectos de un vistazo ── */}
       {vista === 'panorama' && (
         <>
-          <div className="row" style={{ marginBottom: 14 }}>
+          <div className="row u-mb-14">
             <div className="card card-tight u-flex-1">
               <div className="kpi-label">Proyectos</div>
               <div className="kpi-value mono">{global.proyectos}</div>
             </div>
             <div className="card card-tight u-flex-1">
               <div className="kpi-label">Invertido · USD</div>
-              <div className="kpi-value mono" style={{ color: 'var(--accent)' }}>u$s {fmt(global.total_usd)}</div>
+              <div className="kpi-value mono u-color-accent">u$s {fmt(global.total_usd)}</div>
             </div>
             <div className="card card-tight u-flex-1">
               <div className="kpi-label">Invertido · $</div>
@@ -243,7 +243,7 @@ export default function Proyectos() {
             </div>
           </div>
 
-          <div style={{ marginBottom: 10 }}>
+          <div className="u-mb-10">
             <input className="input" style={{ maxWidth: 320 }} placeholder="Buscar proyecto…" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
 
@@ -255,20 +255,20 @@ export default function Proyectos() {
                   <thead>
                     <tr>
                       <th>Proyecto</th><th>Objetivo</th><th>Creado</th><th>Período</th>
-                      <th style={{ textAlign: 'right' }}>$ ARS</th><th style={{ textAlign: 'right' }}>USD</th><th style={{ textAlign: 'right' }}>Mov.</th>
+                      <th className="u-text-right">$ ARS</th><th className="u-text-right">USD</th><th className="u-text-right">Mov.</th>
                     </tr>
                   </thead>
                   <tbody>
                     {list.map(p => (
                       <tr key={p.id} className="tbl-row-click" style={{ cursor: 'pointer' }}
                         onClick={() => { setSelectedId(p.id); setVista('detalle'); }}>
-                        <td style={{ fontWeight: 600 }}>{p.nombre}</td>
+                        <td className="u-fw-600">{p.nombre}</td>
                         <td className="muted tiny" style={{ maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.objetivo || '—'}</td>
                         <td className="mono tiny">{fmtFecha(p.fecha_creacion)}</td>
                         <td className="mono tiny">{p.desde ? `${fmtFecha(p.desde)} → ${fmtFecha(p.hasta)}` : '—'}</td>
-                        <td className="mono" style={{ textAlign: 'right' }}>{Number(p.total_ars) > 0 ? '$ ' + fmt(p.total_ars) : '—'}</td>
+                        <td className="mono u-text-right">{Number(p.total_ars) > 0 ? '$ ' + fmt(p.total_ars) : '—'}</td>
                         <td className="mono" style={{ textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>{Number(p.total_usd) > 0 ? 'u$s ' + fmt(p.total_usd) : '—'}</td>
-                        <td className="mono tiny" style={{ textAlign: 'right' }}>{p.cant_movimientos}</td>
+                        <td className="mono tiny u-text-right">{p.cant_movimientos}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -298,8 +298,8 @@ export default function Proyectos() {
                   background: selectedId === p.id ? 'var(--surface-2)' : 'transparent',
                   borderLeft: selectedId === p.id ? '3px solid var(--accent)' : '3px solid transparent',
                 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>{p.nombre}</div>
-                  <div className="muted tiny" style={{ marginTop: 2 }}>
+                  <div className="u-fs-13-fw-600">{p.nombre}</div>
+                  <div className="muted tiny u-mt-2">
                     {fmtFecha(p.fecha_creacion)} · {p.cant_movimientos} mov.
                   </div>
                   <div className="mono tiny" style={{ marginTop: 2, color: 'var(--accent)' }}>
@@ -316,7 +316,7 @@ export default function Proyectos() {
             Elegí un proyecto
           </div>
         ) : (
-          <div className="stack" style={{ gap: 14 }}>
+          <div className="stack u-gap-14">
             {/* Header */}
             <div className="card">
               <div className="flex-between" style={{ alignItems: 'flex-start' }}>
@@ -324,14 +324,14 @@ export default function Proyectos() {
                   {/* 2026-06-24 lote F: clamp para nombres largos en mobile (ej. "Proyecto de construcción casa zona norte"). */}
                   <div style={{ fontWeight: 700, fontSize: 'clamp(15px, 4.5vw, 18px)' }}>{detalle.nombre}</div>
                   {detalle.objetivo && <div className="muted" style={{ marginTop: 4, maxWidth: 600 }}>{detalle.objetivo}</div>}
-                  <div className="muted tiny" style={{ marginTop: 6 }}>Creado el {fmtFecha(detalle.fecha_creacion)}</div>
+                  <div className="muted tiny u-mt-6">Creado el {fmtFecha(detalle.fecha_creacion)}</div>
                   {detalle.participantes?.length > 0 && (
                     <div className="flex-row" style={{ gap: 4, flexWrap: 'wrap', marginTop: 8 }}>
                       {detalle.participantes.map(c => <span key={c.id} className="badge badge-info">{nombreContacto(c)}</span>)}
                     </div>
                   )}
                 </div>
-                <button className="icon-btn" title="Eliminar proyecto" style={{ color: 'var(--neg)' }} onClick={handleDeleteProy}><Icons.Trash size={15} /></button>
+                <button className="icon-btn u-color-neg" title="Eliminar proyecto" onClick={handleDeleteProy}><Icons.Trash size={15} /></button>
               </div>
             </div>
 
@@ -359,13 +359,13 @@ export default function Proyectos() {
 
             {/* Tabla de movimientos */}
             <div className="card card-flush">
-              <div className="card-hd"><div style={{ fontWeight: 600, fontSize: 14 }}>Hoja del proyecto — {r.cant_movimientos || 0} movimientos</div></div>
+              <div className="card-hd"><div className="u-fs-14-fw-600">Hoja del proyecto — {r.cant_movimientos || 0} movimientos</div></div>
               <div style={{ overflow: 'auto' }}>
                 <table className="tbl">
                   <thead>
                     <tr>
                       <th>Fecha</th><th>Detalle</th><th>Categoría</th>
-                      <th style={{ textAlign: 'right' }}>$ ARS</th><th style={{ textAlign: 'right' }}>TC</th><th style={{ textAlign: 'right' }}>USD</th>
+                      <th className="u-text-right">$ ARS</th><th className="u-text-right">TC</th><th className="u-text-right">USD</th>
                       <th title="Caja afectada y tipo (ingreso/egreso)">Caja</th>
                       <th>Inversor</th><th>Comentarios</th><th></th>
                     </tr>
@@ -376,8 +376,8 @@ export default function Proyectos() {
                         <td className="mono tiny">{fmtFecha(m.fecha)}</td>
                         <td>{m.detalle || '—'}</td>
                         <td>{m.categoria ? <span className="badge">{m.categoria}</span> : '—'}</td>
-                        <td className="mono" style={{ textAlign: 'right' }}>{Number(m.monto) > 0 ? '$ ' + fmt(m.monto) : '—'}</td>
-                        <td className="mono tiny" style={{ textAlign: 'right' }}>{m.tc ? fmt(m.tc) : '—'}</td>
+                        <td className="mono u-text-right">{Number(m.monto) > 0 ? '$ ' + fmt(m.monto) : '—'}</td>
+                        <td className="mono tiny u-text-right">{m.tc ? fmt(m.tc) : '—'}</td>
                         <td className="mono" style={{ textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>{Number(m.monto_usd) > 0 ? 'u$s ' + fmt(m.monto_usd) : '—'}</td>
                         <td className="tiny">
                           {m.caja_nombre ? (
@@ -390,7 +390,7 @@ export default function Proyectos() {
                         </td>
                         <td className="tiny">{m.inversor_nombre || '—'}</td>
                         <td className="muted tiny">{m.comentarios || '—'}</td>
-                        <td><button className="icon-btn" style={{ color: 'var(--neg)' }} onClick={() => handleDeleteMov(m.id)}><Icons.Trash size={13} /></button></td>
+                        <td><button className="icon-btn u-color-neg" onClick={() => handleDeleteMov(m.id)}><Icons.Trash size={13} /></button></td>
                       </tr>
                     ))}
 
@@ -470,9 +470,9 @@ export default function Proyectos() {
             <div className="modal-hd"><h3>Nuevo proyecto</h3><button className="icon-btn" onClick={() => setShowCreate(false)}><Icons.X size={16} /></button></div>
             <form onSubmit={handleCreate}>
               <div className="modal-body">
-                <div className="stack" style={{ gap: 14 }}>
+                <div className="stack u-gap-14">
                   <div className="field">
-                    <label className="field-label">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label>
+                    <label className="field-label">Nombre <span className="u-color-neg">*</span></label>
                     <input className="input" placeholder="Ej: App Tecny v2" value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} autoFocus />
                   </div>
                   <div className="field">
@@ -501,7 +501,7 @@ export default function Proyectos() {
                         return (
                           <label key={c.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 10px', border: `1px solid ${on ? 'var(--border-strong)' : 'var(--border)'}`, borderRadius: 8, cursor: 'pointer', background: on ? 'var(--surface-2)' : 'var(--surface)' }}>
                             <input type="checkbox" checked={on} onChange={e => setForm(f => ({ ...f, participantes: e.target.checked ? [...f.participantes, c.id] : f.participantes.filter(x => x !== c.id) }))} style={{ accentColor: 'var(--accent)' }} />
-                            <span style={{ fontSize: 12 }}>{nombreContacto(c)}</span>
+                            <span className="u-fs-12">{nombreContacto(c)}</span>
                           </label>
                         );
                       })}

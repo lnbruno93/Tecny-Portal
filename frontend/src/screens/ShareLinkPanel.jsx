@@ -151,7 +151,7 @@ export default function ShareLinkPanel() {
 
   if (loading) {
     return (
-      <div className="card card-tight" style={{ marginBottom: 16 }}>
+      <div className="card card-tight u-mb-16">
         <div className="muted tiny">Cargando link público…</div>
       </div>
     );
@@ -191,7 +191,7 @@ export default function ShareLinkPanel() {
               {link.activo ? 'Activo' : 'Desactivado'}
             </span>
           </div>
-          <div className="muted tiny" style={{ marginTop: 2 }}>
+          <div className="muted tiny u-mt-2">
             Compartilo por WhatsApp — se actualiza en tiempo real desde tu inventario.
           </div>
         </div>
@@ -225,7 +225,7 @@ export default function ShareLinkPanel() {
           </div>
 
           {/* Config: whatsapp + mensaje */}
-          <div className="row" style={{ marginBottom: 14 }}>
+          <div className="row u-mb-14">
             <div className="field u-flex-1">
               <label className="field-label">WhatsApp de contacto (opcional)</label>
               <input

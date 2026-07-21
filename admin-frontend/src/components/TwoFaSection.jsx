@@ -284,7 +284,7 @@ export default function TwoFaSection({ onMessage }) {
                 }}>{c}</div>
               ))}
             </div>
-            <div className="flex-row" style={{ gap: 8 }}>
+            <div className="flex-row u-gap-8">
               <Btn kind="ghost" sm onClick={copyRecoveryCodes}>Copiar todos</Btn>
               <Btn kind="primary" sm onClick={() => setNewRecoveryCodes(null)}>
                 Ya los guardé

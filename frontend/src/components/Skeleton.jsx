@@ -43,7 +43,7 @@ export function SkeletonRow({ columns = 4, height = 18 }) {
 export function SkeletonCard({ title = true }) {
   return (
     <div className="kpi-card" aria-hidden="true">
-      {title && <Skeleton width="40%" height={12} style={{ marginBottom: 8 }} />}
+      {title && <Skeleton width="40%" height={12} className="u-mb-8" />}
       <Skeleton width="70%" height={28} />
     </div>
   );

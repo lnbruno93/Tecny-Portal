@@ -322,7 +322,7 @@ export default function Contactos() {
               >
                 <Icons.Copy size={13} />
                 <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <strong style={{ fontSize: 13 }}>Copiar al portapapeles</strong>
+                  <strong className="u-fs-13">Copiar al portapapeles</strong>
                   <span className="muted tiny">Solo emails, listos para pegar en Gmail</span>
                 </span>
               </button>
@@ -335,7 +335,7 @@ export default function Contactos() {
               >
                 <Icons.Download size={13} />
                 <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <strong style={{ fontSize: 13 }}>Descargar CSV</strong>
+                  <strong className="u-fs-13">Descargar CSV</strong>
                   <span className="muted tiny">Ficha completa · Excel, Mailchimp, otros CRM</span>
                 </span>
               </button>
@@ -348,7 +348,7 @@ export default function Contactos() {
               >
                 <Icons.Download size={13} />
                 <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <strong style={{ fontSize: 13 }}>Descargar XLSX</strong>
+                  <strong className="u-fs-13">Descargar XLSX</strong>
                   <span className="muted tiny">Ficha completa · abre directo en Excel</span>
                 </span>
               </button>
@@ -411,14 +411,14 @@ export default function Contactos() {
               <tbody>
                 {list.map(c => (
                   <tr key={c.id}>
-                    <td style={{ fontWeight: 600 }}>{c.nombre}{c.apellido ? ' ' + c.apellido : ''}</td>
+                    <td className="u-fw-600">{c.nombre}{c.apellido ? ' ' + c.apellido : ''}</td>
                     <td className="mono tiny">{c.telefono || '—'}</td>
                     <td className="mono tiny">{c.dni || '—'}</td>
                     <td className="tiny">{c.email || '—'}</td>
                     <td><span className={origenMeta(c.origen).cls}>{origenMeta(c.origen).label}</span></td>
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                       <button className="icon-btn" title="Editar" onClick={() => openEdit(c)}><Icons.Edit size={14} /></button>
-                      <button className="icon-btn" title="Eliminar" style={{ color: 'var(--neg)' }} onClick={() => handleDelete(c)}><Icons.Trash size={14} /></button>
+                      <button className="icon-btn u-color-neg" title="Eliminar" onClick={() => handleDelete(c)}><Icons.Trash size={14} /></button>
                     </td>
                   </tr>
                 ))}
@@ -437,10 +437,10 @@ export default function Contactos() {
             </div>
             <form onSubmit={handleSubmit}>
               <div className="modal-body">
-                <div className="stack" style={{ gap: 14 }}>
-                  <div className="row" style={{ gap: 12 }}>
+                <div className="stack u-gap-14">
+                  <div className="row u-gap-12">
                     <div className="field u-flex-1">
-                      <label className="field-label" htmlFor="contacto-nombre">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <label className="field-label" htmlFor="contacto-nombre">Nombre <span className="u-color-neg">*</span></label>
                       <input id="contacto-nombre" className={'input' + (fieldErrors.nombre ? ' input-error' : '')} value={form.nombre} onChange={e => setField('nombre', e.target.value)} autoFocus aria-invalid={!!fieldErrors.nombre} />
                       {fieldErrors.nombre && <div className="field-error">{fieldErrors.nombre}</div>}
                     </div>
@@ -449,7 +449,7 @@ export default function Contactos() {
                       <input id="contacto-apellido" className="input" value={form.apellido} onChange={e => setField('apellido', e.target.value)} />
                     </div>
                   </div>
-                  <div className="row" style={{ gap: 12 }}>
+                  <div className="row u-gap-12">
                     <div className="field u-flex-1">
                       <label className="field-label" htmlFor="contacto-tel">Contacto (teléfono / WhatsApp)</label>
                       <input id="contacto-tel" type="tel" inputMode="tel" autoComplete="tel" className="input" value={form.telefono} onChange={e => setField('telefono', e.target.value)} />
@@ -464,7 +464,7 @@ export default function Contactos() {
                     <input id="contacto-email" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" autoCorrect="off" className={'input' + (fieldErrors.email ? ' input-error' : '')} value={form.email} onChange={e => setField('email', e.target.value)} aria-invalid={!!fieldErrors.email} />
                     {fieldErrors.email && <div className="field-error">{fieldErrors.email}</div>}
                   </div>
-                  <div className="row" style={{ gap: 12 }}>
+                  <div className="row u-gap-12">
                     <div className="field u-flex-1">
                       <label className="field-label">De dónde vino</label>
                       <select className="input" value={form.origen} onChange={e => setField('origen', e.target.value)}>

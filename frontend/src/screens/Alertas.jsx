@@ -96,7 +96,7 @@ export function TabActivas({ data }) {
       <div className="card card-tight" style={{ textAlign: 'center', padding: 32, color: 'var(--pos)' }}>
         <Icons.Check size={32} />
         <div style={{ fontSize: 18, fontWeight: 600, marginTop: 8 }}>Todo bajo control</div>
-        <div className="muted tiny" style={{ marginTop: 4 }}>No hay alertas activas en este momento.</div>
+        <div className="muted tiny u-mt-4">No hay alertas activas en este momento.</div>
       </div>
     );
   }
@@ -111,7 +111,7 @@ export function TabActivas({ data }) {
         <GrupoAlerta key={g.tipo} grupo={g} />
       ))}
       {grupos.filter(g => g.count === 0).length > 0 && (
-        <div className="muted tiny" style={{ marginTop: 12 }}>
+        <div className="muted tiny u-mt-12">
           ✓ Sin alertas en: {grupos.filter(g => g.count === 0).map(g => TITULOS[g.tipo] || g.tipo).join(', ')}
         </div>
       )}
@@ -136,7 +136,7 @@ function GrupoAlerta({ grupo }) {
       {expanded && (
         <div style={{ marginTop: 8 }}>
           {grupo.error ? (
-            <div className="empty tiny" style={{ color: 'var(--neg)' }}>Error: {grupo.error}</div>
+            <div className="empty tiny u-color-neg">Error: {grupo.error}</div>
           ) : (
             <div style={{ borderTop: '1px solid var(--border)' }}>
               {grupo.items.map(item => (
@@ -170,7 +170,7 @@ export function TabConfig({ config, onSaved }) {
           <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6, color: 'var(--text-muted)' }}>
             Settings globales
           </div>
-          <div className="muted tiny" style={{ marginBottom: 8 }}>
+          <div className="muted tiny u-mb-8">
             Valores de referencia que el frontend usa para advertir sobre posibles errores al cargar datos.
             No generan alertas en la pestaña "Activas".
           </div>
@@ -183,7 +183,7 @@ export function TabConfig({ config, onSaved }) {
       <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6, color: 'var(--text-muted)' }}>
         Alertas evaluadas
       </div>
-      <div className="muted tiny" style={{ marginBottom: 8 }}>
+      <div className="muted tiny u-mb-8">
         Activá/desactivá cada tipo y ajustá los umbrales. Los cambios pueden tardar hasta 60s en
         reflejarse en la pestaña "Activas" (cache).
       </div>
@@ -241,16 +241,16 @@ function ConfigRow({ cfg, onSaved }) {
   }
 
   return (
-    <div className="card card-tight" style={{ marginBottom: 10 }}>
+    <div className="card card-tight u-mb-10">
       <div className="flex-between" style={{ marginBottom: parametrosKeys.length > 0 ? 8 : 0 }}>
         <div>
-          <div style={{ fontWeight: 600 }}>{TITULOS[cfg.tipo] || cfg.tipo}</div>
+          <div className="u-fw-600">{TITULOS[cfg.tipo] || cfg.tipo}</div>
           <div className="muted tiny">{cfg.tipo}</div>
         </div>
         <label className="flex-row" style={{ gap: 6, alignItems: 'center', cursor: 'pointer' }}>
           <input type="checkbox" checked={activa} onChange={toggleActiva} disabled={saving}
                  style={{ accentColor: 'var(--accent)' }} />
-          <span style={{ fontSize: 13 }}>{activa ? 'Activa' : 'Desactivada'}</span>
+          <span className="u-fs-13">{activa ? 'Activa' : 'Desactivada'}</span>
         </label>
       </div>
       {parametrosKeys.length > 0 && activa && (

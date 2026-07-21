@@ -63,7 +63,7 @@ function ProtectedRoute({ children }) {
         aria-live="polite"
         aria-busy="true"
       >
-        <div className="muted" style={{ fontSize: 13 }}>Cargando…</div>
+        <div className="muted u-fs-13">Cargando…</div>
       </div>
     );
   }
@@ -83,7 +83,7 @@ function ProtectedRoute({ children }) {
             aria-live="polite"
             aria-busy="true"
           >
-            <div className="muted" style={{ fontSize: 13 }}>Cargando…</div>
+            <div className="muted u-fs-13">Cargando…</div>
           </div>
         }
       >

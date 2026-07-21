@@ -279,8 +279,7 @@ export default function Ficha() {
         subtitle={`#${tenant.id} · ${tenant.slug || '—'} · cliente desde ${fmtDate(tenant.created_at)}`}
         breadcrumb={
           <div
-            className="company-logo company-logo-lg"
-            style={{ marginBottom: 10 }}
+            className="company-logo company-logo-lg u-mb-10"
           >
             {tenantInitials(tenant.nombre)}
           </div>
@@ -475,7 +474,7 @@ export default function Ficha() {
               value={breakdown.asientos}
               color="var(--accent)"
             />
-            <div className="muted tiny" style={{ marginTop: 12 }}>
+            <div className="muted tiny u-mt-12">
               {hCategory === 'onboarding' && (
                 <>
                   <strong>Onboarding:</strong> tenant nuevo (&lt;7 días). El score
@@ -578,7 +577,7 @@ export default function Ficha() {
 
       {activeTab === 'actividad' && (
         <div style={{ marginTop: 'var(--gap)' }}>
-          <div className="flex-row" style={{ marginBottom: 12 }}>
+          <div className="flex-row u-mb-12">
             <Seg
               value={activitySubTab}
               onChange={setActivitySubTab}
@@ -745,7 +744,7 @@ function VentasPanel({ items }) {
               <td className="muted tiny">{fmtDateTime(v.fecha || v.created_at)}</td>
               <td className="mono tiny">{v.order_id || '—'}</td>
               <td>{v.cliente_nombre || '—'}</td>
-              <td className="num mono" style={{ fontWeight: 600 }}>
+              <td className="num mono u-fw-600">
                 {fmtMoney(v.total_usd ?? 0)}
               </td>
               <td><Status tone="muted">{v.estado || '—'}</Status></td>
@@ -781,7 +780,7 @@ function CajasPanel({ items }) {
               <td>{m.caja_nombre || '—'}</td>
               <td><Badge tone="default">{m.tipo || '—'}</Badge></td>
               <td>{m.concepto || '—'}</td>
-              <td className="num mono" style={{ fontWeight: 600 }}>
+              <td className="num mono u-fw-600">
                 {fmtMoney(m.monto_usd ?? 0)}
               </td>
             </tr>
@@ -988,7 +987,7 @@ function ComprobanteEmailFooterCard({ tenant, onSaved }) {
         recibe el cliente final. Plain-text — sin HTML (se escapa al renderizar).
         Dejá vacío para usar el footer default.
       </p>
-      <div className="field" style={{ marginBottom: 10 }}>
+      <div className="field u-mb-10">
         <label className="field-label" htmlFor="footer-textarea">
           Footer custom <span className="muted tiny">({value.length}/{FOOTER_MAX})</span>
         </label>
@@ -1013,7 +1012,7 @@ function ComprobanteEmailFooterCard({ tenant, onSaved }) {
           {saving ? 'Guardando…' : 'Guardar'}
         </Btn>
         {saved && <span className="tiny" style={{ color: 'var(--pos)' }}>✓ Guardado</span>}
-        {error && <span className="tiny" style={{ color: 'var(--neg)' }}>{error}</span>}
+        {error && <span className="tiny u-color-neg">{error}</span>}
       </div>
 
       {/* Preview — aproximación visual al footer del email */}
@@ -1088,7 +1087,7 @@ function ClasesDuplicadasCard({ tenantId }) {
   return (
     <>
       <div className="card" style={{ marginTop: 'var(--gap)' }}>
-        <div className="flex-between" style={{ marginBottom: 8 }}>
+        <div className="flex-between u-mb-8">
           <div>
             <h3 style={{ margin: '0 0 4px' }}>Categorías duplicadas</h3>
             <p className="muted tiny" style={{ margin: 0 }}>
@@ -1155,7 +1154,7 @@ function ClasesDuplicadasCard({ tenantId }) {
                   return (
                     <tr key={key}>
                       <td>
-                        <div style={{ fontWeight: 600 }}>{canonica.nombre}</div>
+                        <div className="u-fw-600">{canonica.nombre}</div>
                         <div className="muted tiny">
                           {canonica.count_productos} prod
                           {canonica.es_base && ' · base'}

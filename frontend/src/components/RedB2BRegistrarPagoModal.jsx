@@ -149,7 +149,7 @@ export default function RedB2BRegistrarPagoModal({ operation, restanteUsd, onClo
               (de {fmtMoney(operation?.total_usd, 'USD')}, TC venta: {operation?.tc_used})
             </p>
 
-            <div className="field" style={{ marginBottom: 12 }}>
+            <div className="field u-mb-12">
               <label className="field-label" htmlFor="monto-usd">
                 Monto a pagar (USD)
               </label>
@@ -166,7 +166,7 @@ export default function RedB2BRegistrarPagoModal({ operation, restanteUsd, onClo
               />
             </div>
 
-            <div className="field" style={{ marginBottom: 12 }}>
+            <div className="field u-mb-12">
               <span className="field-label">Moneda del pago</span>
               <div style={{ display: 'flex', gap: 16, marginTop: 4 }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
@@ -192,7 +192,7 @@ export default function RedB2BRegistrarPagoModal({ operation, restanteUsd, onClo
               </div>
             </div>
 
-            <div className="field" style={{ marginBottom: 12 }}>
+            <div className="field u-mb-12">
               <label className="field-label" htmlFor="tc-pago">
                 TC del pago {monedaPago === 'USD' && <span className="muted">(no aplica)</span>}
               </label>
@@ -209,7 +209,7 @@ export default function RedB2BRegistrarPagoModal({ operation, restanteUsd, onClo
               />
             </div>
 
-            <div className="field" style={{ marginBottom: 12 }}>
+            <div className="field u-mb-12">
               <label className="field-label">
                 Monto a cobrar/pagar ({monedaPago})
               </label>
@@ -245,7 +245,7 @@ export default function RedB2BRegistrarPagoModal({ operation, restanteUsd, onClo
               </div>
             )}
 
-            <div className="field" style={{ marginBottom: 12 }}>
+            <div className="field u-mb-12">
               <label className="field-label" htmlFor="caja-id">
                 Caja {operation?.my_side === 'seller' ? 'receptora (donde entra el dinero)' : 'emisora (de donde sale)'}
               </label>
@@ -268,7 +268,7 @@ export default function RedB2BRegistrarPagoModal({ operation, restanteUsd, onClo
               )}
             </div>
 
-            <div className="field" style={{ marginBottom: 12 }}>
+            <div className="field u-mb-12">
               <label className="field-label" htmlFor="fecha-pago">
                 Fecha
               </label>

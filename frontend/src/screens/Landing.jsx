@@ -264,15 +264,15 @@ export default function Landing() {
                 </div>
                 <div className="shot-row">
                   <div><div className="nm">Mac Center · #F-0421</div><div className="meta">Camila R. · Transferencia</div></div>
-                  <div style={{ textAlign: 'right' }}><div className="amt">ARS 4.280.000</div><span className="pill pill-pos">OCR 96%</span></div>
+                  <div className="u-text-right"><div className="amt">ARS 4.280.000</div><span className="pill pill-pos">OCR 96%</span></div>
                 </div>
                 <div className="shot-row">
                   <div><div className="nm">Celular Express · #F-0420</div><div className="meta">Sofía P. · Depósito</div></div>
-                  <div style={{ textAlign: 'right' }}><div className="amt">ARS 1.840.000</div><span className="pill pill-amber">Pendiente</span></div>
+                  <div className="u-text-right"><div className="amt">ARS 1.840.000</div><span className="pill pill-amber">Pendiente</span></div>
                 </div>
                 <div className="shot-row">
                   <div><div className="nm">iStore Norte · #F-0419</div><div className="meta">Lucas I. · USD efectivo</div></div>
-                  <div style={{ textAlign: 'right' }}><div className="amt">USD 12.500</div><span className="pill pill-pos">OCR 95%</span></div>
+                  <div className="u-text-right"><div className="amt">USD 12.500</div><span className="pill pill-pos">OCR 95%</span></div>
                 </div>
               </div>
             </div>
@@ -467,8 +467,8 @@ export default function Landing() {
             <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16 }} className="mono">USD 1.185 · TC $1.200</div>
             <div className="calc-row"><span className="l">Contado</span><span className="v" style={{ color: 'var(--pos)' }}>$1.422.000</span></div>
             <div className="calc-row"><span className="l">Transferencia (+3%)</span><span className="v" style={{ color: 'var(--pos)' }}>$1.464.660</span></div>
-            <div className="calc-row"><span className="l">💳 3 cuotas (+23.5%)</span><span className="v" style={{ color: 'var(--accent)' }}>$1.756.170</span></div>
-            <div className="calc-row"><span className="l">💳 6 cuotas (+28%)</span><span className="v" style={{ color: 'var(--accent)' }}>$1.820.160</span></div>
+            <div className="calc-row"><span className="l">💳 3 cuotas (+23.5%)</span><span className="v u-color-accent">$1.756.170</span></div>
+            <div className="calc-row"><span className="l">💳 6 cuotas (+28%)</span><span className="v u-color-accent">$1.820.160</span></div>
             <div className="calc-total"><span className="l" style={{ color: 'var(--muted)', fontSize: 13, alignSelf: 'flex-end' }}>6 × $303.360</span><span className="v">$1.820.160</span></div>
           </div>
         </div>

@@ -135,7 +135,7 @@ export default function ExtendTrialModal({ tenant, open, onClose, onSaved }) {
         )}
       </div>
 
-      <div className="stack" style={{ gap: 14 }}>
+      <div className="stack u-gap-14">
         <div>
           <label className="form-label" htmlFor={daysId}>Días a extender</label>
           <input
@@ -149,7 +149,7 @@ export default function ExtendTrialModal({ tenant, open, onClose, onSaved }) {
             onChange={(e) => setDays(e.target.value)}
             disabled={submitting}
           />
-          <div className="muted tiny" style={{ marginTop: 4 }}>
+          <div className="muted tiny u-mt-4">
             Cuántos días extender el trial actual ({MIN_DAYS}–{MAX_DAYS}).
           </div>
           {previewDate && (
@@ -170,7 +170,7 @@ export default function ExtendTrialModal({ tenant, open, onClose, onSaved }) {
             placeholder="Ej: cliente pidió más tiempo de evaluación"
             disabled={submitting}
           />
-          <div className="muted tiny" style={{ marginTop: 4 }}>
+          <div className="muted tiny u-mt-4">
             Para el audit (opcional).
           </div>
         </div>

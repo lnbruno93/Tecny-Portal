@@ -178,14 +178,14 @@ export default function Capital() {
 
   return (
     <div>
-      <div className="page-head" style={{ marginBottom: 16 }}>
+      <div className="page-head u-mb-16">
         <div>
           <h1 className="page-title">360 &amp; Capital</h1>
           <div className="page-sub">Capital total, estado de cada caja y todos los movimientos en un solo lugar</div>
         </div>
       </div>
 
-      <div className="tabs" style={{ marginBottom: 16 }}>
+      <div className="tabs u-mb-16">
         {[{ value: 'capital', label: 'Capital' }, { value: 'movimientos', label: 'Movimientos' }].map(t => (
           <button key={t.value} className={'tab' + (tab === t.value ? ' active' : '')} onClick={() => setTab(t.value)}>
             {t.label}
@@ -202,10 +202,10 @@ export default function Capital() {
           marginBottom: 14, borderLeft: '3px solid var(--warn, var(--neg))',
           background: 'var(--surface-2)',
         }}>
-          <div style={{ fontWeight: 600, fontSize: 13 }}>
+          <div className="u-fs-13-fw-600">
             ⚠ El patrimonio mostrado puede estar incompleto
           </div>
-          <div className="muted tiny" style={{ marginTop: 4 }}>
+          <div className="muted tiny u-mt-4">
             No se pudo cargar: <b>{fuentesError.join(', ')}</b>. Refrescá la página o probá en unos minutos.
           </div>
         </div>
@@ -214,7 +214,7 @@ export default function Capital() {
       {/* Patrimonio total por moneda (efectivo + inventario + inversiones + a cobrar + B2B).
           Auditoría 2026-06-30 F-02→05: labels y símbolos dinámicos por país
           (ARS/$ en AR, UYU/$U en UY) vía useMonedasTenant + fmtMoney. */}
-      <div className="row" style={{ marginBottom: 14 }}>
+      <div className="row u-mb-14">
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">Patrimonio · {monedaLocal}</div>
           <div className="kpi-value mono" style={{ color: patrimonio.totalLocal >= 0 ? 'var(--pos)' : 'var(--neg)' }}>{fmtMoney(patrimonio.totalLocal, monedaLocal)}</div>
@@ -230,9 +230,9 @@ export default function Capital() {
       </div>
 
       {/* Composición del patrimonio: panel único agrupado en Suman / Restan */}
-      <div className="card card-flush" style={{ marginBottom: 14 }}>
+      <div className="card card-flush u-mb-14">
         <div className="card-hd">
-          <div style={{ fontWeight: 600, fontSize: 14 }}>Composición del patrimonio</div>
+          <div className="u-fs-14-fw-600">Composición del patrimonio</div>
           <div className="muted tiny">Verde suma, rojo resta · cada moneda por separado (sin TC)</div>
         </div>
         {[{ titulo: 'Suman', tone: 'pos' }, { titulo: 'Restan', tone: 'neg' }].map(g => {
@@ -244,7 +244,7 @@ export default function Capital() {
                 <div key={c.label + idx} className="flex-row" style={{ justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', borderTop: '1px solid var(--border)' }}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}>
                     <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, flex: '0 0 auto' }} />
-                    <span style={{ fontWeight: 600 }}>{c.label}</span>
+                    <span className="u-fw-600">{c.label}</span>
                     {c.moneda && <span className="ccy" style={{ marginLeft: 2 }}>{c.moneda}</span>}
                   </span>
                   <span className="mono" style={{ display: 'inline-flex', gap: 18, fontWeight: 700 }}>
@@ -264,7 +264,7 @@ export default function Capital() {
 
       {tab === 'movimientos' && <>
       {/* Totales del ledger (USD) */}
-      <div className="row" style={{ marginBottom: 12 }}>
+      <div className="row u-mb-12">
         <div className="card card-tight u-flex-1"><div className="kpi-label">Ingresos · USD</div><div className="kpi-value mono pos">u$s {fmt(ledger.totales.ingresos_usd)}</div></div>
         <div className="card card-tight u-flex-1"><div className="kpi-label">Egresos · USD</div><div className="kpi-value mono neg">u$s {fmt(ledger.totales.egresos_usd)}</div></div>
         <div className="card card-tight u-flex-1"><div className="kpi-label">Neto · USD</div><div className={'kpi-value mono ' + (Number(ledger.totales.neto_usd) >= 0 ? 'pos' : 'neg')}>u$s {fmt(ledger.totales.neto_usd)}</div></div>
@@ -272,7 +272,7 @@ export default function Capital() {
       </div>
 
       {/* Filtros */}
-      <div className="card card-tight" style={{ marginBottom: 12 }}>
+      <div className="card card-tight u-mb-12">
         <div className="row" style={{ gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div className="field" style={{ marginBottom: 0, minWidth: 160 }}>
             <label className="field-label">Caja</label>
@@ -303,7 +303,7 @@ export default function Capital() {
       {/* Tabla de movimientos */}
       <div className="card card-flush">
         <div className="card-hd">
-          <div style={{ fontWeight: 600, fontSize: 14 }}>Movimientos — {ledger.totales.count}</div>
+          <div className="u-fs-14-fw-600">Movimientos — {ledger.totales.count}</div>
           <div className="muted tiny">Totales en USD (los montos en {monedaLocal} sin TC aportan 0 al total USD)</div>
         </div>
         {loading ? <div className="empty">Cargando movimientos…</div>
@@ -311,7 +311,7 @@ export default function Capital() {
           : (
             <table className="tbl">
               <thead>
-                <tr><th>Fecha</th><th>Caja</th><th>Origen</th><th>Concepto</th><th style={{ textAlign: 'right' }}>Monto</th><th style={{ textAlign: 'right' }}>USD</th></tr>
+                <tr><th>Fecha</th><th>Caja</th><th>Origen</th><th>Concepto</th><th className="u-text-right">Monto</th><th className="u-text-right">USD</th></tr>
               </thead>
               <tbody>
                 {ledger.data.map(m => {
@@ -324,7 +324,7 @@ export default function Capital() {
                       <td><Badge tone={ORIGEN_TONE[m.origen] || 'default'}>{ORIGEN_LABEL[m.origen] || m.origen}</Badge></td>
                       <td className="muted tiny">{m.concepto || '—'}</td>
                       <td className={'mono ' + tone} style={{ textAlign: 'right', fontWeight: 700 }}>{signo}{fmt(m.monto)}</td>
-                      <td className="mono tiny" style={{ textAlign: 'right' }}>{Number(m.monto_usd) > 0 ? 'u$s ' + fmt(m.monto_usd) : '—'}</td>
+                      <td className="mono tiny u-text-right">{Number(m.monto_usd) > 0 ? 'u$s ' + fmt(m.monto_usd) : '—'}</td>
                     </tr>
                   );
                 })}

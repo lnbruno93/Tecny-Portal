@@ -304,7 +304,7 @@ export default function ChangePasswordModal({ open, onClose }) {
               autoComplete="new-password"
               disabled={loading || twofaRequired}
               aria-invalid={!!fieldErrors.confirmPassword}
-              style={{ width: '100%' }}
+              className="u-w-100"
             />
             {fieldErrors.confirmPassword && (
               <div style={{ fontSize: 12, color: 'var(--neg)', marginTop: 4 }}>

@@ -131,7 +131,7 @@ export default function SetPaidUntilModal({ tenant, open, onClose, onSaved }) {
         )}
       </div>
 
-      <div className="stack" style={{ gap: 14 }}>
+      <div className="stack u-gap-14">
         <div>
           <label className="form-label" htmlFor={paidId}>Nueva fecha de vencimiento</label>
           <input
@@ -142,7 +142,7 @@ export default function SetPaidUntilModal({ tenant, open, onClose, onSaved }) {
             onChange={(e) => setPaidUntil(e.target.value)}
             disabled={submitting}
           />
-          <div className="muted tiny" style={{ marginTop: 4 }}>
+          <div className="muted tiny u-mt-4">
             El tenant podrá operar normalmente hasta esta fecha. Default +30 días.
           </div>
         </div>
@@ -158,7 +158,7 @@ export default function SetPaidUntilModal({ tenant, open, onClose, onSaved }) {
             placeholder="Ej: transferencia $189 USD recibida 2026-06-25"
             disabled={submitting}
           />
-          <div className="muted tiny" style={{ marginTop: 4 }}>
+          <div className="muted tiny u-mt-4">
             Obligatorio. Va al audit trail (futuras consultas: "¿cuándo cobramos a este tenant?").
           </div>
         </div>
@@ -167,7 +167,7 @@ export default function SetPaidUntilModal({ tenant, open, onClose, onSaved }) {
           <Btn kind="ghost" onClick={handleGrandfather} disabled={submitting} size="sm">
             Grandfather (sin enforcement)
           </Btn>
-          <div className="muted tiny" style={{ marginTop: 4 }}>
+          <div className="muted tiny u-mt-4">
             Setea paid_until=NULL. El tenant pasa a "activo indefinido". Útil para
             cuentas internas o enterprise con contrato anual papel.
           </div>

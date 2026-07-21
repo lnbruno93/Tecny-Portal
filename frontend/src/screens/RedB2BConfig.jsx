@@ -234,7 +234,7 @@ export default function RedB2BConfig() {
   return (
     <div className="screen-wrap">
       <header className="page-head">
-        <Link to="/red-b2b" className="btn-link" style={{ fontSize: 14 }}>
+        <Link to="/red-b2b" className="btn-link u-fs-14">
           ← Red B2B
         </Link>
         <h1>Configuración Red B2B</h1>

@@ -87,7 +87,7 @@ export default function RedB2BOperaciones() {
       <section className="card" style={{ marginBottom: 16, padding: 16 }}>
         <div className="filters-row" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span className="muted" style={{ fontSize: 12 }}>Partner</span>
+            <span className="muted u-fs-12">Partner</span>
             <select
               value={filterPartner}
               onChange={(e) => setFilterPartner(e.target.value)}
@@ -103,7 +103,7 @@ export default function RedB2BOperaciones() {
           </label>
 
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span className="muted" style={{ fontSize: 12 }}>Estado</span>
+            <span className="muted u-fs-12">Estado</span>
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
@@ -117,7 +117,7 @@ export default function RedB2BOperaciones() {
           </label>
 
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span className="muted" style={{ fontSize: 12 }}>Desde</span>
+            <span className="muted u-fs-12">Desde</span>
             <input
               type="date"
               value={filterFrom}
@@ -127,7 +127,7 @@ export default function RedB2BOperaciones() {
           </label>
 
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span className="muted" style={{ fontSize: 12 }}>Hasta</span>
+            <span className="muted u-fs-12">Hasta</span>
             <input
               type="date"
               value={filterTo}
@@ -151,8 +151,8 @@ export default function RedB2BOperaciones() {
           </div>
         ) : operations.length === 0 ? (
           <div className="empty-state" style={{ padding: 32, textAlign: 'center' }}>
-            <p style={{ marginBottom: 8 }}>No hay operaciones cross-tenant aún.</p>
-            <p className="muted" style={{ fontSize: 14 }}>
+            <p className="u-mb-8">No hay operaciones cross-tenant aún.</p>
+            <p className="muted u-fs-14">
               Cuando vendas a un partner Tecny o recibas una compra de un
               partner, las operaciones aparecen acá.
             </p>
@@ -166,8 +166,8 @@ export default function RedB2BOperaciones() {
                   <th>Partner</th>
                   <th>Lado</th>
                   <th>Items</th>
-                  <th style={{ textAlign: 'right' }}>Total USD</th>
-                  <th style={{ textAlign: 'right' }}>Total ARS</th>
+                  <th className="u-text-right">Total USD</th>
+                  <th className="u-text-right">Total ARS</th>
                   <th>Estado</th>
                   <th></th>
                 </tr>
@@ -211,8 +211,8 @@ function OperationRow({ op }) {
         </span>
       </td>
       <td>{op.items_count || 0}</td>
-      <td style={{ textAlign: 'right' }}>{fmtMoney(op.total_usd, 'USD')}</td>
-      <td style={{ textAlign: 'right' }}>{fmtMoney(op.total_ars, 'ARS')}</td>
+      <td className="u-text-right">{fmtMoney(op.total_usd, 'USD')}</td>
+      <td className="u-text-right">{fmtMoney(op.total_ars, 'ARS')}</td>
       <td>
         <span
           className={`status-badge status-${statusInfo.color}`}

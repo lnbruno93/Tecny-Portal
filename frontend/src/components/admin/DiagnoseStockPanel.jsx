@@ -96,12 +96,12 @@ function RestoreModal({ producto, onClose, onDone }) {
             <div><b>{producto.nombre}</b></div>
             <div className="tiny muted">IMEI: <span className="mono">{producto.imei || '—'}</span></div>
             <div className="tiny muted">
-              Estado actual: <b style={{ color: 'var(--neg)' }}>{producto.estado}</b> · cantidad {producto.cantidad}
+              Estado actual: <b className="u-color-neg">{producto.estado}</b> · cantidad {producto.cantidad}
             </div>
           </div>
 
           <label style={{ display: 'grid', gap: 4 }}>
-            <span style={{ fontSize: 13, fontWeight: 600 }}>Cantidad a restaurar</span>
+            <span className="u-fs-13-fw-600">Cantidad a restaurar</span>
             <input
               type="number" min="1" step="1"
               value={cantidad}
@@ -112,8 +112,8 @@ function RestoreModal({ producto, onClose, onDone }) {
           </label>
 
           <label style={{ display: 'grid', gap: 4 }}>
-            <span style={{ fontSize: 13, fontWeight: 600 }}>
-              Razón <span style={{ color: 'var(--neg)' }}>*</span>
+            <span className="u-fs-13-fw-600">
+              Razón <span className="u-color-neg">*</span>
             </span>
             <textarea
               rows={3}
@@ -162,13 +162,13 @@ function ProductoCard({ producto, trail, onRestore }) {
             {producto.nombre}
             <span className="tiny muted" style={{ marginLeft: 8 }}>#{producto.id}</span>
           </div>
-          <div className="tiny muted" style={{ marginTop: 2 }}>
+          <div className="tiny muted u-mt-2">
             {/* F3.d-3: `producto.clase` = slug legacy que viene del JOIN backend
                 (clases_producto.slug_legacy). Si el producto tiene categoría
                 custom sin slug (o clase_id NULL), aparece "—". */}
             IMEI: <span className="mono">{producto.imei || '—'}</span> · {producto.clase || '—'}
           </div>
-          <div className="tiny" style={{ marginTop: 6 }}>
+          <div className="tiny u-mt-6">
             Estado:{' '}
             <b style={{ color: esVendido ? 'var(--neg)' : 'var(--pos)' }}>
               {producto.estado}
@@ -190,7 +190,7 @@ function ProductoCard({ producto, trail, onRestore }) {
       </div>
 
       {/* Trail de movimientos B2B que tocaron este producto */}
-      <div style={{ marginTop: 12 }}>
+      <div className="u-mt-12">
         <div className="tiny" style={{ fontWeight: 600, marginBottom: 6, color: 'var(--text-muted)' }}>
           Historial de movimientos B2B que tocaron este producto ({trail.length})
         </div>
@@ -198,13 +198,13 @@ function ProductoCard({ producto, trail, onRestore }) {
           <div className="tiny muted">— Ninguno —</div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table className="tbl" style={{ width: '100%' }}>
+            <table className="tbl u-w-100">
               <thead>
                 <tr>
                   <th>Fecha</th>
                   <th>Cliente</th>
                   <th>Tipo</th>
-                  <th style={{ textAlign: 'right' }}>Cant.</th>
+                  <th className="u-text-right">Cant.</th>
                   <th>Estado mov.</th>
                   <th>Creado</th>
                 </tr>
@@ -217,10 +217,10 @@ function ProductoCard({ producto, trail, onRestore }) {
                       {[t.cliente_nombre, t.cliente_apellido].filter(Boolean).join(' ') || '—'}
                     </td>
                     <td className="tiny"><b>{t.mov_tipo}</b></td>
-                    <td className="mono tiny" style={{ textAlign: 'right' }}>{t.item_cantidad}</td>
+                    <td className="mono tiny u-text-right">{t.item_cantidad}</td>
                     <td className="tiny">
                       {t.mov_deleted_at ? (
-                        <span style={{ color: 'var(--neg)' }}>
+                        <span className="u-color-neg">
                           Borrado {fmtDateTime(t.mov_deleted_at)}
                         </span>
                       ) : (
@@ -285,7 +285,7 @@ export default function DiagnoseStockPanel() {
     : {};
 
   return (
-    <div className="card" style={{ marginBottom: 16 }}>
+    <div className="card u-mb-16">
       <div style={{ padding: 16, borderBottom: '1px solid var(--border)' }}>
         <h3 style={{ margin: 0, fontSize: 16 }}>Diagnóstico de stock</h3>
         <p style={{ margin: '6px 0 0', color: 'var(--text-muted)', fontSize: 13.5 }}>
@@ -317,7 +317,7 @@ export default function DiagnoseStockPanel() {
             </div>
           ) : (
             <>
-              <div className="tiny muted" style={{ marginBottom: 10 }}>
+              <div className="tiny muted u-mb-10">
                 {data.productos.length} producto(s) encontrado(s) ·
                 {' '}{data.movimientos_cc.length} movimiento(s) B2B en el trail.
               </div>

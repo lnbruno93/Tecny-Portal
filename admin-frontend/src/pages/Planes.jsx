@@ -86,7 +86,7 @@ function PlanRow({ row, onEdit, dirty, saving }) {
           {PLAN_BLURB[row.plan] || ''}
         </p>
 
-        <div className="stack" style={{ gap: 14 }}>
+        <div className="stack u-gap-14">
           <div>
             <label className="form-label" htmlFor={priceId}>Precio USD/mes</label>
             {isEnterprise ? (
@@ -110,7 +110,7 @@ function PlanRow({ row, onEdit, dirty, saving }) {
               />
             )}
             {isEditable && (
-              <div className="muted tiny" style={{ marginTop: 4 }}>
+              <div className="muted tiny u-mt-4">
                 Mostrado en la landing y usado para calcular MRR.
               </div>
             )}
@@ -173,7 +173,7 @@ function ConfirmModal({ open, onClose, change, onConfirm, submitting, error }) {
         <strong>{planLabel(plan)}</strong>: {fmtMoney(oldPrice)} → <strong>{fmtMoney(newPrice)}</strong>
         {notesChanged && <span className="muted tiny"> · también se actualizan las notas</span>}
       </p>
-      <p className="muted tiny" style={{ marginBottom: 14 }}>
+      <p className="muted tiny u-mb-14">
         El cambio impacta en MRR del Resumen y en la landing tecnyapp.com.
         Se guarda en el audit trail con tu user.
       </p>
@@ -189,12 +189,12 @@ function ConfirmModal({ open, onClose, change, onConfirm, submitting, error }) {
         disabled={submitting}
         maxLength={500}
       />
-      <div className="muted tiny" style={{ marginTop: 4 }}>
+      <div className="muted tiny u-mt-4">
         Queda registrado en el log de cambios.
       </div>
 
       {error && (
-        <div className="banner banner-neg" role="alert" style={{ marginTop: 12 }}>
+        <div className="banner banner-neg u-mt-12" role="alert">
           {error}
         </div>
       )}

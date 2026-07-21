@@ -90,7 +90,7 @@ export default function BackfillPanel({
   const titleId = `backfill-${title.replace(/\s+/g, '-').toLowerCase()}-title`;
 
   return (
-    <section className="card" style={{ marginBottom: 16 }} aria-labelledby={titleId}>
+    <section className="card u-mb-16" aria-labelledby={titleId}>
       <div className="card-hd">
         <h3 id={titleId} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Icons.Bolt size={16} /> {title}

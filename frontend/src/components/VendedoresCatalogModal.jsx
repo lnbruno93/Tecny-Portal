@@ -210,7 +210,7 @@ export default function VendedoresCatalogModal({ open, onClose, onChange }) {
                     }}>
                       {v.nombre.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase()}
                     </div>
-                    <div style={{ fontWeight: 600 }}>{v.nombre}</div>
+                    <div className="u-fw-600">{v.nombre}</div>
                   </div>
                   <button
                     type="button"

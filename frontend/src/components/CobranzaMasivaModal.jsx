@@ -211,7 +211,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
             </div>
           )}
           {/* ── Cabecera + defaults ── */}
-          <div className="row" style={{ marginBottom: 12 }}>
+          <div className="row u-mb-12">
             <div className="field" style={{ flex: '0 0 150px' }}>
               <label className="field-label">Fecha</label>
               <input type="date" className="input" value={fecha} onChange={e => setFecha(e.target.value)} />
@@ -231,7 +231,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
               <TcWarning tc={tcDefault} />
             </div>
             <div className="field" style={{ flex: '0 0 140px', alignSelf: 'flex-end' }}>
-              <button className="btn btn-sm btn-ghost" style={{ width: '100%' }} onClick={applyDefaultsToEmpty}
+              <button className="btn btn-sm btn-ghost u-w-100" onClick={applyDefaultsToEmpty}
                 title="Aplica los defaults a las filas aún vacías">
                 Aplicar a vacías
               </button>
@@ -239,8 +239,8 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
           </div>
 
           {/* ── Acciones de la planilla ── */}
-          <div className="flex-between" style={{ marginBottom: 8 }}>
-            <div style={{ fontWeight: 600, fontSize: 13 }}>
+          <div className="flex-between u-mb-8">
+            <div className="u-fs-13-fw-600">
               Cobranzas · {rows.filter(isUsedRow).length} usadas / {rows.length} filas
             </div>
             <div className="flex-row" style={{ gap: 6, alignItems: 'center' }}>
@@ -312,7 +312,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
                       </td>
                       <td style={{ padding: '3px 4px', textAlign: 'right', fontSize: 12 }}>
                         {r.saldo_actual != null
-                          ? <span className={r.saldo_actual > 0 ? 'neg' : r.saldo_actual < 0 ? 'pos' : 'muted'} style={{ fontWeight: 600 }}>
+                          ? <span className={r.saldo_actual > 0 ? 'neg' : r.saldo_actual < 0 ? 'pos' : 'muted'} className="u-fw-600">
                               USD {r.saldo_actual.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
                             </span>
                           : <span className="dim">—</span>}
@@ -374,7 +374,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
 
           {/* ── Total ── */}
           <div className="flex-row" style={{ marginTop: 12, justifyContent: 'flex-end', alignItems: 'center', gap: 16 }}>
-            <div style={{ textAlign: 'right' }}>
+            <div className="u-text-right">
               <div className="muted tiny">Total cobrado</div>
               <div className="mono" style={{ fontSize: 22, fontWeight: 800 }}>
                 {/* #M-13: guion en vez de "USD 0" cuando no hay filas usadas. */}
@@ -421,7 +421,7 @@ function ClientePicker({ value, locked, showZero, onPick, onClear, onChange, cel
         const tono = saldo > 0 ? 'neg' : saldo < 0 ? 'pos' : 'muted';
         return (
           <>
-            <div style={{ fontWeight: 600 }}>
+            <div className="u-fw-600">
               {[c.nombre, c.apellido].filter(Boolean).join(' ')}
               {c.categoria && <span className="muted tiny" style={{ marginLeft: 6 }}>· {c.categoria}</span>}
             </div>

@@ -23,7 +23,7 @@ const TIPO_LABEL = { amigo: 'Amigo', familiar: 'Familiar', cliente: 'Cliente', i
 export default function ContactoPickerEmbedded({ form, setForm, allContacts }) {
   return (
     <div className="field">
-      <label className="field-label">Contacto <span style={{ color: 'var(--neg)' }}>*</span></label>
+      <label className="field-label">Contacto <span className="u-color-neg">*</span></label>
       <div className="flex-row" style={{ gap: 4, marginBottom: 8, background: 'var(--surface-2)', padding: 3, borderRadius: 6, width: 'fit-content' }}>
         <button type="button"
                 className={'btn btn-sm ' + (form.contactoMode === 'existente' ? 'btn-primary' : 'btn-ghost')}
@@ -51,9 +51,9 @@ export default function ContactoPickerEmbedded({ form, setForm, allContacts }) {
           ))}
         </select>
       ) : (
-        <div className="row" style={{ gap: 8 }}>
+        <div className="row u-gap-8">
           <div className="field" style={{ flex: 1.5 }}>
-            <label className="field-label tiny">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label>
+            <label className="field-label tiny">Nombre <span className="u-color-neg">*</span></label>
             <input className="input" placeholder="ej. Martín" autoFocus
                    value={form.nuevoNombre}
                    onChange={e => setForm(f => ({ ...f, nuevoNombre: e.target.value }))} />

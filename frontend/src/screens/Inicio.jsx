@@ -238,7 +238,7 @@ export default function Inicio() {
               <div style={{ color: 'var(--neg)', fontWeight: 600, fontSize: 14 }}>
                 No pudimos cargar el inicio
               </div>
-              <div className="muted tiny" style={{ marginTop: 4 }}>
+              <div className="muted tiny u-mt-4">
                 {error}
               </div>
             </div>

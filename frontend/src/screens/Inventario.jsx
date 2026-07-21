@@ -1079,7 +1079,7 @@ export default function Inventario() {
           "Productos" solo tenía sentido junto con otro tab. Ahora siempre hay
           al menos 2 tabs (Productos + Equipos usados), así que los tabs
           se muestran siempre. */}
-      <div className="tabs" role="tablist" aria-label="Secciones de Inventario" style={{ marginBottom: 16 }}>
+      <div className="tabs u-mb-16" role="tablist" aria-label="Secciones de Inventario">
         <button
           type="button"
           role="tab"
@@ -1182,7 +1182,7 @@ export default function Inventario() {
         {/* Acción destructiva — separada visualmente con color rojo del ícono y
             texto en variante ghost. El ConfirmModal con danger:true protege
             contra clicks accidentales. */}
-        <button className="btn btn-ghost mobile-hide" style={{ color: 'var(--neg)' }} onClick={handleVaciarStock}>
+        <button className="btn btn-ghost mobile-hide u-color-neg" onClick={handleVaciarStock}>
           <Icons.Trash size={14} /> Vaciar stock
         </button>
         {/* Variante destructiva admin: stock + compras a proveedor. Sólo
@@ -1190,8 +1190,7 @@ export default function Inventario() {
             error — el backend igualmente revalida con adminOnly. */}
         {isAdmin && (
           <button
-            className="btn btn-ghost mobile-hide"
-            style={{ color: 'var(--neg)' }}
+            className="btn btn-ghost mobile-hide u-color-neg"
             onClick={handleVaciarStockConCompras}
             title="Admin · vacía stock + borra compras a proveedores asociadas + revierte cajas"
           >
@@ -1217,14 +1216,14 @@ export default function Inventario() {
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">En técnico</div>
           <div className="kpi-value mono" style={{ color: 'var(--warn)' }}>{metricas ? metricas.en_tecnico_count : '—'}</div>
-          <div className="muted tiny" style={{ marginTop: 6 }}>
+          <div className="muted tiny u-mt-6">
             {metricas && metricas.en_tecnico_usd != null ? money(metricas.en_tecnico_usd, 'USD') : ''}
           </div>
         </div>
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">Stock disponible</div>
           <div className="kpi-value mono pos">{metricas ? fmt(metricas.stock_disponible) : '—'}</div>
-          <div className="muted tiny" style={{ marginTop: 6 }}>unidades</div>
+          <div className="muted tiny u-mt-6">unidades</div>
         </div>
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">Total valorizado</div>
@@ -1245,7 +1244,7 @@ export default function Inventario() {
               })()
             }</span>
           </div>
-          <div className="muted tiny" style={{ marginTop: 6 }}>
+          <div className="muted tiny u-mt-6">
             {metricas && Array.isArray(metricas.inv_por_clase)
               ? (() => {
                   const cats = metricas.inv_por_clase.filter(r => (r.count > 0) || (Number(r.usd) > 0));
@@ -1274,11 +1273,11 @@ export default function Inventario() {
             Fila 1: tabs (clase fija + 'Usados' + 1 tab por categoría administrable).
                     Se hacen scroll horizontal si no entran en el ancho disponible.
             Fila 2: selector de vista (estado + ocultos) + buscador.            */}
-      <div style={{ marginBottom: 14 }}>
+      <div className="u-mb-14">
         {/* #F-4: ScrollFadeX reactivo — muestra el fade SOLO si hay overflow
             real, y a la izquierda solo si el user ya scrolleó. Reemplaza al
             scroll-fade-x permanente original (#M-09). */}
-        <ScrollFadeX style={{ marginBottom: 10 }}>
+        <ScrollFadeX className="u-mb-10">
           <Seg
             value={claseFilter}
             options={[
@@ -1400,7 +1399,7 @@ export default function Inventario() {
             if (k === 'estado')       label = ({ disponible: 'Disponible', vendido: 'Vendido', en_tecnico: 'En técnico', reservado: 'Reservado' }[v]) || v;
             const niceKey = ({ categoria_id: 'Colección', deposito_id: 'Depósito', estado: 'Estado', proveedor: 'Proveedor', nombre: 'Modelo', gb: 'GB', color: 'Color' })[k] || k;
             return (
-              <span key={k} className="badge badge-info" style={{ fontSize: 12 }}>{niceKey}: {label}</span>
+              <span key={k} className="badge badge-info u-fs-12">{niceKey}: {label}</span>
             );
           })}
           <button className="btn btn-sm" onClick={clearDrillDown} title="Limpiar filtro y ver todo">
@@ -1466,7 +1465,7 @@ export default function Inventario() {
             return (
               <div className="empty" style={{ padding: '28px 16px' }}>
                 <div style={{ fontWeight: 600, marginBottom: 6 }}>Sin resultados</div>
-                <div className="muted tiny" style={{ marginBottom: 14 }}>
+                <div className="muted tiny u-mb-14">
                   No hay productos que coincidan con los filtros aplicados.
                 </div>
                 <button
@@ -1487,7 +1486,7 @@ export default function Inventario() {
           return (
             <div className="empty" style={{ padding: '32px 16px' }}>
               <div style={{ fontWeight: 600, marginBottom: 6 }}>Todavía no cargaste productos</div>
-              <div className="muted tiny" style={{ marginBottom: 14 }}>
+              <div className="muted tiny u-mb-14">
                 {canCreateProducto
                   ? 'Empezá con tu primer equipo o accesorio — necesitás al menos uno para registrar ventas.'
                   : 'Todavía no hay productos cargados. Contactá al administrador para que agregue el primero.'}
@@ -1582,7 +1581,7 @@ export default function Inventario() {
                 automáticamente. Ver Envios.jsx modal para el fix inicial. */}
             <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
               <div className="modal-body">
-                <div className="stack" style={{ gap: 14 }}>
+                <div className="stack u-gap-14">
                   <div className="row">
                     <div className="field u-flex-1">
                       <label className="field-label">Tipo de carga</label>
@@ -1625,7 +1624,7 @@ export default function Inventario() {
                     </div>
                   </div>
                   <div className="field">
-                    <label className="field-label">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label>
+                    <label className="field-label">Nombre <span className="u-color-neg">*</span></label>
                     <input
                       className={'input' + (fieldErrors.nombre ? ' input-error' : '')}
                       placeholder="ej. iPhone 15 Pro"
@@ -1772,7 +1771,7 @@ export default function Inventario() {
                 <input type="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="input" onChange={onImportFile} />
               </div>
               {importRows.length > 0 && (
-                <div style={{ marginTop: 12 }}>
+                <div className="u-mt-12">
                   <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>
                     <span className="pos">{importValidos.length} válidos</span>
                     {importWarnings.length > 0 && (
@@ -1798,7 +1797,7 @@ export default function Inventario() {
                       <div style={{ fontWeight: 700, marginBottom: 4 }}>
                         ⚠ {importDupImeis.length} IMEI{importDupImeis.length === 1 ? '' : 's'} duplicado{importDupImeis.length === 1 ? '' : 's'} en este archivo
                       </div>
-                      <div style={{ marginBottom: 4 }}>
+                      <div className="u-mb-4">
                         Corregilos antes de continuar. La importación queda bloqueada.
                       </div>
                       <div style={{ maxHeight: 100, overflowY: 'auto' }}>
@@ -1854,7 +1853,7 @@ export default function Inventario() {
 
                   {/* ── Cards de compras a generar (una por proveedor) ── */}
                   {importGroups.length > 0 && (
-                    <div style={{ marginTop: 4 }}>
+                    <div className="u-mt-4">
                       <div style={{
                         fontSize: 11, fontWeight: 700, letterSpacing: '0.04em',
                         color: 'var(--text-muted)', marginBottom: 8,
@@ -1884,7 +1883,7 @@ export default function Inventario() {
                             <div className="row">
                               <div className="field" style={{ flex: 2 }}>
                                 <label className="field-label">
-                                  Proveedor <span style={{ color: 'var(--neg)' }}>*</span>
+                                  Proveedor <span className="u-color-neg">*</span>
                                 </label>
                                 <select className="input" value={g.proveedor_id}
                                   onChange={e => updateImportGroup(g.key, {
@@ -1900,7 +1899,7 @@ export default function Inventario() {
                                 {/* Quick-add: solo si NO eligió uno existente.
                                     Auto-rellena con el nombre del XLSX si no había match. */}
                                 {!provExistente && (
-                                  <input className="input" style={{ marginTop: 6 }}
+                                  <input className="input u-mt-6"
                                     placeholder="O escribí el nombre del nuevo proveedor"
                                     value={g.proveedor_nuevo}
                                     onChange={e => updateImportGroup(g.key, { proveedor_nuevo: e.target.value })} />
@@ -1916,7 +1915,7 @@ export default function Inventario() {
                             <div className="row">
                               <div className="field u-flex-1">
                                 <label className="field-label">
-                                  Monto ({monedaSel}) <span style={{ color: 'var(--neg)' }}>*</span>
+                                  Monto ({monedaSel}) <span className="u-color-neg">*</span>
                                 </label>
                                 <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0"
                                   className="input mono" placeholder="0"
@@ -1935,7 +1934,7 @@ export default function Inventario() {
                               {monedaSel !== 'USD' && (
                                 <div className="field" style={{ flex: '0 0 130px' }}>
                                   <label className="field-label">
-                                    TC {monedaSel}→USD <span style={{ color: 'var(--neg)' }}>*</span>
+                                    TC {monedaSel}→USD <span className="u-color-neg">*</span>
                                   </label>
                                   <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                                     min="0" step="0.01" className="input mono"
@@ -2028,7 +2027,7 @@ export default function Inventario() {
                   se movió al modal "Categorías" (CategoriasProductoModal). Este
                   modal ahora es dedicado a Depósitos (físico) — más scope claro
                   y toolbar más corta. */}
-              <p className="muted tiny" style={{ marginBottom: 12 }}>
+              <p className="muted tiny u-mb-12">
                 Depósitos físicos donde guardás el stock. Útil si tenés más de un local o una separación
                 por almacén.
               </p>
@@ -2041,7 +2040,7 @@ export default function Inventario() {
                 {depositos.map(d => (
                   <div key={d.id} className="flex-between" style={{ fontSize: 13, padding: '6px 0', borderBottom: '1px solid var(--hairline)' }}>
                     <span>{d.nombre}</span>
-                    <button className="icon-btn" title="Eliminar depósito" aria-label="Eliminar depósito" style={{ color: 'var(--neg)' }} onClick={() => delDeposito(d)}><Icons.Trash size={13} /></button>
+                    <button className="icon-btn u-color-neg" title="Eliminar depósito" aria-label="Eliminar depósito" onClick={() => delDeposito(d)}><Icons.Trash size={13} /></button>
                   </div>
                 ))}
               </div>
@@ -2250,7 +2249,7 @@ function HistorialModalContent({ producto, data, loading, error, categorias, dep
 function DetalleField({ label, value, mono = false }) {
   return (
     <div>
-      <div className="muted tiny" style={{ marginBottom: 2 }}>{label}</div>
+      <div className="muted tiny u-mb-2">{label}</div>
       <div className={mono ? 'mono' : ''} style={{ fontSize: 13, fontWeight: 500 }}>{value}</div>
     </div>
   );
@@ -2376,7 +2375,7 @@ const InventarioRow = memo(function InventarioRow({
       />
       <EditableCell
         value={p.precio_venta}
-        display={<span className="pos" style={{ fontWeight: 600 }}>{fmt(p.precio_venta)}</span>}
+        display={<span className="pos u-fw-600">{fmt(p.precio_venta)}</span>}
         type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
         align="right"
         className="mono"
@@ -2453,7 +2452,7 @@ const InventarioRow = memo(function InventarioRow({
           <button className="icon-btn" title="Editar (modal completo)" onClick={handleOpenEdit}><Icons.Edit size={14} /></button>
         )}
         {canDeleteProducto && (
-          <button className="icon-btn" title="Eliminar" style={{ color: 'var(--neg)' }} onClick={handleDeleteRow}><Icons.Trash size={14} /></button>
+          <button className="icon-btn u-color-neg" title="Eliminar" onClick={handleDeleteRow}><Icons.Trash size={14} /></button>
         )}
       </td>
     </tr>

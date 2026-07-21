@@ -193,7 +193,7 @@ export default function OnboardingCard() {
           >
             <IconCheckCircle done={false} />
             <div className="u-flex-1">
-              <div style={{ fontWeight: 600, fontSize: 14 }}>
+              <div className="u-fs-14-fw-600">
                 Verificá tu email
               </div>
               <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 2 }}>

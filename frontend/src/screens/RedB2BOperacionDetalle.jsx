@@ -161,11 +161,11 @@ export default function RedB2BOperacionDetalle() {
       <header className="page-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <Link to="/red-b2b/operaciones" className="btn-link" style={{ fontSize: 14 }}>
+            <Link to="/red-b2b/operaciones" className="btn-link u-fs-14">
               ← Operaciones
             </Link>
           </div>
-          <h1 style={{ marginBottom: 4 }}>Operación #{op.id}</h1>
+          <h1 className="u-mb-4">Operación #{op.id}</h1>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <span
               className="badge"
@@ -192,7 +192,7 @@ export default function RedB2BOperacionDetalle() {
             >
               {statusInfo.label}
             </span>
-            <span className="muted" style={{ fontSize: 13 }}>
+            <span className="muted u-fs-13">
               con <strong>{op.partner?.nombre || '—'}</strong>
             </span>
           </div>
@@ -223,7 +223,7 @@ export default function RedB2BOperacionDetalle() {
         </div>
       </section>
 
-      <section className="card" style={{ marginBottom: 16 }}>
+      <section className="card u-mb-16">
         <h2 style={{ padding: '12px 16px', margin: 0, fontSize: 16 }}>Items</h2>
         <div style={{ overflowX: 'auto' }}>
           <table className="data-table">
@@ -231,10 +231,10 @@ export default function RedB2BOperacionDetalle() {
               <tr>
                 <th>#</th>
                 <th>Producto {isSeller ? '(mi catálogo)' : '(partner)'}</th>
-                <th style={{ textAlign: 'right' }}>Cantidad</th>
-                <th style={{ textAlign: 'right' }}>Precio USD</th>
-                <th style={{ textAlign: 'right' }}>Precio ARS</th>
-                <th style={{ textAlign: 'right' }}>Subtotal USD</th>
+                <th className="u-text-right">Cantidad</th>
+                <th className="u-text-right">Precio USD</th>
+                <th className="u-text-right">Precio ARS</th>
+                <th className="u-text-right">Subtotal USD</th>
               </tr>
             </thead>
             <tbody>
@@ -245,10 +245,10 @@ export default function RedB2BOperacionDetalle() {
                   <tr key={it.id}>
                     <td>{i + 1}</td>
                     <td>#{pid}</td>
-                    <td style={{ textAlign: 'right' }}>{it.cantidad}</td>
-                    <td style={{ textAlign: 'right' }}>{fmtMoney(it.precio_unitario_usd, 'USD')}</td>
-                    <td style={{ textAlign: 'right' }}>{fmtMoney(it.precio_unitario_ars, 'ARS')}</td>
-                    <td style={{ textAlign: 'right' }}>{fmtMoney(subUsd, 'USD')}</td>
+                    <td className="u-text-right">{it.cantidad}</td>
+                    <td className="u-text-right">{fmtMoney(it.precio_unitario_usd, 'USD')}</td>
+                    <td className="u-text-right">{fmtMoney(it.precio_unitario_ars, 'ARS')}</td>
+                    <td className="u-text-right">{fmtMoney(subUsd, 'USD')}</td>
                   </tr>
                 );
               })}
@@ -279,7 +279,7 @@ export default function RedB2BOperacionDetalle() {
               >
                 {savingNotes ? 'Guardando…' : 'Guardar notas'}
               </button>
-              <span className="muted" style={{ fontSize: 12 }}>
+              <span className="muted u-fs-12">
                 {notesDraft.length}/1000
               </span>
             </div>
@@ -323,10 +323,10 @@ export default function RedB2BOperacionDetalle() {
                 <tr>
                   <th>Fecha</th>
                   <th>Side</th>
-                  <th style={{ textAlign: 'right' }}>Monto USD</th>
+                  <th className="u-text-right">Monto USD</th>
                   <th>Moneda</th>
-                  <th style={{ textAlign: 'right' }}>TC pago</th>
-                  <th style={{ textAlign: 'right' }}>Dif. cambiaria ARS</th>
+                  <th className="u-text-right">TC pago</th>
+                  <th className="u-text-right">Dif. cambiaria ARS</th>
                   <th>Registrado por</th>
                 </tr>
               </thead>
@@ -335,9 +335,9 @@ export default function RedB2BOperacionDetalle() {
                   <tr key={p.id}>
                     <td>{fmtFecha(p.fecha)}</td>
                     <td>{p.side === 'seller' ? 'Vendedor' : 'Comprador'}</td>
-                    <td style={{ textAlign: 'right' }}>{fmtMoney(p.monto_usd, 'USD')}</td>
+                    <td className="u-text-right">{fmtMoney(p.monto_usd, 'USD')}</td>
                     <td>{p.moneda_pago}</td>
-                    <td style={{ textAlign: 'right' }}>{p.tc_pago ? Number(p.tc_pago).toFixed(2) : '—'}</td>
+                    <td className="u-text-right">{p.tc_pago ? Number(p.tc_pago).toFixed(2) : '—'}</td>
                     <td style={{
                       textAlign: 'right',
                       color: p.diferencia_cambiaria_ars > 0 ? 'var(--green-fg, #166534)' :
@@ -352,7 +352,7 @@ export default function RedB2BOperacionDetalle() {
             </table>
           </div>
         ) : (
-          <p className="muted" style={{ fontSize: 14 }}>Aún no hay pagos registrados.</p>
+          <p className="muted u-fs-14">Aún no hay pagos registrados.</p>
         )}
       </section>
 

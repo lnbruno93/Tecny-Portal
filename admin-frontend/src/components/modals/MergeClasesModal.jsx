@@ -123,7 +123,7 @@ export default function MergeClasesModal({
         </>
       }
     >
-      <div className="banner banner-info" style={{ marginBottom: 14 }}>
+      <div className="banner banner-info u-mb-14">
         <div>
           <strong>¿Qué hace la fusión?</strong>
           <ul style={{ margin: '8px 0 0 18px', padding: 0 }}>
@@ -156,13 +156,13 @@ export default function MergeClasesModal({
             background: 'color-mix(in srgb, var(--pos) 8%, transparent)',
           }}
         >
-          <div className="muted tiny" style={{ marginBottom: 4 }}>
+          <div className="muted tiny u-mb-4">
             SE QUEDA (canónica)
           </div>
           <div style={{ fontWeight: 600, fontSize: 16 }}>
             {canonica?.nombre}
           </div>
-          <div className="muted tiny" style={{ marginTop: 4 }}>
+          <div className="muted tiny u-mt-4">
             {canonica?.count_productos} producto{canonica?.count_productos === 1 ? '' : 's'}
             {canonica?.es_base && ' · base'}
             {canonica?.es_sin_categoria && ' · sin_categoría'}
@@ -177,13 +177,13 @@ export default function MergeClasesModal({
             background: 'color-mix(in srgb, var(--neg) 8%, transparent)',
           }}
         >
-          <div className="muted tiny" style={{ marginBottom: 4 }}>
+          <div className="muted tiny u-mb-4">
             SE BORRA (duplicada)
           </div>
           <div style={{ fontWeight: 600, fontSize: 16, textDecoration: 'line-through', opacity: 0.85 }}>
             {duplicada?.nombre}
           </div>
-          <div className="muted tiny" style={{ marginTop: 4 }}>
+          <div className="muted tiny u-mt-4">
             {duplicada?.count_productos} producto{duplicada?.count_productos === 1 ? '' : 's'} → se mueven
           </div>
         </div>
@@ -213,7 +213,7 @@ export default function MergeClasesModal({
       </div>
 
       {error && (
-        <div className="banner banner-neg" role="alert" style={{ marginTop: 12 }}>
+        <div className="banner banner-neg u-mt-12" role="alert">
           {error}
         </div>
       )}

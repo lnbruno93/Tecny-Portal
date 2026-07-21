@@ -74,7 +74,7 @@ export default function SuspendTenantModal({ tenant, open, onClose, onSaved }) {
         </>
       }
     >
-      <div className="banner banner-neg" style={{ marginBottom: 14 }}>
+      <div className="banner banner-neg u-mb-14">
         <span>
           Esta acción suspende a <strong>{tenant?.nombre || 'este tenant'}</strong>.
           Los usuarios del tenant no podrán operar la plataforma hasta que
@@ -94,14 +94,14 @@ export default function SuspendTenantModal({ tenant, open, onClose, onSaved }) {
           disabled={submitting}
           style={{ resize: 'vertical', minHeight: 84 }}
         />
-        <div className="muted tiny" style={{ marginTop: 4 }}>
+        <div className="muted tiny u-mt-4">
           Mínimo {MIN_REASON_CHARS} caracteres. Queda en el audit trail
           forense — sé específico.
         </div>
       </div>
 
       {error && (
-        <div className="banner banner-neg" role="alert" style={{ marginTop: 12 }}>
+        <div className="banner banner-neg u-mt-12" role="alert">
           {error}
         </div>
       )}

@@ -102,10 +102,10 @@ export default function InviteAdminModal({ open, onClose, onCreated }) {
         vence en 48 horas.
       </p>
 
-      <div className="stack" style={{ gap: 14 }}>
+      <div className="stack u-gap-14">
         <div>
           <label className="form-label" htmlFor={emailId}>
-            Email <span style={{ color: 'var(--neg)' }}>*</span>
+            Email <span className="u-color-neg">*</span>
           </label>
           <input
             id={emailId}
@@ -129,7 +129,7 @@ export default function InviteAdminModal({ open, onClose, onCreated }) {
 
         <div>
           <label className="form-label" htmlFor={nombreId}>
-            Nombre <span style={{ color: 'var(--neg)' }}>*</span>
+            Nombre <span className="u-color-neg">*</span>
           </label>
           <input
             id={nombreId}
@@ -141,7 +141,7 @@ export default function InviteAdminModal({ open, onClose, onCreated }) {
             maxLength={100}
             disabled={submitting}
           />
-          <div className="muted tiny" style={{ marginTop: 4 }}>
+          <div className="muted tiny u-mt-4">
             Aparece en el saludo del email.
           </div>
         </div>

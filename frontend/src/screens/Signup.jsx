@@ -240,7 +240,7 @@ export default function Signup() {
                   / no está verificada). El click resetea submittedEmail a
                   null y vuelve al form con los datos en blanco. No rompe
                   anti-enum: el user solo se rehace a sí mismo. */}
-              <div className="field-note" style={{ marginTop: 12 }}>
+              <div className="field-note u-mt-12">
                 ¿Te equivocaste de email?{' '}
                 <button
                   type="button"
@@ -270,7 +270,7 @@ export default function Signup() {
 
               <form onSubmit={handleSubmit}>
                 <div className="field">
-                  <label htmlFor="signup-nombre">Tu nombre <span style={{ color: 'var(--neg)' }}>*</span></label>
+                  <label htmlFor="signup-nombre">Tu nombre <span className="u-color-neg">*</span></label>
                   <div className="iw">
                     <span className="lead"><IconUser /></span>
                     <input
@@ -289,7 +289,7 @@ export default function Signup() {
                 </div>
 
                 <div className="field">
-                  <label htmlFor="signup-email">Email <span style={{ color: 'var(--neg)' }}>*</span></label>
+                  <label htmlFor="signup-email">Email <span className="u-color-neg">*</span></label>
                   <div className="iw">
                     <span className="lead"><IconMail /></span>
                     <input
@@ -308,7 +308,7 @@ export default function Signup() {
                 </div>
 
                 <div className="field">
-                  <label htmlFor="signup-password">Contraseña <span style={{ color: 'var(--neg)' }}>*</span></label>
+                  <label htmlFor="signup-password">Contraseña <span className="u-color-neg">*</span></label>
                   <div className="iw">
                     <span className="lead"><IconLock /></span>
                     <input
@@ -337,7 +337,7 @@ export default function Signup() {
                     </button>
                   </div>
                   {pwError ? (
-                    <div className="field-note" style={{ color: 'var(--neg)' }} role="alert">
+                    <div className="field-note u-color-neg" role="alert">
                       {pwError}
                     </div>
                   ) : (
@@ -404,7 +404,7 @@ export default function Signup() {
                 </div>
 
                 <div className="field">
-                  <label htmlFor="signup-empresa">Nombre de tu empresa <span style={{ color: 'var(--neg)' }}>*</span></label>
+                  <label htmlFor="signup-empresa">Nombre de tu empresa <span className="u-color-neg">*</span></label>
                   <div className="iw">
                     <span className="lead"><IconBuilding /></span>
                     <input

@@ -393,7 +393,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
                     se cobra después vía /pagos). Avisamos para que el
                     operador no espere ver egreso/ingreso en una caja. */}
                 <br />
-                <span className="muted" style={{ fontSize: 12 }}>
+                <span className="muted u-fs-12">
                   La cobranza se registra después desde Operaciones → Detalle.
                   El campo "Cobrar en" se ignora para esta venta.
                 </span>
@@ -417,7 +417,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
             </div>
           )}
           {/* ── Cabecera ── */}
-          <div className="row" style={{ marginBottom: 12 }}>
+          <div className="row u-mb-12">
             <div className="field" style={{ flex: '0 0 150px' }}>
               <label className="field-label">Fecha</label>
               <input type="date" className="input" value={fecha} onChange={e => setFecha(e.target.value)} />
@@ -432,7 +432,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
             </div>
             {((cajaId && monedaCaja !== 'USD') || rows.some(r => isUsedRow(r) && r.precio_moneda !== 'USD')) && (
               <div className="field" style={{ flex: '0 0 140px' }}>
-                <label className="field-label">TC →USD <span style={{ color: 'var(--neg)' }}>*</span></label>
+                <label className="field-label">TC →USD <span className="u-color-neg">*</span></label>
                 <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" min="0" step="0.01"
                   value={tc} onChange={e => setTc(e.target.value)} placeholder="0" />
                 <TcWarning tc={tc} />
@@ -441,8 +441,8 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
           </div>
 
           {/* ── Acciones ── */}
-          <div className="flex-between" style={{ marginBottom: 8 }}>
-            <div style={{ fontWeight: 600, fontSize: 13 }}>
+          <div className="flex-between u-mb-8">
+            <div className="u-fs-13-fw-600">
               Items · {rows.filter(isUsedRow).length} usadas / {rows.length} filas
             </div>
             <button className="btn btn-sm" onClick={() => addRows(ADD_BATCH)}>
@@ -658,7 +658,7 @@ function ProductoPicker({ value, locked, onPick, onClear, onChange, cellInp }) {
       cellInp={cellInp}
       renderOption={(p) => (
         <>
-          <div style={{ fontWeight: 600 }}>
+          <div className="u-fw-600">
             {p.nombre}
             <span className="muted tiny" style={{ marginLeft: 6 }}>
               {p.gb && `${p.gb}GB`}{p.gb && p.color && ' · '}{p.color}

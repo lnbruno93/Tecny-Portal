@@ -242,7 +242,7 @@ export default function MovimientosCajaPanel() {
         <div className="muted" style={{ padding: 20, textAlign: 'center' }}>Cargando…</div>
       ) : transferencias.length === 0 ? (
         <div className="empty-state" style={{ padding: 32, textAlign: 'center', border: '1px dashed var(--hairline)', borderRadius: 8 }}>
-          <div className="muted" style={{ fontSize: 14 }}>Todavía no hay transferencias.</div>
+          <div className="muted u-fs-14">Todavía no hay transferencias.</div>
           <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
             Cuando muevas plata entre 2 cajas propias, van a quedar registradas acá.
           </div>
@@ -255,8 +255,8 @@ export default function MovimientosCajaPanel() {
                 <th>Fecha</th>
                 <th>Origen</th>
                 <th>Destino</th>
-                <th style={{ textAlign: 'right' }}>Monto</th>
-                <th style={{ textAlign: 'right' }}>Costo</th>
+                <th className="u-text-right">Monto</th>
+                <th className="u-text-right">Costo</th>
                 <th>Descripción</th>
                 <th></th>
               </tr>
@@ -288,8 +288,8 @@ export default function MovimientosCajaPanel() {
                     <td className="mono" style={{ textAlign: 'right', color: Number(t.costo) > 0 ? 'var(--neg)' : 'var(--text-muted)' }}>
                       {Number(t.costo) > 0 ? fmtMoney(t.costo, t.moneda) : '—'}
                     </td>
-                    <td className="muted" style={{ fontSize: 12 }}>{t.descripcion || '—'}</td>
-                    <td style={{ textAlign: 'right' }}>
+                    <td className="muted u-fs-12">{t.descripcion || '—'}</td>
+                    <td className="u-text-right">
                       <button className="icon-btn" onClick={() => eliminar(t)} title="Eliminar transferencia">
                         <Icons.Trash size={14} />
                       </button>

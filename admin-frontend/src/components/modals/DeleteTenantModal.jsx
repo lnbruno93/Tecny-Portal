@@ -84,7 +84,7 @@ export default function DeleteTenantModal({ tenant, open, onClose, onDeleted }) 
         </>
       }
     >
-      <div className="banner banner-neg" style={{ marginBottom: 14 }}>
+      <div className="banner banner-neg u-mb-14">
         <div>
           <strong>Vas a eliminar a {tenant?.nombre || 'este tenant'}.</strong>
           <ul style={{ margin: '8px 0 0 18px', padding: 0 }}>
@@ -95,7 +95,7 @@ export default function DeleteTenantModal({ tenant, open, onClose, onDeleted }) 
         </div>
       </div>
 
-      <div style={{ marginBottom: 14 }}>
+      <div className="u-mb-14">
         <label className="form-label" htmlFor={slugId}>
           Para confirmar, escribí el slug del tenant: <code>{expectedSlug}</code>
         </label>
@@ -112,7 +112,7 @@ export default function DeleteTenantModal({ tenant, open, onClose, onDeleted }) 
           // Foco automático en el input crítico al abrir.
           autoFocus
         />
-        <div className="muted tiny" style={{ marginTop: 4 }}>
+        <div className="muted tiny u-mt-4">
           Match exacto (case-sensitive). El botón rojo se habilita cuando
           coincide con el slug del tenant.
         </div>
@@ -136,7 +136,7 @@ export default function DeleteTenantModal({ tenant, open, onClose, onDeleted }) 
       </div>
 
       {error && (
-        <div className="banner banner-neg" role="alert" style={{ marginTop: 12 }}>
+        <div className="banner banner-neg u-mt-12" role="alert">
           {error}
         </div>
       )}

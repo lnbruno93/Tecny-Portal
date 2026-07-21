@@ -222,7 +222,7 @@ export default function AcceptSuperAdminInvite() {
               }
             </p>
 
-            <p className="muted tiny" style={{ marginBottom: 16 }}>
+            <p className="muted tiny u-mb-16">
               Como admin vas a poder ver el estado de los clientes, gestionar
               planes y ayudar en soporte. Elegí una contraseña para activar tu
               cuenta como <strong>{info.email}</strong>.
@@ -245,7 +245,7 @@ export default function AcceptSuperAdminInvite() {
             )}
 
             <form onSubmit={handleSubmit} noValidate>
-              <div className="stack" style={{ gap: 12 }}>
+              <div className="stack u-gap-12">
                 <div>
                   <label className="form-label" htmlFor={pwId}>Contraseña</label>
                   <div className="input-group">
@@ -264,7 +264,7 @@ export default function AcceptSuperAdminInvite() {
                       aria-label="Contraseña"
                     />
                   </div>
-                  <div className="muted tiny" style={{ marginTop: 4 }}>
+                  <div className="muted tiny u-mt-4">
                     {PASSWORD_POLICY_HINT}
                   </div>
                 </div>

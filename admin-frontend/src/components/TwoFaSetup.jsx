@@ -113,7 +113,7 @@ export default function TwoFaSetup({ onDone, onCancel, onError }) {
           </svg>
         </div>
         <h3 style={{ margin: '0 0 8px' }}>2FA activado</h3>
-        <div className="muted" style={{ fontSize: 13 }}>
+        <div className="muted u-fs-13">
           Desde ahora vas a necesitar tu código al loguearte.
         </div>
       </div>
@@ -204,7 +204,7 @@ export default function TwoFaSetup({ onDone, onCancel, onError }) {
 
       {/* ── Paso 3: Verificación ── */}
       <form onSubmit={handleEnable}>
-        <div style={{ marginBottom: 12 }}>
+        <div className="u-mb-12">
           <label
             htmlFor="twofa-verify-code"
             style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}

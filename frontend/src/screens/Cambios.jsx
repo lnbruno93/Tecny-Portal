@@ -335,7 +335,7 @@ export default function Cambios() {
               {Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} style={{ padding: '10px 13px', borderBottom: i < 4 ? '1px solid var(--hairline)' : 0 }}>
                   <Skeleton width="60%" height={14} />
-                  <div style={{ marginTop: 6 }}><Skeleton width="40%" height={11} /></div>
+                  <div className="u-mt-6"><Skeleton width="40%" height={11} /></div>
                 </div>
               ))}
             </div>
@@ -361,7 +361,7 @@ export default function Cambios() {
                 background: selectedId === e.id ? 'var(--surface-2)' : 'transparent',
                 borderLeft: selectedId === e.id ? '3px solid var(--accent)' : '3px solid transparent',
               }}>
-                <div style={{ fontWeight: 600, fontSize: 13 }}>{e.nombre}{!e.activo && <span className="muted tiny"> (inactiva)</span>}</div>
+                <div className="u-fs-13-fw-600">{e.nombre}{!e.activo && <span className="muted tiny"> (inactiva)</span>}</div>
                 {/* 2026-07-14 (dirección inversa): puede haber saldos en 3 monedas
                    simultáneamente. Mostramos los que son != 0 (o solo USD si
                    no hay deuda local, para no romper la altura de la card). */}
@@ -386,11 +386,11 @@ export default function Cambios() {
         {!detalle ? (
           <div className="card" style={{ minHeight: 200, display: 'grid', placeItems: 'center', color: 'var(--text-muted)' }}>Elegí una financiera</div>
         ) : (
-          <div className="stack" style={{ gap: 14 }}>
+          <div className="stack u-gap-14">
             <div className="card">
               <div className="flex-between" style={{ alignItems: 'flex-start' }}>
                 <div style={{ fontWeight: 700, fontSize: 18 }}>{detalle.nombre}</div>
-                <button className="icon-btn" title="Eliminar financiera" style={{ color: 'var(--neg)' }} onClick={handleDeleteEntidad}><Icons.Trash size={15} /></button>
+                <button className="icon-btn u-color-neg" title="Eliminar financiera" onClick={handleDeleteEntidad}><Icons.Trash size={15} /></button>
               </div>
             </div>
 
@@ -593,7 +593,7 @@ export default function Cambios() {
                 {/* Botón Agregar */}
                 <div>
                   <div className="muted tiny" style={{ marginBottom: 3, fontSize: 10.5, visibility: 'hidden' }}>·</div>
-                  <button className="btn btn-primary" style={{ width: '100%' }} disabled={savingMov} onClick={handleAddMov}>
+                  <button className="btn btn-primary u-w-100" disabled={savingMov} onClick={handleAddMov}>
                     {savingMov ? 'Guardando…' : 'Agregar'}
                   </button>
                 </div>
@@ -605,8 +605,8 @@ export default function Cambios() {
                 <table className="tbl">
                   <thead>
                     <tr>
-                      <th>Fecha</th><th>Tipo</th><th style={{ textAlign: 'right' }}>$ {monedaLocal}</th><th style={{ textAlign: 'right' }}>TC</th>
-                      <th style={{ textAlign: 'right' }}>USD</th><th>Caja</th><th>Comentarios</th><th></th>
+                      <th>Fecha</th><th>Tipo</th><th className="u-text-right">$ {monedaLocal}</th><th className="u-text-right">TC</th>
+                      <th className="u-text-right">USD</th><th>Caja</th><th>Comentarios</th><th></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -622,12 +622,12 @@ export default function Cambios() {
                         <tr key={m.id}>
                           <td className="mono tiny">{fmtFecha(m.fecha)}</td>
                           <td><span className={'badge ' + badgeCls}>{labelTipo(m.tipo)}</span></td>
-                          <td className="mono" style={{ textAlign: 'right' }}>{Number(m.monto_ars) > 0 ? '$ ' + fmt(m.monto_ars) : '—'}</td>
-                          <td className="mono tiny" style={{ textAlign: 'right' }}>{m.tc ? fmt(m.tc) : '—'}</td>
+                          <td className="mono u-text-right">{Number(m.monto_ars) > 0 ? '$ ' + fmt(m.monto_ars) : '—'}</td>
+                          <td className="mono tiny u-text-right">{m.tc ? fmt(m.tc) : '—'}</td>
                           <td className="mono" style={{ textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>u$s {fmt(m.monto_usd)}</td>
                           <td className="tiny">{m.caja_nombre || '—'}</td>
                           <td className="muted tiny">{m.comentarios || '—'}</td>
-                          <td><button className="icon-btn" title="Eliminar movimiento" aria-label="Eliminar movimiento" style={{ color: 'var(--neg)' }} onClick={() => handleDeleteMov(m.id)}><Icons.Trash size={13} /></button></td>
+                          <td><button className="icon-btn u-color-neg" title="Eliminar movimiento" aria-label="Eliminar movimiento" onClick={() => handleDeleteMov(m.id)}><Icons.Trash size={13} /></button></td>
                         </tr>
                       );
                     })}
@@ -650,7 +650,7 @@ export default function Cambios() {
             <form onSubmit={handleCreate}>
               <div className="modal-body">
                 <div className="field">
-                  <label className="field-label">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label>
+                  <label className="field-label">Nombre <span className="u-color-neg">*</span></label>
                   <input className="input" placeholder="Ej: El Dorado" value={nombre} onChange={e => setNombre(e.target.value)} autoFocus />
                 </div>
                 {createError && <div style={{ color: 'var(--neg)', fontSize: 13, marginTop: 8 }}>{createError}</div>}

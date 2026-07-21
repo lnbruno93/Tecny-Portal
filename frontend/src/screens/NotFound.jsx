@@ -15,7 +15,7 @@ export default function NotFound() {
       <div style={{ fontSize: 72, fontWeight: 700, color: 'var(--accent)', lineHeight: 1, marginBottom: 12 }}>
         404
       </div>
-      <h1 className="page-title" style={{ marginBottom: 8 }}>Pantalla no encontrada</h1>
+      <h1 className="page-title u-mb-8">Pantalla no encontrada</h1>
       <p style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 24, lineHeight: 1.6 }}>
         La URL que abriste no corresponde a ninguna sección del portal. Puede que la dirección esté mal escrita o que la pantalla haya cambiado de lugar.
       </p>

@@ -171,35 +171,35 @@ export default function Desglose360() {
         <div className="card card-tight" style={{ flex: '1 1 180px' }}>
           <div className="kpi-label">Productos</div>
           <div className="kpi-value mono">{fmt(tot.productos)}</div>
-          <div className="muted tiny" style={{ marginTop: 6 }}>{fmt(tot.stock)} unidades en total</div>
+          <div className="muted tiny u-mt-6">{fmt(tot.stock)} unidades en total</div>
         </div>
         <div className="card card-tight" style={{ flex: '1 1 180px' }}>
           <div className="kpi-label">Inversión USD</div>
           <div className="kpi-value mono">{money(tot.inv_usd, 'USD')}</div>
           {/* Auditoría 2026-06-30 F-02→05: moneda local dinámica (ARS/UYU). */}
-          <div className="muted tiny" style={{ marginTop: 6 }}>{tot.inv_ars ? money(tot.inv_ars, monedaLocal) + ' ' + monedaLocal : '—'}</div>
+          <div className="muted tiny u-mt-6">{tot.inv_ars ? money(tot.inv_ars, monedaLocal) + ' ' + monedaLocal : '—'}</div>
         </div>
         <div className="card card-tight" style={{ flex: '1 1 180px' }}>
           <div className="kpi-label">Valorizado venta USD</div>
           <div className="kpi-value mono pos">{money(tot.valorizado_usd, 'USD')}</div>
-          <div className="muted tiny" style={{ marginTop: 6 }}>{tot.valorizado_ars ? money(tot.valorizado_ars, monedaLocal) + ' ' + monedaLocal : '—'}</div>
+          <div className="muted tiny u-mt-6">{tot.valorizado_ars ? money(tot.valorizado_ars, monedaLocal) + ' ' + monedaLocal : '—'}</div>
         </div>
         <div className="card card-tight" style={{ flex: '1 1 180px' }}>
           <div className="kpi-label">Margen potencial USD</div>
           <div className="kpi-value mono" style={{ color: (tot.margen_usd || 0) >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
             {money(tot.margen_usd, 'USD')}
           </div>
-          <div className="muted tiny" style={{ marginTop: 6 }}>
+          <div className="muted tiny u-mt-6">
             {tot.inv_usd ? `+${Math.round(((tot.margen_usd || 0) / tot.inv_usd) * 100)}%` : '—'} sobre la inversión
           </div>
         </div>
       </div>
 
       {/* ── Controles ── */}
-      <div className="card card-tight" style={{ marginBottom: 14 }}>
+      <div className="card card-tight u-mb-14">
         <div className="flex-row" style={{ gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
           <div>
-            <div className="muted tiny" style={{ marginBottom: 4 }}>Agrupar por</div>
+            <div className="muted tiny u-mb-4">Agrupar por</div>
             <div className="seg">
               {DIMENSIONES.map(d => (
                 <button key={d.value} className={por === d.value ? 'on' : ''} onClick={() => setPor(d.value)}>
@@ -210,7 +210,7 @@ export default function Desglose360() {
           </div>
           <div className="u-flex-1" />
           <div>
-            <div className="muted tiny" style={{ marginBottom: 4 }}>Categoría</div>
+            <div className="muted tiny u-mb-4">Categoría</div>
             <select className="input" style={{ minWidth: 130 }} value={claseId} onChange={e => setClaseId(e.target.value)}>
               <option value="">Todas</option>
               {clases.filter(c => c.activa && !c.es_sin_categoria).map(c => (
@@ -219,7 +219,7 @@ export default function Desglose360() {
             </select>
           </div>
           <div>
-            <div className="muted tiny" style={{ marginBottom: 4 }}>Estado</div>
+            <div className="muted tiny u-mb-4">Estado</div>
             <select className="input" style={{ minWidth: 130 }} value={estadoFiltro} onChange={e => setEstadoFiltro(e.target.value)}>
               <option value="">Todos</option>
               <option value="disponible">Disponible</option>
@@ -243,10 +243,10 @@ export default function Desglose360() {
       {error ? (
         <div className="card card-tight" style={{ background: 'rgba(255, 80, 80, 0.08)', border: '1px solid var(--neg)', color: 'var(--text)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-            <Icons.X size={16} style={{ color: 'var(--neg)' }} />
+            <Icons.X size={16} className="u-color-neg" />
             <strong>No se pudo cargar el desglose</strong>
           </div>
-          <div className="muted tiny" style={{ marginBottom: 10 }}>{error}</div>
+          <div className="muted tiny u-mb-10">{error}</div>
           <div className="muted tiny">
             Si recién acabamos de subir esta vista, el backend puede estar todavía desplegando.
             Esperá un par de minutos e intentá de nuevo.
@@ -262,15 +262,15 @@ export default function Desglose360() {
             <thead>
               <tr>
                 <th>{DIMENSIONES.find(d => d.value === por)?.label}</th>
-                <th style={{ textAlign: 'right' }}>Productos</th>
-                <th style={{ textAlign: 'right' }}>Stock (u)</th>
-                <th style={{ textAlign: 'right' }}>Inv USD</th>
+                <th className="u-text-right">Productos</th>
+                <th className="u-text-right">Stock (u)</th>
+                <th className="u-text-right">Inv USD</th>
                 {/* Auditoría 2026-06-30 F-02→05: header moneda local (ARS/UYU). */}
-                <th style={{ textAlign: 'right' }}>Inv {monedaLocal}</th>
-                <th style={{ textAlign: 'right' }}>Valorizado USD</th>
-                <th style={{ textAlign: 'right' }}>Valorizado {monedaLocal}</th>
-                <th style={{ textAlign: 'right' }}>Margen USD</th>
-                <th style={{ textAlign: 'right' }}>%</th>
+                <th className="u-text-right">Inv {monedaLocal}</th>
+                <th className="u-text-right">Valorizado USD</th>
+                <th className="u-text-right">Valorizado {monedaLocal}</th>
+                <th className="u-text-right">Margen USD</th>
+                <th className="u-text-right">%</th>
                 <th></th>
               </tr>
             </thead>
@@ -280,18 +280,18 @@ export default function Desglose360() {
                 const label = por === 'estado' ? (ESTADO_LABEL[f.valor] || f.valor) : f.valor;
                 return (
                   <tr key={(f.valor_id || '') + ':' + f.valor + ':' + idx} className="tbl-row-click" onClick={() => drillDown(f)} title="Ver el detalle en Inventario">
-                    <td style={{ fontWeight: 600 }}>{label}</td>
-                    <td className="mono" style={{ textAlign: 'right' }}>{fmt(f.productos)}</td>
-                    <td className="mono" style={{ textAlign: 'right' }}>{fmt(f.stock)}</td>
-                    <td className="mono" style={{ textAlign: 'right' }}>{f.inv_usd ? money(f.inv_usd, 'USD') : <span className="muted">—</span>}</td>
+                    <td className="u-fw-600">{label}</td>
+                    <td className="mono u-text-right">{fmt(f.productos)}</td>
+                    <td className="mono u-text-right">{fmt(f.stock)}</td>
+                    <td className="mono u-text-right">{f.inv_usd ? money(f.inv_usd, 'USD') : <span className="muted">—</span>}</td>
                     {/* Auditoría 2026-06-30 F-02→05: símbolo moneda local ($ AR / $U UY). */}
-                    <td className="mono" style={{ textAlign: 'right' }}>{f.inv_ars ? money(f.inv_ars, monedaLocal) : <span className="muted">—</span>}</td>
-                    <td className="mono pos" style={{ textAlign: 'right' }}>{f.valorizado_usd ? money(f.valorizado_usd, 'USD') : <span className="muted">—</span>}</td>
-                    <td className="mono pos" style={{ textAlign: 'right' }}>{f.valorizado_ars ? money(f.valorizado_ars, monedaLocal) : <span className="muted">—</span>}</td>
+                    <td className="mono u-text-right">{f.inv_ars ? money(f.inv_ars, monedaLocal) : <span className="muted">—</span>}</td>
+                    <td className="mono pos u-text-right">{f.valorizado_usd ? money(f.valorizado_usd, 'USD') : <span className="muted">—</span>}</td>
+                    <td className="mono pos u-text-right">{f.valorizado_ars ? money(f.valorizado_ars, monedaLocal) : <span className="muted">—</span>}</td>
                     <td className="mono" style={{ textAlign: 'right', color: f.margen_usd >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
                       {f.margen_usd ? money(f.margen_usd, 'USD') : <span className="muted">—</span>}
                     </td>
-                    <td className="mono muted tiny" style={{ textAlign: 'right' }}>{pct != null ? pct + '%' : '—'}</td>
+                    <td className="mono muted tiny u-text-right">{pct != null ? pct + '%' : '—'}</td>
                     <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>
                       <Icons.ChevronRight size={14} />
                     </td>

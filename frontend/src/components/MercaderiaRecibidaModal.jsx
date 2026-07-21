@@ -355,8 +355,8 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
               <span>Color</span>
               <span style={{ textAlign: 'center' }}>Bat.%</span>
               <span style={{ textAlign: 'center' }}>Cant.</span>
-              <span style={{ textAlign: 'right' }}>Valor unit.</span>
-              <span style={{ textAlign: 'right' }}>Subtotal</span>
+              <span className="u-text-right">Valor unit.</span>
+              <span className="u-text-right">Subtotal</span>
               <span></span>
             </div>
 

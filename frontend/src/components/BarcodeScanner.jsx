@@ -169,7 +169,7 @@ export default function BarcodeScanner({ open, onScan, onClose, ignoreCodes }) {
           background: 'linear-gradient(180deg, rgba(0,0,0,0.6), transparent)',
           color: 'white',
         }}>
-          <div style={{ fontSize: 14, fontWeight: 600 }}>
+          <div className="u-fs-14-fw-600">
             {ready ? 'Apuntá al código de barras' : 'Iniciando cámara…'}
           </div>
           <button

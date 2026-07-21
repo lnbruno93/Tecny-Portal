@@ -1395,8 +1395,8 @@ export default function Ventas() {
       <Dashboard d={dash} />
 
       {/* Filtros lista */}
-      <div className="flex-between" style={{ marginBottom: 14 }}>
-        <div className="flex-row" style={{ gap: 8 }}>
+      <div className="flex-between u-mb-14">
+        <div className="flex-row u-gap-8">
           {/* Auditoría 2026-06-30 F-07: setParams batch — periodo + desde se
               actualizan en un solo render para que el segundo setParam no use
               un searchParams stale del primero (pierde el cambio del primero). */}
@@ -1409,7 +1409,7 @@ export default function Ventas() {
             { key: 'hasta', value: e.target.value, def: _today },
           ])} />
         </div>
-        <div className="flex-row" style={{ gap: 8 }}>
+        <div className="flex-row u-gap-8">
           <div className="input-group" style={{ width: 280 }}>
             <span className="addon addon-l"><Icons.Search size={14} /></span>
             <input className="input" placeholder="Order ID, cliente, producto, IMEI…" value={search} onChange={e => setSearch(e.target.value)} />
@@ -1426,13 +1426,13 @@ export default function Ventas() {
           <div className="kpi-label" style={{ color: 'var(--warn)', marginBottom: 8 }}><Icons.Bolt size={12} /> Ventas rápidas pendientes ({rapidas.length})</div>
           {rapidas.map(r => (
             <div key={r.id} className="flex-between" style={{ gap: 8, padding: '8px 0', borderBottom: '1px solid var(--hairline)', alignItems: 'flex-start' }}>
-              <div style={{ fontSize: 13 }}>
+              <div className="u-fs-13">
                 <strong>{r.vendedor_nombre || '—'}</strong>{r.cliente_texto ? ' · ' + r.cliente_texto : ''}
                 <div className="muted" style={{ whiteSpace: 'pre-wrap' }}>{r.detalle}</div>
               </div>
               <div className="flex-row" style={{ gap: 6, flexShrink: 0 }}>
                 <button className="btn btn-sm" onClick={() => openVenta(r)}><Icons.Check size={13} /> Procesar</button>
-                <button className="icon-btn" title="Eliminar venta rápida" aria-label="Eliminar venta rápida" style={{ color: 'var(--neg)' }} onClick={() => deleteRapida(r.id)}><Icons.Trash size={13} /></button>
+                <button className="icon-btn u-color-neg" title="Eliminar venta rápida" aria-label="Eliminar venta rápida" onClick={() => deleteRapida(r.id)}><Icons.Trash size={13} /></button>
               </div>
             </div>
           ))}
@@ -1501,9 +1501,9 @@ export default function Ventas() {
                 automáticamente. Ver Envios.jsx modal para el fix inicial. */}
             <form onSubmit={handleSaveVenta} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
               <div className="modal-body">
-                <div className="stack" style={{ gap: 14 }}>
+                <div className="stack u-gap-14">
                   <div className="row">
-                    <div className="field u-flex-1"><label className="field-label">Fecha <span style={{ color: 'var(--neg)' }}>*</span></label><input type="date" className="input" value={vForm.fecha} onChange={e => setVF('fecha', e.target.value)} /></div>
+                    <div className="field u-flex-1"><label className="field-label">Fecha <span className="u-color-neg">*</span></label><input type="date" className="input" value={vForm.fecha} onChange={e => setVF('fecha', e.target.value)} /></div>
                     <div className="field u-flex-1"><label className="field-label">Hora</label><input type="time" className="input" value={vForm.hora} onChange={e => setVF('hora', e.target.value)} /></div>
                   </div>
 
@@ -1571,7 +1571,7 @@ export default function Ventas() {
                         </div>
                       ))}
                     </div>
-                    <button type="button" className="btn btn-sm" style={{ marginTop: 6 }} onClick={addItemManual}><Icons.Plus size={13} /> Ítem manual</button>
+                    <button type="button" className="btn btn-sm u-mt-6" onClick={addItemManual}><Icons.Plus size={13} /> Ítem manual</button>
                   </div>
 
                   {/* Vendedor / cliente */}
@@ -1632,7 +1632,7 @@ export default function Ventas() {
                           </div>
                         );
                       })()}
-                      {vForm.cliente_id && <div className="tiny pos" style={{ marginTop: 2 }}>✓ vinculado a la base de clientes</div>}
+                      {vForm.cliente_id && <div className="tiny pos u-mt-2">✓ vinculado a la base de clientes</div>}
 
                       {/* #475 — Email del cliente + checkbox para enviar comprobante.
                           Solo aparece para venta retail nueva (no en edición — la edición
@@ -1640,7 +1640,7 @@ export default function Ventas() {
                           el operador usa "Reenviar comprobante" desde el detalle). */}
                       {!editId && (
                         <div style={{ marginTop: 10, padding: 10, background: 'var(--surface-2)', borderRadius: 8 }}>
-                          <div className="field" style={{ marginBottom: 8 }}>
+                          <div className="field u-mb-8">
                             <label className="field-label" htmlFor="v-cliente-email">
                               Email cliente <span className="muted tiny">(opcional, para enviar comprobante)</span>
                             </label>
@@ -1685,12 +1685,12 @@ export default function Ventas() {
                       {quickClient.open && (
                         <div className="card card-tight" style={{ marginTop: 10, padding: 14, background: 'var(--surface-2)' }}>
                           <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Nuevo cliente</div>
-                          <div className="muted tiny" style={{ marginBottom: 12 }}>
+                          <div className="muted tiny u-mb-12">
                             Solo el nombre es obligatorio. El resto es opcional pero ayuda al seguimiento post-venta.
                           </div>
                           <div className="stack" style={{ gap: 10 }}>
                             <div className="field">
-                              <label className="field-label" htmlFor="qc-nombre">Nombre completo <span style={{ color: 'var(--neg)' }}>*</span></label>
+                              <label className="field-label" htmlFor="qc-nombre">Nombre completo <span className="u-color-neg">*</span></label>
                               <input id="qc-nombre" className="input" autoFocus
                                 value={quickClient.nombre}
                                 onChange={e => setQuickClient(q => ({ ...q, nombre: e.target.value }))} />
@@ -1748,7 +1748,7 @@ export default function Ventas() {
                       const cc = clientesCC.find(c => String(c.id) === String(vForm.cliente_cc_id));
                       if (!cc) return null;
                       const s = Number(cc.saldo) || 0;
-                      return <div className="tiny" style={{ marginTop: 4 }}>Saldo actual: {s > 0 ? <span className="neg">debe u$s{fmt(s)}</span> : s < 0 ? <span className="pos">a favor u$s{fmt(-s)}</span> : <span className="muted">sin deuda</span>}</div>;
+                      return <div className="tiny u-mt-4">Saldo actual: {s > 0 ? <span className="neg">debe u$s{fmt(s)}</span> : s < 0 ? <span className="pos">a favor u$s{fmt(-s)}</span> : <span className="muted">sin deuda</span>}</div>;
                     })()}
                   </div>
                   <div className="row">
@@ -1770,7 +1770,7 @@ export default function Ventas() {
                       en Inventario con todos los campos cargados. */}
                   <div>
                     <div className="flex-between" style={{ alignItems: 'center', marginBottom: 6 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>
+                      <div className="u-fs-13-fw-600">
                         Equipos en canje {(vForm.canjes || []).length > 0 && <span className="muted tiny">({vForm.canjes.length})</span>}
                       </div>
                       <button type="button" className="btn btn-ghost btn-sm" onClick={addCanje}>
@@ -1791,7 +1791,7 @@ export default function Ventas() {
                         }}>
                           {/* Header del canje: índice + botón quitar */}
                           <div className="flex-between" style={{ alignItems: 'center', marginBottom: 8 }}>
-                            <div className="muted tiny" style={{ fontWeight: 600 }}>
+                            <div className="muted tiny u-fw-600">
                               Equipo {i + 1}
                               {c._existing && <span style={{ marginLeft: 6, color: 'var(--accent)' }}>(ya en Inventario)</span>}
                             </div>
@@ -1801,7 +1801,7 @@ export default function Ventas() {
                           </div>
 
                           {/* Fila 1: descripción + IMEI + valor toma */}
-                          <div className="row" style={{ marginBottom: 8 }}>
+                          <div className="row u-mb-8">
                             <div className="field" style={{ flex: 2 }}>
                               <label className="field-label">Descripción</label>
                               <input className="input" placeholder="iPhone 13 Pro 256 Sierra Blue"
@@ -1820,7 +1820,7 @@ export default function Ventas() {
                           </div>
 
                           {/* Fila 2: GB, color, batería, condición */}
-                          <div className="row" style={{ marginBottom: 8 }}>
+                          <div className="row u-mb-8">
                             <div className="field" style={{ flex: 0.7 }}>
                               <label className="field-label">GB</label>
                               <input className="input" placeholder="256"
@@ -1860,7 +1860,7 @@ export default function Ventas() {
                               crear uno nuevo. Antes estaban `disabled={c._existing}`
                               → el operador no podía cambiar la categoría del producto
                               asociado desde el modal de edición de venta. */}
-                          <div className="row" style={{ marginBottom: 8 }}>
+                          <div className="row u-mb-8">
                             <div className="field" style={{ flex: 1.5 }}>
                               <label className="field-label">Categoría</label>
                               <select className="input" value={c.clase_id}
@@ -2051,7 +2051,7 @@ export default function Ventas() {
                                     )}
                                   </div>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                    <span className="mono" style={{ fontWeight: 600, fontSize: 13 }}>{sym(p.moneda)}</span>
+                                    <span className="mono u-fs-13-fw-600">{sym(p.moneda)}</span>
                                     <input
                                       type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                                       className="input mono"
@@ -2062,11 +2062,11 @@ export default function Ventas() {
                                   </div>
                                 </div>
                                 <div>
-                                  <div className="muted tiny" style={{ marginBottom: 2 }} title={m?.nombre || ''}>Financiera ({det.pct}%)</div>
-                                  <div className="mono neg" style={{ fontWeight: 600, fontSize: 13 }}>−{sym(p.moneda)}{fmt(det.costoFinOrig)}</div>
+                                  <div className="muted tiny u-mb-2" title={m?.nombre || ''}>Financiera ({det.pct}%)</div>
+                                  <div className="mono neg u-fs-13-fw-600">−{sym(p.moneda)}{fmt(det.costoFinOrig)}</div>
                                 </div>
                                 <div>
-                                  <div className="muted tiny" style={{ marginBottom: 2 }}>Entra a tu caja <span style={{ color: 'var(--text-muted)' }}>(editable)</span></div>
+                                  <div className="muted tiny u-mb-2">Entra a tu caja <span style={{ color: 'var(--text-muted)' }}>(editable)</span></div>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
                                     <input
                                       type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
@@ -2085,7 +2085,7 @@ export default function Ventas() {
                         );
                       })}
                     </div>
-                    <button type="button" className="btn btn-sm" style={{ marginTop: 6 }} onClick={addPago}><Icons.Plus size={13} /> Agregar método</button>
+                    <button type="button" className="btn btn-sm u-mt-6" onClick={addPago}><Icons.Plus size={13} /> Agregar método</button>
                   </div>
 
                   {/* 2026-07-13 (feature vuelto): sección para registrar el
@@ -2096,7 +2096,7 @@ export default function Ventas() {
                       link "Agregar vuelto"; se expande al hacer click. */}
                   <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 6, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: vForm.vuelto_monto ? 8 : 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>
+                      <div className="u-fs-13-fw-600">
                         Vuelto/Cambio
                         <span className="muted tiny" style={{ marginLeft: 8, fontWeight: 400 }}>
                           (opcional — dinero que entregás al cliente)
@@ -2110,23 +2110,23 @@ export default function Ventas() {
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.5fr', gap: 8 }}>
                       <div>
-                        <div className="muted tiny" style={{ marginBottom: 2 }}>Monto</div>
+                        <div className="muted tiny u-mb-2">Monto</div>
                         <input
                           type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                           className="input mono"
                           value={vForm.vuelto_monto}
                           onChange={e => setVF('vuelto_monto', e.target.value)}
                           placeholder="0"
-                          style={{ width: '100%' }}
+                          className="u-w-100"
                         />
                       </div>
                       <div>
-                        <div className="muted tiny" style={{ marginBottom: 2 }}>Moneda</div>
+                        <div className="muted tiny u-mb-2">Moneda</div>
                         <select
                           className="input"
                           value={vForm.vuelto_moneda}
                           onChange={e => setVF('vuelto_moneda', e.target.value)}
-                          style={{ width: '100%' }}
+                          className="u-w-100"
                         >
                           <option value="ARS">ARS</option>
                           <option value="UYU">UYU</option>
@@ -2135,17 +2135,17 @@ export default function Ventas() {
                         </select>
                       </div>
                       <div>
-                        <div className="muted tiny" style={{ marginBottom: 2 }}>
+                        <div className="muted tiny u-mb-2">
                           Sale de{' '}
                           {vForm.vuelto_monto && !vForm.vuelto_caja_id && (
-                            <span className="warn" style={{ fontWeight: 600 }}>· elegí caja</span>
+                            <span className="warn u-fw-600">· elegí caja</span>
                           )}
                         </div>
                         <select
                           className="input"
                           value={vForm.vuelto_caja_id}
                           onChange={e => setVF('vuelto_caja_id', e.target.value)}
-                          style={{ width: '100%' }}
+                          className="u-w-100"
                         >
                           <option value="">— Elegí caja —</option>
                           {metodos.filter(m => !m.deleted_at).map(m => (
@@ -2162,10 +2162,10 @@ export default function Ventas() {
                     {(vForm.vuelto_moneda === 'ARS' || vForm.vuelto_moneda === 'UYU') && vForm.vuelto_monto && (
                       <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 8, alignItems: 'center' }}>
                         <div>
-                          <div className="muted tiny" style={{ marginBottom: 2 }}>
+                          <div className="muted tiny u-mb-2">
                             TC del vuelto{' '}
                             {!vForm.vuelto_tc && (
-                              <span className="warn" style={{ fontWeight: 600 }}>· requerido</span>
+                              <span className="warn u-fw-600">· requerido</span>
                             )}
                           </div>
                           <input
@@ -2174,7 +2174,7 @@ export default function Ventas() {
                             value={vForm.vuelto_tc}
                             onChange={e => setVF('vuelto_tc', e.target.value)}
                             placeholder={vForm.tc_venta ? String(vForm.tc_venta) : 'Ej: 1000'}
-                            style={{ width: '100%' }}
+                            className="u-w-100"
                           />
                         </div>
                         <div className="muted tiny">
@@ -2188,8 +2188,8 @@ export default function Ventas() {
 
                   {/* Totales */}
                   <div className="card card-tight" style={{ padding: '10px 14px' }}>
-                    <div className="flex-between" style={{ fontSize: 13 }}><span className="muted">Total venta</span><span className="mono" style={{ fontWeight: 700 }}>u$s{fmt(totales.items)}</span></div>
-                    <div className="flex-between" style={{ fontSize: 13 }}>
+                    <div className="flex-between u-fs-13"><span className="muted">Total venta</span><span className="mono" style={{ fontWeight: 700 }}>u$s{fmt(totales.items)}</span></div>
+                    <div className="flex-between u-fs-13">
                       <span
                         className="muted"
                         title="Suma de lo que paga el cliente (brutos) + canjes. La comisión de financiera/tarjeta no descuenta acá — se ve reflejada en Ganancia real."
@@ -2199,7 +2199,7 @@ export default function Ventas() {
                       </span>
                       <span className="mono">u$s{fmt(totales.cubierto)}</span>
                     </div>
-                    <div className="flex-between" style={{ fontSize: 13 }}><span className="muted">Diferencia</span>
+                    <div className="flex-between u-fs-13"><span className="muted">Diferencia</span>
                       <span>{Math.abs(totales.dif) < 0.01 ? <span className="pos">Cubierto ✓</span> : totales.dif < 0 ? <span className="neg">Falta u$s{fmt(-totales.dif)}</span> : <span className="warn">Sobra u$s{fmt(totales.dif)}</span>}</span>
                     </div>
                     {/*
@@ -2229,20 +2229,20 @@ export default function Ventas() {
                       const hayVueltoUsd = (totales.vueltoUsd || 0) > 0.005;
                       return (
                         <div data-testid="ganancia-preview" style={{ borderTop: '1px solid var(--border)', marginTop: 6, paddingTop: 6 }}>
-                          <div className="flex-between" style={{ fontSize: 13 }}>
+                          <div className="flex-between u-fs-13">
                             <span className="muted">{brutaNeg ? 'Pérdida bruta' : 'Ganancia bruta'}</span>
                             <span className={`mono ${brutaNeg ? 'neg' : ''}`}>
                               {brutaNeg ? '−' : ''}u$s{fmt(totales.bruta)}
                             </span>
                           </div>
                           {hayVueltoUsd && (
-                            <div className="flex-between" style={{ fontSize: 13 }}>
+                            <div className="flex-between u-fs-13">
                               <span className="muted">Vuelto entregado</span>
                               <span className="mono neg">−u$s{fmt(totales.vueltoUsd)}</span>
                             </div>
                           )}
                           <div className="flex-between" style={{ fontSize: 13, borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 4 }}>
-                            <span style={{ fontWeight: 600 }}>{realNeg ? 'Pérdida' : 'Ganancia real'}</span>
+                            <span className="u-fw-600">{realNeg ? 'Pérdida' : 'Ganancia real'}</span>
                             <span
                               className={`mono ${realNeg ? 'neg' : realPos ? 'pos' : ''}`}
                               style={{ fontWeight: 700 }}
@@ -2259,17 +2259,17 @@ export default function Ventas() {
                   <div className="field">
                     <label className="field-label">Comprobantes de pago (imágenes/PDF, máx 6MB c/u)</label>
                     <input type="file" multiple accept="image/*,application/pdf" className="input" onChange={onComprobFiles} />
-                    {comprobantes.length > 0 && <div className="muted tiny" style={{ marginTop: 4 }}>{comprobantes.length} archivo(s) listo(s)</div>}
+                    {comprobantes.length > 0 && <div className="muted tiny u-mt-4">{comprobantes.length} archivo(s) listo(s)</div>}
                     {/* OCR del comprobante (Tema C rev5 — paridad con Financiera).
                         Mismo endpoint /api/ocr que el módulo Transferencias. Aplica
                         al "Entra a tu caja" del pago Financiera (o primer no-CC). */}
                     {ocrSugerencia.status === 'pending' && (
-                      <div className="muted tiny" style={{ marginTop: 4 }}>Leyendo monto del comprobante…</div>
+                      <div className="muted tiny u-mt-4">Leyendo monto del comprobante…</div>
                     )}
                     {ocrSugerencia.status === 'done' && ocrSugerencia.monto > 0 && (
                       <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                         <span className="muted tiny">Detectamos en el comprobante:</span>
-                        <span className="mono" style={{ fontWeight: 600 }}>${fmt(ocrSugerencia.monto)}</span>
+                        <span className="mono u-fw-600">${fmt(ocrSugerencia.monto)}</span>
                         <button type="button" className="btn btn-sm" onClick={aplicarOcrMonto}>Aplicar al pago</button>
                       </div>
                     )}
@@ -2334,7 +2334,7 @@ export default function Ventas() {
                   />
                 </div>
                 <div className="field">
-                  <label className="field-label">Notas de la venta <span style={{ color: 'var(--neg)' }}>*</span></label>
+                  <label className="field-label">Notas de la venta <span className="u-color-neg">*</span></label>
                   <textarea
                     className="input"
                     rows={9}
@@ -2382,16 +2382,16 @@ Pago: Efectivo + Transferencia`}
                     <div style={{ fontSize: 13, maxWidth: '78%' }}><strong>{g.nombre}</strong>{g.es_default && <> <Badge tone="pos">Predeterminada</Badge></>}<div className="muted tiny" style={{ whiteSpace: 'pre-wrap', maxHeight: 50, overflow: 'hidden' }}>{renderPlantilla(g.texto, tenantNombre)}</div></div>
                     <div className="flex-row" style={{ gap: 6, flexShrink: 0 }}>
                       <button className="icon-btn" title="Editar plantilla" aria-label="Editar plantilla de garantía" onClick={() => setGForm({ id: g.id, nombre: g.nombre, texto: g.texto, es_default: !!g.es_default })}><Icons.Edit size={14} /></button>
-                      <button className="icon-btn" title="Eliminar plantilla" aria-label="Eliminar plantilla de garantía" style={{ color: 'var(--neg)' }} onClick={() => deleteGarantia(g.id)}><Icons.Trash size={14} /></button>
+                      <button className="icon-btn u-color-neg" title="Eliminar plantilla" aria-label="Eliminar plantilla de garantía" onClick={() => deleteGarantia(g.id)}><Icons.Trash size={14} /></button>
                     </div>
                   </div>
                 ))}
               </div>
               <form onSubmit={handleSaveGarantia}>
                 <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>{gForm.id ? 'Editar plantilla' : 'Nueva plantilla'}</div>
-                <div className="field"><label className="field-label">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label><input className="input" placeholder="General, Apple discontinuado…" value={gForm.nombre} onChange={e => setGForm(f => ({ ...f, nombre: e.target.value }))} /></div>
+                <div className="field"><label className="field-label">Nombre <span className="u-color-neg">*</span></label><input className="input" placeholder="General, Apple discontinuado…" value={gForm.nombre} onChange={e => setGForm(f => ({ ...f, nombre: e.target.value }))} /></div>
                 <div className="field">
-                  <label className="field-label">Texto <span style={{ color: 'var(--neg)' }}>*</span></label>
+                  <label className="field-label">Texto <span className="u-color-neg">*</span></label>
                   <textarea
                     className="input"
                     rows={10}
@@ -2399,12 +2399,12 @@ Pago: Efectivo + Transferencia`}
                     onChange={e => setGForm(f => ({ ...f, texto: e.target.value }))}
                     style={{ height: 'auto', minHeight: 220, padding: '12px 14px', lineHeight: 1.55, fontSize: 14, resize: 'vertical', whiteSpace: 'pre-wrap' }}
                   />
-                  <div className="muted tiny" style={{ marginTop: 4 }}>
+                  <div className="muted tiny u-mt-4">
                     Tip: escribí <code>{PLACEHOLDER_NEGOCIO}</code> donde quieras que aparezca el nombre de tu negocio. Al imprimir el comprobante se reemplaza automáticamente por <strong>{tenantNombre}</strong>.
                   </div>
                 </div>
                 <label className="flex-row" style={{ gap: 8, fontSize: 13, marginBottom: 10, cursor: 'pointer' }}><input type="checkbox" checked={gForm.es_default} onChange={e => setGForm(f => ({ ...f, es_default: e.target.checked }))} /> Marcar como predeterminada</label>
-                <div className="flex-row" style={{ gap: 8 }}>
+                <div className="flex-row u-gap-8">
                   <button type="button" className="btn btn-ghost" onClick={() => setGForm({ id: null, nombre: '', texto: '', es_default: false })}>Limpiar</button>
                   <button type="submit" className="btn btn-primary" disabled={savingGar}>{savingGar ? 'Guardando…' : 'Guardar plantilla'}</button>
                 </div>
@@ -2429,7 +2429,7 @@ Pago: Efectivo + Transferencia`}
                 {etiquetas.map(et => (
                   <div key={et.id} className="flex-between" style={{ fontSize: 13, padding: '4px 0', borderBottom: '1px solid var(--hairline)' }}>
                     <span>{et.nombre}</span>
-                    <button className="icon-btn" title="Eliminar etiqueta" aria-label="Eliminar etiqueta" style={{ color: 'var(--neg)' }} onClick={() => delEtiqueta(et.id)}><Icons.Trash size={13} /></button>
+                    <button className="icon-btn u-color-neg" title="Eliminar etiqueta" aria-label="Eliminar etiqueta" onClick={() => delEtiqueta(et.id)}><Icons.Trash size={13} /></button>
                   </div>
                 ))}
               </div>
@@ -2457,7 +2457,7 @@ Pago: Efectivo + Transferencia`}
               {comprobList == null ? <div className="muted">Cargando…</div> : comprobList.length === 0 ? <div className="empty">Sin comprobantes</div> : (
                 comprobList.map(c => (
                   <div key={c.id} className="flex-between" style={{ padding: '8px 0', borderBottom: '1px solid var(--hairline)' }}>
-                    <span style={{ fontSize: 13 }}>{c.archivo_nombre || 'archivo'}</span>
+                    <span className="u-fs-13">{c.archivo_nombre || 'archivo'}</span>
                     <button className="btn btn-sm" onClick={() => abrirComprob(c.id)}><Icons.Eye size={13} /> Ver</button>
                   </div>
                 ))

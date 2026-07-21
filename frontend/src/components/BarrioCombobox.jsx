@@ -107,7 +107,7 @@ export default function BarrioCombobox({
         {...inputProps}
       />
       {zonaHint && !open && (
-        <div className="muted tiny" style={{ marginTop: 2 }}>📍 {zonaHint}</div>
+        <div className="muted tiny u-mt-2">📍 {zonaHint}</div>
       )}
       {open && (
         <div

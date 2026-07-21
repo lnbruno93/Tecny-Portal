@@ -141,7 +141,7 @@ export default function PorCategoriaBreakdownModal({
 
         <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
           {subtitle && (
-            <p className="muted tiny" style={{ marginBottom: 12 }}>
+            <p className="muted tiny u-mb-12">
               {subtitle}
             </p>
           )}

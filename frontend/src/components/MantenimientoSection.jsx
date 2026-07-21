@@ -85,13 +85,13 @@ function FinancieraReport({ report }) {
             <div style={{ marginTop: 8 }}>
               <div style={{ fontWeight: 600, marginBottom: 4 }}>Comprobantes:</div>
               <table className="tbl">
-                <thead><tr><th>Fecha</th><th>Cliente</th><th style={{ textAlign: 'right' }}>Neto</th></tr></thead>
+                <thead><tr><th>Fecha</th><th>Cliente</th><th className="u-text-right">Neto</th></tr></thead>
                 <tbody>
                   {report.muestras.comprobantes.map(c => (
                     <tr key={c.id}>
                       <td className="mono tiny">{c.fecha}</td>
                       <td className="tiny">{c.cliente || <span className="muted">Sin cliente</span>}</td>
-                      <td className="mono tiny" style={{ textAlign: 'right' }}>{fmtARS(c.monto_neto)}</td>
+                      <td className="mono tiny u-text-right">{fmtARS(c.monto_neto)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -102,13 +102,13 @@ function FinancieraReport({ report }) {
             <div style={{ marginTop: 10 }}>
               <div style={{ fontWeight: 600, marginBottom: 4 }}>Pagos:</div>
               <table className="tbl">
-                <thead><tr><th>Fecha</th><th>Caja destino</th><th style={{ textAlign: 'right' }}>Monto</th></tr></thead>
+                <thead><tr><th>Fecha</th><th>Caja destino</th><th className="u-text-right">Monto</th></tr></thead>
                 <tbody>
                   {report.muestras.pagos.map(p => (
                     <tr key={p.id}>
                       <td className="mono tiny">{p.fecha}</td>
                       <td className="tiny">{p.caja_destino}</td>
-                      <td className="mono tiny" style={{ textAlign: 'right' }}>{fmtARS(p.monto)}</td>
+                      <td className="mono tiny u-text-right">{fmtARS(p.monto)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -143,10 +143,10 @@ function TarjetasReport({ report }) {
           <thead>
             <tr>
               <th>Tarjeta</th>
-              <th style={{ textAlign: 'right' }}>Saldo {report.apply ? 'previo' : 'actual'}</th>
-              <th style={{ textAlign: 'right' }}>+ Cobros</th>
-              <th style={{ textAlign: 'right' }}>− Liquidaciones</th>
-              <th style={{ textAlign: 'right' }}>Saldo {report.apply ? 'final' : 'proyectado'}</th>
+              <th className="u-text-right">Saldo {report.apply ? 'previo' : 'actual'}</th>
+              <th className="u-text-right">+ Cobros</th>
+              <th className="u-text-right">− Liquidaciones</th>
+              <th className="u-text-right">Saldo {report.apply ? 'final' : 'proyectado'}</th>
             </tr>
           </thead>
           <tbody>
@@ -161,7 +161,7 @@ function TarjetasReport({ report }) {
                     <b>{g.tarjeta.nombre}</b>
                     <span className="muted tiny" style={{ marginLeft: 6 }}>{g.tarjeta.moneda}</span>
                   </td>
-                  <td className="mono tiny" style={{ textAlign: 'right' }}>{fmt(g.saldoAntes)}</td>
+                  <td className="mono tiny u-text-right">{fmt(g.saldoAntes)}</td>
                   <td className="mono tiny" style={{ textAlign: 'right', color: 'var(--pos)' }}>
                     {g.cobros > 0 ? `+${fmt(g.totalCobros)} (${g.cobros})` : '—'}
                   </td>
@@ -203,11 +203,11 @@ function OrphanMovsReport({ report }) {
           </tr>
           <tr>
             <td style={{ paddingRight: 16 }}>Deuda B2B asociada</td>
-            <td className="mono" style={{ textAlign: 'right' }}>US$ {Number(report.deuda_huerfana || 0).toLocaleString('es-AR')}</td>
+            <td className="mono u-text-right">US$ {Number(report.deuda_huerfana || 0).toLocaleString('es-AR')}</td>
           </tr>
           <tr>
             <td style={{ paddingRight: 16 }}>Caja movimientos a revertir</td>
-            <td className="mono" style={{ textAlign: 'right' }}>{report.caja_movs_a_revertir}</td>
+            <td className="mono u-text-right">{report.caja_movs_a_revertir}</td>
           </tr>
         </tbody>
       </table>
@@ -223,7 +223,7 @@ function OrphanMovsReport({ report }) {
                   <th>Fecha</th>
                   <th>Cliente (borrado)</th>
                   <th>Tipo</th>
-                  <th style={{ textAlign: 'right' }}>Monto</th>
+                  <th className="u-text-right">Monto</th>
                 </tr>
               </thead>
               <tbody>
@@ -232,7 +232,7 @@ function OrphanMovsReport({ report }) {
                     <td className="mono tiny">{m.fecha}</td>
                     <td className="tiny">{[m.cliente_nombre, m.cliente_apellido].filter(Boolean).join(' ') || '—'}</td>
                     <td className="tiny"><b>{m.tipo}</b></td>
-                    <td className="mono tiny" style={{ textAlign: 'right' }}>US$ {Number(m.monto_total).toLocaleString('es-AR')}</td>
+                    <td className="mono tiny u-text-right">US$ {Number(m.monto_total).toLocaleString('es-AR')}</td>
                   </tr>
                 ))}
               </tbody>

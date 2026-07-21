@@ -117,10 +117,10 @@ function EditarClienteModal({ cliente, onClose, onSuccess }) {
           <button className="icon-btn" onClick={onClose}><Icons.X size={16} /></button>
         </div>
         <div className="modal-body">
-          <div className="stack" style={{ gap: 12 }}>
-            <div className="row" style={{ gap: 12 }}>
+          <div className="stack u-gap-12">
+            <div className="row u-gap-12">
               <div className="field u-flex-1">
-                <label className="field-label">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label>
+                <label className="field-label">Nombre <span className="u-color-neg">*</span></label>
                 <input type="text" className="input" value={form.nombre} onChange={set('nombre')} />
               </div>
               <div className="field u-flex-1">
@@ -128,13 +128,13 @@ function EditarClienteModal({ cliente, onClose, onSuccess }) {
                 <input type="text" className="input" value={form.apellido} onChange={set('apellido')} />
               </div>
             </div>
-            <div className="row" style={{ gap: 12 }}>
+            <div className="row u-gap-12">
               <div className="field u-flex-1">
                 <label className="field-label">Contacto</label>
                 <input type="text" className="input" placeholder="Tel / WhatsApp / email" value={form.contacto} onChange={set('contacto')} />
               </div>
               <div className="field" style={{ width: 100 }}>
-                <label className="field-label">Categoría <span style={{ color: 'var(--neg)' }}>*</span></label>
+                <label className="field-label">Categoría <span className="u-color-neg">*</span></label>
                 <select className="input" value={form.categoria} onChange={set('categoria')}>
                   <option value="VIP">VIP</option>
                   <option value="A+">A+</option>
@@ -142,7 +142,7 @@ function EditarClienteModal({ cliente, onClose, onSuccess }) {
                 </select>
               </div>
             </div>
-            <div className="row" style={{ gap: 12 }}>
+            <div className="row u-gap-12">
               <div className="field u-flex-1">
                 <label className="field-label">Provincia</label>
                 <input type="text" className="input" value={form.provincia} onChange={set('provincia')} />
@@ -1023,10 +1023,10 @@ export default function CuentasCC() {
                 <div key={k.label} className="card card-tight u-flex-1">
                   <div className="kpi-label">{k.label}</div>
                   <div className="kpi-value">
-                    {k.unit && <span className="muted" style={{ fontSize: 12 }}>{k.unit} </span>}
+                    {k.unit && <span className="muted u-fs-12">{k.unit} </span>}
                     {k.val}
                   </div>
-                  <div className="muted tiny" style={{ marginTop: 6 }}>{k.sub}</div>
+                  <div className="muted tiny u-mt-6">{k.sub}</div>
                 </div>
               ))}
             </div>
@@ -1046,7 +1046,7 @@ export default function CuentasCC() {
                       <tr key={c.id} className="tbl-row-click"
                         onClick={() => { setSelectedId(c.id); setTab('clientes'); }}>
                         <td className="muted mono">{String(i + 1).padStart(2, '0')}</td>
-                        <td><div style={{ fontWeight: 600 }}>{c.nombre} {c.apellido}</div></td>
+                        <td><div className="u-fw-600">{c.nombre} {c.apellido}</div></td>
                         <td>{catBadge(c.categoria)}</td>
                         <td className="num mono neg" style={{ fontWeight: 700 }}>USD {fmt(c.saldo)}</td>
                         <td>
@@ -1122,7 +1122,7 @@ export default function CuentasCC() {
         {/* ── Sidebar ── */}
         <div style={{ borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: 12, borderBottom: '1px solid var(--border)' }}>
-            <div className="input-group" style={{ marginBottom: 8 }}>
+            <div className="input-group u-mb-8">
               <span className="addon addon-l"><Icons.Search size={13} /></span>
               <input className="input" placeholder="Buscar…" value={search}
                 onChange={e => setSearch(e.target.value)} />
@@ -1152,7 +1152,7 @@ export default function CuentasCC() {
                 borderLeft: selectedId === c.id ? '3px solid var(--accent)' : '3px solid transparent',
               }}>
                 <div className="flex-between" style={{ marginBottom: 3 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>{c.nombre} {c.apellido || ''}</div>
+                  <div className="u-fs-13-fw-600">{c.nombre} {c.apellido || ''}</div>
                   {catBadge(c.categoria)}
                 </div>
                 {(c.localidad || c.provincia) && (
@@ -1191,7 +1191,7 @@ export default function CuentasCC() {
 
             {/* ── Header del cliente con KPIs inline ── */}
             <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-              <div className="flex-between" style={{ marginBottom: 8 }}>
+              <div className="flex-between u-mb-8">
                 {/* Nombre e info */}
                 <div>
                   <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.01em' }}>
@@ -1199,7 +1199,7 @@ export default function CuentasCC() {
                     {' '}{catBadge(cliente.categoria)}
                   </div>
                   {(cliente.contacto || cliente.marca_redes) && (
-                    <div className="muted tiny" style={{ marginTop: 2 }}>
+                    <div className="muted tiny u-mt-2">
                       {[cliente.contacto, cliente.marca_redes].filter(Boolean).join(' · ')}
                     </div>
                   )}
@@ -1207,7 +1207,7 @@ export default function CuentasCC() {
 
                 {/* KPIs compactos + botón editar */}
                 <div className="flex-row" style={{ gap: 20, alignItems: 'flex-start' }}>
-                  <div style={{ textAlign: 'right' }}>
+                  <div className="u-text-right">
                     <div className="muted tiny">Saldo</div>
                     <div className={'mono ' + (Number(resumen.saldo) > 0 ? 'neg' : Number(resumen.saldo) < 0 ? 'pos' : 'muted')}
                       // data-testid agregado para E2E (TANDA 5 B2B): después
@@ -1219,13 +1219,13 @@ export default function CuentasCC() {
                       USD {fmt(resumen.saldo)}
                     </div>
                   </div>
-                  <div style={{ textAlign: 'right' }}>
+                  <div className="u-text-right">
                     <div className="muted tiny">Total comprado</div>
                     <div className="mono" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.1 }}>
                       USD {fmt(resumen.total_compras || 0)}
                     </div>
                   </div>
-                  <div style={{ textAlign: 'right' }}>
+                  <div className="u-text-right">
                     <div className="muted tiny">Movimientos</div>
                     <div className="mono" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.1 }}>
                       {resumen.cant_movimientos || 0}
@@ -1246,8 +1246,7 @@ export default function CuentasCC() {
                   <button className="icon-btn" title="Editar cliente" onClick={() => setShowEdit(true)}>
                     <Icons.Edit size={15} />
                   </button>
-                  <button className="icon-btn" title="Eliminar cliente" onClick={handleDeleteCliente}
-                    style={{ color: 'var(--neg)' }}>
+                  <button className="icon-btn u-color-neg" title="Eliminar cliente" onClick={handleDeleteCliente}>
                     <Icons.Trash size={15} />
                   </button>
                 </div>
@@ -1460,10 +1459,10 @@ export default function CuentasCC() {
               <button className="icon-btn" onClick={() => setShowClienteModal(false)}><Icons.X size={16} /></button>
             </div>
             <div className="modal-body">
-              <div className="stack" style={{ gap: 12 }}>
-                <div className="row" style={{ gap: 12 }}>
+              <div className="stack u-gap-12">
+                <div className="row u-gap-12">
                   <div className="field u-flex-1">
-                    <label className="field-label">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label>
+                    <label className="field-label">Nombre <span className="u-color-neg">*</span></label>
                     <input type="text" className="input" placeholder="Ej: Juan"
                       value={clienteForm.nombre} onChange={e => setClienteForm(f => ({ ...f, nombre: e.target.value }))} />
                   </div>
@@ -1473,14 +1472,14 @@ export default function CuentasCC() {
                       value={clienteForm.apellido} onChange={e => setClienteForm(f => ({ ...f, apellido: e.target.value }))} />
                   </div>
                 </div>
-                <div className="row" style={{ gap: 12 }}>
+                <div className="row u-gap-12">
                   <div className="field u-flex-1">
                     <label className="field-label">Contacto</label>
                     <input type="text" className="input" placeholder="Teléfono / WhatsApp / email"
                       value={clienteForm.contacto} onChange={e => setClienteForm(f => ({ ...f, contacto: e.target.value }))} />
                   </div>
                   <div className="field u-flex-1">
-                    <label className="field-label">Categoría <span style={{ color: 'var(--neg)' }}>*</span></label>
+                    <label className="field-label">Categoría <span className="u-color-neg">*</span></label>
                     <select className="input" value={clienteForm.categoria}
                       onChange={e => setClienteForm(f => ({ ...f, categoria: e.target.value }))}>
                       <option value="VIP">VIP</option>
@@ -1489,7 +1488,7 @@ export default function CuentasCC() {
                     </select>
                   </div>
                 </div>
-                <div className="row" style={{ gap: 12 }}>
+                <div className="row u-gap-12">
                   <div className="field u-flex-1">
                     <label className="field-label">Provincia</label>
                     <input type="text" className="input" placeholder="Ej: Buenos Aires"
@@ -1633,7 +1632,7 @@ function RedB2BTabsBar({ tab, canSeeRedB2B, onSelect }) {
 // callback `onDevolverItem(movId, item)` lo maneja el padre.
 function MovimientoDesglose({ mov, onDevolverItem }) {
   const items = mov.items || [];
-  if (items.length === 0) return <div className="muted" style={{ fontSize: 12 }}>Sin items.</div>;
+  if (items.length === 0) return <div className="muted u-fs-12">Sin items.</div>;
 
   const fmtMoney = (n) => (Number(n) || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 });
   // Solo permitimos devolver items de movimientos tipo 'compra'. Backend

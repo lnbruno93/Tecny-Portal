@@ -271,14 +271,14 @@ export default function Config() {
         <div className="card">
           <div className="card-hd">
             <div style={{ fontWeight: 600, fontSize: 15 }}>Comisiones de métodos de pago</div>
-            <div className="muted tiny" style={{ marginTop: 2 }}>
+            <div className="muted tiny u-mt-2">
               Se aplican al cobrar con cada método (Tema C — descontado de la ganancia)
             </div>
           </div>
 
           <div style={{ padding: '0 0 16px' }}>
             {/* Fila Transferencia (= pct_financiera) */}
-            <div className="field" style={{ marginBottom: 16 }}>
+            <div className="field u-mb-16">
               <div className="field-label">Transferencias <span className="muted">(Financiera)</span></div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div className="input-group" style={{ maxWidth: 160 }}>
@@ -304,19 +304,19 @@ export default function Config() {
             </div>
 
             {/* Filas Tarjetas de Crédito */}
-            <div style={{ marginBottom: 16 }}>
-              <div className="field-label" style={{ marginBottom: 8 }}>Tarjetas de crédito</div>
+            <div className="u-mb-16">
+              <div className="field-label u-mb-8">Tarjetas de crédito</div>
               {tarjetas.length === 0 ? (
                 <div className="muted tiny" style={{ padding: '6px 0' }}>
                   No hay tarjetas configuradas. Creá una en Cajas → Config marcándola como tarjeta.
                 </div>
               ) : (
-                <div className="stack" style={{ gap: 8 }}>
+                <div className="stack u-gap-8">
                   {tarjetas.map(t => {
                     const tDirty = parseFloat(t.pct_input) !== t._original;
                     return (
                       <div key={t.id} style={{ display: 'grid', gridTemplateColumns: '1fr 160px 110px', gap: 10, alignItems: 'center' }}>
-                        <div style={{ fontSize: 13, fontWeight: 600 }}>{t.nombre}</div>
+                        <div className="u-fs-13-fw-600">{t.nombre}</div>
                         <div className="input-group">
                           <input
                             type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
@@ -329,7 +329,7 @@ export default function Config() {
                           />
                           <span className="addon" style={{ fontWeight: 700, color: 'var(--accent)' }}>%</span>
                         </div>
-                        <span className="muted tiny" style={{ textAlign: 'right' }}>
+                        <span className="muted tiny u-text-right">
                           {tDirty
                             ? <>Guardado: <span className="mono">{t._original.toFixed(1)}%</span></>
                             : <span className="mono">{t._original.toFixed(1)}%</span>}
@@ -361,7 +361,7 @@ export default function Config() {
               <div className="stack" style={{ gap: 6 }}>
                 <div className="flex-between">
                   <span className="muted tiny">Bruto</span>
-                  <span className="mono" style={{ fontWeight: 600 }}>ARS 1.000.000</span>
+                  <span className="mono u-fw-600">ARS 1.000.000</span>
                 </div>
                 <div className="flex-between">
                   <span className="muted tiny">Retención ({simPct.toFixed(1)}%)</span>
@@ -374,7 +374,7 @@ export default function Config() {
                   borderTop: '1px solid var(--hairline)',
                   marginTop: 4,
                 }}>
-                  <span style={{ fontWeight: 600, fontSize: 13 }}>Nos queda</span>
+                  <span className="u-fs-13-fw-600">Nos queda</span>
                   <span className="mono pos" style={{ fontWeight: 700, fontSize: 15 }}>
                     ARS {fmt(simNeto)}
                   </span>
@@ -408,7 +408,7 @@ export default function Config() {
               </div>
             )}
 
-            <div className="flex-row" style={{ gap: 8 }}>
+            <div className="flex-row u-gap-8">
               <button
                 className="btn btn-primary"
                 onClick={handleSave}
@@ -431,7 +431,7 @@ export default function Config() {
         <div className="card">
           <div className="card-hd">
             <div style={{ fontWeight: 600, fontSize: 15 }}>Limitaciones del sistema</div>
-            <div className="muted tiny" style={{ marginTop: 2 }}>
+            <div className="muted tiny u-mt-2">
               Comportamientos que conviene tener presentes
             </div>
           </div>

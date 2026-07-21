@@ -97,7 +97,7 @@ export default function EditarVendedorModal({ state, onClose, onSave, vendedores
               placeholder="Ej: Lautaro B. — o dejar vacío para volver al automático"
               maxLength={120}
               autoFocus
-              style={{ width: '100%' }}
+              className="u-w-100"
               disabled={guardando}
             />
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
