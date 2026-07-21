@@ -885,7 +885,7 @@ export default function Envios() {
         </div>
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">En camino</div>
-          <div className="kpi-value mono" style={{ color: 'var(--info)' }}>{kpiEnCamino}</div>
+          <div className="kpi-value mono u-color-info">{kpiEnCamino}</div>
           <div className="muted tiny u-mt-6">ahora</div>
         </div>
         <div className="card card-tight u-flex-1">
@@ -1673,7 +1673,7 @@ export default function Envios() {
                                       >MANUAL</span>
                                     )}
                                   </div>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  <div className="u-flex-center-gap-4">
                                     <span className="mono u-fs-13-fw-600">{sym(it.moneda)}</span>
                                     <input
                                       type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
@@ -1690,7 +1690,7 @@ export default function Envios() {
                                 </div>
                                 <div>
                                   <div className="muted tiny u-mb-2">Entra a tu caja <span className="u-color-text-muted">(editable)</span></div>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                                  <div className="u-flex-center-gap-4-wrap">
                                     <input
                                       type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                                       className="input mono"

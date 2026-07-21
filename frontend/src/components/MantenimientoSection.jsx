@@ -66,7 +66,7 @@ function FinancieraReport({ report }) {
               −{fmtARS(report.totalPagos)}
             </td>
           </tr>
-          <tr style={{ borderTop: '1px solid var(--border)' }}>
+          <tr className="u-border-top-only">
             <td style={{ paddingRight: 16, fontWeight: 700, paddingTop: 6 }}>
               Saldo {report.apply ? 'final' : 'proyectado'}
             </td>
@@ -78,7 +78,7 @@ function FinancieraReport({ report }) {
       </table>
       {report.muestras && (report.muestras.comprobantes?.length > 0 || report.muestras.pagos?.length > 0) && (
         <details className="u-mt-12-fs-13">
-          <summary style={{ cursor: 'pointer', color: 'var(--text-muted)' }}>
+          <summary className="u-cursor-muted">
             Ver primeros 10 movimientos pendientes
           </summary>
           {report.muestras.comprobantes?.length > 0 && (
@@ -213,7 +213,7 @@ function OrphanMovsReport({ report }) {
       </table>
       {report.muestras && report.muestras.length > 0 && (
         <details className="u-mt-12-fs-13">
-          <summary style={{ cursor: 'pointer', color: 'var(--text-muted)' }}>
+          <summary className="u-cursor-muted">
             Ver primeros 10 movimientos huérfanos
           </summary>
           <div style={{ marginTop: 8, overflowX: 'auto' }}>

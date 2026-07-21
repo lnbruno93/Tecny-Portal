@@ -573,7 +573,7 @@ export default function Cajas() {
       {/* Page head */}
       <div className="page-head u-mb-20">
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div className="u-flex-center-gap-10-wrap">
             <h1 className="page-title">Cajas</h1>
             <button className="btn btn-ghost btn-sm" onClick={() => navigate('/capital')} title="Ir a 360 & Capital">
               360 &amp; Capital →
@@ -952,7 +952,7 @@ export default function Cajas() {
                 {cajaSaving ? 'Guardando…' : '+ Agregar caja'}
               </button>
             </form>
-            {cajaError && <div style={{ color: 'var(--neg)', fontSize: 13, marginTop: 8 }}>{cajaError}</div>}
+            {cajaError && <div className="u-color-neg-fs-13-mt-8">{cajaError}</div>}
           </div>
 
           <div className="card card-flush">
@@ -964,7 +964,7 @@ export default function Cajas() {
               // el load falla, en vez de dejar la tabla vacía y solo el toast
               // efímero. El user tiene forma de reintentar sin refrescar.
               <div className="u-p-20-text-center">
-                <div style={{ color: 'var(--neg)', fontSize: 13, marginBottom: 10 }}>
+                <div className="u-color-neg-fs-13-mb-10">
                   {cajasError}
                 </div>
                 <button className="btn btn-sm" onClick={loadCajas}>
@@ -1004,7 +1004,7 @@ export default function Cajas() {
                       </td>
                       <td>
                         <button className={'badge ' + (c.activo ? 'badge-pos' : 'badge-warn')}
-                                style={{ cursor: 'pointer', border: 'none' }}
+                                className="u-cursor-borderless"
                                 onClick={() => handleToggleCaja(c)}
                                 title="Click para activar / desactivar">
                           {c.activo ? 'Activa' : 'Inactiva'}

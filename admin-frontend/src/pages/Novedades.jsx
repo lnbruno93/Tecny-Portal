@@ -516,8 +516,8 @@ function Counter({ n, max, warn }) {
 
 function Preview({ form }) {
   const meta = TIPO_META[form.tipo] || TIPO_META.feature;
-  const titulo = form.titulo.trim() || <span style={{ color: 'var(--text-dim)' }}>(sin título)</span>;
-  const desc = form.descripcion.trim() || <span style={{ color: 'var(--text-dim)' }}>(sin descripción)</span>;
+  const titulo = form.titulo.trim() || <span className="u-color-text-dim">(sin título)</span>;
+  const desc = form.descripcion.trim() || <span className="u-color-text-dim">(sin descripción)</span>;
   return (
     <div
       style={{

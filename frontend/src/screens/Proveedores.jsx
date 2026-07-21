@@ -502,7 +502,7 @@ export default function Proveedores() {
                 </colgroup>
 
                 <thead>
-                  <tr style={{ background: 'var(--surface-2)', position: 'sticky', top: 0, zIndex: 1 }}>
+                  <tr className="u-sticky-header-bar">
                     {['Fecha', 'Tipo', 'Producto', 'Modelo', 'Cap.', 'Color', 'IMEI / Serial', 'Caja', 'Monto USD', '✓', ''].map((h, i) => (
                       <th key={i} style={{
                         padding: '7px 8px', fontSize: 11, fontWeight: 700,
@@ -561,7 +561,7 @@ export default function Proveedores() {
                         </td>
                         <td className="cell u-text-center">
                           {item?.verificado
-                            ? <span style={{ color: 'var(--pos)', fontSize: 14 }}>✓</span>
+                            ? <span className="u-color-pos-fs-14">✓</span>
                             : <span className="dim u-fs-11">—</span>}
                         </td>
                         <td className="u-p-7-6">

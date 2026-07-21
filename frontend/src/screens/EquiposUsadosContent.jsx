@@ -304,7 +304,7 @@ export default function EquiposUsadosContent({ onCountChange }) {
           <button className="btn btn-sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
             ‹ Anterior
           </button>
-          <span className="muted tiny" style={{ alignSelf: 'center' }}>
+          <span className="muted tiny u-self-center">
             {pagination.page} / {pagination.pages} · {pagination.total} equipos
           </span>
           <button className="btn btn-sm" disabled={page >= pagination.pages} onClick={() => setPage(p => p + 1)}>

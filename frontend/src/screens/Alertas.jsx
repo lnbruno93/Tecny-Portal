@@ -138,7 +138,7 @@ function GrupoAlerta({ grupo }) {
           {grupo.error ? (
             <div className="empty tiny u-color-neg">Error: {grupo.error}</div>
           ) : (
-            <div style={{ borderTop: '1px solid var(--border)' }}>
+            <div className="u-border-top-only">
               {grupo.items.map(item => (
                 <div key={item.id} className="flex-between" style={{
                   padding: '6px 0', borderBottom: '1px solid var(--border-light, rgba(0,0,0,0.05))',

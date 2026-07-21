@@ -250,7 +250,7 @@ export default function Signup() {
                     setEmail('');
                     setError('');
                   }}
-                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                  className="btn-plain-inline"
                 >
                   Volver y crear cuenta de nuevo
                 </button>

@@ -178,7 +178,7 @@ export default function EgresosPanel() {
                     <td className="mono u-text-right">{Number(e.monto) > 0 ? `${e.moneda === 'ARS' ? '$' : 'u$s'} ${fmt(e.monto)}` : '—'}</td>
                     <td className="mono u-color-neg-text-right">u$s {fmt(e.monto_usd)}</td>
                     <td>
-                      <button className={'badge ' + (e.estado === 'pagado' ? 'badge-info' : '')} style={{ cursor: 'pointer', border: 'none' }}
+                      <button className={'badge ' + (e.estado === 'pagado' ? 'badge-info' : '')} className="u-cursor-borderless"
                         title={e.estado === 'pagado' ? 'Marcar pendiente' : 'Marcar pagado'} onClick={() => togglePagado(e)}>
                         {e.estado === 'pagado' ? 'Pagado ✓' : 'Pendiente'}
                       </button>

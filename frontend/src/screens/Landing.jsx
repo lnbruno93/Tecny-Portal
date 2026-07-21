@@ -356,7 +356,7 @@ export default function Landing() {
       </section>
 
       {/* ── MÓDULOS ──────────────────────────────────────── */}
-      <section className="s" id="modulos" style={{ background: 'var(--bg-2)', borderTop: '1px solid var(--hairline)', borderBottom: '1px solid var(--hairline)' }}>
+      <section className="s u-bar-y-hairline" id="modulos">
         <div className="wrap">
           <div className="s-head">
             <div className="s-kicker">Los módulos</div>
@@ -684,7 +684,7 @@ export default function Landing() {
       )}
 
       {/* ── FAQ ──────────────────────────────────────────── */}
-      <section className="s" id="faq" style={{ background: 'var(--bg-2)', borderTop: '1px solid var(--hairline)', borderBottom: '1px solid var(--hairline)' }}>
+      <section className="s u-bar-y-hairline" id="faq">
         <div className="wrap">
           <div className="s-head center">
             <div className="s-kicker">Preguntas frecuentes</div>
