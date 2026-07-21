@@ -239,7 +239,7 @@ export default function RedB2BRegistrarPagoModal({ operation, restanteUsd, onClo
               >
                 <strong>{diferenciaPreview > 0 ? 'Ganancia cambiaria' : 'Pérdida cambiaria'}: </strong>
                 {fmtMoney(Math.abs(diferenciaPreview), 'ARS')}
-                <div style={{ marginTop: 4, fontSize: 12 }}>
+                <div className="u-fs-12-mt-4">
                   Se asentará un movimiento en el módulo Cambios de Divisa de tu tenant.
                 </div>
               </div>
@@ -262,7 +262,7 @@ export default function RedB2BRegistrarPagoModal({ operation, restanteUsd, onClo
                 ))}
               </select>
               {cajasCompat.length === 0 && (
-                <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                <p className="muted u-fs-12-mt-4">
                   No tenés cajas {monedaPago === 'ARS' ? 'ARS' : 'USD/USDT'} activas.
                 </p>
               )}

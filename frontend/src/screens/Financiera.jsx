@@ -739,7 +739,7 @@ export default function Financiera() {
               Persistido en localStorage. Si elegís Personalizado, aparecen 2
               inputs date adicionales para Desde/Hasta. */}
           <div className="card card-tight u-mb-14">
-            <div className="flex-row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div className="flex-row u-gap-6-wrap-center">
               <span className="muted tiny u-mr-4">Período:</span>
               {[
                 { v: 'hoy',         l: 'Hoy' },
@@ -756,7 +756,7 @@ export default function Financiera() {
               ))}
               {dashRange.preset === 'custom' && (
                 <>
-                  <input type="date" className="input" style={{ width: 140, marginLeft: 6 }}
+                  <input type="date" className="input u-w-140-ml-6"
                          value={dashRange.desde}
                          onChange={e => setDashRange(r => ({ ...r, desde: e.target.value }))} />
                   <span className="muted tiny">a</span>
@@ -1134,7 +1134,7 @@ export default function Financiera() {
             Persistida en localStorage con clave distinta (fin_comps_range)
             para que cada tab recuerde su scope sin pisarse. */}
         <div className="card card-tight u-mb-14">
-          <div className="flex-row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div className="flex-row u-gap-6-wrap-center">
             <span className="muted tiny u-mr-4">Período:</span>
             {[
               { v: 'hoy',         l: 'Hoy' },
@@ -1151,7 +1151,7 @@ export default function Financiera() {
             ))}
             {compRange.preset === 'custom' && (
               <>
-                <input type="date" className="input" style={{ width: 140, marginLeft: 6 }}
+                <input type="date" className="input u-w-140-ml-6"
                        value={compRange.desde}
                        onChange={e => setCompRange(r => ({ ...r, desde: e.target.value }))} />
                 <span className="muted tiny">a</span>
@@ -1170,12 +1170,12 @@ export default function Financiera() {
             <h3>
               Comprobantes — {compsTotal}
               {compSearch && filteredComps.length !== comps.length && (
-                <span className="muted tiny" style={{ marginLeft: 8, fontWeight: 400 }}>
+                <span className="muted tiny u-ml-8-fw-400">
                   · {filteredComps.length} coinciden con "{compSearch}"
                 </span>
               )}
               {compsTotal > 500 && (
-                <span className="muted tiny" style={{ marginLeft: 8, fontWeight: 400 }}>
+                <span className="muted tiny u-ml-8-fw-400">
                   · mostrando 500 más recientes — refiná el filtro de fecha
                 </span>
               )}

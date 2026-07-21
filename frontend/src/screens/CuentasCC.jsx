@@ -1151,12 +1151,12 @@ export default function CuentasCC() {
                 background: selectedId === c.id ? 'var(--surface-2)' : 'transparent',
                 borderLeft: selectedId === c.id ? '3px solid var(--accent)' : '3px solid transparent',
               }}>
-                <div className="flex-between" style={{ marginBottom: 3 }}>
+                <div className="flex-between u-mb-3">
                   <div className="u-fs-13-fw-600">{c.nombre} {c.apellido || ''}</div>
                   {catBadge(c.categoria)}
                 </div>
                 {(c.localidad || c.provincia) && (
-                  <div className="muted tiny" style={{ marginBottom: 3 }}>
+                  <div className="muted tiny u-mb-3">
                     {c.localidad}{c.provincia ? ', ' + c.provincia : ''}
                   </div>
                 )}
@@ -1221,13 +1221,13 @@ export default function CuentasCC() {
                   </div>
                   <div className="u-text-right">
                     <div className="muted tiny">Total comprado</div>
-                    <div className="mono" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.1 }}>
+                    <div className="mono u-fs-14-fw-600-lh-11">
                       USD {fmt(resumen.total_compras || 0)}
                     </div>
                   </div>
                   <div className="u-text-right">
                     <div className="muted tiny">Movimientos</div>
-                    <div className="mono" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.1 }}>
+                    <div className="mono u-fs-14-fw-600-lh-11">
                       {resumen.cant_movimientos || 0}
                     </div>
                   </div>
@@ -1519,7 +1519,7 @@ export default function CuentasCC() {
                   <label className="field-label">Saldo inicial · USD <span className="muted">(opcional)</span></label>
                   <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input mono" placeholder="0"
                     value={clienteForm.saldo_inicial} onChange={e => setClienteForm(f => ({ ...f, saldo_inicial: e.target.value }))} />
-                  <div className="muted tiny" style={{ marginTop: 3 }}>Si el cliente ya nos debe algo, arrancá su cuenta con ese saldo.</div>
+                  <div className="muted tiny u-mt-3">Si el cliente ya nos debe algo, arrancá su cuenta con ese saldo.</div>
                 </div>
                 {clienteError && <div className="u-color-neg-fs-13">{clienteError}</div>}
               </div>

@@ -122,14 +122,14 @@ export default function TwoFaSetup({ onDone, onCancel, onError }) {
 
   return (
     <div className="card" style={{ padding: 20 }}>
-      <h3 style={{ marginTop: 0 }}>Activar autenticación de dos factores</h3>
+      <h3 className="u-mt-0">Activar autenticación de dos factores</h3>
       <div className="muted" style={{ marginBottom: 18, fontSize: 13 }}>
         Necesitás una app autenticadora en tu cel: Google Authenticator,
         Authy, 1Password o cualquier otra compatible con TOTP.
       </div>
 
       {/* ── Paso 1: QR + secret manual ── */}
-      <div style={{ marginBottom: 24 }}>
+      <div className="u-mb-24">
         <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>
           Paso 1 — Escaneá el QR con tu app autenticadora
         </div>
@@ -169,7 +169,7 @@ export default function TwoFaSetup({ onDone, onCancel, onError }) {
       </div>
 
       {/* ── Paso 2: Recovery codes ── */}
-      <div style={{ marginBottom: 24 }}>
+      <div className="u-mb-24">
         <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>
           Paso 2 — Guardá estos recovery codes ⚠️
         </div>

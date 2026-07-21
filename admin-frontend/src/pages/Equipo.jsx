@@ -139,25 +139,25 @@ export default function Equipo() {
       />
 
       {error && (
-        <div className="banner banner-neg" role="alert" style={{ marginBottom: 'var(--gap)' }}>
+        <div className="banner banner-neg u-mb-var-gap" role="alert">
           {error}
         </div>
       )}
       {success && (
-        <div className="banner banner-pos" role="status" style={{ marginBottom: 'var(--gap)' }}>
+        <div className="banner banner-pos u-mb-var-gap" role="status">
           {success}
         </div>
       )}
 
       {loading ? (
-        <div className="stack" style={{ gap: 'var(--gap)' }}>
+        <div className="stack u-gap-var-gap">
           <div className="card" style={{ minHeight: 120 }}>
             <span className="skeleton" style={{ display: 'inline-block', width: 180, height: 16, marginBottom: 10 }} />
             <span className="skeleton" style={{ display: 'block', width: '100%', height: 48 }} />
           </div>
         </div>
       ) : (
-        <div className="stack" style={{ gap: 'var(--gap)' }}>
+        <div className="stack u-gap-var-gap">
           {/* ── Super admins activos ─────────────────────────────────── */}
           <Card
             flush
@@ -167,13 +167,13 @@ export default function Equipo() {
               : `${data.super_admins.length} super-admins con acceso al back office.`
             }
           >
-            <div className="card-body" style={{ padding: 0 }}>
+            <div className="card-body u-p-0">
               {data.super_admins.length === 0 ? (
                 <div className="muted u-p-16">
                   No hay super-admins activos.
                 </div>
               ) : (
-                <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                <ul className="u-list-reset">
                   {data.super_admins.map((a) => (
                     <li
                       key={a.id}
@@ -244,13 +244,13 @@ export default function Equipo() {
               : `${data.pending_invites.length} en curso.`
             }
           >
-            <div className="card-body" style={{ padding: 0 }}>
+            <div className="card-body u-p-0">
               {data.pending_invites.length === 0 ? (
                 <div className="muted u-p-16">
                   Podés invitar a más admins con el botón "Invitar admin".
                 </div>
               ) : (
-                <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                <ul className="u-list-reset">
                   {data.pending_invites.map((inv) => (
                     <li
                       key={inv.id}

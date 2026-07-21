@@ -187,7 +187,7 @@ export function RedB2BConciliacionContent({
       </div>
 
       <section className="card" style={{ padding: 16, marginBottom: 16 }}>
-        <h3 style={{ marginTop: 0, fontSize: 16 }}>Totales agregados</h3>
+        <h3 className="u-mt-0-fs-16">Totales agregados</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
           <KpiBox label="Operaciones (USD)" value={fmtMoney(totales.operaciones_usd, 'USD')} sub={`${totales.ops_count} ops`} />
           <KpiBox label="Pagado (USD)" value={fmtMoney(totales.pagado_usd, 'USD')} sub={`${totales.pagos_count} pagos`} />
@@ -200,7 +200,7 @@ export function RedB2BConciliacionContent({
       </section>
 
       <section className="card" style={{ padding: 16, marginBottom: 16 }}>
-        <h3 style={{ marginTop: 0, fontSize: 16 }}>Conciliación bilateral</h3>
+        <h3 className="u-mt-0-fs-16">Conciliación bilateral</h3>
         {saldos_bilaterales.difieren ? (
           <div style={{ background: 'var(--red-bg, #fef2f2)', padding: 12, borderRadius: 4, marginBottom: 12 }}>
             <strong style={{ color: 'var(--red-fg, #991b1b)' }}>

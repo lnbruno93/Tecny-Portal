@@ -397,7 +397,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
           )}
           {/* ── Cabecera: fecha + caja + tc ── */}
           <div className="row u-mb-12">
-            <div className="field" style={{ flex: '0 0 150px' }}>
+            <div className="field u-flex-0-0-150">
               <label className="field-label">Fecha</label>
               <input type="date" className="input" value={fecha} onChange={e => setFecha(e.target.value)} />
             </div>
@@ -502,7 +502,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
                 <col className="u-w-120px" />  {/* Categoría */}
                 <col className="u-w-120px" />  {/* Depósito */}
                 <col style={{ width: 88 }} />   {/* Condición */}
-                <col style={{ width: 96 }} />   {/* Tipo carga */}
+                <col className="u-w-96" />   {/* Tipo carga */}
                 <col className="u-w-60px" />   {/* Cant */}
                 <col className="u-w-80px" />   {/* Costo */}
                 <col style={{ width: 64 }} />   {/* Moneda */}

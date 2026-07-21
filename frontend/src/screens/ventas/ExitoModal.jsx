@@ -72,8 +72,7 @@ export default function ExitoModal({ state, onClose, onDescargar, pdfLoading, on
             {pdfLoading ? 'Generando…' : 'Descargar comprobante'}
           </button>
           {ventaEmail && onReenviarEmail && (
-            <button className="btn btn-ghost"
-                    style={{ minWidth: 180 }}
+            <button className="btn btn-ghost u-mw-180"
                     onClick={() => onReenviarEmail(state.venta)}>
               Reenviar por mail
             </button>

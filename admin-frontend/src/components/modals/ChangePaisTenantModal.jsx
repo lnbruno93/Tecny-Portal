@@ -137,8 +137,8 @@ export default function ChangePaisTenantModal({ tenant, open, onClose, onSaved }
       </div>
 
       <div className="u-mb-14">
-        <div className="form-label" style={{ marginBottom: 6 }}>País destino</div>
-        <div className="flex-row" style={{ gap: 12, flexWrap: 'wrap' }}>
+        <div className="form-label u-mb-6">País destino</div>
+        <div className="flex-row u-gap-12-flex-wrap">
           {PAISES.map((p) => {
             const esActual = p.value === paisActual;
             return (

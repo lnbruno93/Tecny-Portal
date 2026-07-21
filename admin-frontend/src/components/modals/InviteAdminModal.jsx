@@ -97,7 +97,7 @@ export default function InviteAdminModal({ open, onClose, onCreated }) {
         </>
       }
     >
-      <p className="muted tiny" style={{ marginTop: 0, marginBottom: 14 }}>
+      <p className="muted tiny u-mt-0-mb-14">
         Le mandamos un email con un link para que elija su password. El link
         vence en 48 horas.
       </p>

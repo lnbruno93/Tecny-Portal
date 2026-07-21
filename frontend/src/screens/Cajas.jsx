@@ -630,7 +630,7 @@ export default function Cajas() {
               "La sección de deudas de clientes se rompe" — Lucas remite al
               primer screenshot (sin drill-down) que se ve bien y quería
               conservar esa vista siempre. */}
-          <div className="stack" style={{ gap: 'var(--gap)' }}>
+          <div className="stack u-gap-var-gap">
             {/* Lista */}
             <div className="card card-flush">
               {/* Header del card con botón contextual de acción primaria.
@@ -639,7 +639,7 @@ export default function Cajas() {
                   cuando NO hay contacto seleccionado: el "+Movimiento" del
                   detalle a la derecha requiere primero clickear un contacto. */}
               <div className="card-hd flex-between" style={{ alignItems: 'center' }}>
-                <h3 style={{ margin: 0 }}>Por contacto</h3>
+                <h3 className="u-m-0">Por contacto</h3>
                 <button className="btn btn-primary btn-sm"
                         onClick={() => { setDeudaForm(EMPTY_DEUDA()); setDeudaError(''); setShowDeuda(true); }}>
                   <Icons.Plus size={13} /> Nuevo movimiento
@@ -804,7 +804,7 @@ export default function Cajas() {
                 — esta versión es más descubrible para users nuevos que esperan
                 el botón DENTRO de la pantalla, al lado del título. */}
             <div className="card-hd flex-between" style={{ alignItems: 'center' }}>
-              <h3 style={{ margin: 0 }}>Inversiones — {inversiones.length}</h3>
+              <h3 className="u-m-0">Inversiones — {inversiones.length}</h3>
               <button className="btn btn-primary btn-sm"
                       onClick={() => { setInvForm(EMPTY_INV()); setInvError(''); setShowInv(true); }}>
                 <Icons.Plus size={13} /> Nueva inversión
@@ -965,7 +965,7 @@ export default function Cajas() {
               // 2026-07-16 (task #144 UX A): banner con retry visible cuando
               // el load falla, en vez de dejar la tabla vacía y solo el toast
               // efímero. El user tiene forma de reintentar sin refrescar.
-              <div style={{ padding: 20, textAlign: 'center' }}>
+              <div className="u-p-20-text-center">
                 <div style={{ color: 'var(--neg)', fontSize: 13, marginBottom: 10 }}>
                   {cajasError}
                 </div>

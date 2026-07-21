@@ -137,7 +137,7 @@ export default function Novedades() {
     <div>
       <div className="page-head">
         <div>
-          <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <h1 className="page-title u-flex-center-gap-10">
             Novedades
             {totalUnseen > 0 && (
               <span

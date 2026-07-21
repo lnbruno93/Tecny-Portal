@@ -263,7 +263,7 @@ export default function ShareLinkPanel() {
                 onChange={e => setMostrarBateria(e.target.checked)}
               />
               <div className="u-flex-1">
-                <div style={{ fontSize: 13, fontWeight: 500 }}>Mostrar batería del equipo</div>
+                <div className="u-fs-13-fw-500">Mostrar batería del equipo</div>
                 <div className="muted tiny">Si preferís no mostrarla al público, apagalo.</div>
               </div>
             </label>
@@ -274,7 +274,7 @@ export default function ShareLinkPanel() {
                 onChange={e => setMostrarPrecio(e.target.checked)}
               />
               <div className="u-flex-1">
-                <div style={{ fontSize: 13, fontWeight: 500 }}>Mostrar precio de venta</div>
+                <div className="u-fs-13-fw-500">Mostrar precio de venta</div>
                 <div className="muted tiny">Apagalo si preferís que consulten por WhatsApp. El equipo sale igual pero sin monto.</div>
               </div>
             </label>

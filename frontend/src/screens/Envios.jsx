@@ -1724,7 +1724,7 @@ export default function Envios() {
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: form.vuelto_monto ? 8 : 0 }}>
                       <div className="u-fs-13-fw-600">
                         Vuelto/Cambio
-                        <span className="muted tiny" style={{ marginLeft: 8, fontWeight: 400 }}>
+                        <span className="muted tiny u-ml-8-fw-400">
                           (opcional — dinero que entregás al cliente)
                         </span>
                       </div>

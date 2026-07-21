@@ -131,7 +131,7 @@ export default function ForgotPassword() {
                   contraseña. Abrilo desde el email para elegir una nueva.
                 </p>
               </div>
-              <div className="field-note" style={{ marginTop: 16 }}>
+              <div className="field-note u-mt-16">
                 ¿No lo ves? Revisá la carpeta de spam. El link expira en{' '}
                 {ttlHours} {ttlHours === 1 ? 'hora' : 'horas'}.
               </div>

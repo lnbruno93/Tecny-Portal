@@ -83,7 +83,7 @@ function FinancieraReport({ report }) {
           </summary>
           {report.muestras.comprobantes?.length > 0 && (
             <div className="u-mt-8">
-              <div style={{ fontWeight: 600, marginBottom: 4 }}>Comprobantes:</div>
+              <div className="u-fw-600-mb-4">Comprobantes:</div>
               <table className="tbl">
                 <thead><tr><th>Fecha</th><th>Cliente</th><th className="u-text-right">Neto</th></tr></thead>
                 <tbody>
@@ -100,7 +100,7 @@ function FinancieraReport({ report }) {
           )}
           {report.muestras.pagos?.length > 0 && (
             <div className="u-mt-10">
-              <div style={{ fontWeight: 600, marginBottom: 4 }}>Pagos:</div>
+              <div className="u-fw-600-mb-4">Pagos:</div>
               <table className="tbl">
                 <thead><tr><th>Fecha</th><th>Caja destino</th><th className="u-text-right">Monto</th></tr></thead>
                 <tbody>

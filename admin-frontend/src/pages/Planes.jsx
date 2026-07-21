@@ -82,7 +82,7 @@ function PlanRow({ row, onEdit, dirty, saving }) {
       </header>
 
       <div className="card-body">
-        <p className="muted tiny" style={{ marginTop: 0, marginBottom: 14 }}>
+        <p className="muted tiny u-mt-0-mb-14">
           {PLAN_BLURB[row.plan] || ''}
         </p>
 
@@ -169,7 +169,7 @@ function ConfirmModal({ open, onClose, change, onConfirm, submitting, error }) {
         </>
       }
     >
-      <p style={{ marginTop: 0 }}>
+      <p className="u-mt-0">
         <strong>{planLabel(plan)}</strong>: {fmtMoney(oldPrice)} → <strong>{fmtMoney(newPrice)}</strong>
         {notesChanged && <span className="muted tiny"> · también se actualizan las notas</span>}
       </p>
@@ -407,7 +407,7 @@ export default function Planes() {
       )}
 
       {loading ? (
-        <div className="stack" style={{ gap: 'var(--gap)' }}>
+        <div className="stack u-gap-var-gap">
           {[0, 1, 2, 3].map((i) => (
             <div key={i} className="card" style={{ minHeight: 140 }}>
               <span className="skeleton" style={{ display: 'inline-block', width: 100, height: 16, marginBottom: 12 }} />
@@ -416,7 +416,7 @@ export default function Planes() {
           ))}
         </div>
       ) : (
-        <div className="stack" style={{ gap: 'var(--gap)' }}>
+        <div className="stack u-gap-var-gap">
           {displayRows.map((row) => (
             <div key={row.plan}>
               <PlanRow

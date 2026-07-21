@@ -180,7 +180,7 @@ export default function ChangePasswordModal({ open, onClose, onSuccess }) {
         </>
       }
     >
-      <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <form onSubmit={handleSubmit} noValidate className="u-flex-col-gap-14">
         {success && (
           <div
             role="status"
@@ -214,7 +214,7 @@ export default function ChangePasswordModal({ open, onClose, onSuccess }) {
         <div>
           <label
             htmlFor="admin-change-pw-current"
-            style={{ display: 'block', fontSize: 12, marginBottom: 6 }}
+            className="u-block-fs-12-mb-6"
           >
             Contraseña actual
           </label>
@@ -227,7 +227,7 @@ export default function ChangePasswordModal({ open, onClose, onSuccess }) {
               autoComplete="current-password"
               disabled={loading || twofaRequired || !!success}
               aria-invalid={!!fieldErrors.currentPassword}
-              style={{ width: '100%', paddingRight: 38 }}
+              className="u-w-100-pr-38"
             />
             <button
               type="button"
@@ -254,7 +254,7 @@ export default function ChangePasswordModal({ open, onClose, onSuccess }) {
         <div>
           <label
             htmlFor="admin-change-pw-new"
-            style={{ display: 'block', fontSize: 12, marginBottom: 6 }}
+            className="u-block-fs-12-mb-6"
           >
             Contraseña nueva
           </label>
@@ -267,7 +267,7 @@ export default function ChangePasswordModal({ open, onClose, onSuccess }) {
               autoComplete="new-password"
               disabled={loading || twofaRequired || !!success}
               aria-invalid={!!fieldErrors.newPassword}
-              style={{ width: '100%', paddingRight: 38 }}
+              className="u-w-100-pr-38"
             />
             <button
               type="button"
@@ -288,7 +288,7 @@ export default function ChangePasswordModal({ open, onClose, onSuccess }) {
               {fieldErrors.newPassword}
             </div>
           ) : (
-            <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+            <div className="muted u-fs-12-mt-4">
               Mínimo {MIN_PASSWORD_LENGTH} caracteres, con letra y número.
             </div>
           )}
@@ -298,7 +298,7 @@ export default function ChangePasswordModal({ open, onClose, onSuccess }) {
         <div>
           <label
             htmlFor="admin-change-pw-confirm"
-            style={{ display: 'block', fontSize: 12, marginBottom: 6 }}
+            className="u-block-fs-12-mb-6"
           >
             Confirmar contraseña nueva
           </label>
@@ -324,7 +324,7 @@ export default function ChangePasswordModal({ open, onClose, onSuccess }) {
           <div>
             <label
               htmlFor="admin-change-pw-2fa"
-              style={{ display: 'block', fontSize: 12, marginBottom: 6 }}
+              className="u-block-fs-12-mb-6"
             >
               Código 2FA
             </label>
@@ -350,7 +350,7 @@ export default function ChangePasswordModal({ open, onClose, onSuccess }) {
                 {fieldErrors.twofaCode}
               </div>
             ) : (
-              <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+              <div className="muted u-fs-12-mt-4">
                 Abrí tu app de 2FA y pegá el código actual.
               </div>
             )}

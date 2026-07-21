@@ -146,7 +146,7 @@ export default function VendedoresCatalogModal({ open, onClose, onChange }) {
           </button>
         </div>
 
-        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div className="modal-body u-flex-col-gap-14">
           {/* Agregar vendedor */}
           <div className="input-group" style={{ maxWidth: '100%' }}>
             <input

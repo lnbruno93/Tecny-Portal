@@ -397,7 +397,7 @@ export default function Proveedores() {
               }}>
                 <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 3 }}>{p.nombre}</div>
                 {(p.ubicacion || p.contacto_nombre) && (
-                  <div className="muted tiny" style={{ marginBottom: 3 }}>
+                  <div className="muted tiny u-mb-3">
                     {[
                       [p.contacto_nombre, p.contacto_apellido].filter(Boolean).join(' '),
                       p.ubicacion,
@@ -451,13 +451,13 @@ export default function Proveedores() {
                   </div>
                   <div className="u-text-right">
                     <div className="muted tiny">Total comprado</div>
-                    <div className="mono" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.1 }}>
+                    <div className="mono u-fs-14-fw-600-lh-11">
                       USD {fmt(kpis.totalCompras)}
                     </div>
                   </div>
                   <div className="u-text-right">
                     <div className="muted tiny">Movimientos</div>
-                    <div className="mono" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.1 }}>
+                    <div className="mono u-fs-14-fw-600-lh-11">
                       {kpis.cantMovimientos}
                     </div>
                   </div>
@@ -693,7 +693,7 @@ export default function Proveedores() {
             </div>
             <div className="modal-body">
               <div className="row">
-                <div className="field" style={{ flex: '0 0 150px' }}>
+                <div className="field u-flex-0-0-150">
                   <label className="field-label">Fecha</label>
                   <input type="date" className="input" value={pagoForm.fecha}
                     onChange={e => setPagoForm(f => ({ ...f, fecha: e.target.value }))} />

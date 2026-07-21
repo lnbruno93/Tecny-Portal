@@ -63,7 +63,7 @@ export default function MiCuenta() {
         subtitle="Gestioná tu contraseña, 2FA y datos personales."
       />
 
-      <div style={{ marginBottom: 'var(--gap)' }}>
+      <div className="u-mb-var-gap">
         <Seg
           value={tab}
           options={TAB_OPTIONS}

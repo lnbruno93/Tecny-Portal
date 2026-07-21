@@ -138,7 +138,7 @@ export default function RedB2BOperacionDetalle() {
       <div className="screen-wrap">
         <div className="empty-state u-p-32">
           Operación no encontrada.
-          <div style={{ marginTop: 16 }}>
+          <div className="u-mt-16">
             <Link to="/red-b2b/operaciones" className="btn-secondary">
               Volver al listado
             </Link>
@@ -258,7 +258,7 @@ export default function RedB2BOperacionDetalle() {
       </section>
 
       <section className="card u-p-16">
-        <h2 style={{ marginTop: 0, fontSize: 16 }}>Notas</h2>
+        <h2 className="u-mt-0-fs-16">Notas</h2>
         {canEdit ? (
           <>
             <textarea
@@ -434,7 +434,7 @@ export default function RedB2BOperacionDetalle() {
       )}
 
       <section className="card" style={{ padding: 16, marginTop: 16 }}>
-        <h2 style={{ marginTop: 0, fontSize: 16 }}>Trazabilidad</h2>
+        <h2 className="u-mt-0-fs-16">Trazabilidad</h2>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 14 }}>
           {isSeller && (
             <div>

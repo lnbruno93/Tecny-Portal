@@ -150,7 +150,7 @@ export default function RedB2BOperaciones() {
             Cargando operaciones…
           </div>
         ) : operations.length === 0 ? (
-          <div className="empty-state" style={{ padding: 32, textAlign: 'center' }}>
+          <div className="empty-state u-p-32-text-center">
             <p className="u-mb-8">No hay operaciones cross-tenant aún.</p>
             <p className="muted u-fs-14">
               Cuando vendas a un partner Tecny o recibas una compra de un
