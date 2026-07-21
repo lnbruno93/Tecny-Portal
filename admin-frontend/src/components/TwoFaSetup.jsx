@@ -141,7 +141,7 @@ export default function TwoFaSetup({ onDone, onCancel, onError }) {
             ref={canvasRef}
             role="img"
             aria-label="Código QR de activación 2FA. Si no podés escanearlo, usá el código manual de abajo."
-            style={{ flexShrink: 0, borderRadius: 4, background: '#fff' }}
+            className="u-flex-shrink-0-r-4-bg-white"
           />
           <div className="u-flex-1-minw-0">
             <div className="muted" style={{ marginBottom: 6, fontSize: 12 }}>

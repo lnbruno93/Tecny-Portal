@@ -1902,7 +1902,7 @@ export default function Inventario() {
                                     onChange={e => updateImportGroup(g.key, { proveedor_nuevo: e.target.value })} />
                                 )}
                               </div>
-                              <div className="field" style={{ flex: '0 0 130px' }}>
+                              <div className="field u-flex-00-130">
                                 <label className="field-label">Fecha</label>
                                 <input type="date" className="input" value={g.fecha}
                                   onChange={e => updateImportGroup(g.key, { fecha: e.target.value })} />
@@ -1929,7 +1929,7 @@ export default function Inventario() {
                                 </select>
                               </div>
                               {monedaSel !== 'USD' && (
-                                <div className="field" style={{ flex: '0 0 130px' }}>
+                                <div className="field u-flex-00-130">
                                   <label className="field-label">
                                     TC {monedaSel}→USD <span className="u-color-neg">*</span>
                                   </label>

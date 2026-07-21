@@ -646,7 +646,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
               <input className="input" value={notas} onChange={e => setNotas(e.target.value)}
                 placeholder="Ej. Pago con transferencia, recibo #5421" />
             </div>
-            <div style={{ flex: '0 0 220px', textAlign: 'right' }}>
+            <div className="u-flex-00-220-td-right">
               <div className="muted tiny">Total compra</div>
               <div className="mono u-fs-22-fw-800">
                 {/* #M-13: si no hay filas usadas, mostrar guion en vez de
@@ -674,7 +674,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
 function Field({ label, children }) {
   return (
     <div className="field" style={{ flex: 1, minWidth: 110 }}>
-      <label className="field-label" style={{ fontSize: 10 }}>{label}</label>
+      <label className="field-label u-fs-10">{label}</label>
       {children}
     </div>
   );

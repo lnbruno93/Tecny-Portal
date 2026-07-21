@@ -594,7 +594,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
               <input className="input" value={descripcion} onChange={e => setDescripcion(e.target.value)}
                 placeholder="Ej. Pedido WhatsApp del 29/5" />
             </div>
-            <div style={{ flex: '0 0 220px', textAlign: 'right' }}>
+            <div className="u-flex-00-220-td-right">
               <div className="muted tiny">Total venta</div>
               <div className="mono u-fs-22-fw-800">
                 {/* #M-13: guion en vez de "USD 0" cuando no hay filas usadas. */}

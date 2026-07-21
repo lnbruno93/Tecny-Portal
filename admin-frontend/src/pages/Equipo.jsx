@@ -203,7 +203,7 @@ export default function Equipo() {
                         {initials(a)}
                       </div>
                       <div className="u-flex-1-minw-0">
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <div className="u-flex-center-8-wrap-nogap">
                           <strong>{a.username}</strong>
                           {a.is_you && <Badge tone="info">Vos</Badge>}
                           <Badge tone={a.twofa_enabled ? 'pos' : 'warn'}>
@@ -263,7 +263,7 @@ export default function Equipo() {
                       }}
                     >
                       <div className="u-flex-1-minw-0">
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <div className="u-flex-center-8-wrap-nogap">
                           <strong>{inv.email}</strong>
                           <span className="muted tiny">· {inv.nombre}</span>
                         </div>

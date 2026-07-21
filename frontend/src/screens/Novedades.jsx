@@ -245,9 +245,9 @@ export default function Novedades() {
                   margin: gi === 0 ? '0 0 10px' : '20px 0 10px',
                 }}
               >
-                <span style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                <span className="u-flex-1-h-1-bg-border" />
                 <span>{g.label}</span>
-                <span style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                <span className="u-flex-1-h-1-bg-border" />
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {g.notas.map((n) => (

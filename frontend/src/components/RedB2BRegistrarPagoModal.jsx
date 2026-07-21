@@ -169,7 +169,7 @@ export default function RedB2BRegistrarPagoModal({ operation, restanteUsd, onClo
             <div className="field u-mb-12">
               <span className="field-label">Moneda del pago</span>
               <div style={{ display: 'flex', gap: 16, marginTop: 4 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                <label className="u-flex-center-6-fs-13">
                   <input
                     type="radio"
                     name="moneda_pago"
@@ -179,7 +179,7 @@ export default function RedB2BRegistrarPagoModal({ operation, restanteUsd, onClo
                   />
                   USD (sin re-cálculo)
                 </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                <label className="u-flex-center-6-fs-13">
                   <input
                     type="radio"
                     name="moneda_pago"

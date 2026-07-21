@@ -360,7 +360,7 @@ export default function ChangePasswordModal({ open, onClose, onSuccess }) {
         {/* Submit hidden — el botón real vive en modal actions. Este
             input hidden permite que Enter dentro de cualquier campo dispare
             el submit del form. */}
-        <button type="submit" style={{ display: 'none' }} aria-hidden="true" tabIndex={-1} />
+        <button type="submit" className="u-display-none" aria-hidden="true" tabIndex={-1} />
       </form>
     </Modal>
   );

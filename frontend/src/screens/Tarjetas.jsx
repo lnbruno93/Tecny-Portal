@@ -937,7 +937,7 @@ export default function Tarjetas() {
                         aria-hidden por ser decorativos (lectores no los
                         anuncian sueltos). U4/U11 auditoría 2026-06-06. */}
                     <div className="flex-row u-gap-8-wrap-flex-end">
-                      <div className="field" style={{ flex: '1 1 140px', minWidth: 140 }}>
+                      <div className="field u-flex-11-140-mw-140">
                         <label htmlFor="multiliq-usd" className="field-label tiny">USD recibido (caja)</label>
                         <input id="multiliq-usd" type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input mono"
                                placeholder="0"
@@ -947,7 +947,7 @@ export default function Tarjetas() {
                       <div className="flex-row u-align-center-mb-8" aria-hidden="true">
                         <span className="muted u-fs-18-fw-700">×</span>
                       </div>
-                      <div className="field" style={{ flex: '1 1 120px', minWidth: 120 }}>
+                      <div className="field u-flex-11-120-mw-120">
                         <label htmlFor="multiliq-tc" className="field-label tiny">TC del día</label>
                         <input id="multiliq-tc" type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input mono"
                                placeholder="0"
@@ -960,7 +960,7 @@ export default function Tarjetas() {
                       <div className="flex-row u-align-center-mb-8" aria-hidden="true">
                         <span className="muted u-fs-18-fw-700">=</span>
                       </div>
-                      <div className="field" style={{ flex: '1 1 160px', minWidth: 160 }}>
+                      <div className="field u-flex-11-160-mw-160">
                         <label htmlFor="multiliq-ars" className="field-label tiny">Total ARS (descuenta del saldo)</label>
                         <input id="multiliq-ars" type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono"
                                placeholder="0"
@@ -1165,7 +1165,7 @@ export default function Tarjetas() {
                 <form onSubmit={handleLiquidar} className="flex-row u-gap-8-wrap-flex-end">
                   <div className="field u-w-150px"><label className="field-label tiny">Fecha</label><input type="date" className="input" value={liq.fecha} onChange={e => setLiq(f => ({ ...f, fecha: e.target.value }))} /></div>
                   <div className="field u-w-150px"><label className="field-label tiny">Monto recibido</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="0" value={liq.monto} onChange={e => setLiq(f => ({ ...f, monto: e.target.value }))} /></div>
-                  <div className="field" style={{ flex: 1, minWidth: 160 }}><label className="field-label tiny">Entra a la caja</label>
+                  <div className="field u-flex-1-mw-160"><label className="field-label tiny">Entra a la caja</label>
                     <select className="input" value={liq.caja_id} onChange={e => setLiq(f => ({ ...f, caja_id: e.target.value }))}>
                       <option value="">Elegí la caja…</option>
                       {cajas.filter(c => !c.es_tarjeta).map(c => <option key={c.id} value={c.id}>{c.nombre}{c.moneda ? ' · ' + c.moneda : ''}</option>)}
@@ -1386,7 +1386,7 @@ export default function Tarjetas() {
                                className="input mono" value={editForm.monto || ''}
                                onChange={e => setEditForm(f => ({ ...f, monto: e.target.value }))} />
                       </div>
-                      <div className="field" style={{ flex: 1, minWidth: 160 }}>
+                      <div className="field u-flex-1-mw-160">
                         <label className="field-label">Entra a la caja</label>
                         <select className="input" value={editForm.caja_id || ''}
                                 onChange={e => setEditForm(f => ({ ...f, caja_id: e.target.value }))}>

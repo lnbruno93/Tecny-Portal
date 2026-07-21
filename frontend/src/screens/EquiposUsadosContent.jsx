@@ -347,7 +347,7 @@ function UsadoRow({ p }) {
       <td className="right mono">
         {p.costo != null ? (
           <>
-            <span className="ccy" style={{ fontSize: 11, color: 'var(--text-muted)', marginRight: 3 }}>
+            <span className="ccy u-fs-11-muted-mr-3">
               {p.costo_moneda || 'USD'}
             </span>
             {fmtN(p.costo)}
@@ -359,7 +359,7 @@ function UsadoRow({ p }) {
       <td className="right mono">
         {p.precio_venta ? (
           <>
-            <span className="ccy" style={{ fontSize: 11, color: 'var(--text-muted)', marginRight: 3 }}>
+            <span className="ccy u-fs-11-muted-mr-3">
               {p.precio_moneda || 'USD'}
             </span>
             {fmtN(p.precio_venta)}

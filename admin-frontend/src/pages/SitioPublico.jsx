@@ -422,7 +422,7 @@ export default function SitioPublico() {
                              onChange={e => setHero(x => ({ ...x, [f.key]: e.target.value }))}
                              disabled={saving} className="u-w-100" />
                     )}
-                    <div className="muted" style={{ fontSize: 11, marginTop: 4, display: 'flex', justifyContent: 'space-between' }}>
+                    <div className="muted u-fs-11-mt-4-flex-between">
                       <span>{f.hint}</span>
                       <span>{(hero[f.key] || '').length} / {f.maxLength}</span>
                     </div>
@@ -473,7 +473,7 @@ export default function SitioPublico() {
                              onChange={e => setCta(x => ({ ...x, [f.key]: e.target.value }))}
                              disabled={saving} className="u-w-100" />
                     )}
-                    <div className="muted" style={{ fontSize: 11, marginTop: 4, display: 'flex', justifyContent: 'space-between' }}>
+                    <div className="muted u-fs-11-mt-4-flex-between">
                       <span>{f.hint}</span>
                       <span>{(cta[f.key] || '').length} / {f.maxLength}</span>
                     </div>
@@ -563,7 +563,7 @@ export default function SitioPublico() {
           {/* ── SECCIÓN GOOGLE REVIEWS ── */}
           <Card>
             <div className="u-p-20-grid-gap-16">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+              <div className="u-flex-between-start-16-wrap">
                 <div>
                   <h3 className="u-modal-title">
                     Reseñas de Google
@@ -662,7 +662,7 @@ export default function SitioPublico() {
                   <div className="u-fs-13-fw-600">
                     Mostrar reseñas de Google en la landing
                   </div>
-                  <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
+                  <div className="muted u-fs-11-mt-2">
                     Si lo desactivás, el backend deja de consultar a Google (ahorra API quota)
                     y la landing muestra solo las reseñas manuales de abajo. Reversible en cualquier
                     momento.

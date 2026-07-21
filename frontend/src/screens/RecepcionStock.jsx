@@ -417,7 +417,7 @@ export default function RecepcionStock() {
                 <div className="u-flex-gap-8">
                   <label className="u-flex-1">
                     <div className="muted tiny u-mb-2">Costo</div>
-                    <div style={{ display: 'flex', gap: 2 }}>
+                    <div className="u-flex-gap-2">
                       <input
                         className="input"
                         type="text"
@@ -442,7 +442,7 @@ export default function RecepcionStock() {
                   </label>
                   <label className="u-flex-1">
                     <div className="muted tiny u-mb-2">Precio venta</div>
-                    <div style={{ display: 'flex', gap: 2 }}>
+                    <div className="u-flex-gap-2">
                       <input
                         className="input"
                         type="text"
