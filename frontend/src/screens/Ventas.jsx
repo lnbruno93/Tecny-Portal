@@ -1372,7 +1372,7 @@ export default function Ventas() {
       </div>
 
       {/* Período + acciones en la misma fila */}
-      <div className="flex-between" style={{ marginBottom: 14, gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div className="flex-between u-mb-14 u-gap-12-flex-wrap u-align-items-center">
         <Seg value={periodo} options={[
           { value: 'hoy', label: 'Hoy' }, { value: 'ayer', label: 'Ayer' }, { value: 'semana', label: 'Esta semana' },
           { value: 'mes', label: 'Este mes' }, { value: 'custom', label: 'Personalizado' },
@@ -1422,13 +1422,13 @@ export default function Ventas() {
 
       {/* Ventas rápidas pendientes */}
       {rapidas.length > 0 && (
-        <div className="card" style={{ padding: 14, marginBottom: 14 }}>
-          <div className="kpi-label" style={{ color: 'var(--warn)', marginBottom: 8 }}><Icons.Bolt size={12} /> Ventas rápidas pendientes ({rapidas.length})</div>
+        <div className="card u-p-14-mb-14">
+          <div className="kpi-label u-color-warn u-mb-8"><Icons.Bolt size={12} /> Ventas rápidas pendientes ({rapidas.length})</div>
           {rapidas.map(r => (
             <div key={r.id} className="flex-between u-gap-8-p-8-0-border-bottom-start">
               <div className="u-fs-13">
                 <strong>{r.vendedor_nombre || '—'}</strong>{r.cliente_texto ? ' · ' + r.cliente_texto : ''}
-                <div className="muted" style={{ whiteSpace: 'pre-wrap' }}>{r.detalle}</div>
+                <div className="muted" className="u-pre-wrap">{r.detalle}</div>
               </div>
               <div className="flex-row u-gap-6-flex-shrink-0">
                 <button className="btn btn-sm" onClick={() => openVenta(r)}><Icons.Check size={13} /> Procesar</button>
@@ -1460,7 +1460,7 @@ export default function Ventas() {
         </table>
       ) : lista.length === 0 ? (
         <div className="empty u-p-32-20-text-center">
-          <div style={{ fontSize: 14, marginBottom: 6 }}>No hay ventas en el período seleccionado.</div>
+          <div className="u-fs-14-mb-6">No hay ventas en el período seleccionado.</div>
           <div className="muted tiny">
             Cargá una nueva desde el botón <strong>Nueva venta</strong> del header, o cambiá el filtro de fechas.
           </div>
@@ -1527,7 +1527,7 @@ export default function Ventas() {
                         </div>
                       )}
                     </div>
-                    <div className="stack" style={{ gap: 6, marginTop: 8 }}>
+                    <div className="stack" className="u-gap-6-mt-8">
                       {cart.map((it) => (
                         // data-testid agregado para E2E (TANDA 5 venta retail) — scoping
                         // estable de los 4 inputs por fila (descripcion/cant/precio/moneda)
@@ -1545,10 +1545,10 @@ export default function Ventas() {
                               manuales quedan como antes (solo input). No
                               rompe layout: el <div> hereda el grid-cell 1fr
                               y el input adentro estira al 100%. */}
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                          <div className="u-flex-col-gap-2-mw-0">
                             <input className="input" placeholder="Producto" value={it.descripcion} onChange={e => setItem(it._id, 'descripcion', e.target.value)} />
                             {(it.imei || (it.condicion === 'usado' && it.bateria != null)) && (
-                              <div style={{ fontSize: 11, color: 'var(--muted)', paddingLeft: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              <div className="u-fs-11-muted-pl-4-ellipsis">
                                 {it.imei ? 'IMEI ' + fmtImei(it.imei) : ''}
                                 {it.imei && it.condicion === 'usado' && it.bateria != null ? ' · ' : ''}
                                 {it.condicion === 'usado' && it.bateria != null ? 'Bat ' + it.bateria + '%' : ''}
@@ -1579,7 +1579,7 @@ export default function Ventas() {
                     <div className="field u-flex-1"><label className="field-label">Comisión (USD)</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0" value={vForm.comision} onChange={e => setVF('comision', e.target.value)} /></div>
                   </div>
                   <div className="row">
-                    <div className="field" style={{ flex: 1, position: 'relative' }}>
+                    <div className="field" className="u-flex-1-relative">
                       <label className="field-label u-flex-between-center-nogap">
                         <span>Cliente</span>
                         {/* Botón siempre visible para abrir el mini-form de cliente nuevo
@@ -1624,7 +1624,7 @@ export default function Ventas() {
                               </div>
                             ))}
                             {showCreate && (
-                              <div className="nav-item" style={{ cursor: 'pointer', fontSize: 13, color: 'var(--accent)' }} onMouseDown={() => abrirQuickClient(q)}>
+                              <div className="nav-item" className="u-cursor-fs-13-accent" onMouseDown={() => abrirQuickClient(q)}>
                                 <Icons.Plus size={12} /> Crear cliente «{q}»
                               </div>
                             )}
@@ -1638,7 +1638,7 @@ export default function Ventas() {
                           no re-dispara el envío para evitar dobles envíos accidentales;
                           el operador usa "Reenviar comprobante" desde el detalle). */}
                       {!editId && (
-                        <div style={{ marginTop: 10, padding: 10, background: 'var(--surface-2)', borderRadius: 8 }}>
+                        <div className="u-mt-10-p-10-bg-2-r-8">
                           <div className="field u-mb-8">
                             <label className="field-label" htmlFor="v-cliente-email">
                               Email cliente <span className="muted tiny">(opcional, para enviar comprobante)</span>
@@ -1666,7 +1666,7 @@ export default function Ventas() {
                             />
                           </div>
                           {vForm.cliente_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(vForm.cliente_email.trim()) && (
-                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+                            <label className="u-flex-center-8-fs-13-cursor">
                               <input
                                 type="checkbox"
                                 checked={!!vForm.enviar_comprobante_email}
@@ -1682,7 +1682,7 @@ export default function Ventas() {
                           (DNI, WhatsApp, email, fecha de nacimiento). Se abre al
                           clickear "Crear cliente «X»" en el dropdown. */}
                       {quickClient.open && (
-                        <div className="card card-tight" style={{ marginTop: 10, padding: 14, background: 'var(--surface-2)' }}>
+                        <div className="card card-tight" className="u-mt-10-p-14-bg-2">
                           <div className="u-fw-600-fs-13-mb-8">Nuevo cliente</div>
                           <div className="muted tiny u-mb-12">
                             Solo el nombre es obligatorio. El resto es opcional pero ayuda al seguimiento post-venta.
@@ -1725,7 +1725,7 @@ export default function Ventas() {
                             {quickClientError && (
                               <div className="u-color-neg-fs-13" role="alert">{quickClientError}</div>
                             )}
-                            <div className="flex-row" style={{ gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+                            <div className="flex-row" className="u-gap-8-end-mt-4">
                               <button type="button" className="btn btn-ghost btn-sm" onClick={cerrarQuickClient} disabled={quickClientSaving}>Cancelar</button>
                               <button type="button" className="btn btn-primary btn-sm" onClick={guardarQuickClient} disabled={quickClientSaving}>
                                 {quickClientSaving ? 'Guardando…' : 'Guardar y vincular'}
@@ -1768,7 +1768,7 @@ export default function Ventas() {
                       Si "A inventario" está activo, el equipo se crea como producto
                       en Inventario con todos los campos cargados. */}
                   <div>
-                    <div className="flex-between" style={{ alignItems: 'center', marginBottom: 6 }}>
+                    <div className="flex-between" className="u-align-center-mb-6">
                       <div className="u-fs-13-fw-600">
                         Equipos en canje {(vForm.canjes || []).length > 0 && <span className="muted tiny">({vForm.canjes.length})</span>}
                       </div>
@@ -1792,7 +1792,7 @@ export default function Ventas() {
                           <div className="flex-between u-align-center-mb-8">
                             <div className="muted tiny u-fw-600">
                               Equipo {i + 1}
-                              {c._existing && <span style={{ marginLeft: 6, color: 'var(--accent)' }}>(ya en Inventario)</span>}
+                              {c._existing && <span className="u-ml-6-color-accent">(ya en Inventario)</span>}
                             </div>
                             <button type="button" className="icon-btn" aria-label="Quitar equipo" onClick={() => rmCanje(c._id)}>
                               <Icons.X size={14} />
@@ -1806,7 +1806,7 @@ export default function Ventas() {
                               <input className="input" placeholder="iPhone 13 Pro 256 Sierra Blue"
                                      value={c.descripcion} onChange={e => setCanje(c._id, 'descripcion', e.target.value)} />
                             </div>
-                            <div className="field" style={{ flex: 1.2 }}>
+                            <div className="field" className="u-flex-12">
                               <label className="field-label">IMEI / Nº serie</label>
                               <input className="input mono" placeholder="35..."
                                      value={c.imei} onChange={e => setCanje(c._id, 'imei', e.target.value)} />
@@ -1836,7 +1836,7 @@ export default function Ventas() {
                                      min="0" max="100" placeholder="100"
                                      value={c.bateria} onChange={e => setCanje(c._id, 'bateria', e.target.value)} />
                             </div>
-                            <div className="field" style={{ flex: 0.8 }}>
+                            <div className="field" className="u-flex-08">
                               <label className="field-label">Condición</label>
                               <select className="input" value={c.condicion}
                                       onChange={e => setCanje(c._id, 'condicion', e.target.value)}>
@@ -1879,7 +1879,7 @@ export default function Ventas() {
                                      value={c.precio_venta_sugerido}
                                      onChange={e => setCanje(c._id, 'precio_venta_sugerido', e.target.value)} />
                             </div>
-                            <div className="field" style={{ flex: 0.8, alignSelf: 'end' }}>
+                            <div className="field" className="u-flex-08-self-end">
                               {/* El checkbox "A inventario" SÍ queda disabled en canjes
                                   _existing — cambiar de true a false requeriría borrar
                                   el producto asociado, y eso lo hacemos desde Inventario
@@ -2227,7 +2227,7 @@ export default function Ventas() {
                       // ganancia por darlo. Solo visible si vueltoUsd > 0.
                       const hayVueltoUsd = (totales.vueltoUsd || 0) > 0.005;
                       return (
-                        <div data-testid="ganancia-preview" style={{ borderTop: '1px solid var(--border)', marginTop: 6, paddingTop: 6 }}>
+                        <div data-testid="ganancia-preview" className="u-border-top-mt-6-pt-6">
                           <div className="flex-between u-fs-13">
                             <span className="muted">{brutaNeg ? 'Pérdida bruta' : 'Ganancia bruta'}</span>
                             <span className={`mono ${brutaNeg ? 'neg' : ''}`}>
@@ -2240,7 +2240,7 @@ export default function Ventas() {
                               <span className="mono neg">−u$s{fmt(totales.vueltoUsd)}</span>
                             </div>
                           )}
-                          <div className="flex-between" style={{ fontSize: 13, borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 4 }}>
+                          <div className="flex-between" className="u-fs-13-border-top-mt-4-pt-4">
                             <span className="u-fw-600">{realNeg ? 'Pérdida' : 'Ganancia real'}</span>
                             <span
                               className={`mono ${realNeg ? 'neg' : realPos ? 'pos' : ''}`}
@@ -2337,7 +2337,7 @@ export default function Ventas() {
                   <textarea
                     className="input"
                     rows={9}
-                    style={{ height: 'auto', padding: 10, fontFamily: 'inherit', lineHeight: 1.5, resize: 'vertical' }}
+                    className="u-h-auto-p-10-inherit-lh-15-resize-v"
                     placeholder={`Ejemplo:
 iPhone 14 Pro 128GB Azul - $850.000
 Funda + Vidrio templado - $15.000
@@ -2372,13 +2372,13 @@ Pago: Efectivo + Transferencia`}
                 directo del .modal (sin form wrapper que rompa el chain), así que
                 el scroll interno funciona sin overrides. */}
             <div className="modal-body">
-              <div className="stack" style={{ gap: 6, marginBottom: 14 }}>
+              <div className="stack" className="u-gap-6-mb-14">
                 {garantias.length === 0 && <div className="empty">Sin plantillas</div>}
                 {garantias.map(g => (
                   <div key={g.id} className="flex-between u-gap-8-p-8-0-border-bottom-start">
                     {/* Preview renderiza `{{negocio}}` como el nombre del tenant así el
                         operador ve cómo va a quedar el comprobante final, no el placeholder crudo. */}
-                    <div style={{ fontSize: 13, maxWidth: '78%' }}><strong>{g.nombre}</strong>{g.es_default && <> <Badge tone="pos">Predeterminada</Badge></>}<div className="muted tiny" style={{ whiteSpace: 'pre-wrap', maxHeight: 50, overflow: 'hidden' }}>{renderPlantilla(g.texto, tenantNombre)}</div></div>
+                    <div className="u-fs-13-mw-78"><strong>{g.nombre}</strong>{g.es_default && <> <Badge tone="pos">Predeterminada</Badge></>}<div className="muted tiny" className="u-pre-wrap-mh-50-hide">{renderPlantilla(g.texto, tenantNombre)}</div></div>
                     <div className="flex-row u-gap-6-flex-shrink-0">
                       <button className="icon-btn" title="Editar plantilla" aria-label="Editar plantilla de garantía" onClick={() => setGForm({ id: g.id, nombre: g.nombre, texto: g.texto, es_default: !!g.es_default })}><Icons.Edit size={14} /></button>
                       <button className="icon-btn u-color-neg" title="Eliminar plantilla" aria-label="Eliminar plantilla de garantía" onClick={() => deleteGarantia(g.id)}><Icons.Trash size={14} /></button>
@@ -2396,13 +2396,13 @@ Pago: Efectivo + Transferencia`}
                     rows={10}
                     value={gForm.texto}
                     onChange={e => setGForm(f => ({ ...f, texto: e.target.value }))}
-                    style={{ height: 'auto', minHeight: 220, padding: '12px 14px', lineHeight: 1.55, fontSize: 14, resize: 'vertical', whiteSpace: 'pre-wrap' }}
+                    className="u-h-auto-mh-220-p-12-14-lh-155-fs-14-resize-v-pre"
                   />
                   <div className="muted tiny u-mt-4">
                     Tip: escribí <code>{PLACEHOLDER_NEGOCIO}</code> donde quieras que aparezca el nombre de tu negocio. Al imprimir el comprobante se reemplaza automáticamente por <strong>{tenantNombre}</strong>.
                   </div>
                 </div>
-                <label className="flex-row" style={{ gap: 8, fontSize: 13, marginBottom: 10, cursor: 'pointer' }}><input type="checkbox" checked={gForm.es_default} onChange={e => setGForm(f => ({ ...f, es_default: e.target.checked }))} /> Marcar como predeterminada</label>
+                <label className="flex-row" className="u-gap-8-fs-13-cursor"><input type="checkbox" checked={gForm.es_default} onChange={e => setGForm(f => ({ ...f, es_default: e.target.checked }))} /> Marcar como predeterminada</label>
                 <div className="flex-row u-gap-8">
                   <button type="button" className="btn btn-ghost" onClick={() => setGForm({ id: null, nombre: '', texto: '', es_default: false })}>Limpiar</button>
                   <button type="submit" className="btn btn-primary" disabled={savingGar}>{savingGar ? 'Guardando…' : 'Guardar plantilla'}</button>
@@ -2419,14 +2419,14 @@ Pago: Efectivo + Transferencia`}
           <div className="modal u-mw-420" onClick={e => e.stopPropagation()}>
             <div className="modal-hd"><h3 id="etiquetas-modal-title">Etiquetas de venta</h3><button className="icon-btn" title="Cerrar" aria-label="Cerrar" onClick={() => setShowEtiquetas(false)}><Icons.X size={16} /></button></div>
             <div className="modal-body">
-              <div className="flex-row" style={{ gap: 6, marginBottom: 10 }}>
+              <div className="flex-row" className="u-gap-6-mb-10">
                 <input className="input" placeholder="Nueva etiqueta (ej. Mayorista)" value={nuevaEtiqueta} onChange={e => setNuevaEtiqueta(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addEtiqueta(); } }} />
                 <button className="btn btn-sm" onClick={addEtiqueta}><Icons.Plus size={13} /></button>
               </div>
               <div className="stack u-gap-4">
                 {etiquetas.length === 0 && <div className="muted tiny">Sin etiquetas</div>}
                 {etiquetas.map(et => (
-                  <div key={et.id} className="flex-between" style={{ fontSize: 13, padding: '4px 0', borderBottom: '1px solid var(--hairline)' }}>
+                  <div key={et.id} className="flex-between" className="u-fs-13-p-4-0-border-bottom">
                     <span>{et.nombre}</span>
                     <button className="icon-btn u-color-neg" title="Eliminar etiqueta" aria-label="Eliminar etiqueta" onClick={() => delEtiqueta(et.id)}><Icons.Trash size={13} /></button>
                   </div>
@@ -2455,7 +2455,7 @@ Pago: Efectivo + Transferencia`}
             <div className="modal-body">
               {comprobList == null ? <div className="muted">Cargando…</div> : comprobList.length === 0 ? <div className="empty">Sin comprobantes</div> : (
                 comprobList.map(c => (
-                  <div key={c.id} className="flex-between" style={{ padding: '8px 0', borderBottom: '1px solid var(--hairline)' }}>
+                  <div key={c.id} className="flex-between" className="u-p-8-0-border-bottom-hl">
                     <span className="u-fs-13">{c.archivo_nombre || 'archivo'}</span>
                     <button className="btn btn-sm" onClick={() => abrirComprob(c.id)}><Icons.Eye size={13} /> Ver</button>
                   </div>
