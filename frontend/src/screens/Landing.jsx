@@ -54,7 +54,10 @@ import {
 // Calendly muestre qué CTA convirtió cada booking (nav vs cta-final vs
 // plan-multi-local). Calendly trackea utm_* nativamente desde plan Standard,
 // pero los params no hacen daño en Free y quedan listos para el upgrade.
-const CALENDLY_BASE_URL = 'https://calendly.com/hola-tecnyapp/demo-tecny';
+// 2026-07-21 (Lucas verificó): el slug real del event type es `30min` (el
+// default que Calendly crea al setup). El `demo-tecny` anterior era un
+// placeholder que Lucas nunca creó → los 3 CTAs caían a 404 de Calendly.
+const CALENDLY_BASE_URL = 'https://calendly.com/hola-tecnyapp/30min';
 const calendlyHref = (source) =>
   `${CALENDLY_BASE_URL}?utm_source=landing&utm_medium=cta&utm_campaign=${encodeURIComponent(source)}`;
 
