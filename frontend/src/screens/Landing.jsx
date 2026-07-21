@@ -527,18 +527,18 @@ export default function Landing() {
           <div className="plans plans-4col">
             <div className="plan">
               <div className="pname">Trial</div>
-              <div className="pdesc">Probá Tecny completo antes de elegir plan. Sin tarjeta.</div>
+              <div className="pdesc">Probá Tecny completo antes de elegir plan.</div>
               <div className="price"><span className="cur">USD </span><span className="num">0</span><span className="per">/14 días</span></div>
-              <div className="pnote">Sin compromiso</div>
+              <div className="pnote">Sin tarjeta requerida</div>
               <ul>
-                <li><Check /> Acceso completo a la plataforma</li>
-                <li><Check /> Sin tarjeta requerida</li>
-                <li><Check /> Cancelable en cualquier momento</li>
-                <li><Check /> Migrás sin perder datos</li>
+                <li><Check /> Acceso completo</li>
+                <li><Check /> Cotizador + Usados</li>
+                <li><Check /> Sin compromiso</li>
+                <li><Check /> Cancelás cuando quieras</li>
               </ul>
               <Link to="/signup" className="btn"
                     onClick={() => trackEvent('cta_click', { location: 'pricing', target: 'signup', plan: 'trial' })}>
-                Empezar prueba gratis
+                Empezar gratis
               </Link>
             </div>
             <div className="plan">

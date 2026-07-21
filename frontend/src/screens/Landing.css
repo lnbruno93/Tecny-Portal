@@ -344,7 +344,14 @@
 .tecny-landing .plans.plans-4col { grid-template-columns: repeat(4, 1fr); gap: 14px; }
 .tecny-landing .plans.plans-4col .plan { padding: 22px; }
 .tecny-landing .plans.plans-4col .plan .price .num { font-size: 36px; }
-.tecny-landing .plan { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 30px; position: relative; }
+.tecny-landing .plan { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 30px; position: relative;
+  /* 2026-07-20: flex layout para que cards de altura variable (Trial vs los
+     otros) queden alineadas — el <ul> crece con `flex: 1` y empuja el <btn>
+     al bottom uniforme. Sin esto: Trial quedaba visiblemente más alta y el
+     botón de las otras cards flotaba en la mitad — feo. */
+  display: flex; flex-direction: column;
+}
+.tecny-landing .plan ul { flex: 1; }
 .tecny-landing .plan.featured { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 24px 60px -20px rgba(14,165,233,0.25); }
 .tecny-landing .plan .tag-pop { position: absolute; top: -11px; left: 50%; transform: translateX(-50%); background: var(--accent); color: var(--accent-ink); font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; padding: 4px 14px; border-radius: 999px; }
 .tecny-landing .plan .pname { font-size: 15px; font-weight: 600; letter-spacing: 0.02em; }
