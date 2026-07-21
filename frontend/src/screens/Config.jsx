@@ -270,7 +270,7 @@ export default function Config() {
             ahora todo el costo financiero del negocio se ajusta acá. */}
         <div className="card">
           <div className="card-hd">
-            <div style={{ fontWeight: 600, fontSize: 15 }}>Comisiones de métodos de pago</div>
+            <div className="u-fw-600-fs-15">Comisiones de métodos de pago</div>
             <div className="muted tiny u-mt-2">
               Se aplican al cobrar con cada método (Tema C — descontado de la ganancia)
             </div>
@@ -280,7 +280,7 @@ export default function Config() {
             {/* Fila Transferencia (= pct_financiera) */}
             <div className="field u-mb-16">
               <div className="field-label">Transferencias <span className="muted">(Financiera)</span></div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div className="u-flex-center-gap-10">
                 <div className="input-group" style={{ maxWidth: 160 }}>
                   <input
                     type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
@@ -430,7 +430,7 @@ export default function Config() {
         {/* Right: system limitations */}
         <div className="card">
           <div className="card-hd">
-            <div style={{ fontWeight: 600, fontSize: 15 }}>Limitaciones del sistema</div>
+            <div className="u-fw-600-fs-15">Limitaciones del sistema</div>
             <div className="muted tiny u-mt-2">
               Comportamientos que conviene tener presentes
             </div>

@@ -757,7 +757,7 @@ export default function Cotizador() {
   return (
     <div>
       {/* Page header */}
-      <div className="page-hd" style={{ marginBottom: 'var(--gap)' }}>
+      <div className="page-hd u-mb-var-gap">
         <div>
           <h1 className="page-title">Cotizador</h1>
           <div className="page-sub">Cálculo de precios para clientes · client-side, no persiste</div>

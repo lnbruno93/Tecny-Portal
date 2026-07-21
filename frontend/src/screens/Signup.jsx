@@ -228,7 +228,7 @@ export default function Signup() {
                   link para activar tu cuenta y poder iniciar sesión.
                 </p>
               </div>
-              <div className="field-note" style={{ marginTop: 16 }}>
+              <div className="field-note u-mt-16">
                 ¿No lo ves? Revisá la carpeta de spam. El link expira en{' '}
                 {tokenTtlHours} {tokenTtlHours === 1 ? 'hora' : 'horas'}.
               </div>

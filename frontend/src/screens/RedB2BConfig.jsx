@@ -137,7 +137,7 @@ export function RedB2BConfigContent() {
 
   return (
     <section className="card u-p-16">
-      <h2 style={{ marginTop: 0, fontSize: 16 }}>Caja default cross-tenant</h2>
+      <h2 className="u-mt-0-fs-16">Caja default cross-tenant</h2>
       <p style={{ marginBottom: 12, fontSize: 14 }}>
         Cuando un partner Red B2B registra un pago de una operación nuestra,
         el sistema necesita saber en qué caja propia anotar el movimiento.
@@ -185,7 +185,7 @@ export function RedB2BConfigContent() {
       {/* ── PR-X1 #465: Avisos por email ────────────────────────────────── */}
       {emailPrefs && (
         <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--border, #e5e7eb)' }}>
-          <h2 style={{ marginTop: 0, fontSize: 16 }}>Avisos por email</h2>
+          <h2 className="u-mt-0-fs-16">Avisos por email</h2>
           <p style={{ marginBottom: 12, fontSize: 14 }}>
             Decidí qué notificaciones de Red B2B querés recibir por mail.
           </p>

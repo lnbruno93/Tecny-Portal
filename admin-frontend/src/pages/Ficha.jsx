@@ -1016,8 +1016,8 @@ function ComprobanteEmailFooterCard({ tenant, onSaved }) {
       </div>
 
       {/* Preview — aproximación visual al footer del email */}
-      <div style={{ marginTop: 16 }}>
-        <div className="muted tiny" style={{ marginBottom: 6 }}>Vista previa del footer:</div>
+      <div className="u-mt-16">
+        <div className="muted tiny u-mb-6">Vista previa del footer:</div>
         <div style={{
           padding: '14px 18px',
           background: 'var(--surface-2)',
@@ -1090,7 +1090,7 @@ function ClasesDuplicadasCard({ tenantId }) {
         <div className="flex-between u-mb-8">
           <div>
             <h3 style={{ margin: '0 0 4px' }}>Categorías duplicadas</h3>
-            <p className="muted tiny" style={{ margin: 0 }}>
+            <p className="muted tiny u-m-0">
               Detecta categorías de producto casi-duplicadas dentro del tenant
               (ej: <code>iPads</code> vs <code>ipad</code>) via trigram similarity
               + containment. Fusionar mueve los productos a la canónica y

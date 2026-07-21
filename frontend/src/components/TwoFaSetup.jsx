@@ -113,14 +113,14 @@ export default function TwoFaSetup({ onDone, onCancel }) {
 
   return (
     <div className="card card-tight" style={{ padding: 20 }}>
-      <h3 style={{ marginTop: 0 }}>Activar autenticación de dos factores</h3>
+      <h3 className="u-mt-0">Activar autenticación de dos factores</h3>
       <div className="muted tiny u-mb-18">
         Necesitás una app autenticadora en tu cel: Google Authenticator,
         Authy, 1Password o cualquier otra compatible con TOTP.
       </div>
 
       {/* ── 1) QR + secret manual ── */}
-      <div style={{ marginBottom: 24 }}>
+      <div className="u-mb-24">
         <div className="field-label">Paso 1 — Escaneá el QR con tu app autenticadora</div>
         <div style={{
           display: 'flex', gap: 20, alignItems: 'flex-start',
@@ -136,7 +136,7 @@ export default function TwoFaSetup({ onDone, onCancel }) {
             style={{ flexShrink: 0, borderRadius: 4, background: '#fff' }}
           />
           <div className="u-flex-1-minw-0">
-            <div className="muted tiny" style={{ marginBottom: 6 }}>
+            <div className="muted tiny u-mb-6">
               ¿No podés escanear? Ingresá este código manualmente:
             </div>
             {/* data-testid agregado para E2E (TANDA 5 activar 2FA UI) — el
@@ -166,7 +166,7 @@ export default function TwoFaSetup({ onDone, onCancel }) {
       </div>
 
       {/* ── 2) Recovery codes ── */}
-      <div style={{ marginBottom: 24 }}>
+      <div className="u-mb-24">
         <div className="field-label">Paso 2 — Guardá estos recovery codes ⚠️</div>
         <div style={{
           padding: 14, background: 'rgba(234, 179, 8, 0.08)',
@@ -223,7 +223,7 @@ export default function TwoFaSetup({ onDone, onCancel }) {
             color: 'var(--neg)', fontSize: 13, marginBottom: 10,
           }}>{error}</div>
         )}
-        <div className="flex-row" style={{ gap: 8, justifyContent: 'flex-end' }}>
+        <div className="flex-row u-gap-8-justify-end">
           <button
             type="button"
             className="btn btn-ghost"

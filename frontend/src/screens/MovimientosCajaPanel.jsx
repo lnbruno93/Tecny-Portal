@@ -239,7 +239,7 @@ export default function MovimientosCajaPanel() {
 
       {/* Tabla / historial */}
       {loading ? (
-        <div className="muted" style={{ padding: 20, textAlign: 'center' }}>Cargando…</div>
+        <div className="muted u-p-20-text-center">Cargando…</div>
       ) : transferencias.length === 0 ? (
         <div className="empty-state" style={{ padding: 32, textAlign: 'center', border: '1px dashed var(--hairline)', borderRadius: 8 }}>
           <div className="muted u-fs-14">Todavía no hay transferencias.</div>
@@ -370,7 +370,7 @@ export default function MovimientosCajaPanel() {
                 </select>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="u-grid-1fr-1fr-gap-12">
                 <div className="field">
                   <label className="field-label">Monto {monedaOrigen ? `(${monedaOrigen})` : ''}</label>
                   <input
@@ -409,7 +409,7 @@ export default function MovimientosCajaPanel() {
                   <div style={{ fontWeight: 600, fontSize: 12 }}>
                     Cambio de moneda · {monedaOrigen} → {monedaDestino}
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div className="u-grid-1fr-1fr-gap-12">
                     <div className="field">
                       <label className="field-label">TC {grupoMoneda(monedaOrigen) === 'USD' || grupoMoneda(monedaDestino) === 'USD' ? '(1 USD = X)' : ''}</label>
                       <input

@@ -1367,8 +1367,7 @@ export default function Inventario() {
               <>
                 <input
                   type="date"
-                  className="input"
-                  style={{ width: 140, marginLeft: 6 }}
+                  className="input u-w-140-ml-6"
                   value={vendidosRange.desde}
                   onChange={e => setVendidosRange(r => ({ ...r, desde: e.target.value }))}
                 />
@@ -1426,10 +1425,10 @@ export default function Inventario() {
                   más lo necesitan (Nombre, Categoría, Proveedor). */}
               <tr>
                 <th className="u-w-32px" aria-label="Historial"></th>
-                <th style={{ minWidth: 180 }}>Nombre</th>
+                <th className="u-mw-180">Nombre</th>
                 <th style={{ width: 56 }}>GB</th>
                 <th className="u-w-70px">Batería</th>
-                <th style={{ width: 96 }}>Color</th>
+                <th className="u-w-96">Color</th>
                 <th style={{ width: 84, textAlign: 'right' }}>Costo</th>
                 <th style={{ width: 68 }}>Mon. Costo</th>
                 <th style={{ width: 96, textAlign: 'right' }}>Precio Venta</th>
@@ -1509,10 +1508,10 @@ export default function Inventario() {
                   más lo necesitan (Nombre, Categoría, Proveedor). */}
               <tr>
                 <th className="u-w-32px" aria-label="Historial"></th>
-                <th style={{ minWidth: 180 }}>Nombre</th>
+                <th className="u-mw-180">Nombre</th>
                 <th style={{ width: 56 }}>GB</th>
                 <th className="u-w-70px">Batería</th>
-                <th style={{ width: 96 }}>Color</th>
+                <th className="u-w-96">Color</th>
                 <th style={{ width: 84, textAlign: 'right' }}>Costo</th>
                 <th style={{ width: 68 }}>Mon. Costo</th>
                 <th style={{ width: 96, textAlign: 'right' }}>Precio Venta</th>
@@ -2185,7 +2184,7 @@ function HistorialModalContent({ producto, data, loading, error, categorias, dep
                   📦 COMPRA DE ORIGEN
                 </div>
                 {data.compra ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div className="u-grid-1fr-1fr-gap-12">
                     <DetalleField label="Fecha" value={fmtFecha(data.compra.fecha)} />
                     <DetalleField label="Proveedor" value={data.compra.proveedor_nombre} />
                     <DetalleField label="Valor del ítem" value={fmtUSD(data.compra.valor_item)} mono />
@@ -2216,7 +2215,7 @@ function HistorialModalContent({ producto, data, loading, error, categorias, dep
                   🏷 VENTA
                 </div>
                 {data.venta ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div className="u-grid-1fr-1fr-gap-12">
                     <DetalleField label="Fecha" value={fmtFecha(data.venta.fecha)} />
                     <DetalleField label="Cliente" value={data.venta.cliente_nombre || '—'} />
                     <DetalleField label="Precio cobrado"
@@ -2249,7 +2248,7 @@ function DetalleField({ label, value, mono = false }) {
   return (
     <div>
       <div className="muted tiny u-mb-2">{label}</div>
-      <div className={mono ? 'mono' : ''} style={{ fontSize: 13, fontWeight: 500 }}>{value}</div>
+      <div className={mono ? 'mono' : ''} className="u-fs-13-fw-500">{value}</div>
     </div>
   );
 }

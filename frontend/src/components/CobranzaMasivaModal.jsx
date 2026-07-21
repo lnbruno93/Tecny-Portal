@@ -212,7 +212,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
           )}
           {/* ── Cabecera + defaults ── */}
           <div className="row u-mb-12">
-            <div className="field" style={{ flex: '0 0 150px' }}>
+            <div className="field u-flex-0-0-150">
               <label className="field-label">Fecha</label>
               <input type="date" className="input" value={fecha} onChange={e => setFecha(e.target.value)} />
             </div>

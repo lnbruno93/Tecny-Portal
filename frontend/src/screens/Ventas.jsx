@@ -1509,7 +1509,7 @@ export default function Ventas() {
 
                   {/* Productos */}
                   <div>
-                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Productos</div>
+                    <div className="u-fw-600-fs-13-mb-8">Productos</div>
                     <div className="u-pos-rel">
                       <input className="input" placeholder="Buscar producto del inventario (nombre, IMEI, color…)" value={prodSearch} onChange={e => searchProducto(e.target.value)} />
                       {prodResults.length > 0 && (
@@ -1581,7 +1581,7 @@ export default function Ventas() {
                   </div>
                   <div className="row">
                     <div className="field" style={{ flex: 1, position: 'relative' }}>
-                      <label className="field-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <label className="field-label u-flex-between-center-nogap">
                         <span>Cliente</span>
                         {/* Botón siempre visible para abrir el mini-form de cliente nuevo
                             sin tener que tipear primero en el buscador. Si el operador
@@ -1684,7 +1684,7 @@ export default function Ventas() {
                           clickear "Crear cliente «X»" en el dropdown. */}
                       {quickClient.open && (
                         <div className="card card-tight" style={{ marginTop: 10, padding: 14, background: 'var(--surface-2)' }}>
-                          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Nuevo cliente</div>
+                          <div className="u-fw-600-fs-13-mb-8">Nuevo cliente</div>
                           <div className="muted tiny u-mb-12">
                             Solo el nombre es obligatorio. El resto es opcional pero ayuda al seguimiento post-venta.
                           </div>
@@ -1911,7 +1911,7 @@ export default function Ventas() {
 
                   {/* Pagos */}
                   <div>
-                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Pagos</div>
+                    <div className="u-fw-600-fs-13-mb-8">Pagos</div>
                     <div className="stack u-gap-6">
                       {pagos.map((p, i) => {
                         // Tema C rev5 (2026-06-14): el operador tipea USD (su mental
@@ -2098,7 +2098,7 @@ export default function Ventas() {
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: vForm.vuelto_monto ? 8 : 0 }}>
                       <div className="u-fs-13-fw-600">
                         Vuelto/Cambio
-                        <span className="muted tiny" style={{ marginLeft: 8, fontWeight: 400 }}>
+                        <span className="muted tiny u-ml-8-fw-400">
                           (opcional — dinero que entregás al cliente)
                         </span>
                       </div>
@@ -2388,7 +2388,7 @@ Pago: Efectivo + Transferencia`}
                 ))}
               </div>
               <form onSubmit={handleSaveGarantia}>
-                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>{gForm.id ? 'Editar plantilla' : 'Nueva plantilla'}</div>
+                <div className="u-fw-600-fs-13-mb-8">{gForm.id ? 'Editar plantilla' : 'Nueva plantilla'}</div>
                 <div className="field"><label className="field-label">Nombre <span className="u-color-neg">*</span></label><input className="input" placeholder="General, Apple discontinuado…" value={gForm.nombre} onChange={e => setGForm(f => ({ ...f, nombre: e.target.value }))} /></div>
                 <div className="field">
                   <label className="field-label">Texto <span className="u-color-neg">*</span></label>

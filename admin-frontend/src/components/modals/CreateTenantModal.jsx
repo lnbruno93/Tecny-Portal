@@ -138,7 +138,7 @@ export default function CreateTenantModal({ open, onClose, onCreated }) {
         </>
       }
     >
-      <p className="muted tiny" style={{ marginTop: 0, marginBottom: 14 }}>
+      <p className="muted tiny u-mt-0-mb-14">
         Crea el tenant + owner. Le mandamos un email al owner con un link
         para que elija su password (vence en 24 hs).
       </p>

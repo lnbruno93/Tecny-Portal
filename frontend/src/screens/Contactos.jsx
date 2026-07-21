@@ -379,7 +379,7 @@ export default function Contactos() {
           <div className="empty" style={{ textAlign: 'center', padding: '32px 20px' }}>
             {(dSearch || origenFilter) ? (
               <>
-                <div style={{ fontSize: 14, marginBottom: 8 }}>
+                <div className="u-fs-14-mb-8">
                   Ningún contacto matchea con esos filtros.
                 </div>
                 <button
@@ -391,7 +391,7 @@ export default function Contactos() {
               </>
             ) : (
               <>
-                <div style={{ fontSize: 14, marginBottom: 8 }}>
+                <div className="u-fs-14-mb-8">
                   Todavía no cargaste contactos.
                 </div>
                 <button className="btn btn-sm btn-primary" onClick={openCreate}>

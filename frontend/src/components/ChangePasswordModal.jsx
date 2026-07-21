@@ -195,7 +195,7 @@ export default function ChangePasswordModal({ open, onClose }) {
           <h3 id="change-pw-modal-title">Cambiar contraseña</h3>
         </div>
 
-        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div className="modal-body u-flex-col-gap-14">
           {error && (
             <div
               role="alert"
@@ -226,7 +226,7 @@ export default function ChangePasswordModal({ open, onClose }) {
                 autoComplete="current-password"
                 disabled={loading || twofaRequired}
                 aria-invalid={!!fieldErrors.currentPassword}
-                style={{ width: '100%', paddingRight: 38 }}
+                className="u-w-100-pr-38"
                 data-autofocus
               />
               <button
@@ -264,7 +264,7 @@ export default function ChangePasswordModal({ open, onClose }) {
                 autoComplete="new-password"
                 disabled={loading || twofaRequired}
                 aria-invalid={!!fieldErrors.newPassword}
-                style={{ width: '100%', paddingRight: 38 }}
+                className="u-w-100-pr-38"
               />
               <button
                 type="button"

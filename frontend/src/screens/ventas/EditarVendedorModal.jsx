@@ -104,7 +104,7 @@ export default function EditarVendedorModal({ state, onClose, onSave, vendedores
               Máx. 120 caracteres. Vacío = usar el vendedor asignado en los ítems.
             </div>
           </div>
-          <div className="modal-ft" style={{ justifyContent: 'flex-end', gap: 8 }}>
+          <div className="modal-ft u-gap-8-justify-end">
             <button type="button" className="btn btn-ghost" onClick={onClose} disabled={guardando}>
               Cancelar
             </button>

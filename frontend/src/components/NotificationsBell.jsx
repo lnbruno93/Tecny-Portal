@@ -478,7 +478,7 @@ export default function NotificationsBell() {
                     Sin novedades por ahora.
                   </div>
                 ) : (
-                  <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                  <ul className="u-list-reset">
                     {novedadesItems.map((nota, idx) => {
                       const emoji = TIPO_NOVEDAD_EMOJI[nota.tipo] || '📝';
                       const isUnseen = hayNovedadesUnseen && idx < novedadesCount;
@@ -569,7 +569,7 @@ export default function NotificationsBell() {
                     Sin notificaciones Red B2B.
                   </div>
                 ) : (
-                  <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                  <ul className="u-list-reset">
                     {b2bItems.map((n) => {
                       const { label } = describeB2bNotif(n);
                       const unread = !n.read_at;

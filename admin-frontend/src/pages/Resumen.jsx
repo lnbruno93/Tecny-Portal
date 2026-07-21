@@ -296,7 +296,7 @@ export default function Resumen() {
         >
           <div>
             <strong>Activá 2FA para acceder al panel super-admin.</strong>
-            <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+            <div className="muted u-fs-12-mt-4">
               Por política de seguridad, el back office exige autenticación
               de dos factores. Configuralo en un minuto desde Mi cuenta.
             </div>
@@ -521,7 +521,7 @@ export default function Resumen() {
                   : 0;
                 return (
                   <div key={p.plan}>
-                    <div className="flex-between" style={{ marginBottom: 6 }}>
+                    <div className="flex-between u-mb-6">
                       <span className="flex-row u-gap-8">
                         <Badge tone={planTone(p.plan)}>{planLabel(p.plan)}</Badge>
                         <span className="muted tiny">

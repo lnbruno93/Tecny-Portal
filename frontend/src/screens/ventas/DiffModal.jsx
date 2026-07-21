@@ -60,11 +60,11 @@ export default function DiffModal({ state, onClose }) {
             Los métodos de pago no suman exactamente el monto requerido.
           </p>
           <div style={{ borderTop: '1px solid var(--hairline)', borderBottom: '1px solid var(--hairline)', padding: '14px 0' }}>
-            <div className="flex-between" style={{ fontSize: 14, marginBottom: 8 }}>
+            <div className="flex-between u-fs-14-mb-8">
               <strong>Total de la venta:</strong>
               <span className="mono u-color-accent-fw-700">u$s {state.items.toFixed(2)}</span>
             </div>
-            <div className="flex-between" style={{ fontSize: 14, marginBottom: 8 }}>
+            <div className="flex-between u-fs-14-mb-8">
               <strong>Total pagado:</strong>
               <span className="mono pos u-fw-700">u$s {state.cubierto.toFixed(2)}</span>
             </div>

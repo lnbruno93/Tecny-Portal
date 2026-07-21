@@ -186,7 +186,7 @@ export default function Resumen() {
           Transferencias para consistencia entre módulos. El comparativo
           queda siempre visible (auto-rellena al mes anterior, editable). */}
       <div className="card card-tight u-mb-16">
-        <div className="flex-row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div className="flex-row u-gap-6-wrap-center">
           <span className="muted tiny u-mr-4">Período:</span>
           {MES_PRESETS.map(p => {
             const activo = presetParaMes(periodoActual) === p.v;
@@ -239,7 +239,7 @@ export default function Resumen() {
         <>
           {/* ── Bloque 1: Ventas ── */}
           <h3 style={{ marginTop: 18, marginBottom: 8 }}>Ventas</h3>
-          <div className="row" style={{ gap: 12, flexWrap: 'wrap' }}>
+          <div className="row u-gap-12-flex-wrap">
             <div className="u-flex-1-1-200">
               <KpiCard label="Ventas totales" unidad="USD" valor={ventasUsdA} comparado={ventasUsdC} />
             </div>
@@ -262,8 +262,8 @@ export default function Resumen() {
 
           {/* ── Bloque 2: Cajas (capital) ── */}
           <h3 style={{ marginTop: 18, marginBottom: 8 }}>Capital en cajas <span className="muted tiny">(al fin del período)</span></h3>
-          <div className="row" style={{ gap: 12, flexWrap: 'wrap' }}>
-            <div style={{ flex: '1 1 220px' }}>
+          <div className="row u-gap-12-flex-wrap">
+            <div className="u-flex-1-1-220">
               <KpiCard
                 label="Capital total"
                 unidad="USD eq."
@@ -287,15 +287,15 @@ export default function Resumen() {
 
           {/* ── Bloque 3: Deudas + Egresos ── */}
           <h3 style={{ marginTop: 18, marginBottom: 8 }}>Deudas y Egresos</h3>
-          <div className="row" style={{ gap: 12, flexWrap: 'wrap' }}>
-            <div style={{ flex: '1 1 220px' }}>
+          <div className="row u-gap-12-flex-wrap">
+            <div className="u-flex-1-1-220">
               <KpiCard label="Nos deben (CC clientes)" unidad="USD" valor={deudaCCA} comparado={deudaCCC} />
             </div>
-            <div style={{ flex: '1 1 220px' }}>
+            <div className="u-flex-1-1-220">
               {/* Deuda a proveedores: más es peor → invertirSigno */}
               <KpiCard label="Debemos (Proveedores)" unidad="USD" valor={deudaPrA} comparado={deudaPrC} invertirSigno />
             </div>
-            <div style={{ flex: '1 1 220px' }}>
+            <div className="u-flex-1-1-220">
               {/* Egresos: más es peor → invertirSigno */}
               <KpiCard label="Egresos del mes" unidad="USD" valor={egresosA} comparado={egresosC} invertirSigno />
             </div>

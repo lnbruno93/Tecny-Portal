@@ -343,7 +343,7 @@ export default function SitioPublico() {
       />
 
       {loading ? (
-        <div className="muted" style={{ padding: 32, textAlign: 'center' }}>Cargando…</div>
+        <div className="muted u-p-32-text-center">Cargando…</div>
       ) : (
         <div style={{ display: 'grid', gap: 16 }}>
           {/* ── SECCIÓN CONTACTO ── */}
@@ -415,7 +415,7 @@ export default function SitioPublico() {
                       <textarea id={`sc-${f.key}`} className="input" rows={3} maxLength={f.maxLength}
                                 placeholder={f.placeholder} value={hero[f.key]}
                                 onChange={e => setHero(x => ({ ...x, [f.key]: e.target.value }))}
-                                disabled={saving} style={{ width: '100%', resize: 'vertical' }} />
+                                disabled={saving} className="u-w-100-resize-v" />
                     ) : (
                       <input id={`sc-${f.key}`} type={f.type} className="input" maxLength={f.maxLength}
                              placeholder={f.placeholder} value={hero[f.key]}
@@ -466,7 +466,7 @@ export default function SitioPublico() {
                       <textarea id={`sc-${f.key}`} className="input" rows={2} maxLength={f.maxLength}
                                 placeholder={f.placeholder} value={cta[f.key]}
                                 onChange={e => setCta(x => ({ ...x, [f.key]: e.target.value }))}
-                                disabled={saving} style={{ width: '100%', resize: 'vertical' }} />
+                                disabled={saving} className="u-w-100-resize-v" />
                     ) : (
                       <input id={`sc-${f.key}`} type={f.type} className="input" maxLength={f.maxLength}
                              placeholder={f.placeholder} value={cta[f.key]}
@@ -520,7 +520,7 @@ export default function SitioPublico() {
                       background: 'rgba(255,255,255,0.02)',
                       display: 'grid', gap: 10,
                     }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div className="u-flex-between-center-nogap">
                         <div className="muted u-fs-12">
                           #{idx + 1} — {q.question ? q.question.slice(0, 60) : 'Sin pregunta'}
                         </div>
@@ -548,7 +548,7 @@ export default function SitioPublico() {
                                   placeholder="Ej. No. Tecny funciona desde el navegador..."
                                   value={q.answer} disabled={saving}
                                   onChange={e => updateFaq(idx, 'answer', e.target.value)}
-                                  style={{ width: '100%', resize: 'vertical' }} />
+                                  className="u-w-100-resize-v" />
                         <div className="muted tiny" style={{ marginTop: 2, textAlign: 'right' }}>
                           {(q.answer || '').length} / 1000
                         </div>
@@ -717,8 +717,8 @@ export default function SitioPublico() {
                       display: 'grid', gap: 10,
                     }}>
                       {/* Header: avatar preview + acciones */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div className="u-flex-between-center-nogap">
+                        <div className="u-flex-center-gap-10">
                           <div style={{
                             width: 32, height: 32, borderRadius: '50%',
                             background: t.color || '#4285F4', color: '#fff',
@@ -776,7 +776,7 @@ export default function SitioPublico() {
                                   placeholder="Ej. Excelente atención, me atendieron por WhatsApp rápidamente y coordiné la visita el mismo día."
                                   value={t.text} disabled={saving}
                                   onChange={e => updateTestimonial(idx, 'text', e.target.value)}
-                                  style={{ width: '100%', resize: 'vertical' }} />
+                                  className="u-w-100-resize-v" />
                         <div className="muted tiny" style={{ marginTop: 2, textAlign: 'right' }}>
                           {t.text.length} / 1000
                         </div>

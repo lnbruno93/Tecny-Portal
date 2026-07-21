@@ -496,7 +496,7 @@ function ProyeccionGastosPanel({ onChange }) {
               </thead>
               <tbody>
                 {recurrentes.length === 0 && !adding && (
-                  <tr><td colSpan={4} className="muted tiny" style={{ padding: 16, textAlign: 'center' }}>
+                  <tr><td colSpan={4} className="muted tiny u-p-16-text-center">
                     Todavía no tenés gastos proyectados. Empezá agregando los fijos del mes (alquiler, sueldos, etc.).
                   </td></tr>
                 )}
@@ -515,7 +515,7 @@ function ProyeccionGastosPanel({ onChange }) {
                         aria-expanded={isOpen}
                       >
                         <td colSpan={2}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div className="u-flex-center-gap-10">
                             <Icons.ChevronDown
                               size={14}
                               style={{
@@ -729,7 +729,7 @@ function RecurrenteEditRow({ draft, setDraft, categorias, onCreateCategoria, onS
       </td>
     </tr>
     {showNewCat && (
-      <tr><td colSpan={4} style={{ padding: 0 }}>
+      <tr><td colSpan={4} className="u-p-0">
         <div
           ref={newCatModalRef}
           className="modal-overlay"
@@ -1130,7 +1130,7 @@ export default function Sanidad() {
       </div>
 
       {/* ─── Panel desplegable "Mis gastos proyectados" ───────────────────── */}
-      <div className="card" style={{ padding: 0 }}>
+      <div className="card u-p-0">
         <button
           type="button"
           onClick={() => setPanelOpen(o => !o)}

@@ -88,7 +88,7 @@ const VentaRow = memo(function VentaRow({
           <option value="pendiente">Pendiente</option>
           {!esB2B && <option value="cancelado">Cancelado</option>}
         </select>
-        <div className="muted tiny mono" style={{ marginTop: 3 }}>{v.order_id}</div>
+        <div className="muted tiny mono u-mt-3">{v.order_id}</div>
         {esB2B && (
           <div className="u-mt-4">
             <Badge tone="primary">B2B</Badge>

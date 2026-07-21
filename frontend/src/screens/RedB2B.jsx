@@ -302,8 +302,8 @@ function EmptyState({ tab, onInvite }) {
   };
   const msg = messages[tab.id] || messages.active;
   return (
-    <div className="empty-state" style={{ padding: 32, textAlign: 'center' }}>
-      <p style={{ fontWeight: 600, marginBottom: 4 }}>{msg.title}</p>
+    <div className="empty-state u-p-32-text-center">
+      <p className="u-fw-600-mb-4">{msg.title}</p>
       <p className="muted u-mb-16">{msg.body}</p>
       {(tab.id === 'active' || tab.id === 'pending_sent') && (
         <button type="button" className="btn btn-primary" onClick={onInvite}>

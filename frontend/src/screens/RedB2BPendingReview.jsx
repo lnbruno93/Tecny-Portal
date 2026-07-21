@@ -193,8 +193,8 @@ export default function RedB2BPendingReview() {
 
 function EmptyState() {
   return (
-    <div className="empty-state" style={{ padding: 32, textAlign: 'center' }}>
-      <p style={{ fontWeight: 600, marginBottom: 4 }}>Sin productos pendientes</p>
+    <div className="empty-state u-p-32-text-center">
+      <p className="u-fw-600-mb-4">Sin productos pendientes</p>
       <p className="muted u-mb-12">
         Cuando un partner Red B2B te envíe una venta cross-tenant, los productos
         nuevos aparecerán acá para que los confirmes en tu catálogo o los
@@ -348,11 +348,11 @@ function MergeModal({ source, onClose, onSubmit }) {
             }}
           >
             {loading ? (
-              <div className="muted" style={{ padding: 16, textAlign: 'center' }}>
+              <div className="muted u-p-16-text-center">
                 Cargando catálogo...
               </div>
             ) : filtered.length === 0 ? (
-              <div className="muted" style={{ padding: 16, textAlign: 'center' }}>
+              <div className="muted u-p-16-text-center">
                 {query ? 'Sin resultados' : 'No hay productos en tu catálogo'}
               </div>
             ) : (

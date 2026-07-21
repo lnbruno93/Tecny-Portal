@@ -88,7 +88,7 @@ function RestoreModal({ producto, onClose, onDone }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-hd">
-          <h3 id="restore-modal-title" style={{ margin: 0 }}>Restaurar producto al stock</h3>
+          <h3 id="restore-modal-title" className="u-m-0">Restaurar producto al stock</h3>
         </div>
         <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
           <div style={{ padding: 10, background: 'var(--surface-2)', borderRadius: 6, fontSize: 13 }}>

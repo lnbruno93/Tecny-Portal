@@ -251,7 +251,7 @@ export default function TrustedCompaniesCard() {
         )}
 
         {loading ? (
-          <div className="muted" style={{ padding: 16, textAlign: 'center' }}>Cargando…</div>
+          <div className="muted u-p-16-text-center">Cargando…</div>
         ) : companies.length === 0 ? (
           <div className="muted" style={{ padding: 16, textAlign: 'center',
                border: '1px dashed var(--hairline)', borderRadius: 8, fontSize: 13 }}>
@@ -320,7 +320,7 @@ export default function TrustedCompaniesCard() {
                 )}
 
                 {/* Acciones: reorder + delete */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="u-flex-between-center-nogap">
                   <div className="muted tiny">#{idx + 1}</div>
                   <div className="u-flex-gap-4">
                     <button type="button" className="icon-btn"
@@ -362,7 +362,7 @@ export default function TrustedCompaniesCard() {
             borderRadius: 12, padding: 20,
             display: 'grid', gap: 14,
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="u-flex-between-center-nogap">
               <h3 style={{ margin: 0, fontSize: 16 }}>Agregar empresa</h3>
               <button type="button" className="icon-btn" onClick={closeAdd} aria-label="Cerrar">
                 <Icons.X size={16} />

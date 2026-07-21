@@ -168,23 +168,23 @@ export default function Desglose360() {
 
       {/* ── KPIs ── */}
       <div className="row" style={{ marginBottom: 18, gap: 12, flexWrap: 'wrap' }}>
-        <div className="card card-tight" style={{ flex: '1 1 180px' }}>
+        <div className="card card-tight u-flex-1-1-180">
           <div className="kpi-label">Productos</div>
           <div className="kpi-value mono">{fmt(tot.productos)}</div>
           <div className="muted tiny u-mt-6">{fmt(tot.stock)} unidades en total</div>
         </div>
-        <div className="card card-tight" style={{ flex: '1 1 180px' }}>
+        <div className="card card-tight u-flex-1-1-180">
           <div className="kpi-label">Inversión USD</div>
           <div className="kpi-value mono">{money(tot.inv_usd, 'USD')}</div>
           {/* Auditoría 2026-06-30 F-02→05: moneda local dinámica (ARS/UYU). */}
           <div className="muted tiny u-mt-6">{tot.inv_ars ? money(tot.inv_ars, monedaLocal) + ' ' + monedaLocal : '—'}</div>
         </div>
-        <div className="card card-tight" style={{ flex: '1 1 180px' }}>
+        <div className="card card-tight u-flex-1-1-180">
           <div className="kpi-label">Valorizado venta USD</div>
           <div className="kpi-value mono pos">{money(tot.valorizado_usd, 'USD')}</div>
           <div className="muted tiny u-mt-6">{tot.valorizado_ars ? money(tot.valorizado_ars, monedaLocal) + ' ' + monedaLocal : '—'}</div>
         </div>
-        <div className="card card-tight" style={{ flex: '1 1 180px' }}>
+        <div className="card card-tight u-flex-1-1-180">
           <div className="kpi-label">Margen potencial USD</div>
           <div className="kpi-value mono" style={{ color: (tot.margen_usd || 0) >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
             {money(tot.margen_usd, 'USD')}

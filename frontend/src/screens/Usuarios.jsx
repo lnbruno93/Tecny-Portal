@@ -505,7 +505,7 @@ export default function Usuarios() {
                         onChange={e => setNU('username', e.target.value.toLowerCase())} aria-invalid={!!fieldErrors.username} />
                       {fieldErrors.username
                         ? <div className="field-error">{fieldErrors.username}</div>
-                        : <div className="muted tiny" style={{ marginTop: 3 }}>Solo minúsculas, números y guión bajo.</div>}
+                        : <div className="muted tiny u-mt-3">Solo minúsculas, números y guión bajo.</div>}
                     </div>
                   </div>
 
@@ -525,7 +525,7 @@ export default function Usuarios() {
                         onChange={e => setNU('password', e.target.value)} autoComplete="new-password" aria-invalid={!!fieldErrors.password} />
                       {fieldErrors.password
                         ? <div className="field-error">{fieldErrors.password}</div>
-                        : <div className="muted tiny" style={{ marginTop: 3 }}>Mínimo 8 caracteres, con al menos una letra y un número.</div>}
+                        : <div className="muted tiny u-mt-3">Mínimo 8 caracteres, con al menos una letra y un número.</div>}
                     </div>
                   </div>
 

@@ -69,7 +69,7 @@ function TwoFaCodeModal({ open, title, description, onSubmit, onCancel, loading 
               style={{ fontSize: 17, letterSpacing: 1, textAlign: 'center' }}
             />
           </div>
-          <div className="modal-ft" style={{ justifyContent: 'flex-end', gap: 8 }}>
+          <div className="modal-ft u-gap-8-justify-end">
             <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={loading}>
               Cancelar
             </button>
@@ -261,14 +261,14 @@ export default function TwoFaSection() {
           background: 'rgba(234, 179, 8, 0.08)',
           border: '1px solid rgba(234, 179, 8, 0.3)',
         }}>
-          <div className="flex-row" style={{ gap: 8, alignItems: 'center', marginBottom: 6 }}>
+          <div className="flex-row u-gap-8-center-mb-6">
             <span className="badge" style={{ background: 'var(--warn)', color: '#000' }}>Setup pendiente</span>
             <strong>Autenticación de dos factores</strong>
           </div>
           <div className="muted tiny u-lh-15-mb-14">
             Empezaste a activar 2FA pero no completaste el paso final (ingresar el código de 6 dígitos de tu app autenticadora). Para terminar, continuá el setup. Si perdiste el QR o querés empezar de cero, cancelá.
           </div>
-          <div className="flex-row" style={{ gap: 8, justifyContent: 'flex-end' }}>
+          <div className="flex-row u-gap-8-justify-end">
             <button
               className="btn btn-ghost btn-sm"
               onClick={async () => {
@@ -301,7 +301,7 @@ export default function TwoFaSection() {
   // ── Estado NO configurado ──
   return (
     <div className="card card-tight" style={{ padding: 18 }}>
-      <div className="flex-row" style={{ gap: 8, alignItems: 'center', marginBottom: 6 }}>
+      <div className="flex-row u-gap-8-center-mb-6">
         <span className="badge badge-default">No activado</span>
         <strong>Autenticación de dos factores</strong>
       </div>

@@ -350,7 +350,7 @@ export default function Novedades() {
               </span>
             }
           >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div className="u-flex-col-gap-14">
               {/* Tipo */}
               <Field label="Tipo" error={fieldErrors.tipo}>
                 <Seg

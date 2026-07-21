@@ -198,7 +198,7 @@ export default function EquiposUsadosContent({ onCountChange }) {
           <div className="kpi-label">Origen canje</div>
           <div className="kpi-value">
             {fmtN(kpis.origenCanjeEnPagina)}{' '}
-            <span className="muted" style={{ fontSize: 13, fontWeight: 500 }}>
+            <span className="muted u-fs-13-fw-500">
               ({kpis.pctCanje}%)
             </span>
           </div>
@@ -261,7 +261,7 @@ export default function EquiposUsadosContent({ onCountChange }) {
       {/* ── Tabla ─────────────────────────────────────────────── */}
       {loading ? (
         <div className="card card-tight" aria-busy="true" aria-live="polite">
-          <div className="muted" style={{ padding: 20, textAlign: 'center' }}>Cargando equipos usados…</div>
+          <div className="muted u-p-20-text-center">Cargando equipos usados…</div>
         </div>
       ) : items.length === 0 ? (
         <div className="empty" style={{ padding: '28px 16px' }}>
@@ -277,7 +277,7 @@ export default function EquiposUsadosContent({ onCountChange }) {
           <table className="table">
             <thead>
               <tr>
-                <th style={{ minWidth: 180 }}>Equipo</th>
+                <th className="u-mw-180">Equipo</th>
                 <th className="u-w-120px">GB · Color</th>
                 <th className="u-w-90px">Batería</th>
                 <th style={{ width: 142, whiteSpace: 'nowrap' }}>IMEI / Serial</th>
@@ -285,7 +285,7 @@ export default function EquiposUsadosContent({ onCountChange }) {
                 <th style={{ width: 100, textAlign: 'right' }}>Precio venta</th>
                 <th className="u-w-130px">Origen</th>
                 <th style={{ minWidth: 170 }}>Cliente que lo entregó</th>
-                <th style={{ width: 96 }}>Ingresó</th>
+                <th className="u-w-96">Ingresó</th>
                 <th className="u-w-100px">Estado</th>
               </tr>
             </thead>

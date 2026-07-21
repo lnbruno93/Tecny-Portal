@@ -68,7 +68,7 @@ export default function ReactivateTenantModal({ tenant, open, onClose, onSaved }
         </>
       }
     >
-      <p style={{ marginTop: 0 }}>
+      <p className="u-mt-0">
         Vas a reactivar a <strong>{tenant?.nombre || 'este tenant'}</strong>.
         Los usuarios podrán volver a operar la plataforma de inmediato.
       </p>

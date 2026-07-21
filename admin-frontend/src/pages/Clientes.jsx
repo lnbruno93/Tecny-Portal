@@ -298,7 +298,7 @@ export default function Clientes() {
                     </td>
                     <td className="mono">{fmt(t.users_count ?? 0)}</td>
                     <td className="u-w-130px">
-                      <div className="bar-track" style={{ marginBottom: 3 }}>
+                      <div className="bar-track u-mb-3">
                         <div
                           className="bar-fill"
                           style={{ width: health + '%', background: hColor }}

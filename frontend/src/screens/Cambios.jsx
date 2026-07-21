@@ -344,7 +344,7 @@ export default function Cambios() {
               // 2026-07-16 (task #144 UX A): banner de error con retry visible,
               // en vez del toast que desaparece a los 5s. Si la red falla, el
               // user tiene forma de reintentar sin refrescar la página.
-              <div style={{ padding: 20, textAlign: 'center' }}>
+              <div className="u-p-20-text-center">
                 <div style={{ color: 'var(--neg)', fontSize: 13, marginBottom: 10 }}>
                   {listError}
                 </div>
@@ -624,7 +624,7 @@ export default function Cambios() {
                           <td><span className={'badge ' + badgeCls}>{labelTipo(m.tipo)}</span></td>
                           <td className="mono u-text-right">{Number(m.monto_ars) > 0 ? '$ ' + fmt(m.monto_ars) : '—'}</td>
                           <td className="mono tiny u-text-right">{m.tc ? fmt(m.tc) : '—'}</td>
-                          <td className="mono" style={{ textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>u$s {fmt(m.monto_usd)}</td>
+                          <td className="mono u-td-right-fw-700-accent">u$s {fmt(m.monto_usd)}</td>
                           <td className="tiny">{m.caja_nombre || '—'}</td>
                           <td className="muted tiny">{m.comentarios || '—'}</td>
                           <td><button className="icon-btn u-color-neg" title="Eliminar movimiento" aria-label="Eliminar movimiento" onClick={() => handleDeleteMov(m.id)}><Icons.Trash size={13} /></button></td>

@@ -267,7 +267,7 @@ export default function Proyectos() {
                         <td className="mono tiny">{fmtFecha(p.fecha_creacion)}</td>
                         <td className="mono tiny">{p.desde ? `${fmtFecha(p.desde)} → ${fmtFecha(p.hasta)}` : '—'}</td>
                         <td className="mono u-text-right">{Number(p.total_ars) > 0 ? '$ ' + fmt(p.total_ars) : '—'}</td>
-                        <td className="mono" style={{ textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>{Number(p.total_usd) > 0 ? 'u$s ' + fmt(p.total_usd) : '—'}</td>
+                        <td className="mono u-td-right-fw-700-accent">{Number(p.total_usd) > 0 ? 'u$s ' + fmt(p.total_usd) : '—'}</td>
                         <td className="mono tiny u-text-right">{p.cant_movimientos}</td>
                       </tr>
                     ))}
@@ -378,7 +378,7 @@ export default function Proyectos() {
                         <td>{m.categoria ? <span className="badge">{m.categoria}</span> : '—'}</td>
                         <td className="mono u-text-right">{Number(m.monto) > 0 ? '$ ' + fmt(m.monto) : '—'}</td>
                         <td className="mono tiny u-text-right">{m.tc ? fmt(m.tc) : '—'}</td>
-                        <td className="mono" style={{ textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>{Number(m.monto_usd) > 0 ? 'u$s ' + fmt(m.monto_usd) : '—'}</td>
+                        <td className="mono u-td-right-fw-700-accent">{Number(m.monto_usd) > 0 ? 'u$s ' + fmt(m.monto_usd) : '—'}</td>
                         <td className="tiny">
                           {m.caja_nombre ? (
                             <span title={`${m.tipo} en ${m.caja_nombre} (${m.caja_moneda})`}>

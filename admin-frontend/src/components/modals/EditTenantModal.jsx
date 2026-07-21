@@ -165,7 +165,7 @@ export default function EditTenantModal({ tenant, open, onClose, onSaved }) {
         </>
       }
     >
-      <p className="muted tiny" style={{ marginTop: 0, marginBottom: 14 }}>
+      <p className="muted tiny u-mt-0-mb-14">
         Cambios se aplican atómicamente con audit trail.
       </p>
 

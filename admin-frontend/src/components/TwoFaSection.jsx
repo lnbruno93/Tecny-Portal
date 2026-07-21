@@ -394,7 +394,7 @@ export default function TwoFaSection({ onMessage }) {
             border: '1px solid rgba(234, 179, 8, 0.3)',
           }}
         >
-          <div className="flex-row" style={{ gap: 8, alignItems: 'center', marginBottom: 6 }}>
+          <div className="flex-row u-gap-8-center-mb-6">
             <Badge tone="warn">Setup pendiente</Badge>
             <strong>Autenticación de dos factores</strong>
           </div>
@@ -404,7 +404,7 @@ export default function TwoFaSection({ onMessage }) {
             continuá el setup. Si perdiste el QR o querés empezar de cero,
             cancelá.
           </div>
-          <div className="flex-row" style={{ gap: 8, justifyContent: 'flex-end' }}>
+          <div className="flex-row u-gap-8-justify-end">
             <Btn kind="ghost" sm onClick={() => setCancelSetupModalOpen(true)}>
               Cancelar setup
             </Btn>
@@ -452,7 +452,7 @@ export default function TwoFaSection({ onMessage }) {
     <div>
       {localBanner}
       <div className="card" style={{ padding: 18 }}>
-        <div className="flex-row" style={{ gap: 8, alignItems: 'center', marginBottom: 6 }}>
+        <div className="flex-row u-gap-8-center-mb-6">
           <Badge>No activado</Badge>
           <strong>Autenticación de dos factores</strong>
         </div>

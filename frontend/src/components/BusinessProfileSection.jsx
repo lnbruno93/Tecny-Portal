@@ -105,7 +105,7 @@ export default function BusinessProfileSection({ isAdmin }) {
     return (
       <div className="card u-mb-16">
         <div className="card-hd">
-          <div style={{ fontWeight: 600, fontSize: 15 }}>Perfil del negocio</div>
+          <div className="u-fw-600-fs-15">Perfil del negocio</div>
           <div className="muted tiny u-mt-2">
             Datos que se usan en los mensajes generados por el Cotizador.
           </div>
@@ -138,7 +138,7 @@ export default function BusinessProfileSection({ isAdmin }) {
   return (
     <div className="card u-mb-16">
       <div className="card-hd">
-        <div style={{ fontWeight: 600, fontSize: 15 }}>Perfil del negocio</div>
+        <div className="u-fw-600-fs-15">Perfil del negocio</div>
         <div className="muted tiny u-mt-2">
           Datos que se usan en los mensajes generados por el Cotizador y otras
           partes del portal donde aparece el nombre del negocio.
@@ -212,7 +212,7 @@ export default function BusinessProfileSection({ isAdmin }) {
           </div>
         )}
 
-        <div className="flex-row" style={{ gap: 8, justifyContent: 'flex-end' }}>
+        <div className="flex-row u-gap-8-justify-end">
           <button
             type="button"
             className={'btn btn-primary' + (!isDirty || saving ? ' disabled' : '')}

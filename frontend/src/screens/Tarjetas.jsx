@@ -653,7 +653,7 @@ export default function Tarjetas() {
           de los que entraron en ese rango). */}
       {!sinTarjetas && (
         <div className="card card-tight u-mb-14">
-          <div className="flex-row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div className="flex-row u-gap-6-wrap-center">
             <span className="muted tiny u-mr-4">Período (ledger):</span>
             {RANGE_PRESETS.map(p => (
               <button key={p.v}
@@ -664,7 +664,7 @@ export default function Tarjetas() {
             ))}
             {tarjRange.preset === 'custom' && (
               <>
-                <input type="date" className="input" style={{ width: 140, marginLeft: 6 }}
+                <input type="date" className="input u-w-140-ml-6"
                        value={tarjRange.desde}
                        onChange={e => setTarjRange(r => ({ ...r, desde: e.target.value }))} />
                 <span className="muted tiny">a</span>
@@ -725,7 +725,7 @@ export default function Tarjetas() {
                     <td className="mono tiny u-text-right">{Number(t.comision_pct || 0)}%</td>
                     <td className="mono u-text-right">$ {fmt(t.bruto_total)}</td>
                     <td className="mono u-color-neg-text-right">$ {fmt(t.comision_total)}</td>
-                    <td className="mono" style={{ textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>$ {fmt(t.saldo)}</td>
+                    <td className="mono u-td-right-fw-700-accent">$ {fmt(t.saldo)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -737,7 +737,7 @@ export default function Tarjetas() {
             <div className="card-hd">
               <div className="u-fs-14-fw-600">
                 Estado de cuenta
-                <span className="muted tiny" style={{ marginLeft: 8, fontWeight: 400 }}>· {rangeLabel(tarjRange)} ({estadoCuenta.length})</span>
+                <span className="muted tiny u-ml-8-fw-400">· {rangeLabel(tarjRange)} ({estadoCuenta.length})</span>
               </div>
               {/* Export del período actual — mismo patrón que Comprobantes/Financiera.
                   Sin ZIP porque Tarjetas no tiene archivos físicos asociados. */}
@@ -1095,7 +1095,7 @@ export default function Tarjetas() {
                 <div className="card-hd">
                   <div className="u-fs-14-fw-600">
                     Estado de cuenta unificado
-                    <span className="muted tiny" style={{ marginLeft: 8, fontWeight: 400 }}>· {rangeLabel(tarjRange)} ({estadoCuenta.length})</span>
+                    <span className="muted tiny u-ml-8-fw-400">· {rangeLabel(tarjRange)} ({estadoCuenta.length})</span>
                   </div>
                 </div>
                 <div className="u-overflow-auto">
