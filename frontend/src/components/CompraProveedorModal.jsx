@@ -24,7 +24,7 @@ import { Icons } from './Icons';
 import { proveedores as provApi, inventario as invApi, cajas as cajasApi } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from './ConfirmModal';
-import { cellInp, headerTh as th, catalogosErrorBanner } from '../lib/spreadsheetStyles';
+import { headerTh as th, catalogosErrorBanner } from '../lib/spreadsheetStyles';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #M-11
 import useSpreadsheetRows from '../lib/useSpreadsheetRows'; // #F-5
 import TcWarning from './TcWarning';
@@ -536,30 +536,30 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
                           onChange={e => updCell(idx, 'crear_stock', e.target.checked)} />
                       </td>
                       <td className="u-p-3-4">
-                        <input style={cellInp} value={r.nombre}
+                        <input className="cell-inp" value={r.nombre}
                           placeholder="iPhone 15 Pro"
                           onPaste={e => handlePasteOnRow(e, idx)}
                           onChange={e => updCell(idx, 'nombre', e.target.value)} />
                       </td>
                       <td className="u-p-3-4">
-                        <input style={{ ...cellInp, fontFamily: 'monospace' }} value={r.imei}
+                        <input className="cell-inp u-mono" value={r.imei}
                           placeholder="356938…"
                           onChange={e => updCell(idx, 'imei', e.target.value)} />
                       </td>
                       <td className="u-p-3-4">
-                        <input style={{ ...cellInp, textAlign: 'right' }} value={r.gb}
+                        <input className="cell-inp u-text-right" value={r.gb}
                           placeholder="256" onChange={e => updCell(idx, 'gb', e.target.value)} />
                       </td>
                       <td className="u-p-3-4">
-                        <input style={cellInp} value={r.color}
+                        <input className="cell-inp" value={r.color}
                           placeholder="Negro" onChange={e => updCell(idx, 'color', e.target.value)} />
                       </td>
                       <td className="u-p-3-4">
-                        <input type="number" onKeyDown={blockInvalidNumberKeys} style={{ ...cellInp, textAlign: 'right' }} value={r.bateria}
+                        <input type="number" onKeyDown={blockInvalidNumberKeys} className="cell-inp u-text-right" value={r.bateria}
                           placeholder="100" onChange={e => updCell(idx, 'bateria', e.target.value)} />
                       </td>
                       <td className="u-p-3-4">
-                        <select style={{ ...cellInp, cursor: 'pointer' }} value={r.clase_id || ''}
+                        <select className="cell-inp u-cursor-pointer" value={r.clase_id || ''}
                           onChange={e => updCell(idx, 'clase_id', e.target.value)}>
                           <option value="">—</option>
                           {clases.filter(c => c.activa && !c.es_sin_categoria).map(c => (
@@ -568,57 +568,57 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
                         </select>
                       </td>
                       <td className="u-p-3-4">
-                        <select style={{ ...cellInp, cursor: 'pointer' }} value={r.categoria_id}
+                        <select className="cell-inp u-cursor-pointer" value={r.categoria_id}
                           onChange={e => updCell(idx, 'categoria_id', e.target.value)}>
                           <option value="">—</option>
                           {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                         </select>
                       </td>
                       <td className="u-p-3-4">
-                        <select style={{ ...cellInp, cursor: 'pointer' }} value={r.deposito_id}
+                        <select className="cell-inp u-cursor-pointer" value={r.deposito_id}
                           onChange={e => updCell(idx, 'deposito_id', e.target.value)}>
                           <option value="">—</option>
                           {depositos.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}
                         </select>
                       </td>
                       <td className="u-p-3-4">
-                        <select style={{ ...cellInp, cursor: 'pointer' }} value={r.condicion}
+                        <select className="cell-inp u-cursor-pointer" value={r.condicion}
                           onChange={e => updCell(idx, 'condicion', e.target.value)}>
                           <option value="nuevo">Nuevo</option>
                           <option value="usado">Usado</option>
                         </select>
                       </td>
                       <td className="u-p-3-4">
-                        <select style={{ ...cellInp, cursor: 'pointer' }} value={r.tipo_carga}
+                        <select className="cell-inp u-cursor-pointer" value={r.tipo_carga}
                           onChange={e => updCell(idx, 'tipo_carga', e.target.value)}>
                           <option value="unitario">Unitario</option>
                           <option value="lote">Lote</option>
                         </select>
                       </td>
                       <td className="u-p-3-4">
-                        <input type="number" onKeyDown={blockInvalidNumberKeys} style={{ ...cellInp, textAlign: 'right' }} value={r.cantidad}
+                        <input type="number" onKeyDown={blockInvalidNumberKeys} className="cell-inp u-text-right" value={r.cantidad}
                           placeholder="1" onChange={e => updCell(idx, 'cantidad', e.target.value)} />
                       </td>
                       <td className="u-p-3-4">
-                        <input type="number" onKeyDown={blockInvalidNumberKeys} style={{ ...cellInp, textAlign: 'right', fontWeight: 700 }}
+                        <input type="number" onKeyDown={blockInvalidNumberKeys} className="cell-inp u-td-right-fw-700"
                           value={r.costo} placeholder="0"
                           onChange={e => updCell(idx, 'costo', e.target.value)} />
                       </td>
                       <td className="u-p-3-4">
                         {/* 2026-06-29 Multi-país F3: USD + moneda local. */}
-                        <select style={{ ...cellInp, cursor: 'pointer' }} value={r.costo_moneda}
+                        <select className="cell-inp u-cursor-pointer" value={r.costo_moneda}
                           onChange={e => updCell(idx, 'costo_moneda', e.target.value)}>
                           {Array.from(new Set(['USD', monedaLocal, r.costo_moneda].filter(Boolean)))
                             .map(m => <option key={m} value={m}>{m}</option>)}
                         </select>
                       </td>
                       <td className="u-p-3-4">
-                        <input type="number" onKeyDown={blockInvalidNumberKeys} style={{ ...cellInp, textAlign: 'right' }}
+                        <input type="number" onKeyDown={blockInvalidNumberKeys} className="cell-inp u-text-right"
                           value={r.precio_venta} placeholder="0"
                           onChange={e => updCell(idx, 'precio_venta', e.target.value)} />
                       </td>
                       <td className="u-p-3-4">
-                        <select style={{ ...cellInp, cursor: 'pointer' }} value={r.precio_moneda}
+                        <select className="cell-inp u-cursor-pointer" value={r.precio_moneda}
                           onChange={e => updCell(idx, 'precio_moneda', e.target.value)}>
                           {Array.from(new Set(['USD', monedaLocal, r.precio_moneda].filter(Boolean)))
                             .map(m => <option key={m} value={m}>{m}</option>)}

@@ -2,15 +2,11 @@
  * Estilos compartidos para los modales spreadsheet de Tecny.
  * Auditoría #R-01: antes había objetos cellInp y th IDÉNTICOS en los 3
  * modales (CompraProveedorModal, VentaB2BModal, CobranzaMasivaModal).
+ *
+ * 2026-07-21 Sprint 9 CSP: cellInp fue promovido a clase CSS `.cell-inp`
+ * en styles.css. Ya no se exporta como objeto JS. Ver AutocompletePicker
+ * que ahora usa la clase directamente sin recibir prop.
  */
-
-// Input chico de celda spreadsheet.
-export const cellInp = {
-  padding: '3px 6px', fontSize: 12, height: 26,
-  border: '1px solid var(--border)', background: 'var(--surface)',
-  color: 'var(--text)', borderRadius: 4, width: '100%',
-  outline: 'none', boxSizing: 'border-box',
-};
 
 // Header de columna (<th>) de la planilla.
 export const headerTh = {

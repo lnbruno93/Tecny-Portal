@@ -20,7 +20,7 @@ import { cuentas as cuentasApi, cajas as cajasApi } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from './ConfirmModal';
 import AutocompletePicker from './AutocompletePicker';
-import { cellInp, headerTh as th, catalogosErrorBanner } from '../lib/spreadsheetStyles';
+import { headerTh as th, catalogosErrorBanner } from '../lib/spreadsheetStyles';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #M-11
 import useSpreadsheetRows from '../lib/useSpreadsheetRows'; // #F-5
 import TcWarning from './TcWarning';
@@ -307,7 +307,6 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
                           onPick={c => pickCliente(idx, c)}
                           onClear={() => clearCliente(idx)}
                           onChange={v => updCell(idx, 'cliente_nombre', v)}
-                          cellInp={cellInp}
                         />
                       </td>
                       <td style={{ padding: '3px 4px', textAlign: 'right', fontSize: 12 }}>
@@ -318,14 +317,14 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
                           : <span className="dim">—</span>}
                       </td>
                       <td className="u-p-3-4">
-                        <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" style={{ ...cellInp, textAlign: 'right', fontWeight: 700,
-                          borderColor: sobrepago ? 'var(--warn, #d97706)' : 'var(--border)',
-                        }}
+                        <input type="number" onKeyDown={blockInvalidNumberKeys} min="0"
+                          className="cell-inp u-td-right-fw-700"
+                          style={{ borderColor: sobrepago ? 'var(--warn, #d97706)' : 'var(--border)' }}
                           value={r.monto} placeholder="0"
                           onChange={e => updCell(idx, 'monto', e.target.value)} />
                       </td>
                       <td className="u-p-3-4">
-                        <select style={{ ...cellInp, cursor: 'pointer' }} value={r.caja_id}
+                        <select className="cell-inp u-cursor-pointer" value={r.caja_id}
                           onChange={e => updCell(idx, 'caja_id', e.target.value)}>
                           <option value="">—</option>
                           {cajas.map(c => <option key={c.id} value={c.id}>{c.nombre} ({c.moneda})</option>)}
@@ -335,7 +334,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
                       <td className="u-p-3-4">
                         {needsTc ? (
                           <>
-                            <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" style={{ ...cellInp, textAlign: 'right' }}
+                            <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="cell-inp u-text-right"
                               value={r.tc} placeholder={moneda}
                               onChange={e => updCell(idx, 'tc', e.target.value)} />
                             <TcWarning tc={r.tc} />
@@ -351,7 +350,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
                         ) : <span className="dim">—</span>}
                       </td>
                       <td className="u-p-3-4">
-                        <select style={{ ...cellInp, cursor: 'pointer' }} value={r.tipo}
+                        <select className="cell-inp u-cursor-pointer" value={r.tipo}
                           onChange={e => updCell(idx, 'tipo', e.target.value)}>
                           <option value="pago">Pago</option>
                           <option value="parte_de_pago">Parte pago</option>
@@ -403,7 +402,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
 // sobre AutocompletePicker genérico. Antes era ~120 líneas casi idénticas
 // al ProductoPicker.
 const CLIENTE_SEARCH_LIMIT = 15;
-function ClientePicker({ value, locked, showZero, onPick, onClear, onChange, cellInp }) {
+function ClientePicker({ value, locked, showZero, onPick, onClear, onChange }) {
   const fetchOptions = (q) =>
     cuentasApi.clientesSearch(q, !showZero).then(res => res.data || []);
   return (
@@ -415,7 +414,6 @@ function ClientePicker({ value, locked, showZero, onPick, onClear, onChange, cel
       placeholder="Buscar cliente…"
       emptyText={showZero ? 'Sin coincidencias' : 'Sin coincidencias con deuda'}
       limit={CLIENTE_SEARCH_LIMIT}
-      cellInp={cellInp}
       renderOption={(c) => {
         const saldo = Number(c.saldo || 0);
         const tono = saldo > 0 ? 'neg' : saldo < 0 ? 'pos' : 'muted';

@@ -3220,3 +3220,29 @@ body.modal-open { overflow: hidden; }
 /* Composed 4-prop */
 .u-p-26-fs-13-fw-600-w-110  { padding: 2px 6px; font-size: 13px; font-weight: 600; width: 110px; }
 .u-gap-10-mb-12-wrap-center { gap: 10px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+
+/* Sprint 9 (2026-07-21) — componentización cell/cellInp
+   Reemplaza los JS objects "cell" (Proveedores/CuentasCC) y "cellInp"
+   (spreadsheetStyles.js — usado en 6 files). Elimina ~48 spread-inline
+   styles. Combinan con utility classes existentes:
+     <td className="cell u-color-text-2">
+     <input className="cell-inp u-cursor-pointer">
+*/
+.cell {
+  padding: 7px 8px;
+  font-size: 13px;
+}
+.cell-inp {
+  padding: 3px 6px;
+  font-size: 12px;
+  height: 26px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 4px;
+  width: 100%;
+  outline: none;
+  box-sizing: border-box;
+}
+.u-color-text-2 { color: var(--text-2); }
+.u-mono         { font-family: monospace; }

@@ -325,7 +325,6 @@ export default function Proveedores() {
 
   // Orden ASC (cronológico, como un libro mayor) — fila nueva al pie
   const movimientos = [...movs].reverse();
-  const cell = { padding: '7px 8px', fontSize: 13 };
 
   // Inyectamos el proveedor seleccionado en las filas inline vía clave (remount)
   return (
@@ -530,37 +529,37 @@ export default function Proveedores() {
                     const extra = m.items?.length > 1 ? ` +${m.items.length - 1}` : '';
                     return (
                       <tr key={m.id} style={{ borderBottom: '1px solid var(--hairline)', opacity: m._pending ? 0.55 : 1 }}>
-                        <td style={cell} className="muted mono">{fmtFecha(m.fecha)}</td>
-                        <td style={cell}><Status tone={t.tone}>{t.label}</Status></td>
-                        <td style={cell}>
+                        <td className="cell muted mono">{fmtFecha(m.fecha)}</td>
+                        <td className="cell"><Status tone={t.tone}>{t.label}</Status></td>
+                        <td className="cell">
                           {item?.producto
                             ? <>{item.producto}<span className="muted tiny">{extra}</span></>
                             : (m.descripcion || <span className="dim">—</span>)
                           }
                         </td>
-                        <td style={{ ...cell, color: 'var(--text-2)' }}>
+                        <td className="cell u-color-text-2">
                           {item?.modelo || <span className="dim">—</span>}
                         </td>
-                        <td style={{ ...cell, color: 'var(--text-2)' }}>
+                        <td className="cell u-color-text-2">
                           {item?.tamano || <span className="dim">—</span>}
                         </td>
-                        <td style={{ ...cell, color: 'var(--text-2)' }}>
+                        <td className="cell u-color-text-2">
                           {item?.color || <span className="dim">—</span>}
                         </td>
-                        <td style={{ ...cell, fontFamily: 'monospace', fontSize: 12 }}>
+                        <td className="cell u-mono u-fs-12">
                           {item?.imei_serial || <span className="dim">—</span>}
                         </td>
-                        <td style={{ ...cell, fontSize: 12 }}>
+                        <td className="cell u-fs-12">
                           {m.caja_nombre
                             ? <span title="Movimiento de contado: descontó esta caja">{m.caja_nombre}</span>
                             : <span className="dim" title="A crédito (suma deuda)">CC</span>}
                         </td>
-                        <td style={{ ...cell, textAlign: 'right', fontWeight: 700 }}>
+                        <td className="cell u-td-right-fw-700">
                           <span className={t.tone === 'neg' ? 'neg' : 'pos'}>
                             {t.signo > 0 ? '+' : '−'}USD {fmt(m.monto_usd)}
                           </span>
                         </td>
-                        <td style={{ ...cell, textAlign: 'center' }}>
+                        <td className="cell u-text-center">
                           {item?.verificado
                             ? <span style={{ color: 'var(--pos)', fontSize: 14 }}>✓</span>
                             : <span className="dim u-fs-11">—</span>}
