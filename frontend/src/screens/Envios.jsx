@@ -1464,8 +1464,8 @@ export default function Envios() {
                                        onFocus={() => setProdSearch(s => ({ ...s, itemIdx: idx }))} />
                                 {prodSearch.itemIdx === idx && prodSearch.q.trim().length >= 2 && (
                                   <div className="card card-tight" style={{ position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 4, zIndex: 50, maxHeight: 260, overflowY: 'auto', padding: 0 }}>
-                                    {prodSearch.loading && <div className="muted tiny" style={{ padding: '8px 10px' }}>Buscando…</div>}
-                                    {!prodSearch.loading && prodSearch.results.length === 0 && <div className="muted tiny" style={{ padding: '8px 10px' }}>Sin resultados</div>}
+                                    {prodSearch.loading && <div className="muted tiny u-p-8-10">Buscando…</div>}
+                                    {!prodSearch.loading && prodSearch.results.length === 0 && <div className="muted tiny u-p-8-10">Sin resultados</div>}
                                     {prodSearch.results.map(p => (
                                       <button type="button" key={p.id}
                                               onClick={() => pickProducto(idx, p)}
@@ -1796,7 +1796,7 @@ export default function Envios() {
                         <div className="muted tiny u-mt-4">Leyendo monto del comprobante…</div>
                       )}
                       {ocrSugerencia.status === 'done' && ocrSugerencia.monto > 0 && (
-                        <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <div className="u-mt-6-flex-center-8-wrap">
                           <span className="muted tiny">Detectamos en el comprobante:</span>
                           <span className="mono u-fw-600">${fmt(ocrSugerencia.monto)}</span>
                           <button type="button" className="btn btn-sm" onClick={aplicarOcrMonto}>Aplicar al pago</button>

@@ -2186,7 +2186,7 @@ export default function Ventas() {
                   </div>
 
                   {/* Totales */}
-                  <div className="card card-tight" style={{ padding: '10px 14px' }}>
+                  <div className="card card-tight u-p-10-14">
                     <div className="flex-between u-fs-13"><span className="muted">Total venta</span><span className="mono u-fw-700">u$s{fmt(totales.items)}</span></div>
                     <div className="flex-between u-fs-13">
                       <span
@@ -2266,7 +2266,7 @@ export default function Ventas() {
                       <div className="muted tiny u-mt-4">Leyendo monto del comprobante…</div>
                     )}
                     {ocrSugerencia.status === 'done' && ocrSugerencia.monto > 0 && (
-                      <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <div className="u-mt-6-flex-center-8-wrap">
                         <span className="muted tiny">Detectamos en el comprobante:</span>
                         <span className="mono u-fw-600">${fmt(ocrSugerencia.monto)}</span>
                         <button type="button" className="btn btn-sm" onClick={aplicarOcrMonto}>Aplicar al pago</button>

@@ -282,7 +282,7 @@ export default function TrustedCompaniesCard() {
                   <img
                     src={`${BACKEND_BASE}/api/public/trusted-companies/${c.id}/logo`}
                     alt={c.nombre}
-                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                    className="u-img-contain-full"
                   />
                 </div>
 
@@ -407,7 +407,7 @@ export default function TrustedCompaniesCard() {
                   <img
                     src={addPreview}
                     alt="Preview"
-                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                    className="u-img-contain-full"
                   />
                 </div>
               )}

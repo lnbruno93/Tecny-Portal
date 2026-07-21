@@ -3342,3 +3342,50 @@ body.modal-open { overflow: hidden; }
 .u-p-24-text-center           { padding: 24px; text-align: center; }
 .u-p-8-fs-12-color-muted      { padding: 8px; font-size: 12px; color: var(--text-muted); }
 .u-pb-8-color-muted-fw-700-fs-18 { padding-bottom: 8px; color: var(--text-muted); font-weight: 700; font-size: 18px; }
+
+/* Sprint 12 (2026-07-21) — más 2-hit patterns residuales */
+
+/* Simple 1-prop */
+.u-opacity-05         { opacity: 0.5; }
+.u-mt-14              { margin-top: 14px; }
+.u-p-18               { padding: 18px; }
+.u-mw-180-max         { max-width: 180px; }
+.u-mw-200-max         { max-width: 200px; }
+.u-mw-240-max         { max-width: 240px; }
+.u-mw-320-max         { max-width: 320px; }
+.u-mw-620-max         { max-width: 620px; }
+.u-mw-640-max         { max-width: 640px; }
+.u-p-8-10             { padding: 8px 10px; }
+.u-p-10-14            { padding: 10px 14px; }
+.u-p-7-6              { padding: 7px 6px; }
+.u-p-0-8              { padding: 0 8px; }
+
+/* Width + textAlign right combos */
+.u-w-60-td-right      { width: 60px; text-align: right; }
+.u-w-84-td-right      { width: 84px; text-align: right; }
+.u-w-96-td-right      { width: 96px; text-align: right; }
+.u-w-100-td-right     { width: 100px; text-align: right; }
+
+/* Composed 2-prop */
+.u-opacity-04-not-allowed  { opacity: 0.4; cursor: not-allowed; }
+.u-p-18-mb-12              { padding: 18px; margin-bottom: 12px; }
+.u-p-16-mt-16              { padding: 16px; margin-top: 16px; }
+.u-p-16-mb-16              { padding: 16px; margin-bottom: 16px; }
+.u-p-12-border-bottom      { padding: 12px; border-bottom: 1px solid var(--border); }
+.u-mw-min-150-nowrap       { min-width: 150px; white-space: nowrap; }
+.u-mh-85vh-oy-auto         { max-height: 85vh; overflow-y: auto; }
+.u-mh-78vh-o-auto          { max-height: 78vh; overflow: auto; }
+.u-mh-70vh-oy-auto         { max-height: 70vh; overflow-y: auto; }
+.u-mt-6-italic             { margin-top: 6px; font-style: italic; }
+.u-mt-2-td-right           { margin-top: 2px; text-align: right; }
+.u-mt-12-align-end         { margin-top: 12px; align-items: flex-end; }
+.u-mw-560-w-92vw           { max-width: 560px; width: 92vw; }
+
+/* Composed 3-prop */
+.u-img-contain-full        { max-width: 100%; max-height: 100%; object-fit: contain; }
+.u-p-12-bg-subtle-r-4      { padding: 12px; background: var(--bg-subtle, #f9fafb); border-radius: 4px; }
+.u-p-6-10-border-r-8       { padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; }
+.u-p-6-8-td-right-mono     { padding: 6px 8px; text-align: right; font-family: monospace; }
+.u-p-12-16-m-0-fs-16       { padding: 12px 16px; margin: 0; font-size: 16px; }
+.u-p-12-16-bb-flex-shrink  { padding: 12px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.u-mt-6-flex-center-8-wrap { margin-top: 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

@@ -326,7 +326,7 @@ export default function Cambios() {
 
       <div className="grid-2" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 16, alignItems: 'start' }}>
         {/* Lista de financieras */}
-        <div className="card card-flush" style={{ maxHeight: '78vh', overflow: 'auto' }}>
+        <div className="card card-flush u-mh-78vh-o-auto">
           {/* 2026-06-25 UX-3 (audit pre-live): skeleton bars en lugar del
               "Cargando…" plano. Mantiene la altura del card estable mientras
               llega la lista, evita el "salto" visual al renderizar. */}

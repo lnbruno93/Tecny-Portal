@@ -90,7 +90,7 @@ function montoUsd(monto, moneda, tc) {
 // que el signo lo agregamos manualmente acá.
 function MoneyCell({ value, className = '', placeholder = '—', variacion = null, isGasto = false }) {
   if (value == null) {
-    return <span className="muted tiny" style={{ opacity: 0.5 }}>{placeholder}</span>;
+    return <span className="muted tiny u-opacity-05">{placeholder}</span>;
   }
   const isNeg = Number(value) < 0;
   // Color del % según contexto: para gastos, subir es malo (rojo); para
@@ -1060,7 +1060,7 @@ export default function Sanidad() {
                         <td className="sanidad-td-num">
                           {g.real_usd != null
                             ? <MoneyCell value={g.real_usd} isGasto={true} />
-                            : <span className="muted tiny" style={{ opacity: 0.5 }}>—</span>}
+                            : <span className="muted tiny u-opacity-05">—</span>}
                         </td>
                       </Fragment>
                     );

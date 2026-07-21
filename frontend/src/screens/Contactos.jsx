@@ -277,8 +277,8 @@ export default function Contactos() {
 
       {/* Filtros */}
       <div className="flex-row u-gap-10-mb-12-wrap-center">
-        <input type="search" inputMode="search" aria-label="Buscar contactos" className="input" style={{ maxWidth: 320 }} placeholder="Buscar por nombre, mail, teléfono o DNI…" value={search} onChange={e => setSearch(e.target.value)} />
-        <select className="input" style={{ maxWidth: 200 }} value={origenFilter} onChange={e => setOrigenFilter(e.target.value)}>
+        <input type="search" inputMode="search" aria-label="Buscar contactos" className="input u-mw-320-max" placeholder="Buscar por nombre, mail, teléfono o DNI…" value={search} onChange={e => setSearch(e.target.value)} />
+        <select className="input u-mw-200-max" value={origenFilter} onChange={e => setOrigenFilter(e.target.value)}>
           <option value="">Todos los orígenes</option>
           {ORIGENES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>

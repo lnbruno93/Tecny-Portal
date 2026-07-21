@@ -186,7 +186,7 @@ export function RedB2BConciliacionContent({
         </button>
       </div>
 
-      <section className="card" style={{ padding: 16, marginBottom: 16 }}>
+      <section className="card u-p-16-mb-16">
         <h3 className="u-mt-0-fs-16">Totales agregados</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
           <KpiBox label="Operaciones (USD)" value={fmtMoney(totales.operaciones_usd, 'USD')} sub={`${totales.ops_count} ops`} />
@@ -199,7 +199,7 @@ export function RedB2BConciliacionContent({
         </div>
       </section>
 
-      <section className="card" style={{ padding: 16, marginBottom: 16 }}>
+      <section className="card u-p-16-mb-16">
         <h3 className="u-mt-0-fs-16">Conciliación bilateral</h3>
         {saldos_bilaterales.difieren ? (
           <div style={{ background: 'var(--red-bg, #fef2f2)', padding: 12, borderRadius: 4, marginBottom: 12 }}>
@@ -225,7 +225,7 @@ export function RedB2BConciliacionContent({
 
       {ops_diferencias && ops_diferencias.length > 0 && (
         <section className="card">
-          <h2 style={{ padding: '12px 16px', margin: 0, fontSize: 16 }}>
+          <h2 className="u-p-12-16-m-0-fs-16">
             Operaciones con detalle
           </h2>
           <div className="u-overflow-x-auto">
@@ -298,7 +298,7 @@ function KpiBox({ label, value, sub, color }) {
       ? { color: 'var(--orange-fg, #c2410c)' }
       : {};
   return (
-    <div style={{ padding: 12, background: 'var(--bg-subtle, #f9fafb)', borderRadius: 4 }}>
+    <div className="u-p-12-bg-subtle-r-4">
       <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: 18, fontWeight: 600, ...colorStyle }}>{value}</div>
       {sub && <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>{sub}</div>}

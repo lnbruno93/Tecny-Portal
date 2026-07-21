@@ -120,11 +120,10 @@ export default function PorCategoriaBreakdownModal({
       onClick={e => e.target === e.currentTarget && onClose()}
     >
       <div
-        className="modal"
+        className="modal u-mw-560-w-92vw"
         role="dialog"
         aria-labelledby={titleId}
         aria-modal="true"
-        style={{ maxWidth: 560, width: '92vw' }}
       >
         <div className="modal-hd">
           <h3 id={titleId}>{title}</h3>
@@ -139,7 +138,7 @@ export default function PorCategoriaBreakdownModal({
           </button>
         </div>
 
-        <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+        <div className="modal-body u-mh-70vh-oy-auto">
           {subtitle && (
             <p className="muted tiny u-mb-12">
               {subtitle}

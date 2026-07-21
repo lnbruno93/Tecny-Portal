@@ -1118,7 +1118,7 @@ export default function CuentasCC() {
 
         {/* ── Sidebar ── */}
         <div style={{ borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: 12, borderBottom: '1px solid var(--border)' }}>
+          <div className="u-p-12-border-bottom">
             <div className="input-group u-mb-8">
               <span className="addon addon-l"><Icons.Search size={13} /></span>
               <input className="input" placeholder="Buscar…" value={search}
@@ -1187,7 +1187,7 @@ export default function CuentasCC() {
           <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
 
             {/* ── Header del cliente con KPIs inline ── */}
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+            <div className="u-p-12-16-bb-flex-shrink">
               <div className="flex-between u-mb-8">
                 {/* Nombre e info */}
                 <div>
@@ -1397,7 +1397,7 @@ export default function CuentasCC() {
                             ? <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', whiteSpace: 'nowrap' }}>{m.notas}</span>
                             : <span className="dim">—</span>}
                         </td>
-                        <td style={{ padding: '7px 6px' }}>
+                        <td className="u-p-7-6">
                           {!m._pending && (
                             <button className="icon-btn" title="Eliminar" onClick={() => handleDeleteMovimiento(m.id)}>
                               <Icons.Trash size={13} />
@@ -1699,10 +1699,10 @@ function MovimientoDesglose({ mov, onDevolverItem }) {
                   {[it.tamano, it.color].filter(Boolean).join(' · ') || '—'}
                 </td>
                 <td className="u-td-right-p-6-8">{cant}</td>
-                <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace' }}>
+                <td className="u-p-6-8-td-right-mono">
                   {costoUnit != null ? `USD ${fmtMoney(costoUnit)}` : <span className="dim" title="Venta pre-migración — sin dato de costo histórico">—*</span>}
                 </td>
-                <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace' }}>
+                <td className="u-p-6-8-td-right-mono">
                   USD {fmtMoney(precioUnit)}
                 </td>
                 <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 }}>
@@ -1749,7 +1749,7 @@ function MovimientoDesglose({ mov, onDevolverItem }) {
         </tfoot>
       </table>
       {hayHistoricos && (
-        <div className="muted tiny" style={{ marginTop: 6, fontStyle: 'italic' }}>
+        <div className="muted tiny u-mt-6-italic">
           * Items pre-migración sin dato de costo histórico — la ganancia mostrada es parcial.
         </div>
       )}

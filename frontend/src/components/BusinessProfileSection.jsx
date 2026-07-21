@@ -193,7 +193,7 @@ export default function BusinessProfileSection({ isAdmin }) {
             disabled={!enabled || saving}
             min="0"
             step="1"
-            style={{ maxWidth: 200 }}
+            className="u-mw-200-max"
           />
           <div className="muted tiny u-mt-4">
             Actualizá este número cuando tu ficha crezca. Si lo dejás vacío, el

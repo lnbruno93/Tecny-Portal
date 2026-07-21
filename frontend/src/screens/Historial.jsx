@@ -345,7 +345,7 @@ export default function Historial() {
       </div>
 
       {/* ── Pagination ────────────────────────────────────────────────────── */}
-      <div className="flex-between" style={{ marginTop: 14 }}>
+      <div className="flex-between u-mt-14">
         <div className="muted tiny">
           Página {page} de {totalPages} · {fmt(totalRows)} evento{totalRows !== 1 ? 's' : ''}
         </div>

@@ -1038,7 +1038,7 @@ export default function Cajas() {
                 </tbody>
               </table>
             )}
-            <div className="muted tiny" style={{ padding: '10px 14px' }}>
+            <div className="muted tiny u-p-10-14">
               Las cajas son las cuentas donde caen los pagos (Ventas, B2B, Financiera, Envíos). Las inactivas no aparecen al cargar nuevos pagos.
             </div>
           </div>
@@ -1049,7 +1049,7 @@ export default function Cajas() {
       {cajaSel && (
         <div ref={ledgerModalRef} className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="ledger-modal-title"
              onClick={(e) => { if (e.target === e.currentTarget && !ajusteSaving) setCajaSel(null); }}>
-          <div className="modal" style={{ maxWidth: 640 }} onClick={e => e.stopPropagation()}>
+          <div className="modal u-mw-640-max" onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
               <h3 id="ledger-modal-title">{cajaSel.nombre} <span className="ccy">{cajaSel.moneda}</span></h3>
               <button className="icon-btn" aria-label="Cerrar modal" onClick={() => setCajaSel(null)}><Icons.X size={16} /></button>

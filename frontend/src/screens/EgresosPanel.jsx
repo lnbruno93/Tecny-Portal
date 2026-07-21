@@ -129,7 +129,7 @@ export default function EgresosPanel() {
         <select className="input u-mw-160" value={estadoFiltro} onChange={e => setEstadoFiltro(e.target.value)}>
           <option value="">Todos</option><option value="pendiente">Pendientes</option><option value="pagado">Pagados</option>
         </select>
-        <select className="input" style={{ maxWidth: 180 }} value={catFiltro} onChange={e => setCatFiltro(e.target.value)}>
+        <select className="input u-mw-180-max" value={catFiltro} onChange={e => setCatFiltro(e.target.value)}>
           <option value="">Todas las categorías</option>
           {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
         </select>
@@ -282,7 +282,7 @@ function CategoriasModal({ categorias, onClose, onChange, toast, confirm }) {
           <div className="stack u-gap-4">
             {categorias.length === 0 && <div className="muted tiny">Sin categorías.</div>}
             {categorias.map(c => (
-              <div key={c.id} className="flex-between" style={{ padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 8 }}>
+              <div key={c.id} className="flex-between u-p-6-10-border-r-8">
                 <span className="u-fs-13">{c.nombre}</span>
                 <button className="icon-btn u-color-neg" onClick={() => del(c)}><Icons.Trash size={13} /></button>
               </div>
@@ -322,7 +322,7 @@ function RecurrentesModal({ recurrentes, categorias, cajas, onClose, onChange, t
   }
   return (
     <div ref={overlayRef} className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 620 }} onClick={e => e.stopPropagation()}>
+      <div className="modal u-mw-620-max" onClick={e => e.stopPropagation()}>
         <div className="modal-hd"><h3>Egresos recurrentes (mensuales)</h3><button className="icon-btn" onClick={onClose}><Icons.X size={16} /></button></div>
         <div className="modal-body">
           <div className="row" style={{ gap: 8, marginBottom: 6, alignItems: 'flex-end' }}>
@@ -341,7 +341,7 @@ function RecurrentesModal({ recurrentes, categorias, cajas, onClose, onChange, t
           <div className="stack u-gap-4">
             {recurrentes.length === 0 && <div className="muted tiny">Sin recurrentes. Agregá uno y usá "Generar del mes".</div>}
             {recurrentes.map(r => (
-              <div key={r.id} className="flex-between" style={{ padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 8 }}>
+              <div key={r.id} className="flex-between u-p-6-10-border-r-8">
                 <span className="u-fs-13">{r.concepto} · <span className="mono">{r.moneda === 'ARS' ? '$' : 'u$s'} {fmt(r.monto)}</span> <span className="muted tiny">· día {r.dia_del_mes}{r.categoria_nombre ? ' · ' + r.categoria_nombre : ''}</span></span>
                 <button className="icon-btn u-color-neg" onClick={() => del(r)}><Icons.Trash size={13} /></button>
               </div>

@@ -374,7 +374,7 @@ export default function Proveedores() {
             esto, el listado de proveedores empuja el grid hacia abajo y no
             aparece scrollbar interno (bug 2026-06-15 reportado por Lucas). */}
         <div style={{ borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-          <div style={{ padding: 12, borderBottom: '1px solid var(--border)' }}>
+          <div className="u-p-12-border-bottom">
             <div className="input-group">
               <span className="addon addon-l"><Icons.Search size={13} /></span>
               <input className="input" placeholder="Buscar…" value={search}
@@ -423,7 +423,7 @@ export default function Proveedores() {
           <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
 
             {/* ── Header del proveedor con KPIs inline ── */}
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+            <div className="u-p-12-16-bb-flex-shrink">
               <div className="flex-between u-mb-4">
                 <div>
                   <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.01em' }}>
@@ -564,7 +564,7 @@ export default function Proveedores() {
                             ? <span style={{ color: 'var(--pos)', fontSize: 14 }}>✓</span>
                             : <span className="dim u-fs-11">—</span>}
                         </td>
-                        <td style={{ padding: '7px 6px' }}>
+                        <td className="u-p-7-6">
                           {!m._pending && (
                             <button className="icon-btn" title="Eliminar" onClick={() => handleDeleteMov(m)}>
                               <Icons.Trash size={13} />
