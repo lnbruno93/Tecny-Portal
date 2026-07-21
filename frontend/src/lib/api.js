@@ -59,13 +59,63 @@ export function clearToken() {
   localStorage.removeItem('fin_token');
 }
 
+// 2026-07-21 Task #190 Fase 2: refresh token pattern.
+//
+// Ante un 401, en lugar de dispatchar `session-expired` inmediatamente,
+// intentamos POST /api/auth/refresh (que lee el httpOnly cookie que el
+// backend seteó al login). Si succeeds → nuevo access token → reintentamos
+// la request original 1 vez. Si falla → clearToken + session-expired
+// (comportamiento previo).
+//
+// Beneficio UX: el user pasa de re-loguear cada 8h (o 15min si baja el
+// JWT_EXPIRES_IN) a re-loguear cada 30d (la vida del refresh) — pero SIN
+// exposición XSS del token largo (el cookie es httpOnly).
+//
+// Race condition: si N requests fallan 401 en paralelo, hacer N refresh
+// concurrentes desperdicia round-trips. `refreshInFlight` es un singleton
+// promise que dedupica — todos esperan al mismo refresh.
+let refreshInFlight = null;
+
+async function attemptRefresh() {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    try {
+      // credentials: 'include' es CRÍTICO — sin esto el navegador no manda
+      // el cookie httpOnly del backend. También necesita CORS credentials:true
+      // en el backend (ya lo tiene desde antes).
+      const res = await fetch(BASE + '/api/auth/refresh', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (data?.token) {
+        saveToken(data.token);
+        return data.token;
+      }
+      return null;
+    } catch (_) {
+      return null;
+    } finally {
+      // Limpiar el singleton en el próximo tick para que la próxima
+      // 401 en el futuro (post-15min del nuevo access) pueda re-intentar.
+      setTimeout(() => { refreshInFlight = null; }, 0);
+    }
+  })();
+  return refreshInFlight;
+}
+
 // Core fetch wrapper — throws on error, returns parsed JSON.
 //
 // 2026-07-11 (auditoría Red B2B P1-3): agregado `extraHeaders` opcional para
 // casos donde el caller necesita mandar headers custom (ej. `Idempotency-Key`
 // en POST /pagos y POST /devolucion de Red B2B). Backwards compatible — todos
 // los callers actuales pasan undefined y no se ve afectado.
-export async function api(path, method = 'GET', body = null, timeoutMs = 15000, extraHeaders = null) {
+//
+// 2026-07-21 Task #190 Fase 2: `_isRetry` interno para prevenir loop de
+// refresh infinito. Si el retry post-refresh también da 401, no volvemos
+// a llamar refresh — vamos directo al session-expired.
+export async function api(path, method = 'GET', body = null, timeoutMs = 15000, extraHeaders = null, _isRetry = false) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -73,6 +123,10 @@ export async function api(path, method = 'GET', body = null, timeoutMs = 15000, 
     method,
     headers: { 'Content-Type': 'application/json' },
     signal: controller.signal,
+    // credentials para que el cookie httpOnly del refresh viaje. Igual el
+    // cookie tiene path scope a /api/auth/refresh, así que en cualquier
+    // otro endpoint NO se manda — es defensive-only y sin overhead.
+    credentials: 'include',
   };
 
   const token = getToken();
@@ -95,6 +149,19 @@ export async function api(path, method = 'GET', body = null, timeoutMs = 15000, 
   }
 
   if (res.status === 401) {
+    // Fase 2 refresh flow: intentar 1 vez el silent refresh antes de dar
+    // por muerta la sesión. Excluye el refresh endpoint mismo (que retorna
+    // 401 cuando el cookie es inválido — no queremos loop).
+    if (!_isRetry && path !== '/api/auth/refresh') {
+      const newToken = await attemptRefresh();
+      if (newToken) {
+        // Refresh OK: reintentar la request original con el nuevo token.
+        // _isRetry=true previene que un 2do 401 dispare otro refresh.
+        return api(path, method, body, timeoutMs, extraHeaders, true);
+      }
+    }
+    // Refresh falló, o ya es retry, o fue el endpoint refresh mismo.
+    // Sesión definitivamente muerta.
     clearToken();
     window.dispatchEvent(new Event('session-expired'));
     throw new Error('NO_AUTH');
@@ -176,6 +243,12 @@ async function loginDirect({ username, password, code, hcaptchaResponse }) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    // 2026-07-21 Task #190 Fase 2: credentials:'include' es requisito
+    // para que el navegador ACEPTE el Set-Cookie del backend (cookie
+    // httpOnly del refresh token que viene en el response del /login).
+    // Sin esto, el cookie se descarta silenciosamente y el refresh flow
+    // no puede funcionar después.
+    credentials: 'include',
   });
   const data = await res.json().catch(() => ({}));
   if (res.ok) return data; // { token, user }

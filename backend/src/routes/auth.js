@@ -14,6 +14,9 @@ const { CODES } = require('../lib/authErrorCodes');
 const { sendPasswordResetEmail } = require('../lib/email');
 // Importar el módulo (no destructurar) para soportar jest.spyOn desde tests.
 const userAuthCache = require('../lib/userAuthCache');
+// 2026-07-21 Task #190: refresh token pattern. Access JWT vive 8h (o 15min
+// con env var), refresh cookie vive 30d con rotación en cada uso.
+const refreshTokens = require('../lib/refreshTokens');
 // 2026-07-12 (auditoría TOTAL Auth P2-4): require eager en vez de lazy.
 // Antes: `const { load2fa } = require('./twoFa')` inline dentro del handler
 // de POST /login y POST /change-password. Node.js cachea el module después
@@ -504,6 +507,24 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
     // el frontend maneja graceful con placeholders. No bloqueamos el login.
     const tenantInfo = await buildTenantInfo(tenant.tenant_id);
 
+    // 2026-07-21 Task #190 refresh token pattern: emitimos refresh cookie
+    // httpOnly ADEMÁS del access token JWT. El refresh es transparente al
+    // frontend viejo (que solo lee `token`) — la cookie va y viene sola
+    // por el browser sin que el JS la toque. El frontend nuevo (Fase 2/3)
+    // usará POST /api/auth/refresh para rotar antes de la expiración del
+    // access, evitando el logout forzoso cada 8h que motivó este ticket.
+    //
+    // Fail-safe: si la DB insert falla, seguimos con el response del login.
+    // El user tiene su access de 8h y funciona igual — solo pierde el
+    // beneficio del refresh en esta sesión. Loguea a Sentry por observabilidad.
+    try {
+      const { token: refreshToken } = await refreshTokens.issueRefreshToken(user.id, req);
+      res.cookie(refreshTokens.COOKIE_NAME, refreshToken, refreshTokens.cookieOptions());
+    } catch (refreshErr) {
+      logger.warn({ err: refreshErr.message, userId: user.id },
+        '[login] no se pudo emitir refresh token (soft-fail, sesión sigue con access-only)');
+    }
+
     res.json({
       token: makeToken(user, tenant, capInfo),
       user: {
@@ -643,8 +664,84 @@ router.post('/logout', requireAuth, async (req, res, next) => {
     // hasta TTL de 60s. Fire-and-forget — userAuthCache loggea fallos
     // internamente (TANDA 1 fix H1-Sol).
     userAuthCache.invalidateUserAuth(req.user.id);
+
+    // 2026-07-21 Task #190: revocar el refresh token del cookie + limpiar
+    // el cookie del navegador. Sin esto, el user "logueado" aún tiene un
+    // refresh válido en el browser que podría usar para volver a levantar
+    // la sesión (defeats logout).
+    const refreshToken = req.cookies?.[refreshTokens.COOKIE_NAME];
+    if (refreshToken) {
+      await refreshTokens.revokeToken(refreshToken).catch((err) =>
+        logger.warn({ err: err.message }, '[logout] no se pudo revocar refresh (soft-fail)')
+      );
+    }
+    res.clearCookie(refreshTokens.COOKIE_NAME, { path: refreshTokens.cookieOptions().path });
+
     res.json({ ok: true });
   } catch (err) {
+    next(err);
+  }
+});
+
+// 2026-07-21 Task #190: refresh endpoint. Lee el cookie httpOnly, verifica
+// contra la DB, rota el refresh (revoca el viejo + emite uno nuevo) y
+// devuelve un access token JWT fresco. El frontend llama esto antes de
+// que el access expire (interceptor de Fase 2/3) para renovar la sesión
+// sin re-loguear.
+//
+// Sin auth middleware — el auth es el cookie. Si el cookie es inválido,
+// devolvemos 401 y el frontend hace fallback al login.
+//
+// Rate limit dedicado (refreshLimiter en app.js) contra abuse: un
+// atacante que roba un refresh podría hacer refresh flooding para keep
+// alive indefinido — el limiter (60/hour por IP) frena eso.
+router.post('/refresh', async (req, res, next) => {
+  try {
+    const refreshToken = req.cookies?.[refreshTokens.COOKIE_NAME];
+    if (!refreshToken) {
+      return res.status(401).json({ error: 'No refresh token', code: 'NO_REFRESH' });
+    }
+
+    const result = await refreshTokens.verifyAndRotate(refreshToken, req);
+    if (!result) {
+      // Cookie invalidado (expired, revoked, o attack detection). Limpiamos
+      // el cookie del browser para que el frontend deje de intentar.
+      res.clearCookie(refreshTokens.COOKIE_NAME, { path: refreshTokens.cookieOptions().path });
+      return res.status(401).json({ error: 'Refresh inválido o expirado', code: 'INVALID_REFRESH' });
+    }
+
+    // Lookup del user + tenant para armar el JWT nuevo (mismo shape que login).
+    // Reusamos la lógica de resolveUserTenant + capabilities + buildTenantInfo.
+    const { rows: userRows } = await db.query(
+      `SELECT id, nombre, username, email, role, is_super_admin, password_changed_at
+         FROM users WHERE id = $1 AND deleted_at IS NULL`,
+      [result.userId]
+    );
+    if (userRows.length === 0) {
+      // User borrado entre issue y refresh — revoca cookie.
+      res.clearCookie(refreshTokens.COOKIE_NAME, { path: refreshTokens.cookieOptions().path });
+      return res.status(401).json({ error: 'Usuario no encontrado', code: 'USER_GONE' });
+    }
+    const user = userRows[0];
+
+    const tenant = await resolveUserTenant(user.id);
+    if (!tenant) {
+      res.clearCookie(refreshTokens.COOKIE_NAME, { path: refreshTokens.cookieOptions().path });
+      return res.status(401).json({ error: 'Usuario sin tenant activo', code: 'NO_TENANT' });
+    }
+
+    const capInfo = user.role === 'admin'
+      ? null
+      : capsForJwt(await loadUserCapsForTenant(user.id, tenant.tenant_id));
+
+    // Setear el nuevo refresh cookie (el viejo ya está revocado en DB).
+    res.cookie(refreshTokens.COOKIE_NAME, result.newToken, refreshTokens.cookieOptions());
+
+    res.json({
+      token: makeToken(user, tenant, capInfo),
+    });
+  } catch (err) {
+    logger.error({ err: err.message }, '[refresh] error');
     next(err);
   }
 });
@@ -714,6 +811,17 @@ router.post('/change-password', requireAuth, validate(changePasswordSchema), asy
     // debe re-fetchar para que el siguiente request vea iat < changedAt
     // y rechace el token viejo.
     userAuthCache.invalidateUserAuth(user.id);
+
+    // 2026-07-21 Task #190: revocar todos los refresh tokens del user post
+    // password change. Sin esto, sesiones activas con refresh de la password
+    // vieja (ej. atacante que robó el refresh cookie) siguen renovándose.
+    // El user actual queda con acceso mediante el access token vigente
+    // (max 8h/15min) — el próximo refresh fallará y tendrá que re-loguear
+    // con la nueva password. Igual que ya pasaba con password_changed_at
+    // que invalida el JWT viejo.
+    await refreshTokens.revokeAllForUser(user.id).catch((err) =>
+      logger.warn({ err: err.message, userId: user.id }, '[change-password] no se pudo revocar refresh tokens (soft-fail)')
+    );
 
     res.json({ ok: true });
   } catch (err) {
@@ -917,6 +1025,14 @@ router.post('/reset-password', validate(resetPasswordSchema), async (req, res, n
     // Invalidate auth cache → el JWT viejo del user queda inválido (next
     // /me request lee password_changed_at fresh y rechaza el token).
     userAuthCache.invalidateUserAuth(row.user_id);
+
+    // 2026-07-21 Task #190: revocar refresh tokens post-reset. Reset típico
+    // ocurre cuando el user perdió acceso (pass olvidada) — si un atacante
+    // robó un refresh previamente, ahora queda revocado y no puede seguir
+    // renovando.
+    await refreshTokens.revokeAllForUser(row.user_id).catch((err) =>
+      logger.warn({ err: err.message, userId: row.user_id }, '[reset-password] no se pudo revocar refresh tokens (soft-fail)')
+    );
 
     logger.info({ user_id: row.user_id, source: 'password_reset_completed' },
       'password reset completado exitosamente');
