@@ -493,10 +493,10 @@ export default function Proveedores() {
                   <col style={{ width: 88  }} />{/* Fecha        */}
                   <col style={{ width: 108 }} />{/* Tipo         */}
                   <col style={{ width: 90  }} />{/* Producto     */}
-                  <col style={{ width: 130 }} />{/* Modelo       */}
+                  <col className="u-w-130px" />{/* Modelo       */}
                   <col style={{ width: 66  }} />{/* Cap.         */}
                   <col style={{ width: 76  }} />{/* Color        */}
-                  <col style={{ width: 130 }} />{/* IMEI/Serial  */}
+                  <col className="u-w-130px" />{/* IMEI/Serial  */}
                   <col style={{ width: 94  }} />{/* Monto USD    */}
                   <col style={{ width: 30  }} />{/* ✓            */}
                   <col style={{ width: 48  }} />{/* Acción       */}
@@ -563,7 +563,7 @@ export default function Proveedores() {
                         <td style={{ ...cell, textAlign: 'center' }}>
                           {item?.verificado
                             ? <span style={{ color: 'var(--pos)', fontSize: 14 }}>✓</span>
-                            : <span className="dim" style={{ fontSize: 11 }}>—</span>}
+                            : <span className="dim u-fs-11">—</span>}
                         </td>
                         <td style={{ padding: '7px 6px' }}>
                           {!m._pending && (
@@ -609,7 +609,7 @@ export default function Proveedores() {
             (antes el botón era onClick suelto, Enter no funcionaba). */}
       {showProv && (
         <div ref={provModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowProv(false)}>
-          <div className="modal" style={{ maxWidth: 520 }}>
+          <div className="modal u-mw-520">
             <form onSubmit={e => { e.preventDefault(); if (!provSaving) handleSaveProv(); }}>
             <div className="modal-hd">
               <h3>{editId ? 'Editar proveedor' : 'Nuevo proveedor'}</h3>
@@ -659,7 +659,7 @@ export default function Proveedores() {
                     <div className="muted tiny u-mt-4">{editId ? 'Ajusta la apertura (0 = sin saldo inicial).' : 'Lo que ya le debés (opcional).'}</div>
                   </div>
                 </div>
-                {provError && <div style={{ color: 'var(--neg)', fontSize: 13 }}>{provError}</div>}
+                {provError && <div className="u-color-neg-fs-13">{provError}</div>}
               </div>
             </div>
             <div className="modal-ft">
@@ -685,7 +685,7 @@ export default function Proveedores() {
       {/* ── Modal Pago (simple) — auditoría 2026-06-06 UX B1+B2 ── */}
       {showPago && selected && (
         <div ref={pagoModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowPago(false)}>
-          <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+          <div className="modal u-mw-520" onClick={e => e.stopPropagation()}>
             <form onSubmit={e => { e.preventDefault(); if (!pagoSaving) savePago(); }}>
             <div className="modal-hd">
               <h3>Registrar pago · {selected.nombre}</h3>

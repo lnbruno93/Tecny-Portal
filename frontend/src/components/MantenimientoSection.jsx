@@ -138,7 +138,7 @@ function TarjetasReport({ report }) {
       </div>
       {/* TANDA 3 trazab (UX M1): overflow-x:auto evita que la tabla rompa el
           layout en viewports estrechos (< 500px). En desktop no cambia nada. */}
-      <div style={{ overflowX: 'auto' }}>
+      <div className="u-overflow-x-auto">
         <table className="tbl">
           <thead>
             <tr>
@@ -159,7 +159,7 @@ function TarjetasReport({ report }) {
                 <tr key={g.tarjeta.id}>
                   <td>
                     <b>{g.tarjeta.nombre}</b>
-                    <span className="muted tiny" style={{ marginLeft: 6 }}>{g.tarjeta.moneda}</span>
+                    <span className="muted tiny u-ml-6">{g.tarjeta.moneda}</span>
                   </td>
                   <td className="mono tiny u-text-right">{fmt(g.saldoAntes)}</td>
                   <td className="mono tiny" style={{ textAlign: 'right', color: 'var(--pos)' }}>

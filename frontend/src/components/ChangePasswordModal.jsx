@@ -217,7 +217,7 @@ export default function ChangePasswordModal({ open, onClose }) {
             <label htmlFor="change-pw-current" style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
               Contraseña actual
             </label>
-            <div style={{ position: 'relative' }}>
+            <div className="u-pos-rel">
               <input
                 id="change-pw-current"
                 type={showCurrent ? 'text' : 'password'}
@@ -255,7 +255,7 @@ export default function ChangePasswordModal({ open, onClose }) {
             <label htmlFor="change-pw-new" style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
               Contraseña nueva
             </label>
-            <div style={{ position: 'relative' }}>
+            <div className="u-pos-rel">
               <input
                 id="change-pw-new"
                 type={showNew ? 'text' : 'password'}

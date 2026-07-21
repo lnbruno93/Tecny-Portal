@@ -129,7 +129,7 @@ const VentaRow = memo(function VentaRow({
                     vistazo, especialmente útil con canjes en parte de
                     pago. Para batería de items retail necesitamos un
                     backend join con productos (queda como follow-up). */}
-                {i.imei && <span className="muted tiny mono" style={{ marginLeft: 6 }}>IMEI {fmtImei(i.imei)}</span>}
+                {i.imei && <span className="muted tiny mono u-ml-6">IMEI {fmtImei(i.imei)}</span>}
                 {devuelto && (
                   <span style={{
                     marginLeft: 6, padding: '0 5px', borderRadius: 3,

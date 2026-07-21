@@ -262,8 +262,8 @@ export default function Novedades() {
                 <colgroup>
                   <col style={{ width: 92 }} />
                   <col />
-                  <col style={{ width: 130 }} />
-                  <col style={{ width: 150 }} />
+                  <col className="u-w-130px" />
+                  <col className="u-w-150px" />
                 </colgroup>
                 <thead>
                   <tr>

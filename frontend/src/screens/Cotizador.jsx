@@ -222,7 +222,7 @@ function TabTarjetas() {
       <div>
         {/* TC card */}
         <div className="card card-tight u-mb-14">
-          <div className="field" style={{ marginBottom: 0 }}>
+          <div className="field u-mb-0">
             <div className="field-label">Tipo de cambio (USD → {monedaLocal})</div>
             <div className="input-group" style={{ maxWidth: 240 }}>
               <span className="addon addon-l u-color-accent">{symLocal}</span>
@@ -251,7 +251,7 @@ function TabTarjetas() {
         </div>
 
         {/* Product rows */}
-        <div className="stack" style={{ gap: 10 }}>
+        <div className="stack u-gap-10">
           {prods.map((p, i) => (
             <div key={p.id} className="card card-tight">
               <div className="flex-between u-mb-10">
@@ -314,7 +314,7 @@ function TabTarjetas() {
             <div style={{ fontWeight: 600, fontSize: 13.5, marginBottom: 8 }}>
               {p.nom || 'Producto'}{' '}
               {p.vari && (
-                <span className="muted" style={{ fontWeight: 500 }}>{p.vari}</span>
+                <span className="muted u-fw-500">{p.vari}</span>
               )}
             </div>
             <div className="quote-line">
@@ -520,7 +520,7 @@ function TabUsd() {
       <div>
         {/* TC card */}
         <div className="card card-tight u-mb-14">
-          <div className="field" style={{ marginBottom: 0 }}>
+          <div className="field u-mb-0">
             <div className="field-label">Tipo de cambio (USD → {monedaLocal})</div>
             <div className="input-group" style={{ maxWidth: 240 }}>
               <span className="addon addon-l u-color-accent">{symLocal}</span>
@@ -658,20 +658,20 @@ function TabUsd() {
               }}>
                 <div style={{ fontWeight: 600, fontSize: 13.5, marginBottom: 8 }}>
                   {p.nom || 'Producto'}{' '}
-                  <span className="muted tiny mono" style={{ fontWeight: 500 }}>
+                  <span className="muted tiny mono u-fw-500">
                     · USD {fmt(p.usd)}
                   </span>
                 </div>
                 {optEf && (
                   <div className="quote-line">
                     <span className="lbl">Efectivo / Contado</span>
-                    <span className="val mono pos" style={{ fontWeight: 700 }}>{symLocal}{fmt(ef)}</span>
+                    <span className="val mono pos u-fw-700">{symLocal}{fmt(ef)}</span>
                   </div>
                 )}
                 {optTars && (
                   <div className="quote-line">
                     <span className="lbl">Transferencia {monedaLocal} (+{pctEfectivo(COMISIONES.transf)}%)</span>
-                    <span className="val mono pos" style={{ fontWeight: 700 }}>{symLocal}{fmt(tars)}</span>
+                    <span className="val mono pos u-fw-700">{symLocal}{fmt(tars)}</span>
                   </div>
                 )}
                 {optTusd && (
@@ -691,13 +691,13 @@ function TabUsd() {
                 {optEf && (
                   <div className="quote-line">
                     <span className="lbl">Total Efectivo / Contado</span>
-                    <span className="val mono pos" style={{ fontWeight: 700 }}>{symLocal}{fmt(calculo.tots.ef)}</span>
+                    <span className="val mono pos u-fw-700">{symLocal}{fmt(calculo.tots.ef)}</span>
                   </div>
                 )}
                 {optTars && (
                   <div className="quote-line">
                     <span className="lbl">Total Transferencia {monedaLocal}</span>
-                    <span className="val mono pos" style={{ fontWeight: 700 }}>{symLocal}{fmt(calculo.tots.tars)}</span>
+                    <span className="val mono pos u-fw-700">{symLocal}{fmt(calculo.tots.tars)}</span>
                   </div>
                 )}
                 {optTusd && (

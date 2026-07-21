@@ -111,7 +111,7 @@ function EditarClienteModal({ cliente, onClose, onSuccess }) {
 
   return (
     <div ref={editClienteModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ maxWidth: 520 }}>
+      <div className="modal u-mw-520">
         <div className="modal-hd">
           <h3>Editar cliente</h3>
           <button className="icon-btn" onClick={onClose}><Icons.X size={16} /></button>
@@ -133,7 +133,7 @@ function EditarClienteModal({ cliente, onClose, onSuccess }) {
                 <label className="field-label">Contacto</label>
                 <input type="text" className="input" placeholder="Tel / WhatsApp / email" value={form.contacto} onChange={set('contacto')} />
               </div>
-              <div className="field" style={{ width: 100 }}>
+              <div className="field u-w-100px">
                 <label className="field-label">Categoría <span className="u-color-neg">*</span></label>
                 <select className="input" value={form.categoria} onChange={set('categoria')}>
                   <option value="VIP">VIP</option>
@@ -164,7 +164,7 @@ function EditarClienteModal({ cliente, onClose, onSuccess }) {
               <label className="field-label">Notas internas</label>
               <input type="text" className="input" value={form.notas} onChange={set('notas')} />
             </div>
-            {error && <div style={{ color: 'var(--neg)', fontSize: 13 }}>{error}</div>}
+            {error && <div className="u-color-neg-fs-13">{error}</div>}
           </div>
         </div>
         <div className="modal-ft">
@@ -1048,7 +1048,7 @@ export default function CuentasCC() {
                         <td className="muted mono">{String(i + 1).padStart(2, '0')}</td>
                         <td><div className="u-fw-600">{c.nombre} {c.apellido}</div></td>
                         <td>{catBadge(c.categoria)}</td>
-                        <td className="num mono neg" style={{ fontWeight: 700 }}>USD {fmt(c.saldo)}</td>
+                        <td className="num mono neg u-fw-700">USD {fmt(c.saldo)}</td>
                         <td>
                           <div className="bar-track" style={{ height: 6 }}><div className="bar-fill" style={{ width: pct + '%' }} /></div>
                           <div className="muted tiny mono" style={{ marginTop: 3, textAlign: 'right' }}>{pct}%</div>
@@ -1274,13 +1274,13 @@ export default function CuentasCC() {
                   <col style={{ width: 88  }} />{/* Fecha        */}
                   <col style={{ width: 108 }} />{/* Tipo         */}
                   <col style={{ width: 90  }} />{/* Producto     */}
-                  <col style={{ width: 130 }} />{/* Modelo       */}
+                  <col className="u-w-130px" />{/* Modelo       */}
                   <col style={{ width: 66  }} />{/* Cap.         */}
                   <col style={{ width: 76  }} />{/* Color        */}
-                  <col style={{ width: 130 }} />{/* IMEI/Serial  */}
+                  <col className="u-w-130px" />{/* IMEI/Serial  */}
                   <col style={{ width: 94  }} />{/* Monto USD    */}
                   <col style={{ width: 30  }} />{/* ✓            */}
-                  <col style={{ width: 150 }} />{/* Comentarios  */}
+                  <col className="u-w-150px" />{/* Comentarios  */}
                   <col style={{ width: 48  }} />{/* Acción       */}
                 </colgroup>
 
@@ -1391,7 +1391,7 @@ export default function CuentasCC() {
                         <td style={{ ...cell, textAlign: 'center' }}>
                           {item?.verificado
                             ? <span style={{ color: 'var(--pos)', fontSize: 14 }}>✓</span>
-                            : <span className="dim" style={{ fontSize: 11 }}>—</span>}
+                            : <span className="dim u-fs-11">—</span>}
                         </td>
                         {/* 2026-07-17: columna Comentarios */}
                         <td style={{ ...cell, color: 'var(--text-2)', fontSize: 12 }}
@@ -1453,7 +1453,7 @@ export default function CuentasCC() {
       {/* Nuevo cliente */}
       {showClienteModal && (
         <div ref={clienteModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowClienteModal(false)}>
-          <div className="modal" style={{ maxWidth: 520 }}>
+          <div className="modal u-mw-520">
             <div className="modal-hd">
               <h3>Nuevo cliente</h3>
               <button className="icon-btn" onClick={() => setShowClienteModal(false)}><Icons.X size={16} /></button>
@@ -1521,7 +1521,7 @@ export default function CuentasCC() {
                     value={clienteForm.saldo_inicial} onChange={e => setClienteForm(f => ({ ...f, saldo_inicial: e.target.value }))} />
                   <div className="muted tiny" style={{ marginTop: 3 }}>Si el cliente ya nos debe algo, arrancá su cuenta con ese saldo.</div>
                 </div>
-                {clienteError && <div style={{ color: 'var(--neg)', fontSize: 13 }}>{clienteError}</div>}
+                {clienteError && <div className="u-color-neg-fs-13">{clienteError}</div>}
               </div>
             </div>
             <div className="modal-ft">

@@ -273,7 +273,7 @@ export default function EquiposUsadosContent({ onCountChange }) {
           </div>
         </div>
       ) : (
-        <div className="card card-flush" style={{ overflowX: 'auto' }}>
+        <div className="card card-flush u-overflow-x-auto">
           <table className="table">
             <thead>
               <tr>
@@ -283,10 +283,10 @@ export default function EquiposUsadosContent({ onCountChange }) {
                 <th style={{ width: 142, whiteSpace: 'nowrap' }}>IMEI / Serial</th>
                 <th style={{ width: 100, textAlign: 'right' }}>Costo</th>
                 <th style={{ width: 100, textAlign: 'right' }}>Precio venta</th>
-                <th style={{ width: 130 }}>Origen</th>
+                <th className="u-w-130px">Origen</th>
                 <th style={{ minWidth: 170 }}>Cliente que lo entregó</th>
                 <th style={{ width: 96 }}>Ingresó</th>
-                <th style={{ width: 100 }}>Estado</th>
+                <th className="u-w-100px">Estado</th>
               </tr>
             </thead>
             <tbody>
@@ -329,7 +329,7 @@ function UsadoRow({ p }) {
     <tr>
       <td>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span style={{ fontWeight: 500 }}>{p.nombre || '—'}</span>
+          <span className="u-fw-500">{p.nombre || '—'}</span>
           {p.clase_nombre && (
             <span className="muted tiny">
               {p.clase_emoji ? `${p.clase_emoji} ` : ''}{p.clase_nombre}

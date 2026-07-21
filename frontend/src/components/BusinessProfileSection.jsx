@@ -155,7 +155,7 @@ export default function BusinessProfileSection({ isAdmin }) {
             disabled={saving}
           />
           <div>
-            <div style={{ fontWeight: 500 }}>Tengo una ficha de negocio en Google</div>
+            <div className="u-fw-500">Tengo una ficha de negocio en Google</div>
             <div className="muted tiny">
               Si está desactivado, el mensaje del Cotizador no menciona Google ni reseñas.
             </div>

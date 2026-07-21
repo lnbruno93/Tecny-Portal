@@ -388,7 +388,7 @@ function UserPill() {
     <>
       <div className="user-pill" style={{ cursor: 'default' }}>
         <div className="avatar">{initials}</div>
-        <div style={{ minWidth: 0, flex: 1 }}>
+        <div className="u-flex-1-minw-0">
           <div className="name">{displayName}</div>
           <div className="role">
             {roleLabel} · @{user.username}
@@ -472,7 +472,7 @@ function Topbar({ onMenuClick, onSearchClick }) {
         <span className="cur">{label}</span>
       </div>
       <div className="topbar-spacer" />
-      <div className="search" onClick={onSearchClick} style={{ cursor: 'pointer' }}>
+      <div className="search u-cursor-pointer" onClick={onSearchClick}>
         <Icons.Search size={14} />
         <span>Buscar comprobantes, clientes, IMEIs…</span>
         <kbd>⌘K</kbd>

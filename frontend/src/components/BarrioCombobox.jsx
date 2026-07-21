@@ -94,7 +94,7 @@ export default function BarrioCombobox({
   const zonaHint = value && BARRIO_TO_ZONA.get(value.toLowerCase());
 
   return (
-    <div ref={boxRef} style={{ position: 'relative' }}>
+    <div ref={boxRef} className="u-pos-rel">
       <input
         type="text"
         className="input"

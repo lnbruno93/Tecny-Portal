@@ -293,7 +293,7 @@ function FlagCard({ flag, savingKey, onGlobalToggle, onRolloutChange, onReload }
               placeholder="Tenant ID"
               value={addingTenantId}
               onChange={(e) => setAddingTenantId(e.target.value)}
-              style={{ width: 100 }}
+              className="u-w-100px"
             />
             <select
               value={addingTenantEnabled ? '1' : '0'}

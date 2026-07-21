@@ -1417,7 +1417,7 @@ export default function Inventario() {
         // Skeleton de la grilla: 5 filas con la cantidad de columnas reales
         // (15) para que el layout no salte al llegar el dato.
         // aria-busy para lectores de pantalla. U-12 auditoría 2026-06-10.
-        <div className="card card-flush" style={{ overflowX: 'auto' }} aria-busy="true" aria-live="polite">
+        <div className="card card-flush u-overflow-x-auto" aria-busy="true" aria-live="polite">
           <table className="table">
             <thead>
               {/* Widths ajustados 2026-06-15: la columna IMEI/Serial se estiraba
@@ -1441,8 +1441,8 @@ export default function Inventario() {
                     modal de edición sobre el sunset gradual. */}
                 <th style={{ minWidth: 150, whiteSpace: 'nowrap' }}>Proveedor</th>
                 <th style={{ width: 60, textAlign: 'right' }}>Stock</th>
-                <th style={{ width: 110 }}>Estado</th>
-                <th style={{ width: 110 }}></th>
+                <th className="u-w-110px">Estado</th>
+                <th className="u-w-110px"></th>
               </tr>
             </thead>
             <tbody>
@@ -1500,7 +1500,7 @@ export default function Inventario() {
           );
         })()
       ) : (
-        <div className="card card-flush" style={{ overflowX: 'auto' }}>
+        <div className="card card-flush u-overflow-x-auto">
           <table className="table">
             <thead>
               {/* Widths ajustados 2026-06-15: la columna IMEI/Serial se estiraba
@@ -1524,8 +1524,8 @@ export default function Inventario() {
                     modal de edición sobre el sunset gradual. */}
                 <th style={{ minWidth: 150, whiteSpace: 'nowrap' }}>Proveedor</th>
                 <th style={{ width: 60, textAlign: 'right' }}>Stock</th>
-                <th style={{ width: 110 }}>Estado</th>
-                <th style={{ width: 110 }}></th>
+                <th className="u-w-110px">Estado</th>
+                <th className="u-w-110px"></th>
               </tr>
             </thead>
             <tbody>
@@ -1681,7 +1681,7 @@ export default function Inventario() {
                   <div className="row">
                     <div className="field u-flex-1">
                       <label className="field-label">Costo</label>
-                      <div className="flex-row" style={{ gap: 6 }}>
+                      <div className="flex-row u-gap-6">
                         <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0" value={form.costo} onChange={e => setF('costo', e.target.value)} className="u-flex-1" />
                         {/* 2026-06-29 Multi-país F3: USD + moneda local del tenant. */}
                         <select className="input" style={{ width: 80 }} value={form.costo_moneda} onChange={e => setF('costo_moneda', e.target.value)}>
@@ -1692,7 +1692,7 @@ export default function Inventario() {
                     </div>
                     <div className="field u-flex-1">
                       <label className="field-label">Precio de venta</label>
-                      <div className="flex-row" style={{ gap: 6 }}>
+                      <div className="flex-row u-gap-6">
                         <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0" value={form.precio_venta} onChange={e => setF('precio_venta', e.target.value)} className="u-flex-1" />
                         <select className="input" style={{ width: 80 }} value={form.precio_moneda} onChange={e => setF('precio_moneda', e.target.value)}>
                           {Array.from(new Set(['USD', monedaLocal, form.precio_moneda].filter(Boolean)))
@@ -1722,7 +1722,7 @@ export default function Inventario() {
                   </div>
                   <div className="field"><label className="field-label">Proveedor</label><input className="input" placeholder="ej. Juan Distribuidor" value={form.proveedor} onChange={e => setF('proveedor', e.target.value)} /></div>
                   <div className="field"><label className="field-label">Observaciones</label><input className="input" placeholder="ej. pantalla rota, batería hinchada…" value={form.observaciones} onChange={e => setF('observaciones', e.target.value)} /></div>
-                  {formError && <div style={{ color: 'var(--neg)', fontSize: 13 }}>{formError}</div>}
+                  {formError && <div className="u-color-neg-fs-13">{formError}</div>}
                 </div>
               </div>
               <div className="modal-ft">
@@ -1802,7 +1802,7 @@ export default function Inventario() {
                       </div>
                       <div style={{ maxHeight: 100, overflowY: 'auto' }}>
                         {importDupImeis.map((d, i) => (
-                          <div key={i} className="mono" style={{ fontSize: 11 }}>
+                          <div key={i} className="mono u-fs-11">
                             · IMEI <strong>{fmtImei(d.imei)}</strong> aparece en filas{' '}
                             {d.rowIndices.map(idx => idx + 2).join(', ')}
                           </div>
@@ -1875,7 +1875,7 @@ export default function Inventario() {
                               display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
                             }}>
                               <span>📦 {g.proveedor_label}</span>
-                              <span className="muted tiny" style={{ fontWeight: 500 }}>
+                              <span className="muted tiny u-fw-500">
                                 {g.rows.length} producto{g.rows.length === 1 ? '' : 's'}
                               </span>
                             </div>

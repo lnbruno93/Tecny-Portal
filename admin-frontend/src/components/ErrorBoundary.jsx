@@ -85,7 +85,7 @@ export default class ErrorBoundary extends Component {
           textAlign: 'center',
         }}
       >
-        <div style={{ maxWidth: 520 }}>
+        <div className="u-mw-520">
           <h1 style={{ fontSize: 32, margin: '0 0 12px', fontWeight: 700 }}>
             Algo salió mal
           </h1>

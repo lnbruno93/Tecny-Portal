@@ -202,7 +202,7 @@ export default function Equipo() {
                       >
                         {initials(a)}
                       </div>
-                      <div style={{ minWidth: 0, flex: 1 }}>
+                      <div className="u-flex-1-minw-0">
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                           <strong>{a.username}</strong>
                           {a.is_you && <Badge tone="info">Vos</Badge>}
@@ -262,7 +262,7 @@ export default function Equipo() {
                         borderTop: '1px solid var(--border-soft)',
                       }}
                     >
-                      <div style={{ minWidth: 0, flex: 1 }}>
+                      <div className="u-flex-1-minw-0">
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                           <strong>{inv.email}</strong>
                           <span className="muted tiny">· {inv.nombre}</span>

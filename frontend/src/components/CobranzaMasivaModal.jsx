@@ -263,12 +263,12 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
               <colgroup>
                 <col style={{ width: 32 }} />   {/* # */}
                 <col style={{ width: 280 }} />  {/* Cliente */}
-                <col style={{ width: 100 }} />  {/* Saldo */}
-                <col style={{ width: 110 }} />  {/* Monto */}
+                <col className="u-w-100px" />  {/* Saldo */}
+                <col className="u-w-110px" />  {/* Monto */}
                 <col style={{ width: 200 }} />  {/* Caja */}
                 <col style={{ width: 90 }} />   {/* TC */}
-                <col style={{ width: 110 }} />  {/* Subtotal USD */}
-                <col style={{ width: 110 }} />  {/* Tipo */}
+                <col className="u-w-110px" />  {/* Subtotal USD */}
+                <col className="u-w-110px" />  {/* Tipo */}
                 <col style={{ width: 36 }} />   {/* X */}
               </colgroup>
               <thead>
@@ -299,7 +299,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
                       borderTop: '1px solid var(--hairline)',
                     }}>
                       <td style={{ padding: '3px 6px', textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>{idx + 1}</td>
-                      <td style={{ padding: '3px 4px' }}>
+                      <td className="u-p-3-4">
                         <ClientePicker
                           value={r.cliente_nombre}
                           locked={!!r.cliente_id}
@@ -317,14 +317,14 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
                             </span>
                           : <span className="dim">—</span>}
                       </td>
-                      <td style={{ padding: '3px 4px' }}>
+                      <td className="u-p-3-4">
                         <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" style={{ ...cellInp, textAlign: 'right', fontWeight: 700,
                           borderColor: sobrepago ? 'var(--warn, #d97706)' : 'var(--border)',
                         }}
                           value={r.monto} placeholder="0"
                           onChange={e => updCell(idx, 'monto', e.target.value)} />
                       </td>
-                      <td style={{ padding: '3px 4px' }}>
+                      <td className="u-p-3-4">
                         <select style={{ ...cellInp, cursor: 'pointer' }} value={r.caja_id}
                           onChange={e => updCell(idx, 'caja_id', e.target.value)}>
                           <option value="">—</option>
@@ -332,7 +332,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
                           <CajaSelectHint />
                         </select>
                       </td>
-                      <td style={{ padding: '3px 4px' }}>
+                      <td className="u-p-3-4">
                         {needsTc ? (
                           <>
                             <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" style={{ ...cellInp, textAlign: 'right' }}
@@ -350,7 +350,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
                           </div>
                         ) : <span className="dim">—</span>}
                       </td>
-                      <td style={{ padding: '3px 4px' }}>
+                      <td className="u-p-3-4">
                         <select style={{ ...cellInp, cursor: 'pointer' }} value={r.tipo}
                           onChange={e => updCell(idx, 'tipo', e.target.value)}>
                           <option value="pago">Pago</option>
@@ -423,7 +423,7 @@ function ClientePicker({ value, locked, showZero, onPick, onClear, onChange, cel
           <>
             <div className="u-fw-600">
               {[c.nombre, c.apellido].filter(Boolean).join(' ')}
-              {c.categoria && <span className="muted tiny" style={{ marginLeft: 6 }}>· {c.categoria}</span>}
+              {c.categoria && <span className="muted tiny u-ml-6">· {c.categoria}</span>}
             </div>
             <div className={`tiny ${tono}`}>Saldo USD {saldo.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</div>
           </>

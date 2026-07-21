@@ -1171,7 +1171,7 @@ export default function Envios() {
                       >
                         {label}
                       </span>
-                      <span style={{ fontWeight: 500 }}>{value}</span>
+                      <span className="u-fw-500">{value}</span>
                     </div>
                   ))}
                 </div>
@@ -1222,7 +1222,7 @@ export default function Envios() {
                     }}
                   >
                     <div className="flex-between">
-                      <div className="flex-row" style={{ gap: 10 }}>
+                      <div className="flex-row u-gap-10">
                         {it.tipo === 'producto' ? (
                           <>
                             <Icons.Box size={14} className="muted" />
@@ -1480,12 +1480,12 @@ export default function Envios() {
                                   </div>
                                 )}
                               </div>
-                              <div className="field" style={{ marginBottom: 0 }}>
+                              <div className="field u-mb-0">
                                 <label className="field-label">Monto</label>
                                 <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0"
                                   value={it.monto} onChange={e => setItem(idx, 'monto', e.target.value)} />
                               </div>
-                              <div className="field" style={{ marginBottom: 0 }}>
+                              <div className="field u-mb-0">
                                 <label className="field-label">Moneda</label>
                                 {/* 2026-06-29 Multi-país F3: monedas según país del tenant.
                                     Preserva legacy value si existiera (records viejos). */}
@@ -1503,7 +1503,7 @@ export default function Envios() {
                               {/* HERO: solo título + Cambiar. Los chips, IMEI y controles
                                   bajan a una única fila debajo (variante V2 elegida por Lucas). */}
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
-                                <div style={{ flex: 1, minWidth: 0 }}>
+                                <div className="u-flex-1-minw-0">
                                   <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.5, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>
                                     Producto seleccionado
                                   </div>
@@ -1538,12 +1538,12 @@ export default function Envios() {
                                     </span>
                                   )}
                                 </div>
-                                <div className="field" style={{ marginBottom: 0 }}>
+                                <div className="field u-mb-0">
                                   <label className="field-label">Precio venta</label>
                                   <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0"
                                     value={it.monto} onChange={e => setItem(idx, 'monto', e.target.value)} />
                                 </div>
-                                <div className="field" style={{ marginBottom: 0 }}>
+                                <div className="field u-mb-0">
                                   <label className="field-label">Moneda</label>
                                   {/* 2026-06-29 Multi-país F3: monedas según país del tenant. */}
                                   <select className="input" value={it.moneda || 'USD'} onChange={e => setItem(idx, 'moneda', e.target.value)}>
@@ -1570,7 +1570,7 @@ export default function Envios() {
                         <Icons.Plus size={13} /> Agregar método
                       </button>
                     </div>
-                    <div className="stack" style={{ gap: 6 }}>
+                    <div className="stack u-gap-6">
                       {/* Paridad con Ventas Tema C rev5: operador tipea USD (mental
                           model), el sistema arma el bruto en moneda nativa. Si hay
                           comisión, debajo aparece el desglose "Le cobrás / Financiera
@@ -1613,7 +1613,7 @@ export default function Envios() {
                                     final con CC. La lógica detrás (es_cuenta_corriente)
                                     queda por compatibilidad con envíos legacy. */}
                               </select>
-                              <div style={{ position: 'relative' }}>
+                              <div className="u-pos-rel">
                                 <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: 11, pointerEvents: 'none' }}>
                                   {arsDirect ? '$' : 'USD'}
                                 </span>
@@ -1638,7 +1638,7 @@ export default function Envios() {
                                 )}
                               </div>
                               {showTc && (
-                                <div style={{ position: 'relative' }}>
+                                <div className="u-pos-rel">
                                   <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: 11, pointerEvents: 'none' }}>TC</span>
                                   <input
                                     type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
@@ -1834,14 +1834,14 @@ export default function Envios() {
                       'acreditado' al confirmar entrega). Antes era opcional y era
                       footgun: si el operador no lo tickeaba, el envío nunca aparecía
                       en el dashboard de ventas. */}
-                  <div className="field" style={{ marginBottom: 0 }}>
+                  <div className="field u-mb-0">
                     <label className="field-label">Tipo de cambio (TC) del envío <span className="muted tiny">opcional · necesario si hay items en ARS</span></label>
                     <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Ej: 1000"
                            value={form.tc} onChange={e => setF('tc', e.target.value)} />
                   </div>
 
                   {createError && (
-                    <div style={{ color: 'var(--neg)', fontSize: 13 }}>{createError}</div>
+                    <div className="u-color-neg-fs-13">{createError}</div>
                   )}
                 </div>
               </div>

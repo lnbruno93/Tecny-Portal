@@ -267,7 +267,7 @@ export default function Usados() {
                       placeholder="—"
                     />
                   </td>
-                  <td className="num" style={{ width: 150 }}>
+                  <td className="num u-w-150px">
                     <div className="input-group" style={{ width: 130, marginLeft: 'auto' }}>
                       <span className="addon addon-l muted tiny" style={{ padding: '0 8px' }}>USD</span>
                       <input
@@ -358,7 +358,7 @@ export default function Usados() {
                     />
                   </div>
                   {formError && (
-                    <div style={{ color: 'var(--neg)', fontSize: 13 }}>{formError}</div>
+                    <div className="u-color-neg-fs-13">{formError}</div>
                   )}
                 </div>
               </div>

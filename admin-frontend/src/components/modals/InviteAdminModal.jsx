@@ -149,7 +149,7 @@ export default function InviteAdminModal({ open, onClose, onCreated }) {
         {/* Preview del email — muestra a quién le vamos a mandar. */}
         <div className="banner banner-info" role="note" style={{ padding: 10 }}>
           <Badge tone="info">Preview</Badge>
-          <span className="tiny" style={{ marginLeft: 6 }}>
+          <span className="tiny u-ml-6">
             Vamos a mandarle un email a <strong>{email || 'este@ejemplo.com'}</strong>{' '}
             desde Tecny con un link que expira en 48 hs.
           </span>

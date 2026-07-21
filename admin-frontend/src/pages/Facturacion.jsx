@@ -322,7 +322,7 @@ export default function Facturacion() {
                       {c.tenant_nombre || '—'}
                     </td>
                     <td
-                      style={{ cursor: 'pointer' }}
+                      className="u-cursor-pointer"
                       onClick={() => navigate('/clientes/' + c.tenant_id)}
                     >
                       <Badge tone={planTone(c.plan)}>{c.plan_label || c.plan}</Badge>
@@ -335,8 +335,7 @@ export default function Facturacion() {
                       {c.monto_usd > 0 ? fmtMoney(c.monto_usd) : '—'}
                     </td>
                     <td
-                      className="muted tiny"
-                      style={{ cursor: 'pointer' }}
+                      className="muted tiny u-cursor-pointer"
                       onClick={() => navigate('/clientes/' + c.tenant_id)}
                     >
                       {fechaLabel}
@@ -367,7 +366,7 @@ export default function Facturacion() {
                       </select>
                     </td>
                     <td
-                      style={{ cursor: 'pointer' }}
+                      className="u-cursor-pointer"
                       onClick={() => navigate('/clientes/' + c.tenant_id)}
                     >
                       <span

@@ -282,7 +282,7 @@ export default function Clientes() {
                     onClick={() => navigate('/clientes/' + t.id)}
                   >
                     <td>
-                      <div className="flex-row" style={{ gap: 10 }}>
+                      <div className="flex-row u-gap-10">
                         <div className="company-logo">{tenantInitials(t.nombre)}</div>
                         <div>
                           <div className="u-fw-600">{t.nombre || '—'}</div>
@@ -297,7 +297,7 @@ export default function Clientes() {
                       {(t.mrr_usd ?? 0) > 0 ? fmtMoney(t.mrr_usd) : '—'}
                     </td>
                     <td className="mono">{fmt(t.users_count ?? 0)}</td>
-                    <td style={{ width: 130 }}>
+                    <td className="u-w-130px">
                       <div className="bar-track" style={{ marginBottom: 3 }}>
                         <div
                           className="bar-fill"

@@ -483,7 +483,7 @@ export default function Resumen() {
                     onClick={() => navigate('/clientes/' + t.id)}
                   >
                     <td>
-                      <div className="flex-row" style={{ gap: 10 }}>
+                      <div className="flex-row u-gap-10">
                         <div className="company-logo">{tenantInitials(t.nombre)}</div>
                         <div>
                           <div className="u-fw-600">{t.nombre || '—'}</div>

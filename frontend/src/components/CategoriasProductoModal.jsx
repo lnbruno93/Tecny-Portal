@@ -308,7 +308,7 @@ function CatList({ items, onEdit, onDelete, onReorder }) {
               {row.emoji || ''}
             </span>
 
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="u-flex-1-minw-0">
               <div style={{ fontWeight: 500, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                 <span>{row.nombre}</span>
                 {row.es_sin_categoria && (
@@ -459,7 +459,7 @@ function EditModal({ row, onSave, onCancel }) {
               disabled={saving}
             />
             <span>Activa</span>
-            <span className="muted tiny" style={{ marginLeft: 6 }}>
+            <span className="muted tiny u-ml-6">
               (las inactivas se ocultan en el dropdown de alta)
             </span>
           </label>

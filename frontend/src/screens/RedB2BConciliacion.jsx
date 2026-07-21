@@ -228,7 +228,7 @@ export function RedB2BConciliacionContent({
           <h2 style={{ padding: '12px 16px', margin: 0, fontSize: 16 }}>
             Operaciones con detalle
           </h2>
-          <div style={{ overflowX: 'auto' }}>
+          <div className="u-overflow-x-auto">
             <table className="data-table">
               <thead>
                 <tr>

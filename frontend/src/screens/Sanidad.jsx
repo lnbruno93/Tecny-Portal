@@ -151,7 +151,7 @@ function GastoProyectadoCell({ periodo, recurrente_id, value, isOverride, defaul
 
   if (editing) {
     return (
-      <div style={{ position: 'relative' }}>
+      <div className="u-pos-rel">
         <input
           autoFocus
           type="number" inputMode="decimal" min="0" step="100"
@@ -484,7 +484,7 @@ function ProyeccionGastosPanel({ onChange }) {
                 <col style={{ width: 'auto' }} />
                 <col style={{ width: 170 }} />
                 <col style={{ width: 200 }} />
-                <col style={{ width: 110 }} />
+                <col className="u-w-110px" />
               </colgroup>
               <thead>
                 <tr>
@@ -511,7 +511,7 @@ function ProyeccionGastosPanel({ onChange }) {
                       <tr
                         className="sanidad-group-header"
                         onClick={() => toggleGroup(g.key)}
-                        style={{ cursor: 'pointer' }}
+                        className="u-cursor-pointer"
                         aria-expanded={isOpen}
                       >
                         <td colSpan={2}>

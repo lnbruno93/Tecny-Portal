@@ -275,7 +275,7 @@ export default function RecepcionStock() {
       {/* 2. Modelo activo */}
       <div className="card u-mb-14">
         <div className="card-hd">
-          <h3>2. Modelo activo <span className="muted tiny" style={{ marginLeft: 6 }}>(se aplica a los próximos scans)</span></h3>
+          <h3>2. Modelo activo <span className="muted tiny u-ml-6">(se aplica a los próximos scans)</span></h3>
         </div>
         <div style={{ padding: 14, display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
           <label style={{ gridColumn: 'span 2' }}>
@@ -336,7 +336,7 @@ export default function RecepcionStock() {
       {/* 3. Scanner + manual */}
       <div className="card u-mb-14">
         <div className="card-hd">
-          <h3>3. Escanear IMEI <span className="muted tiny" style={{ marginLeft: 6 }}>({items.length} cargados)</span></h3>
+          <h3>3. Escanear IMEI <span className="muted tiny u-ml-6">({items.length} cargados)</span></h3>
         </div>
         <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <button
@@ -397,10 +397,10 @@ export default function RecepcionStock() {
               >
                 {/* Header de card: IMEI + delete */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="u-flex-1-minw-0">
                     <div className="mono" style={{ fontSize: 12, fontWeight: 600 }}>{fmtImei(it.imei)}</div>
                     <div style={{ fontSize: 13, marginTop: 2 }}>{it.nombre}</div>
-                    <div className="muted" style={{ fontSize: 11 }}>
+                    <div className="muted u-fs-11">
                       {[it.color, it.gb, it.condicion].filter(Boolean).join(' · ')}
                     </div>
                   </div>
@@ -425,7 +425,7 @@ export default function RecepcionStock() {
                         value={it.costo}
                         onChange={e => editarItem(idx, 'costo', Number(e.target.value.replace(/[^\d.,]/g, '').replace(',', '.')) || 0)}
                         aria-label={`Costo de ${it.imei}`}
-                        style={{ flex: 1, minWidth: 0 }}
+                        className="u-flex-1-minw-0"
                       />
                       {/* 2026-06-29 Multi-país F3: USD + moneda local. */}
                       <select
@@ -450,7 +450,7 @@ export default function RecepcionStock() {
                         value={it.precio_venta}
                         onChange={e => editarItem(idx, 'precio_venta', Number(e.target.value.replace(/[^\d.,]/g, '').replace(',', '.')) || 0)}
                         aria-label={`Precio venta de ${it.imei}`}
-                        style={{ flex: 1, minWidth: 0 }}
+                        className="u-flex-1-minw-0"
                       />
                       <select
                         className="input"
