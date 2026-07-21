@@ -161,9 +161,16 @@ describe('TwoFaSection — flow de regenerate recovery codes', () => {
     // del componente + waitFor sumaban > 1s. Local siempre pasa (< 300ms).
     // El submit del form SÍ dispara (visible en la mutation de mocks),
     // pero waitFor expiraba antes del re-render.
+    //
+    // 2026-07-21 (fix flakiness CI encore): timeout 8000ms + interval 50ms.
+    // Con 3000ms seguía flakeando en runners saturados (PR #747 falló con
+    // "expected 'ActivoAutenticación de dos factoresAc…' to contain
+    // 'NEW1-AAAA-AA'" — el re-render del useConfirm + form submit + mock
+    // async + setState puede pasarse de 3s en CI muy lento). 8s es margen
+    // amplio; si esto vuelve a fallar el problema es real, no timing.
     await waitFor(
       () => expect(container.textContent).toContain('NEW1-AAAA-AA'),
-      { timeout: 3000 }
+      { timeout: 8000, interval: 50 }
     );
     expect(container.textContent).toContain('NEW8-HHHH-HH');
     expect(twoFa.regenerateRecovery).toHaveBeenCalledWith('123456');
