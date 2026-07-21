@@ -1514,7 +1514,7 @@ export default function Ventas() {
                       {prodResults.length > 0 && (
                         <div className="card u-dropdown-abs">
                           {prodResults.map(p => (
-                            <div key={p.id} className="nav-item" style={{ cursor: 'pointer', fontSize: 13 }} onClick={() => addProd(p)}>
+                            <div key={p.id} className="nav-item u-cursor-fs-13" onClick={() => addProd(p)}>
                               {/* 2026-07-07 (Lucas #525): mostramos batería si el
                                   producto es usado — sin eso, dos iPhones "usado
                                   256GB Deep Blue" son indistinguibles en el
@@ -1606,7 +1606,7 @@ export default function Ventas() {
                         return (
                           <div className="card u-dropdown-abs">
                             {matches.map(c => (
-                              <div key={c.id} className="nav-item" style={{ cursor: 'pointer', fontSize: 13 }}
+                              <div key={c.id} className="nav-item u-cursor-fs-13"
                                 onMouseDown={() => {
                                   // #475: si el contacto tiene email cargado, lo pre-llenamos
                                   // y tildamos el checkbox automáticamente — asumimos que el
@@ -2049,7 +2049,7 @@ export default function Ventas() {
                                       >MANUAL</span>
                                     )}
                                   </div>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  <div className="u-flex-center-gap-4">
                                     <span className="mono u-fs-13-fw-600">{sym(p.moneda)}</span>
                                     <input
                                       type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
@@ -2066,7 +2066,7 @@ export default function Ventas() {
                                 </div>
                                 <div>
                                   <div className="muted tiny u-mb-2">Entra a tu caja <span className="u-color-text-muted">(editable)</span></div>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                                  <div className="u-flex-center-gap-4-wrap">
                                     <input
                                       type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                                       className="input mono"

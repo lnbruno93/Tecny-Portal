@@ -188,7 +188,7 @@ export default function Historial() {
         </div>
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">UPDATE</div>
-          <div className="kpi-value mono" style={{ color: 'var(--info)' }}>{countByType('UPDATE')}</div>
+          <div className="kpi-value mono u-color-info">{countByType('UPDATE')}</div>
           <div className="muted tiny u-mt-2">en esta página</div>
         </div>
         <div className="card card-tight u-flex-1">

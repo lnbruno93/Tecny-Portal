@@ -1061,7 +1061,7 @@ export default function Inventario() {
           espacio para respirar. ── */}
       <div className="page-head">
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div className="u-flex-center-gap-10-wrap">
             <h1 className="page-title">Inventario</h1>
             <Link to="/inventario/desglose" className="btn btn-ghost btn-sm" title="Vista 360 de tu stock por categoría, proveedor, modelo y más">
               Desglose 360 →
@@ -1550,7 +1550,7 @@ export default function Inventario() {
       {!loading && pages > 1 && (
         <div className="flex-row u-gap-8-center-mt-14">
           <button className="btn btn-sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>‹ Anterior</button>
-          <span className="muted tiny" style={{ alignSelf: 'center' }}>{page} / {pages} · {total} productos</span>
+          <span className="muted tiny u-self-center">{page} / {pages} · {total} productos</span>
           <button className="btn btn-sm" disabled={page >= pages} onClick={() => setPage(p => p + 1)}>Siguiente ›</button>
         </div>
       )}
@@ -1960,7 +1960,7 @@ export default function Inventario() {
                   )}
                 </div>
               )}
-              {importError && <div style={{ color: 'var(--neg)', fontSize: 13, marginTop: 10 }}>{importError}</div>}
+              {importError && <div className="u-color-neg-fs-13-mt-10">{importError}</div>}
             </div>
             <div className="modal-ft">
               <button className="btn btn-ghost" onClick={() => setShowImport(false)}>Cancelar</button>
@@ -2041,7 +2041,7 @@ export default function Inventario() {
                   </div>
                 ))}
               </div>
-              {catError && <div style={{ color: 'var(--neg)', fontSize: 13, marginTop: 10 }}>{catError}</div>}
+              {catError && <div className="u-color-neg-fs-13-mt-10">{catError}</div>}
             </div>
             <div className="modal-ft">
               <button className="btn btn-primary" onClick={() => setShowCatalogos(false)}>Listo</button>

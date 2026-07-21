@@ -1578,3 +1578,25 @@ a { color: inherit; text-decoration: none; }
 .u-flex-between          { display: flex; justify-content: space-between; }
 .u-display-none          { display: none; }
 .u-fs-10                 { font-size: 10px; }
+
+/* Sprint 16 (2026-07-21) — sync con frontend */
+
+.btn-plain-inline        { background: none; border: none; padding: 0; cursor: pointer; }
+.u-sticky-header-bar     { background: var(--surface-2); position: sticky; top: 0; z-index: 1; }
+.u-bar-y-hairline        { background: var(--bg-2); border-top: 1px solid var(--hairline); border-bottom: 1px solid var(--hairline); }
+.u-color-neg-fs-13-mt-8  { color: var(--neg); font-size: 13px; margin-top: 8px; }
+.u-color-neg-fs-13-mt-10 { color: var(--neg); font-size: 13px; margin-top: 10px; }
+.u-color-neg-fs-13-mb-10 { color: var(--neg); font-size: 13px; margin-bottom: 10px; }
+.u-flex-center-gap-4-wrap { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.u-flex-center-gap-4     { display: flex; align-items: center; gap: 4px; }
+.u-flex-center-gap-10-wrap { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.u-cursor-fs-13          { cursor: pointer; font-size: 13px; }
+.u-cursor-muted          { cursor: pointer; color: var(--text-muted); }
+.u-cursor-borderless     { cursor: pointer; border: none; }
+.u-color-pos-fs-14       { color: var(--pos); font-size: 14px; }
+.u-color-text-dim        { color: var(--text-dim); }
+.u-color-text            { color: var(--text); }
+.u-color-info            { color: var(--info); }
+.u-border-top-only       { border-top: 1px solid var(--border); }
+.u-self-center           { align-self: center; }
+.u-p-6-8-only            { padding: 6px 8px; }

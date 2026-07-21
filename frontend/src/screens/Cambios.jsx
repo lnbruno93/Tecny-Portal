@@ -345,7 +345,7 @@ export default function Cambios() {
               // en vez del toast que desaparece a los 5s. Si la red falla, el
               // user tiene forma de reintentar sin refrescar la página.
               <div className="u-p-20-text-center">
-                <div style={{ color: 'var(--neg)', fontSize: 13, marginBottom: 10 }}>
+                <div className="u-color-neg-fs-13-mb-10">
                   {listError}
                 </div>
                 <button className="btn btn-sm" onClick={loadList}>
@@ -653,7 +653,7 @@ export default function Cambios() {
                   <label className="field-label">Nombre <span className="u-color-neg">*</span></label>
                   <input className="input" placeholder="Ej: El Dorado" value={nombre} onChange={e => setNombre(e.target.value)} autoFocus />
                 </div>
-                {createError && <div style={{ color: 'var(--neg)', fontSize: 13, marginTop: 8 }}>{createError}</div>}
+                {createError && <div className="u-color-neg-fs-13-mt-8">{createError}</div>}
               </div>
               <div className="modal-ft"><button type="button" className="btn btn-ghost" onClick={() => setShowCreate(false)}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={creating}>{creating ? 'Creando…' : 'Crear'}</button></div>
             </form>

@@ -1282,7 +1282,7 @@ export default function CuentasCC() {
                 </colgroup>
 
                 <thead>
-                  <tr style={{ background: 'var(--surface-2)', position: 'sticky', top: 0, zIndex: 1 }}>
+                  <tr className="u-sticky-header-bar">
                     {['Fecha', 'Tipo', 'Detalle', 'Modelo', 'Cap.', 'Color', 'IMEI / Serial', 'Monto USD', '✓', 'Comentarios', ''].map((h, i) => (
                       <th key={i} style={{
                         padding: '7px 8px', fontSize: 11, fontWeight: 700,
@@ -1387,7 +1387,7 @@ export default function CuentasCC() {
                         </td>
                         <td className="cell u-text-center">
                           {item?.verificado
-                            ? <span style={{ color: 'var(--pos)', fontSize: 14 }}>✓</span>
+                            ? <span className="u-color-pos-fs-14">✓</span>
                             : <span className="dim u-fs-11">—</span>}
                         </td>
                         {/* 2026-07-17: columna Comentarios */}
@@ -1684,7 +1684,7 @@ function MovimientoDesglose({ mov, onDevolverItem }) {
             };
             return (
               <tr key={it.id} style={rowStyle}>
-                <td style={{ padding: '6px 8px' }}>
+                <td className="u-p-6-8-only">
                   {it.producto || <span className="dim">—</span>}
                   {devuelto && (
                     <span style={{
@@ -1695,7 +1695,7 @@ function MovimientoDesglose({ mov, onDevolverItem }) {
                   )}
                 </td>
                 <td style={{ padding: '6px 8px', fontFamily: 'monospace', fontSize: 11 }}>{it.imei_serial || <span className="dim">—</span>}</td>
-                <td style={{ padding: '6px 8px' }} className="muted tiny">
+                <td className="muted tiny u-p-6-8-only">
                   {[it.tamano, it.color].filter(Boolean).join(' · ') || '—'}
                 </td>
                 <td className="u-td-right-p-6-8">{cant}</td>

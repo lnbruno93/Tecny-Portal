@@ -80,8 +80,8 @@ export default function DiffModal({ state, onClose }) {
             border: '1px solid rgba(122, 162, 247, 0.25)', borderRadius: 8, fontSize: 13, lineHeight: 1.6,
           }}>
             <div style={{ fontWeight: 600, color: 'var(--accent)', marginBottom: 4 }}>¿Qué quieres hacer?</div>
-            <div style={{ color: 'var(--text)' }}>· <strong>Corregir:</strong> ajustar los métodos de pago</div>
-            <div style={{ color: 'var(--text)' }}>· <strong>Aceptar igual:</strong> guardar y sumar la diferencia al profit</div>
+            <div className="u-color-text">· <strong>Corregir:</strong> ajustar los métodos de pago</div>
+            <div className="u-color-text">· <strong>Aceptar igual:</strong> guardar y sumar la diferencia al profit</div>
           </div>
         </div>
         <div className="modal-ft" style={{ justifyContent: 'center', gap: 12 }}>
