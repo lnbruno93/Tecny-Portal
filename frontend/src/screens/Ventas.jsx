@@ -1512,7 +1512,7 @@ export default function Ventas() {
                     <div className="u-pos-rel">
                       <input className="input" placeholder="Buscar producto del inventario (nombre, IMEI, color…)" value={prodSearch} onChange={e => searchProducto(e.target.value)} />
                       {prodResults.length > 0 && (
-                        <div className="card" style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 60, maxHeight: 220, overflowY: 'auto', marginTop: 2, padding: 4 }}>
+                        <div className="card u-dropdown-abs">
                           {prodResults.map(p => (
                             <div key={p.id} className="nav-item" style={{ cursor: 'pointer', fontSize: 13 }} onClick={() => addProd(p)}>
                               {/* 2026-07-07 (Lucas #525): mostramos batería si el
@@ -1604,7 +1604,7 @@ export default function Ventas() {
                         const showCreate = q.length >= 2 && !exact;
                         if (!matches.length && !showCreate) return null;
                         return (
-                          <div className="card" style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 60, maxHeight: 220, overflowY: 'auto', marginTop: 2, padding: 4 }}>
+                          <div className="card u-dropdown-abs">
                             {matches.map(c => (
                               <div key={c.id} className="nav-item" style={{ cursor: 'pointer', fontSize: 13 }}
                                 onMouseDown={() => {
@@ -1984,7 +1984,7 @@ export default function Ventas() {
                                 <option value="__CC__">Cuenta corriente (deuda)</option>
                               </select>
                               <div className="u-pos-rel">
-                                <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: 11, pointerEvents: 'none' }}>
+                                <span className="u-input-icon-abs">
                                   {/* 2026-06-29 Multi-país F3: símbolo local del input ARS-direct
                                       ahora distingue $ (ARS) vs $U (UYU). */}
                                   {localDirect ? (p.moneda === 'UYU' ? '$U' : '$') : 'USD'}
@@ -2011,7 +2011,7 @@ export default function Ventas() {
                               </div>
                               {showTc && (
                                 <div className="u-pos-rel">
-                                  <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: 11, pointerEvents: 'none' }}>TC</span>
+                                  <span className="u-input-icon-abs">TC</span>
                                   <input
                                     type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                                     className="input mono" placeholder="1460"
@@ -2034,7 +2034,7 @@ export default function Ventas() {
                                 }}
                               >
                                 <div>
-                                  <div className="muted tiny" style={{ marginBottom: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <div className="muted tiny u-mb-2-flex-center-6">
                                     <span>Le cobrás al cliente <span className="u-color-text-muted">(editable)</span></span>
                                     {p.bruto_manual && (
                                       <span

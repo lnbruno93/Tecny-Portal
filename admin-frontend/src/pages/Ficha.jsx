@@ -544,7 +544,7 @@ export default function Ficha() {
               {tenant.pais === 'UY' ? 'Uruguay (UYU)' : 'Argentina (ARS)'}
             </strong>
           </p>
-          <p className="muted tiny" style={{ margin: '0 0 12px' }}>
+          <p className="muted tiny u-m-0-0-12">
             Cambiar arrastra side-effects: se crean cajas nuevas en la moneda
             local del país nuevo (con sufijo en el nombre, sin borrar las
             viejas) y se actualiza el threshold de la alerta TC. Historial
@@ -663,7 +663,7 @@ function HealthBar({ label, value, color }) {
     <div className="bar-row">
       <span className="bar-row-label">{label}</span>
       <span className="bar-row-value" style={{ color }}>{safe}</span>
-      <div className="bar-row-track bar-track" style={{ height: 6 }}>
+      <div className="bar-row-track bar-track u-h-6">
         <div
           className="bar-fill"
           style={{ width: safe + '%', background: color }}
@@ -982,7 +982,7 @@ function ComprobanteEmailFooterCard({ tenant, onSaved }) {
   return (
     <div className="card u-mt-var-gap">
       <h3 className="u-m-0-0-8">Footer email comprobante</h3>
-      <p className="muted tiny" style={{ margin: '0 0 12px' }}>
+      <p className="muted tiny u-m-0-0-12">
         Texto que aparece al final del email de comprobante de venta retail que
         recibe el cliente final. Plain-text — sin HTML (se escapa al renderizar).
         Dejá vacío para usar el footer default.

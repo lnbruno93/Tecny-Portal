@@ -298,7 +298,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
                       background: used ? 'rgba(99,102,241,0.04)' : 'transparent',
                       borderTop: '1px solid var(--hairline)',
                     }}>
-                      <td style={{ padding: '3px 6px', textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>{idx + 1}</td>
+                      <td className="u-badge-mini-muted">{idx + 1}</td>
                       <td className="u-p-3-4">
                         <ClientePicker
                           value={r.cliente_nombre}

@@ -1491,7 +1491,7 @@ export default function Envios() {
                                     .map(m => <option key={m} value={m}>{m}</option>)}
                                 </select>
                               </div>
-                              <button type="button" className="icon-btn" title="Quitar ítem" aria-label="Quitar ítem" style={{ marginBottom: 1 }} onClick={() => rmItem(it._id)}>
+                              <button type="button" className="icon-btn u-mb-1" title="Quitar ítem" aria-label="Quitar ítem" onClick={() => rmItem(it._id)}>
                                 <Icons.X size={14} />
                               </button>
                             </div>
@@ -1548,7 +1548,7 @@ export default function Envios() {
                                       .map(m => <option key={m} value={m}>{m}</option>)}
                                   </select>
                                 </div>
-                                <button type="button" className="icon-btn" style={{ marginBottom: 1 }} onClick={() => rmItem(it._id)}>
+                                <button type="button" className="icon-btn u-mb-1" onClick={() => rmItem(it._id)}>
                                   <Icons.X size={14} />
                                 </button>
                               </div>
@@ -1611,7 +1611,7 @@ export default function Envios() {
                                     queda por compatibilidad con envíos legacy. */}
                               </select>
                               <div className="u-pos-rel">
-                                <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: 11, pointerEvents: 'none' }}>
+                                <span className="u-input-icon-abs">
                                   {arsDirect ? '$' : 'USD'}
                                 </span>
                                 {arsDirect ? (
@@ -1636,7 +1636,7 @@ export default function Envios() {
                               </div>
                               {showTc && (
                                 <div className="u-pos-rel">
-                                  <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: 11, pointerEvents: 'none' }}>TC</span>
+                                  <span className="u-input-icon-abs">TC</span>
                                   <input
                                     type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                                     className="input mono" placeholder="1460"
@@ -1658,7 +1658,7 @@ export default function Envios() {
                                 paddingLeft: 2,
                               }}>
                                 <div>
-                                  <div className="muted tiny" style={{ marginBottom: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <div className="muted tiny u-mb-2-flex-center-6">
                                     <span>Le cobrás al cliente <span className="u-color-text-muted">(editable)</span></span>
                                     {it.bruto_manual && (
                                       <span

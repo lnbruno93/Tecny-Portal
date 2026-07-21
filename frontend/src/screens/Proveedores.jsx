@@ -416,7 +416,7 @@ export default function Proveedores() {
 
         {/* ── Panel derecho ── */}
         {!selected ? (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+          <div className="u-flex-center-muted-fs-13">
             Seleccioná un proveedor
           </div>
         ) : (
@@ -517,7 +517,7 @@ export default function Proveedores() {
                 <tbody>
                   {movimientos.length === 0 && !loadingMovs && (
                     <tr>
-                      <td colSpan={11} style={{ padding: '24px 16px', color: 'var(--text-muted)', fontSize: 13, textAlign: 'center' }}>
+                      <td colSpan={11} className="u-empty-p-24-16">
                         Sin movimientos — completá la fila azul para agregar el primero
                       </td>
                     </tr>

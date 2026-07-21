@@ -225,7 +225,7 @@ export default function Resumen() {
             {labelMes(periodoActual)} <span className="dim">vs</span> {labelMes(periodoComp)}
           </span>
           {data?.generado_en && (
-            <div className="muted tiny" style={{ marginLeft: 'auto' }}>
+            <div className="muted tiny u-ml-auto">
               Actualizado: {fmtFecha(data.generado_en.slice(0, 10))}
             </div>
           )}

@@ -125,7 +125,7 @@ export function RedB2BPendingReviewContent({ onCountChange } = {}) {
 
   return (
     <div>
-      <p className="muted" style={{ marginTop: 0, marginBottom: 16 }}>
+      <p className="muted u-mt-0-mb-16">
         Productos que tus partners Red B2B agregaron a tu catálogo automáticamente
         a través de operaciones cross-tenant. Confirmalos como nuevos o mergealos
         con productos que ya tenés.

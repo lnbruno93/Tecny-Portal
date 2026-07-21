@@ -1050,7 +1050,7 @@ export default function CuentasCC() {
                         <td>{catBadge(c.categoria)}</td>
                         <td className="num mono neg u-fw-700">USD {fmt(c.saldo)}</td>
                         <td>
-                          <div className="bar-track" style={{ height: 6 }}><div className="bar-fill" style={{ width: pct + '%' }} /></div>
+                          <div className="bar-track u-h-6"><div className="bar-fill" style={{ width: pct + '%' }} /></div>
                           <div className="muted tiny mono" style={{ marginTop: 3, textAlign: 'right' }}>{pct}%</div>
                         </td>
                       </tr>
@@ -1176,11 +1176,11 @@ export default function CuentasCC() {
 
         {/* ── Panel derecho ── */}
         {loadingDetail ? (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+          <div className="u-flex-center-muted-fs-13">
             Cargando…
           </div>
         ) : !cliente ? (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+          <div className="u-flex-center-muted-fs-13">
             Seleccioná un cliente
           </div>
         ) : (
@@ -1298,7 +1298,7 @@ export default function CuentasCC() {
                   {/* Movimientos existentes (ASC — cronológico) */}
                   {movimientos.length === 0 && !loadingDetail && (
                     <tr>
-                      <td colSpan={11} style={{ padding: '24px 16px', color: 'var(--text-muted)', fontSize: 13, textAlign: 'center' }}>
+                      <td colSpan={11} className="u-empty-p-24-16">
                         Sin movimientos — completá la fila azul para agregar el primero
                       </td>
                     </tr>

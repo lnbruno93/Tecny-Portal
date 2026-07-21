@@ -190,14 +190,14 @@ export default function MergeClasesModal({
       </div>
 
       {canSwap && (
-        <div style={{ marginBottom: 14, textAlign: 'center' }}>
+        <div className="u-mb-14-text-center">
           <Btn kind="ghost" sm icon="Refresh" onClick={handleSwap} disabled={submitting}>
             Invertir (usar {duplicada?.nombre} como canónica)
           </Btn>
         </div>
       )}
       {!canSwap && (
-        <div className="muted tiny" style={{ marginBottom: 14, textAlign: 'center' }}>
+        <div className="muted tiny u-mb-14-text-center">
           Una de las clases es <strong>base</strong> o <strong>sin_categoría</strong> —
           debe quedar como canónica.
         </div>

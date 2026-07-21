@@ -163,7 +163,7 @@ export default function SortableTable({
                 >
                   {col.label}
                   {col.sortable && isActive && (
-                    <span aria-hidden="true" style={{ marginLeft: 4 }}>
+                    <span aria-hidden="true" className="u-ml-4">
                       {sort.dir === 'asc' ? '▲' : '▼'}
                     </span>
                   )}

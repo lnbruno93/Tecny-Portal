@@ -138,7 +138,7 @@ export function RedB2BConfigContent() {
   return (
     <section className="card u-p-16">
       <h2 className="u-mt-0-fs-16">Caja default cross-tenant</h2>
-      <p style={{ marginBottom: 12, fontSize: 14 }}>
+      <p className="u-mb-12-fs-14">
         Cuando un partner Red B2B registra un pago de una operación nuestra,
         el sistema necesita saber en qué caja propia anotar el movimiento.
         Si no configurás una caja default, usamos la primera caja con moneda
@@ -186,7 +186,7 @@ export function RedB2BConfigContent() {
       {emailPrefs && (
         <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--border, #e5e7eb)' }}>
           <h2 className="u-mt-0-fs-16">Avisos por email</h2>
-          <p style={{ marginBottom: 12, fontSize: 14 }}>
+          <p className="u-mb-12-fs-14">
             Decidí qué notificaciones de Red B2B querés recibir por mail.
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

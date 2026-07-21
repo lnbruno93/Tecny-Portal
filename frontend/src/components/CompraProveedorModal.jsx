@@ -530,7 +530,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
                       borderTop: '1px solid var(--hairline)',
                       boxShadow: imeiBad ? 'inset 3px 0 0 0 var(--neg)' : undefined,
                     }}>
-                      <td style={{ padding: '3px 6px', textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>{idx + 1}</td>
+                      <td className="u-badge-mini-muted">{idx + 1}</td>
                       <td style={{ padding: '3px 6px', textAlign: 'center' }}>
                         <input type="checkbox" checked={r.crear_stock}
                           onChange={e => updCell(idx, 'crear_stock', e.target.checked)} />

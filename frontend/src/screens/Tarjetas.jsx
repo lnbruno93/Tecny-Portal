@@ -1132,7 +1132,7 @@ export default function Tarjetas() {
               </div>
             </div>
           ) : !detalle ? (
-            <div className="card" style={{ minHeight: 200, display: 'grid', placeItems: 'center', color: 'var(--text-muted)' }}>Elegí una tarjeta</div>
+            <div className="card u-empty-state-grid">Elegí una tarjeta</div>
           ) : (
             <div className="stack u-gap-14">
               <div className="card">

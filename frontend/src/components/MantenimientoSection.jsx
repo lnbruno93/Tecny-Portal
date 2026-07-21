@@ -39,7 +39,7 @@ function fmtMoneda(n, moneda) {
 function FinancieraReport({ report }) {
   if (report.skipped) {
     return (
-      <div style={{ color: 'var(--pos)', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div className="u-color-pos-fs-14-fw-600-flex">
         <Icons.Check size={14} aria-hidden="true"/> Nada pendiente. Todos los comprobantes y pagos ya impactan la caja FV.
       </div>
     );
@@ -125,7 +125,7 @@ function FinancieraReport({ report }) {
 function TarjetasReport({ report }) {
   if (report.skipped) {
     return (
-      <div style={{ color: 'var(--pos)', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div className="u-color-pos-fs-14-fw-600-flex">
         <Icons.Check size={14} aria-hidden="true"/> Nada pendiente. Todas las tarjetas ya tienen su trazabilidad al día.
       </div>
     );
@@ -188,7 +188,7 @@ function TarjetasReport({ report }) {
 function OrphanMovsReport({ report }) {
   if (report.movs_count === 0) {
     return (
-      <div style={{ color: 'var(--pos)', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div className="u-color-pos-fs-14-fw-600-flex">
         <Icons.Check size={14} aria-hidden="true"/> Sin movimientos huérfanos. Todo en orden.
       </div>
     );

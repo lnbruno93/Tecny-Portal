@@ -101,7 +101,7 @@ export function RedB2BConciliacionContent({
   if (!partnershipId) {
     return (
       <div>
-        <p className="muted" style={{ marginTop: 0, marginBottom: 16 }}>
+        <p className="muted u-mt-0-mb-16">
           Vista de saldos cruzados por cada partner Red B2B. Hacé click en uno
           para ver la conciliación detallada.
         </p>
@@ -206,7 +206,7 @@ export function RedB2BConciliacionContent({
             <strong style={{ color: 'var(--red-fg, #991b1b)' }}>
               ⚠ Saldos divergentes
             </strong>
-            <p style={{ margin: '8px 0 0 0', fontSize: 14 }}>
+            <p className="u-m-8-0-0-0-fs-14">
               Hay una diferencia de <strong>{fmtMoney(saldos_bilaterales.diferencia_usd, 'USD')}</strong>{' '}
               entre lo que el seller y el buyer registran. Revisá las operaciones abajo.
             </p>
@@ -216,7 +216,7 @@ export function RedB2BConciliacionContent({
             <strong style={{ color: 'var(--green-fg, #166534)' }}>
               ✓ Saldos coincidentes
             </strong>
-            <p style={{ margin: '8px 0 0 0', fontSize: 14 }}>
+            <p className="u-m-8-0-0-0-fs-14">
               Lo que ambos lados registran cuadra perfecto.
             </p>
           </div>
