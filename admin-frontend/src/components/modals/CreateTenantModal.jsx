@@ -266,7 +266,7 @@ export default function CreateTenantModal({ open, onClose, onCreated }) {
           </div>
         </div>
 
-        <div className="banner banner-info" role="note" style={{ padding: 10 }}>
+        <div className="banner banner-info u-p-10" role="note">
           <Badge tone="info">Info</Badge>
           <span className="tiny u-ml-6">
             El tenant nace con email verificado y cajas/categorías default

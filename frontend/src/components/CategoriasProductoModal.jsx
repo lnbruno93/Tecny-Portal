@@ -199,7 +199,7 @@ export default function CategoriasProductoModal({
                 "iPhones Nuevos", "Rebajados", "Promoción", etc. Un producto puede pertenecer a una
                 colección además de tener su categoría.
               </p>
-              <div className="flex-row" style={{ gap: 6, marginBottom: 12 }}>
+              <div className="flex-row u-gap-6-mb-12">
                 <input
                   className="input"
                   placeholder="Nueva colección"

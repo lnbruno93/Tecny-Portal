@@ -186,7 +186,7 @@ export default function Facturacion() {
             style={{ color: (kpis.al_dia_count ?? 0) > 0 ? 'var(--pos)' : undefined }}
           >
             {loading ? (
-              <span className="skeleton" style={{ display: 'inline-block', width: 60, height: 22 }} />
+              <span className="skeleton u-inline-block-w-60-h-22" />
             ) : (
               fmt(kpis.al_dia_count ?? 0)
             )}
@@ -205,7 +205,7 @@ export default function Facturacion() {
             style={{ color: (kpis.vencidos_count ?? 0) > 0 ? 'var(--neg)' : undefined }}
           >
             {loading ? (
-              <span className="skeleton" style={{ display: 'inline-block', width: 60, height: 22 }} />
+              <span className="skeleton u-inline-block-w-60-h-22" />
             ) : (
               fmt(kpis.vencidos_count ?? 0)
             )}
@@ -223,7 +223,7 @@ export default function Facturacion() {
           <div className="kpi-label">Trials</div>
           <div className="kpi-value">
             {loading ? (
-              <span className="skeleton" style={{ display: 'inline-block', width: 60, height: 22 }} />
+              <span className="skeleton u-inline-block-w-60-h-22" />
             ) : (
               fmt(kpis.trials_count ?? 0)
             )}

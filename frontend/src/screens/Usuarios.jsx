@@ -476,7 +476,7 @@ export default function Usuarios() {
       {/* ── Modal: nuevo usuario ──────────────────────────────────────────── */}
       {showCreate && (
         <div ref={createModalRef} className="modal-overlay" onClick={() => setShowCreate(false)}>
-          <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
+          <div className="modal u-mw-560" onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
               <h3>Nuevo usuario</h3>
               <button className="icon-btn" onClick={() => setShowCreate(false)}>
@@ -489,7 +489,7 @@ export default function Usuarios() {
                 Antes usábamos `maxHeight: '72vh'` inline como workaround. Con el
                 form flex, el .modal-body.flex:1 + overflow-y:auto del base CSS
                 scrollea automáticamente. Ver Envios.jsx modal para el fix inicial. */}
-            <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+            <form onSubmit={handleCreate} className="u-flex-col-flex-1-mh-0">
               <div className="modal-body">
                 <div className="stack" style={{ gap: 16 }}>
                   <div className="row">
@@ -675,7 +675,7 @@ function EditorPermisos({ usuario, pantallas, onClose, onSaved }) {
         <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--border)' }}>
           <div className="flex-row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <div style={{ fontWeight: 600, fontSize: 16 }}>Permisos: {usuario.nombre}</div>
+              <div className="u-fs-16-fw-600">Permisos: {usuario.nombre}</div>
               <div className="muted tiny u-mt-4">@{usuario.username}{usuario.email && ` · ${usuario.email}`}</div>
             </div>
             <button className="icon-btn" onClick={onClose} aria-label="Cerrar">

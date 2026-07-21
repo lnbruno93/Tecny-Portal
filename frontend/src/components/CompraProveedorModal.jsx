@@ -488,7 +488,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
           {/* 2026-06-24 mobile lote C: planilla con minWidth 1500 (~16 columnas).
               Hint visible solo en mobile para indicar scroll horizontal. */}
           <div className="bulk-spreadsheet-hint">↔ Desliza horizontalmente para ver todas las columnas</div>
-          <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 6 }}>
+          <div className="u-overflow-x-border-r-6">
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1500, tableLayout: 'fixed' }}>
               <colgroup>
                 <col style={{ width: 28 }} />   {/* # */}
@@ -505,9 +505,9 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
                 <col className="u-w-96" />   {/* Tipo carga */}
                 <col className="u-w-60px" />   {/* Cant */}
                 <col className="u-w-80px" />   {/* Costo */}
-                <col style={{ width: 64 }} />   {/* Moneda */}
+                <col className="u-w-64" />   {/* Moneda */}
                 <col className="u-w-80px" />   {/* Precio */}
-                <col style={{ width: 64 }} />   {/* Moneda */}
+                <col className="u-w-64" />   {/* Moneda */}
                 <col className="u-w-32px" />   {/* X */}
               </colgroup>
               <thead>
@@ -624,7 +624,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
                             .map(m => <option key={m} value={m}>{m}</option>)}
                         </select>
                       </td>
-                      <td style={{ padding: '3px 4px', textAlign: 'center' }}>
+                      <td className="u-p-3-4-text-center">
                         {rows.length > 1 && (
                           <button className="icon-btn" style={{ color: 'var(--neg)', padding: 2 }}
                             onClick={() => removeRow(idx)} title="Quitar fila">
@@ -648,7 +648,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
             </div>
             <div style={{ flex: '0 0 220px', textAlign: 'right' }}>
               <div className="muted tiny">Total compra</div>
-              <div className="mono" style={{ fontSize: 22, fontWeight: 800 }}>
+              <div className="mono u-fs-22-fw-800">
                 {/* #M-13: si no hay filas usadas, mostrar guion en vez de
                     "USD 0" para no parecer que se está cargando algo. */}
                 {rows.filter(isUsedRow).length === 0

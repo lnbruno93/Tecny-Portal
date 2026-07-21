@@ -1655,9 +1655,9 @@ function MovimientoDesglose({ mov, onDevolverItem }) {
       <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ color: 'var(--text-muted)', borderBottom: '1px solid var(--hairline)' }}>
-            <th style={{ textAlign: 'left',  padding: '6px 8px' }}>Producto</th>
-            <th style={{ textAlign: 'left',  padding: '6px 8px' }}>IMEI / Serial</th>
-            <th style={{ textAlign: 'left',  padding: '6px 8px' }}>Var.</th>
+            <th className="u-td-left-p-6-8">Producto</th>
+            <th className="u-td-left-p-6-8">IMEI / Serial</th>
+            <th className="u-td-left-p-6-8">Var.</th>
             <th className="u-td-right-p-6-8">Cant.</th>
             <th className="u-td-right-p-6-8">Costo unit.</th>
             <th className="u-td-right-p-6-8">P. mayorista unit.</th>

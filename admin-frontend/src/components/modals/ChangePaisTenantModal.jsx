@@ -121,7 +121,7 @@ export default function ChangePaisTenantModal({ tenant, open, onClose, onSaved }
       <div className="banner banner-info u-mb-14">
         <div>
           <strong>Side-effects del cambio AR ↔ UY:</strong>
-          <ul style={{ margin: '8px 0 0 18px', padding: 0 }}>
+          <ul className="u-m-8-0-0-18-p-0">
             <li>
               Se crean cajas nuevas en la moneda local del país destino, con sufijo
               <code> ({metaNuevo?.value})</code> en el nombre.

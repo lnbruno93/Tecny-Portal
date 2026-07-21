@@ -481,9 +481,9 @@ function ProyeccionGastosPanel({ onChange }) {
                   body (incluyendo group headers con colSpan) se alinean
                   perfectas. */}
               <colgroup>
-                <col style={{ width: 'auto' }} />
+                <col className="u-w-auto" />
                 <col style={{ width: 170 }} />
-                <col style={{ width: 200 }} />
+                <col className="u-w-200" />
                 <col className="u-w-110px" />
               </colgroup>
               <thead>
@@ -550,7 +550,7 @@ function ProyeccionGastosPanel({ onChange }) {
                         />
                       ) : (
                         <tr key={r.id}>
-                          <td style={{ paddingLeft: 36 }}>{r.concepto}</td>
+                          <td className="u-pl-36">{r.concepto}</td>
                           <td className="sanidad-num-cell u-text-right">
                             {r.moneda === 'ARS'
                               ? <span className="sanidad-money"><span className="sanidad-money-prefix">ARS</span><span className="sanidad-money-amount">{fmt(Number(r.monto), 0)}</span></span>

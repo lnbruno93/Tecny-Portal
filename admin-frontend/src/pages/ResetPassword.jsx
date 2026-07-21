@@ -299,8 +299,7 @@ export default function ResetPassword() {
           Elegí tu nueva contraseña
         </h1>
         <p
-          className="muted"
-          style={{ fontSize: 13, textAlign: 'center', margin: '0 0 20px' }}
+          className="muted u-fs-13-text-center-m"
         >
           Una vez confirmada, vas a poder iniciar sesión con la nueva.
         </p>
@@ -397,8 +396,7 @@ export default function ResetPassword() {
         </form>
 
         <p
-          className="muted tiny"
-          style={{ textAlign: 'center', margin: '20px 0 0' }}
+          className="muted tiny u-text-center-m-20-0-0"
         >
           <Link
             to="/login"

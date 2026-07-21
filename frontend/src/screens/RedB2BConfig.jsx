@@ -175,7 +175,7 @@ export function RedB2BConfigContent() {
       </div>
 
       {config?.caja_default && (
-        <p style={{ marginTop: 12, fontSize: 13 }}>
+        <p className="u-mt-12-fs-13">
           <span className="muted">Actual: </span>
           <strong>{config.caja_default.nombre}</strong>
           <span className="muted"> ({config.caja_default.moneda})</span>

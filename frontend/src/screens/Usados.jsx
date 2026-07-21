@@ -217,7 +217,7 @@ export default function Usados() {
           <div className="u-fs-14-fw-600">
             Catálogo — {filtered.length} equipo{filtered.length !== 1 ? 's' : ''}
           </div>
-          <div className="input-group" style={{ width: 240 }}>
+          <div className="input-group u-w-240">
             <span className="addon addon-l"><Icons.Search size={14} /></span>
             <input
               className="input"

@@ -788,7 +788,7 @@ export default function Cajas() {
             {[
               { label: 'Total invertido · USD', value: <><span className="ccy">USD</span><span className="mono">{fmt(totalInvUSD)}</span></>, sub: `${inversiones.length} movimientos` },
               { label: 'Inversores activos', value: <span className="mono">{inversoresActivos}</span>, sub: 'contactos únicos' },
-              { label: 'Último ingreso', value: <span className="mono" style={{ fontSize: 16 }}>{inversiones[0] ? fmtFecha(inversiones[0].fecha) : '—'}</span>, sub: inversiones[0]?.nombre || '' },
+              { label: 'Último ingreso', value: <span className="mono u-fs-16">{inversiones[0] ? fmtFecha(inversiones[0].fecha) : '—'}</span>, sub: inversiones[0]?.nombre || '' },
             ].map(k => (
               <div key={k.label} className="card card-tight u-flex-1">
                 <div className="kpi-label">{k.label}</div>
@@ -1168,7 +1168,7 @@ export default function Cajas() {
       {showDeuda && (
         <div ref={deudaModalRef} className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="deuda-modal-title"
              onClick={(e) => { if (e.target === e.currentTarget && !deudaCreating) setShowDeuda(false); }}>
-          <div className="modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
+          <div className="modal u-mw-460" onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
               <h3 id="deuda-modal-title">Nuevo movimiento de deuda</h3>
               <button className="icon-btn" aria-label="Cerrar modal" onClick={() => setShowDeuda(false)} disabled={deudaCreating}>

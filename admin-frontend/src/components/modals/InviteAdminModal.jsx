@@ -147,7 +147,7 @@ export default function InviteAdminModal({ open, onClose, onCreated }) {
         </div>
 
         {/* Preview del email — muestra a quién le vamos a mandar. */}
-        <div className="banner banner-info" role="note" style={{ padding: 10 }}>
+        <div className="banner banner-info u-p-10" role="note">
           <Badge tone="info">Preview</Badge>
           <span className="tiny u-ml-6">
             Vamos a mandarle un email a <strong>{email || 'este@ejemplo.com'}</strong>{' '}

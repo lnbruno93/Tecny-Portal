@@ -116,8 +116,7 @@ export default function ForgotPassword() {
               Revisá tu email
             </h1>
             <p
-              className="muted"
-              style={{ fontSize: 13, textAlign: 'center', margin: '0 0 20px' }}
+              className="muted u-fs-13-text-center-m"
               role="status"
               aria-live="polite"
             >
@@ -231,8 +230,7 @@ export default function ForgotPassword() {
             </form>
 
             <p
-              className="muted tiny"
-              style={{ textAlign: 'center', margin: '20px 0 0' }}
+              className="muted tiny u-text-center-m-20-0-0"
             >
               <Link
                 to="/login"

@@ -126,7 +126,7 @@ export default function MergeClasesModal({
       <div className="banner banner-info u-mb-14">
         <div>
           <strong>¿Qué hace la fusión?</strong>
-          <ul style={{ margin: '8px 0 0 18px', padding: 0 }}>
+          <ul className="u-m-8-0-0-18-p-0">
             <li>
               Los <strong>{duplicada?.count_productos || 0} producto{duplicada?.count_productos === 1 ? '' : 's'}</strong>
               {' '}de <code>{duplicada?.nombre}</code> pasan a apuntar a{' '}
@@ -159,7 +159,7 @@ export default function MergeClasesModal({
           <div className="muted tiny u-mb-4">
             SE QUEDA (canónica)
           </div>
-          <div style={{ fontWeight: 600, fontSize: 16 }}>
+          <div className="u-fs-16-fw-600">
             {canonica?.nombre}
           </div>
           <div className="muted tiny u-mt-4">

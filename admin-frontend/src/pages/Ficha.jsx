@@ -815,7 +815,7 @@ function BotPanel({ summary, conversations }) {
           </Card>
           <Card tight>
             <div className="kpi-label">Último mensaje</div>
-            <div className="kpi-value" style={{ fontSize: 16 }}>
+            <div className="kpi-value u-fs-16">
               {summary.ultimo_mensaje ? ago(summary.ultimo_mensaje) : '—'}
             </div>
           </Card>
@@ -1007,7 +1007,7 @@ function ComprobanteEmailFooterCard({ tenant, onSaved }) {
           </div>
         )}
       </div>
-      <div className="flex-row" style={{ gap: 8, alignItems: 'center' }}>
+      <div className="flex-row u-gap-8-center">
         <Btn icon="Save" onClick={handleSave} disabled={!dirty || saving || overLimit}>
           {saving ? 'Guardando…' : 'Guardar'}
         </Btn>

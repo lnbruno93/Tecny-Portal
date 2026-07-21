@@ -1215,8 +1215,7 @@ export default function Financiera() {
                 />
               </div>
               <select
-                className="input"
-                style={{ width: 200 }}
+                className="input u-w-200"
                 value={compVendFilter}
                 onChange={e => setCompVendFilter(e.target.value)}
               >
@@ -1547,7 +1546,7 @@ export default function Financiera() {
       {/* ── Visor de comprobante adjunto ──────────────────────────────────── */}
       {viewFile && (
         <div className="modal-overlay" onClick={() => setViewFile(null)}>
-          <div className="modal" style={{ maxWidth: 720 }} onClick={e => e.stopPropagation()}>
+          <div className="modal u-mw-720" onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
               <h3>{viewFile === 'loading' ? 'Cargando…' : (viewFile.nombre || 'Comprobante')}</h3>
               <button className="icon-btn" onClick={() => setViewFile(null)}><Icons.X size={16} /></button>
@@ -1636,7 +1635,7 @@ export default function Financiera() {
                     }}>
                       <div className="flex-between"><span className="muted">Bruto:</span><span className="mono">ARS {fmt(manualBruto)}</span></div>
                       <div className="flex-between"><span className="muted">Retención ({manualPct}%):</span><span className="mono u-color-accent">− ARS {fmt(manualFinCalc)}</span></div>
-                      <div className="flex-between" style={{ paddingTop: 4, borderTop: '1px solid var(--hairline)', marginTop: 4 }}>
+                      <div className="flex-between u-divider-top-4">
                         <strong>Neto recibido:</strong>
                         <span className="mono pos u-fw-700">ARS {fmt(manualNetoCalc)}</span>
                       </div>

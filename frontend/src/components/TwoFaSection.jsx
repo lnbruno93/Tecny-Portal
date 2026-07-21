@@ -42,7 +42,7 @@ function TwoFaCodeModal({ open, title, description, onSubmit, onCancel, loading 
       onClick={(e) => { if (e.target === e.currentTarget && !loading) onCancel(); }}
       style={{ zIndex: 700 }}
     >
-      <div className="modal" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
+      <div className="modal u-mw-460" onClick={(e) => e.stopPropagation()}>
         <form onSubmit={(e) => { e.preventDefault(); if (valid && !loading) onSubmit(trimmed); }}>
           <div className="modal-body" style={{ padding: '24px 22px 14px' }}>
             <h3 id="twofa-code-modal-title" style={{ marginTop: 0, fontSize: 17, fontWeight: 700 }}>
@@ -166,7 +166,7 @@ export default function TwoFaSection() {
     return (
       <div>
         <div className="card card-tight" style={{ padding: 18, marginBottom: 12 }}>
-          <div className="flex-between" style={{ alignItems: 'flex-start' }}>
+          <div className="flex-between u-align-items-flex-start">
             <div>
               <div className="flex-row" style={{ gap: 8, alignItems: 'center', marginBottom: 4 }}>
                 <span className="badge badge-pos">Activo</span>

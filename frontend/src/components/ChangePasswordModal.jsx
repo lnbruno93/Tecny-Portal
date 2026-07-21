@@ -177,16 +177,14 @@ export default function ChangePasswordModal({ open, onClose }) {
   return (
     <div
       ref={overlayRef}
-      className="modal-overlay"
+      className="modal-overlay u-z-500"
       onClick={handleCancel}
       role="dialog"
       aria-modal="true"
       aria-labelledby="change-pw-modal-title"
-      style={{ zIndex: 500 }}
     >
       <form
-        className="modal"
-        style={{ maxWidth: 440 }}
+        className="modal u-mw-440"
         onClick={e => e.stopPropagation()}
         onSubmit={handleSubmit}
         noValidate
@@ -214,7 +212,7 @@ export default function ChangePasswordModal({ open, onClose }) {
 
           {/* Contraseña actual */}
           <div>
-            <label htmlFor="change-pw-current" style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
+            <label htmlFor="change-pw-current" className="u-block-fs-12-tm-mb-6">
               Contraseña actual
             </label>
             <div className="u-pos-rel">
@@ -252,7 +250,7 @@ export default function ChangePasswordModal({ open, onClose }) {
 
           {/* Contraseña nueva */}
           <div>
-            <label htmlFor="change-pw-new" style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
+            <label htmlFor="change-pw-new" className="u-block-fs-12-tm-mb-6">
               Contraseña nueva
             </label>
             <div className="u-pos-rel">
@@ -293,7 +291,7 @@ export default function ChangePasswordModal({ open, onClose }) {
 
           {/* Confirmar contraseña nueva */}
           <div>
-            <label htmlFor="change-pw-confirm" style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
+            <label htmlFor="change-pw-confirm" className="u-block-fs-12-tm-mb-6">
               Confirmar contraseña nueva
             </label>
             <input
@@ -316,7 +314,7 @@ export default function ChangePasswordModal({ open, onClose }) {
           {/* Input 2FA — solo si el backend lo pidió */}
           {twofaRequired && (
             <div>
-              <label htmlFor="change-pw-2fa" style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
+              <label htmlFor="change-pw-2fa" className="u-block-fs-12-tm-mb-6">
                 Código 2FA
               </label>
               <input

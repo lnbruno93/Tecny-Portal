@@ -284,7 +284,7 @@ export default function Novedades() {
                       <td>
                         <TipoPill tipo={n.tipo} />
                       </td>
-                      <td style={{ minWidth: 0 }}>
+                      <td className="u-mw-min-0">
                         <div style={{ fontWeight: 500, color: 'var(--text)', marginBottom: 2 }}>
                           {n.titulo}
                         </div>

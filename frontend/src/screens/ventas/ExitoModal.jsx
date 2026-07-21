@@ -32,7 +32,7 @@ export default function ExitoModal({ state, onClose, onDescargar, pdfLoading, on
   // email cargado (cliente_email viene del payload o del contacto vinculado).
   const ventaEmail = state.venta?.cliente_email || '';
   return (
-    <div ref={overlayRef} className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="exito-modal-title" style={{ zIndex: 600 }}
+    <div ref={overlayRef} className="modal-overlay u-z-600" role="dialog" aria-modal="true" aria-labelledby="exito-modal-title"
          onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal u-mw-480" onClick={e => e.stopPropagation()}>
         <div className="modal-body" style={{ padding: '36px 28px 18px', textAlign: 'center' }}>

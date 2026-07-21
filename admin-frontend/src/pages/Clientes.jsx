@@ -189,7 +189,7 @@ export default function Clientes() {
         title={`Listado · ${data.length}`}
         actions={
           <div className="flex-row u-gap-8">
-            <div className="input-group" style={{ width: 240 }}>
+            <div className="input-group u-w-240">
               <span className="addon addon-l"><Icons.Search size={14} /></span>
               <input
                 className="input with-addon-l"

@@ -194,7 +194,7 @@ export default function Dashboard({ d }) {
               {d.metodos_pago.map((m, k) => (
                 <tr key={k}>
                   <td>{m.metodo_nombre}</td>
-                  <td className="mono" style={{ textAlign: 'right', fontWeight: 600 }}>
+                  <td className="mono u-td-right-fw-600">
                     {sym(m.moneda)}{fmt(m.total)}
                   </td>
                 </tr>

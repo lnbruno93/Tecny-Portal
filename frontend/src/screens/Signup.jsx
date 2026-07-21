@@ -255,7 +255,7 @@ export default function Signup() {
                   Volver y crear cuenta de nuevo
                 </button>
               </div>
-              <div className="lg-foot" style={{ marginTop: 20 }}>
+              <div className="lg-foot u-mt-20">
                 <Link to="/" className="lg-link u-text-none">
                   Ir a iniciar sesión →
                 </Link>
@@ -426,7 +426,7 @@ export default function Signup() {
                     sospechosos ven challenge. theme="light" coincide con
                     el split-screen. size="invisible" significa que el badge
                     es discreto (no hay checkbox visible). */}
-                <div style={{ margin: '12px 0', display: 'flex', justifyContent: 'center' }}>
+                <div className="u-m-12-0-flex-center">
                   <HCaptcha
                     ref={captchaRef}
                     sitekey={HCAPTCHA_SITE_KEY}

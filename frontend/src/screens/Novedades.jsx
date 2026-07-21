@@ -230,7 +230,7 @@ export default function Novedades() {
             : `No hay ${tipoFilter}s publicados.`}
         </div>
       ) : (
-        <div style={{ maxWidth: 760 }}>
+        <div className="u-mw-760">
           {grupos.map((g, gi) => (
             <div key={g.label + gi}>
               <div
@@ -302,7 +302,7 @@ function Nota({ nota, unseen, groupLabel }) {
       >
         {meta.emoji}
       </div>
-      <div style={{ minWidth: 0 }}>
+      <div className="u-mw-min-0">
         <span
           style={{
             display: 'inline-block',

@@ -46,11 +46,11 @@ function FinancieraReport({ report }) {
   }
   return (
     <>
-      <table className="tbl" style={{ width: 'auto' }}>
+      <table className="tbl u-w-auto">
         <tbody>
           <tr>
             <td className="u-pr-16">Saldo {report.apply ? 'previo' : 'actual'}</td>
-            <td className="mono" style={{ textAlign: 'right', fontWeight: 600 }}>
+            <td className="mono u-td-right-fw-600">
               {fmtARS(report.saldoAntes)}
             </td>
           </tr>
@@ -77,7 +77,7 @@ function FinancieraReport({ report }) {
         </tbody>
       </table>
       {report.muestras && (report.muestras.comprobantes?.length > 0 || report.muestras.pagos?.length > 0) && (
-        <details style={{ marginTop: 12, fontSize: 13 }}>
+        <details className="u-mt-12-fs-13">
           <summary style={{ cursor: 'pointer', color: 'var(--text-muted)' }}>
             Ver primeros 10 movimientos pendientes
           </summary>
@@ -195,7 +195,7 @@ function OrphanMovsReport({ report }) {
   }
   return (
     <>
-      <table className="tbl" style={{ width: 'auto' }}>
+      <table className="tbl u-w-auto">
         <tbody>
           <tr>
             <td className="u-pr-16">Movimientos huérfanos detectados</td>
@@ -212,7 +212,7 @@ function OrphanMovsReport({ report }) {
         </tbody>
       </table>
       {report.muestras && report.muestras.length > 0 && (
-        <details style={{ marginTop: 12, fontSize: 13 }}>
+        <details className="u-mt-12-fs-13">
           <summary style={{ cursor: 'pointer', color: 'var(--text-muted)' }}>
             Ver primeros 10 movimientos huérfanos
           </summary>
@@ -261,7 +261,7 @@ export default function MantenimientoSection() {
       <BackfillPanel
         title="Movimientos B2B huérfanos"
         descripcion={
-          <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: 13.5 }}>
+          <p className="u-m-0-color-tm-fs-135">
             Detecta movimientos B2B vivos cuyo cliente fue borrado. Hasta el 2026-06-09 el
             DELETE de cliente no cascadeaba, así que pueden quedar movimientos que siguen
             afectando stock (productos vendidos sin venta visible) y caja (ingresos huérfanos).
@@ -302,7 +302,7 @@ export default function MantenimientoSection() {
         title="Backfill caja Financiera"
         descripcion={
           <>
-            <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: 13.5 }}>
+            <p className="u-m-0-color-tm-fs-135">
               Crea retroactivamente los <code>caja_movimientos</code> en la caja Financiera
               (la marcada como <code>es_financiera = true</code>) para los comprobantes manuales
               y pagos cargados antes de la trazabilidad automática. Operación idempotente:
@@ -336,7 +336,7 @@ export default function MantenimientoSection() {
         title="Backfill cajas Tarjetas"
         descripcion={
           <>
-            <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: 13.5 }}>
+            <p className="u-m-0-color-tm-fs-135">
               Reconstruye los <code>caja_movimientos</code> de cada tarjeta (los métodos de pago
               marcados como <code>es_tarjeta = true</code>) para los cobros (de venta o previos) y
               las liquidaciones cargados antes de la trazabilidad automática. Valida que ninguna

@@ -493,7 +493,7 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
             {/* Preview del saldo post-op */}
             {totalUsd > 0 && (
               <div style={previewStyle}>
-                <span style={{ fontSize: 16 }}>{saldoCierraEnCero ? '✓' : '⚠'}</span>
+                <span className="u-fs-16">{saldoCierraEnCero ? '✓' : '⚠'}</span>
                 <div className="u-flex-1">
                   {saldoCierraEnCero ? (
                     <>
