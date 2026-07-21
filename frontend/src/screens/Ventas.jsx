@@ -1428,7 +1428,7 @@ export default function Ventas() {
             <div key={r.id} className="flex-between u-gap-8-p-8-0-border-bottom-start">
               <div className="u-fs-13">
                 <strong>{r.vendedor_nombre || '—'}</strong>{r.cliente_texto ? ' · ' + r.cliente_texto : ''}
-                <div className="muted" className="u-pre-wrap">{r.detalle}</div>
+                <div className="muted u-pre-wrap">{r.detalle}</div>
               </div>
               <div className="flex-row u-gap-6-flex-shrink-0">
                 <button className="btn btn-sm" onClick={() => openVenta(r)}><Icons.Check size={13} /> Procesar</button>
@@ -1489,7 +1489,7 @@ export default function Ventas() {
             aria-modal="true"
             aria-labelledby="venta-modal-title"
           >
-            <div className="modal-hd"><h3 id="venta-modal-title">{editId ? 'Editar venta' : procRapidaId ? 'Procesar venta rápida' : 'Nueva venta'}</h3><button type="button" className="icon-btn" onClick={() => setShowVenta(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button></div>
+            <div className="modal-hd icon-btn"><h3 id="venta-modal-title">{editId ? 'Editar venta' : procRapidaId ? 'Procesar venta rápida' : 'Nueva venta'}</h3><button type="button" onClick={() => setShowVenta(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button></div>
             {/* 2026-07-11: form como flex-column con flex:1 + minHeight:0 para
                 que la cadena flex del .modal (display:flex column + max-height:
                 calc(100svh - 48px) + overflow:hidden) se propague al .modal-body.
@@ -1502,7 +1502,7 @@ export default function Ventas() {
               <div className="modal-body">
                 <div className="stack u-gap-14">
                   <div className="row">
-                    <div className="field u-flex-1"><label className="field-label">Fecha <span className="u-color-neg">*</span></label><input type="date" className="input" value={vForm.fecha} onChange={e => setVF('fecha', e.target.value)} /></div>
+                    <div className="field u-flex-1 field-label"><label>Fecha <span className="u-color-neg input">*</span></label><input type="date" value={vForm.fecha} onChange={e => setVF('fecha', e.target.value)} /></div>
                     <div className="field u-flex-1"><label className="field-label">Hora</label><input type="time" className="input" value={vForm.hora} onChange={e => setVF('hora', e.target.value)} /></div>
                   </div>
 
@@ -1527,7 +1527,7 @@ export default function Ventas() {
                         </div>
                       )}
                     </div>
-                    <div className="stack" className="u-gap-6-mt-8">
+                    <div className="stack u-gap-6-mt-8">
                       {cart.map((it) => (
                         // data-testid agregado para E2E (TANDA 5 venta retail) — scoping
                         // estable de los 4 inputs por fila (descripcion/cant/precio/moneda)
@@ -1575,11 +1575,11 @@ export default function Ventas() {
 
                   {/* Vendedor / cliente */}
                   <div className="row">
-                    <div className="field u-flex-1"><label className="field-label">Vendedor</label><select className="input" value={vForm.vendedor_id} onChange={e => setVF('vendedor_id', e.target.value)}><option value="">—</option>{vendedores.map(v => <option key={v.id} value={v.id}>{v.nombre}</option>)}</select></div>
-                    <div className="field u-flex-1"><label className="field-label">Comisión (USD)</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0" value={vForm.comision} onChange={e => setVF('comision', e.target.value)} /></div>
+                    <div className="field u-flex-1 field-label"><label>Vendedor</label><select className="input" value={vForm.vendedor_id} onChange={e => setVF('vendedor_id', e.target.value)}><option value="">—</option>{vendedores.map(v => <option key={v.id} value={v.id}>{v.nombre}</option>)}</select></div>
+                    <div className="field u-flex-1 field-label"><label>Comisión (USD)</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0" value={vForm.comision} onChange={e => setVF('comision', e.target.value)} /></div>
                   </div>
                   <div className="row">
-                    <div className="field" className="u-flex-1-relative">
+                    <div className="field u-flex-1-relative">
                       <label className="field-label u-flex-between-center-nogap">
                         <span>Cliente</span>
                         {/* Botón siempre visible para abrir el mini-form de cliente nuevo
@@ -1624,7 +1624,7 @@ export default function Ventas() {
                               </div>
                             ))}
                             {showCreate && (
-                              <div className="nav-item" className="u-cursor-fs-13-accent" onMouseDown={() => abrirQuickClient(q)}>
+                              <div className="nav-item u-cursor-fs-13-accent" onMouseDown={() => abrirQuickClient(q)}>
                                 <Icons.Plus size={12} /> Crear cliente «{q}»
                               </div>
                             )}
@@ -1682,14 +1682,14 @@ export default function Ventas() {
                           (DNI, WhatsApp, email, fecha de nacimiento). Se abre al
                           clickear "Crear cliente «X»" en el dropdown. */}
                       {quickClient.open && (
-                        <div className="card card-tight" className="u-mt-10-p-14-bg-2">
+                        <div className="card card-tight u-mt-10-p-14-bg-2">
                           <div className="u-fw-600-fs-13-mb-8">Nuevo cliente</div>
                           <div className="muted tiny u-mb-12">
                             Solo el nombre es obligatorio. El resto es opcional pero ayuda al seguimiento post-venta.
                           </div>
                           <div className="stack u-gap-10">
                             <div className="field">
-                              <label className="field-label" htmlFor="qc-nombre">Nombre completo <span className="u-color-neg">*</span></label>
+                              <label className="field-label u-color-neg" htmlFor="qc-nombre">Nombre completo <span>*</span></label>
                               <input id="qc-nombre" className="input" autoFocus
                                 value={quickClient.nombre}
                                 onChange={e => setQuickClient(q => ({ ...q, nombre: e.target.value }))} />
@@ -1725,7 +1725,7 @@ export default function Ventas() {
                             {quickClientError && (
                               <div className="u-color-neg-fs-13" role="alert">{quickClientError}</div>
                             )}
-                            <div className="flex-row" className="u-gap-8-end-mt-4">
+                            <div className="flex-row u-gap-8-end-mt-4">
                               <button type="button" className="btn btn-ghost btn-sm" onClick={cerrarQuickClient} disabled={quickClientSaving}>Cancelar</button>
                               <button type="button" className="btn btn-primary btn-sm" onClick={guardarQuickClient} disabled={quickClientSaving}>
                                 {quickClientSaving ? 'Guardando…' : 'Guardar y vincular'}
@@ -1738,7 +1738,7 @@ export default function Ventas() {
                     <div className="field u-flex-1"><label className="field-label u-flex-between">Etiqueta <button type="button" className="btn btn-sm" onClick={() => setShowEtiquetas(true)}><Icons.Settings size={11} /> Gestionar</button></label><select className="input" value={vForm.etiqueta_id} onChange={e => setVF('etiqueta_id', e.target.value)}><option value="">Sin etiqueta</option>{etiquetas.map(et => <option key={et.id} value={et.id}>{et.nombre}</option>)}</select></div>
                   </div>
                   <div className="field">
-                    <label className="field-label">Cliente cuenta corriente <span className="muted tiny">(requerido si pagás en CC)</span></label>
+                    <label className="field-label muted tiny">Cliente cuenta corriente <span>(requerido si pagás en CC)</span></label>
                     <select className="input" value={vForm.cliente_cc_id} onChange={e => setVF('cliente_cc_id', e.target.value)}>
                       <option value="">— Ninguno —</option>
                       {clientesCC.map(c => <option key={c.id} value={c.id}>{c.nombre}{c.apellido ? ' ' + c.apellido : ''}</option>)}
@@ -1747,12 +1747,12 @@ export default function Ventas() {
                       const cc = clientesCC.find(c => String(c.id) === String(vForm.cliente_cc_id));
                       if (!cc) return null;
                       const s = Number(cc.saldo) || 0;
-                      return <div className="tiny u-mt-4">Saldo actual: {s > 0 ? <span className="neg">debe u$s{fmt(s)}</span> : s < 0 ? <span className="pos">a favor u$s{fmt(-s)}</span> : <span className="muted">sin deuda</span>}</div>;
+                      return <div className="tiny u-mt-4 neg">Saldo actual: {s > 0 ? <span>debe u$s{fmt(s)}</span> : s < 0 ? <span className="pos muted">a favor u$s{fmt(-s)}</span> : <span>sin deuda</span>}</div>;
                     })()}
                   </div>
                   <div className="row">
-                    <div className="field u-flex-1"><label className="field-label">TC venta (ARS/USD)</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="1425" value={vForm.tc_venta} onChange={e => setVF('tc_venta', e.target.value)} /><TcWarning tc={vForm.tc_venta} /></div>
-                    <div className="field u-flex-1"><label className="field-label">Estado</label><select className="input" value={vForm.estado} onChange={e => setVF('estado', e.target.value)}><option value="pendiente">Pendiente</option><option value="acreditado">Acreditado</option></select></div>
+                    <div className="field u-flex-1 field-label"><label>TC venta (ARS/USD)</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="1425" value={vForm.tc_venta} onChange={e => setVF('tc_venta', e.target.value)} /><TcWarning tc={vForm.tc_venta} /></div>
+                    <div className="field u-flex-1 field-label"><label>Estado</label><select className="input" value={vForm.estado} onChange={e => setVF('estado', e.target.value)}><option value="pendiente">Pendiente</option><option value="acreditado">Acreditado</option></select></div>
                   </div>
                   <div className="field">
                     <label className="field-label u-flex-between">Garantía (para el comprobante)
@@ -1768,7 +1768,7 @@ export default function Ventas() {
                       Si "A inventario" está activo, el equipo se crea como producto
                       en Inventario con todos los campos cargados. */}
                   <div>
-                    <div className="flex-between" className="u-align-center-mb-6">
+                    <div className="flex-between u-align-center-mb-6">
                       <div className="u-fs-13-fw-600">
                         Equipos en canje {(vForm.canjes || []).length > 0 && <span className="muted tiny">({vForm.canjes.length})</span>}
                       </div>
@@ -1806,7 +1806,7 @@ export default function Ventas() {
                               <input className="input" placeholder="iPhone 13 Pro 256 Sierra Blue"
                                      value={c.descripcion} onChange={e => setCanje(c._id, 'descripcion', e.target.value)} />
                             </div>
-                            <div className="field" className="u-flex-12">
+                            <div className="field u-flex-12">
                               <label className="field-label">IMEI / Nº serie</label>
                               <input className="input mono" placeholder="35..."
                                      value={c.imei} onChange={e => setCanje(c._id, 'imei', e.target.value)} />
@@ -1836,7 +1836,7 @@ export default function Ventas() {
                                      min="0" max="100" placeholder="100"
                                      value={c.bateria} onChange={e => setCanje(c._id, 'bateria', e.target.value)} />
                             </div>
-                            <div className="field" className="u-flex-08">
+                            <div className="field u-flex-08">
                               <label className="field-label">Condición</label>
                               <select className="input" value={c.condicion}
                                       onChange={e => setCanje(c._id, 'condicion', e.target.value)}>
@@ -1879,7 +1879,7 @@ export default function Ventas() {
                                      value={c.precio_venta_sugerido}
                                      onChange={e => setCanje(c._id, 'precio_venta_sugerido', e.target.value)} />
                             </div>
-                            <div className="field" className="u-flex-08-self-end">
+                            <div className="field u-flex-08-self-end">
                               {/* El checkbox "A inventario" SÍ queda disabled en canjes
                                   _existing — cambiar de true a false requeriría borrar
                                   el producto asociado, y eso lo hacemos desde Inventario
@@ -2065,7 +2065,7 @@ export default function Ventas() {
                                   <div className="mono neg u-fs-13-fw-600">−{sym(p.moneda)}{fmt(det.costoFinOrig)}</div>
                                 </div>
                                 <div>
-                                  <div className="muted tiny u-mb-2">Entra a tu caja <span className="u-color-text-muted">(editable)</span></div>
+                                  <div className="muted tiny u-mb-2 u-color-text-muted">Entra a tu caja <span>(editable)</span></div>
                                   <div className="u-flex-center-gap-4-wrap">
                                     <input
                                       type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
@@ -2187,7 +2187,7 @@ export default function Ventas() {
 
                   {/* Totales */}
                   <div className="card card-tight u-p-10-14">
-                    <div className="flex-between u-fs-13"><span className="muted">Total venta</span><span className="mono u-fw-700">u$s{fmt(totales.items)}</span></div>
+                    <div className="flex-between u-fs-13 muted"><span>Total venta</span><span className="mono u-fw-700">u$s{fmt(totales.items)}</span></div>
                     <div className="flex-between u-fs-13">
                       <span
                         className="muted"
@@ -2198,8 +2198,8 @@ export default function Ventas() {
                       </span>
                       <span className="mono">u$s{fmt(totales.cubierto)}</span>
                     </div>
-                    <div className="flex-between u-fs-13"><span className="muted">Diferencia</span>
-                      <span>{Math.abs(totales.dif) < 0.01 ? <span className="pos">Cubierto ✓</span> : totales.dif < 0 ? <span className="neg">Falta u$s{fmt(-totales.dif)}</span> : <span className="warn">Sobra u$s{fmt(totales.dif)}</span>}</span>
+                    <div className="flex-between u-fs-13 muted"><span>Diferencia</span>
+                      <span>{Math.abs(totales.dif) < 0.01 ? <span className="pos neg">Cubierto ✓</span> : totales.dif < 0 ? <span>Falta u$s{fmt(-totales.dif)}</span> : <span className="warn">Sobra u$s{fmt(totales.dif)}</span>}</span>
                     </div>
                     {/*
                       Tema C en-vivo (2026-06-14, rev2): preview de ganancia.
@@ -2240,7 +2240,7 @@ export default function Ventas() {
                               <span className="mono neg">−u$s{fmt(totales.vueltoUsd)}</span>
                             </div>
                           )}
-                          <div className="flex-between" className="u-fs-13-border-top-mt-4-pt-4">
+                          <div className="flex-between u-fs-13-border-top-mt-4-pt-4">
                             <span className="u-fw-600">{realNeg ? 'Pérdida' : 'Ganancia real'}</span>
                             <span
                               className={`mono ${realNeg ? 'neg' : realPos ? 'pos' : ''}`}
@@ -2277,7 +2277,7 @@ export default function Ventas() {
                     )}
                   </div>
 
-                  <div className="field"><label className="field-label">Observaciones</label><input className="input" placeholder="Notas adicionales…" value={vForm.notas} onChange={e => setVF('notas', e.target.value)} /></div>
+                  <div className="field field-label"><label>Observaciones</label><input className="input" placeholder="Notas adicionales…" value={vForm.notas} onChange={e => setVF('notas', e.target.value)} /></div>
                   {ventaError && <div className="u-color-neg-fs-13">{ventaError}</div>}
                 </div>
               </div>
@@ -2333,7 +2333,7 @@ export default function Ventas() {
                   />
                 </div>
                 <div className="field">
-                  <label className="field-label">Notas de la venta <span className="u-color-neg">*</span></label>
+                  <label className="field-label u-color-neg">Notas de la venta <span>*</span></label>
                   <textarea
                     className="input"
                     rows={9}
@@ -2365,20 +2365,20 @@ Pago: Efectivo + Transferencia`}
       {showGarantias && (
         <div ref={garantiasModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowGarantias(false)}>
           <div className="modal u-mw-720" onClick={e => e.stopPropagation()}>
-            <div className="modal-hd"><h3>Plantillas de garantía</h3><button type="button" className="icon-btn" onClick={() => setShowGarantias(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button></div>
+            <div className="modal-hd icon-btn"><h3>Plantillas de garantía</h3><button type="button" onClick={() => setShowGarantias(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button></div>
             {/* 2026-07-11: removido maxHeight:74vh + overflowY:auto — el .modal
                 ya es flex column con max-height calc(100svh - 48px), y el
                 .modal-body base tiene flex:1 + overflow-y:auto. El body es hijo
                 directo del .modal (sin form wrapper que rompa el chain), así que
                 el scroll interno funciona sin overrides. */}
             <div className="modal-body">
-              <div className="stack" className="u-gap-6-mb-14">
+              <div className="stack u-gap-6-mb-14">
                 {garantias.length === 0 && <div className="empty">Sin plantillas</div>}
                 {garantias.map(g => (
                   <div key={g.id} className="flex-between u-gap-8-p-8-0-border-bottom-start">
                     {/* Preview renderiza `{{negocio}}` como el nombre del tenant así el
                         operador ve cómo va a quedar el comprobante final, no el placeholder crudo. */}
-                    <div className="u-fs-13-mw-78"><strong>{g.nombre}</strong>{g.es_default && <> <Badge tone="pos">Predeterminada</Badge></>}<div className="muted tiny" className="u-pre-wrap-mh-50-hide">{renderPlantilla(g.texto, tenantNombre)}</div></div>
+                    <div className="u-fs-13-mw-78 muted tiny"><strong>{g.nombre}</strong>{g.es_default && <> <Badge tone="pos">Predeterminada</Badge></>}<div className="u-pre-wrap-mh-50-hide">{renderPlantilla(g.texto, tenantNombre)}</div></div>
                     <div className="flex-row u-gap-6-flex-shrink-0">
                       <button className="icon-btn" title="Editar plantilla" aria-label="Editar plantilla de garantía" onClick={() => setGForm({ id: g.id, nombre: g.nombre, texto: g.texto, es_default: !!g.es_default })}><Icons.Edit size={14} /></button>
                       <button className="icon-btn u-color-neg" title="Eliminar plantilla" aria-label="Eliminar plantilla de garantía" onClick={() => deleteGarantia(g.id)}><Icons.Trash size={14} /></button>
@@ -2388,9 +2388,9 @@ Pago: Efectivo + Transferencia`}
               </div>
               <form onSubmit={handleSaveGarantia}>
                 <div className="u-fw-600-fs-13-mb-8">{gForm.id ? 'Editar plantilla' : 'Nueva plantilla'}</div>
-                <div className="field"><label className="field-label">Nombre <span className="u-color-neg">*</span></label><input className="input" placeholder="General, Apple discontinuado…" value={gForm.nombre} onChange={e => setGForm(f => ({ ...f, nombre: e.target.value }))} /></div>
+                <div className="field field-label"><label>Nombre <span className="u-color-neg input">*</span></label><input placeholder="General, Apple discontinuado…" value={gForm.nombre} onChange={e => setGForm(f => ({ ...f, nombre: e.target.value }))} /></div>
                 <div className="field">
-                  <label className="field-label">Texto <span className="u-color-neg">*</span></label>
+                  <label className="field-label u-color-neg">Texto <span>*</span></label>
                   <textarea
                     className="input"
                     rows={10}
@@ -2402,7 +2402,7 @@ Pago: Efectivo + Transferencia`}
                     Tip: escribí <code>{PLACEHOLDER_NEGOCIO}</code> donde quieras que aparezca el nombre de tu negocio. Al imprimir el comprobante se reemplaza automáticamente por <strong>{tenantNombre}</strong>.
                   </div>
                 </div>
-                <label className="flex-row" className="u-gap-8-fs-13-cursor"><input type="checkbox" checked={gForm.es_default} onChange={e => setGForm(f => ({ ...f, es_default: e.target.checked }))} /> Marcar como predeterminada</label>
+                <label className="flex-row u-gap-8-fs-13-cursor"><input type="checkbox" checked={gForm.es_default} onChange={e => setGForm(f => ({ ...f, es_default: e.target.checked }))} /> Marcar como predeterminada</label>
                 <div className="flex-row u-gap-8">
                   <button type="button" className="btn btn-ghost" onClick={() => setGForm({ id: null, nombre: '', texto: '', es_default: false })}>Limpiar</button>
                   <button type="submit" className="btn btn-primary" disabled={savingGar}>{savingGar ? 'Guardando…' : 'Guardar plantilla'}</button>
@@ -2417,23 +2417,23 @@ Pago: Efectivo + Transferencia`}
       {showEtiquetas && (
         <div ref={etiquetasModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowEtiquetas(false)} role="dialog" aria-modal="true" aria-labelledby="etiquetas-modal-title">
           <div className="modal u-mw-420" onClick={e => e.stopPropagation()}>
-            <div className="modal-hd"><h3 id="etiquetas-modal-title">Etiquetas de venta</h3><button className="icon-btn" title="Cerrar" aria-label="Cerrar" onClick={() => setShowEtiquetas(false)}><Icons.X size={16} /></button></div>
+            <div className="modal-hd icon-btn"><h3 id="etiquetas-modal-title">Etiquetas de venta</h3><button title="Cerrar" aria-label="Cerrar" onClick={() => setShowEtiquetas(false)}><Icons.X size={16} /></button></div>
             <div className="modal-body">
-              <div className="flex-row" className="u-gap-6-mb-10">
+              <div className="flex-row u-gap-6-mb-10">
                 <input className="input" placeholder="Nueva etiqueta (ej. Mayorista)" value={nuevaEtiqueta} onChange={e => setNuevaEtiqueta(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addEtiqueta(); } }} />
                 <button className="btn btn-sm" onClick={addEtiqueta}><Icons.Plus size={13} /></button>
               </div>
               <div className="stack u-gap-4">
                 {etiquetas.length === 0 && <div className="muted tiny">Sin etiquetas</div>}
                 {etiquetas.map(et => (
-                  <div key={et.id} className="flex-between" className="u-fs-13-p-4-0-border-bottom">
+                  <div key={et.id} className="flex-between u-fs-13-p-4-0-border-bottom">
                     <span>{et.nombre}</span>
                     <button className="icon-btn u-color-neg" title="Eliminar etiqueta" aria-label="Eliminar etiqueta" onClick={() => delEtiqueta(et.id)}><Icons.Trash size={13} /></button>
                   </div>
                 ))}
               </div>
             </div>
-            <div className="modal-ft"><button className="btn btn-primary" onClick={() => setShowEtiquetas(false)}>Listo</button></div>
+            <div className="modal-ft btn btn-primary"><button onClick={() => setShowEtiquetas(false)}>Listo</button></div>
           </div>
         </div>
       )}
@@ -2451,11 +2451,11 @@ Pago: Efectivo + Transferencia`}
       {showComprob != null && (
         <div ref={comprobModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowComprob(null)} role="dialog" aria-modal="true" aria-labelledby="comprob-modal-title">
           <div className="modal u-mw-440" onClick={e => e.stopPropagation()}>
-            <div className="modal-hd"><h3 id="comprob-modal-title">Comprobantes de la venta</h3><button className="icon-btn" title="Cerrar" aria-label="Cerrar" onClick={() => setShowComprob(null)}><Icons.X size={16} /></button></div>
+            <div className="modal-hd icon-btn"><h3 id="comprob-modal-title">Comprobantes de la venta</h3><button title="Cerrar" aria-label="Cerrar" onClick={() => setShowComprob(null)}><Icons.X size={16} /></button></div>
             <div className="modal-body">
-              {comprobList == null ? <div className="muted">Cargando…</div> : comprobList.length === 0 ? <div className="empty">Sin comprobantes</div> : (
+              {comprobList == null ? <div className="muted empty">Cargando…</div> : comprobList.length === 0 ? <div>Sin comprobantes</div> : (
                 comprobList.map(c => (
-                  <div key={c.id} className="flex-between" className="u-p-8-0-border-bottom-hl">
+                  <div key={c.id} className="flex-between u-p-8-0-border-bottom-hl">
                     <span className="u-fs-13">{c.archivo_nombre || 'archivo'}</span>
                     <button className="btn btn-sm" onClick={() => abrirComprob(c.id)}><Icons.Eye size={13} /> Ver</button>
                   </div>
