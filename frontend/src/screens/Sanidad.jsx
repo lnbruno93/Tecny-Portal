@@ -162,10 +162,9 @@ function GastoProyectadoCell({ periodo, recurrente_id, value, isOverride, defaul
             if (e.key === 'Enter')  { e.preventDefault(); commit(); }
             if (e.key === 'Escape') { e.preventDefault(); cancel(); }
           }}
-          className="input mono"
-          style={{ width: '100%', maxWidth: 130, padding: '4px 8px', fontSize: 13, textAlign: 'right' }}
+          className="input mono u-input-num-right-13"
         />
-        <div className="muted" style={{ fontSize: 9, marginTop: 2, textAlign: 'right' }}>
+        <div className="muted u-fs-9-mt-2-right">
           default USD {fmt(defaultUsd, 0)}
         </div>
       </div>
@@ -233,9 +232,8 @@ function BrutoProyectadoEditable({ periodo, value, onSave, variacion = null, isG
           if (e.key === 'Enter')  { e.preventDefault(); commit(); }
           if (e.key === 'Escape') { e.preventDefault(); cancel(); }
         }}
-        className="input mono"
+        className="input mono u-input-num-right-14"
         // 110px max → 130px max para que 999.999 entre sin clipping.
-        style={{ width: '100%', maxWidth: 130, padding: '4px 8px', fontSize: 14, textAlign: 'right' }}
       />
     );
   }
@@ -277,7 +275,7 @@ function BrutoProyectadoEditable({ periodo, value, onSave, variacion = null, isG
               </div>
             );
           })()
-        : <span className="muted tiny" style={{ opacity: 0.6 }}>+ cargar</span>}
+        : <span className="muted tiny u-opacity-06">+ cargar</span>}
     </button>
   );
 }
@@ -482,7 +480,7 @@ function ProyeccionGastosPanel({ onChange }) {
                   perfectas. */}
               <colgroup>
                 <col className="u-w-auto" />
-                <col style={{ width: 170 }} />
+                <col className="u-w-170" />
                 <col className="u-w-200" />
                 <col className="u-w-110px" />
               </colgroup>
@@ -556,7 +554,7 @@ function ProyeccionGastosPanel({ onChange }) {
                               ? <span className="sanidad-money"><span className="sanidad-money-prefix">ARS</span><span className="sanidad-money-amount">{fmt(Number(r.monto), 0)}</span></span>
                               : <span className="muted tiny">—</span>}
                           </td>
-                          <td className="sanidad-num-cell" style={{ textAlign:'right', fontWeight: 500 }}>
+                          <td className="sanidad-num-cell u-td-right-fw-500">
                             <span className="sanidad-money"><span className="sanidad-money-prefix">USD</span><span className="sanidad-money-amount">{fmt(montoUsd(r.monto, r.moneda, r.tc), 2)}</span></span>
                           </td>
                           <td>
@@ -586,14 +584,14 @@ function ProyeccionGastosPanel({ onChange }) {
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={2} style={{ paddingTop: 14 }}>
+                  <td colSpan={2} className="u-pt-14">
                     {!adding && !editingId && (
                       <button className="btn btn-sm" onClick={startAdd}>
                         <Icons.Plus size={12} /> Agregar gasto
                       </button>
                     )}
                   </td>
-                  <td style={{ textAlign:'right', paddingTop:14, fontWeight:600, fontVariantNumeric:'tabular-nums', fontSize: 15 }}>
+                  <td className="u-td-right-pt-14-fw-600-tabular">
                     Total: ${fmt(totalUsd, 2)} USD
                   </td>
                   <td />
@@ -649,19 +647,19 @@ function RecurrenteEditRow({ draft, setDraft, categorias, onCreateCategoria, onS
     <Fragment>
     <tr className="u-bg-surface-2">
       <td>
-        <div className="flex-row" style={{ gap: 6, flexDirection: 'column', alignItems: 'stretch' }}>
+        <div className="flex-row u-gap-6-col-stretch">
           <input
             className="input" autoFocus
             placeholder='ej: "Sueldo Gonza L"'
             value={draft.concepto}
             onChange={(e) => setDraft({ ...draft, concepto: e.target.value })}
-            style={{ width: '100%', fontSize: 14, padding: '6px 10px' }}
+            className="u-input-num-full-14-noright"
           />
           <select
             className="input"
             value={draft.categoria_id}
             onChange={(e) => handleCategoriaChange(e.target.value)}
-            style={{ width: '100%', fontSize: 12.5, padding: '4px 8px' }}
+            className="u-input-num-full-125"
             title="Categorizá para ver el desglose por rubro"
           >
             <option value="">— Sin categorizar —</option>
@@ -679,18 +677,18 @@ function RecurrenteEditRow({ draft, setDraft, categorias, onCreateCategoria, onS
             placeholder="Monto ARS"
             value={draft.monto}
             onChange={(e) => setDraft({ ...draft, monto: e.target.value })}
-            style={{ width: '100%', fontSize: 14, textAlign:'right', padding:'6px 10px' }}
+            className="u-input-num-full-14"
           />
         ) : (
           <span className="muted tiny">—</span>
         )}
       </td>
       <td>
-        <div className="flex-row" style={{ gap: 6, alignItems: 'center', justifyContent: 'flex-end' }}>
+        <div className="flex-row u-gap-6-center-end">
           <select
             className="input" value={draft.moneda}
             onChange={(e) => setDraft({ ...draft, moneda: e.target.value })}
-            style={{ width: 78, fontSize: 13, padding: '6px 8px' }}
+            className="u-w-78-fs-13-p-6-8"
           >
             {Array.from(new Set([...monedas, draft.moneda].filter(Boolean)))
               .map(m => <option key={m} value={m}>{m}</option>)}
@@ -738,7 +736,7 @@ function RecurrenteEditRow({ draft, setDraft, categorias, onCreateCategoria, onS
           aria-modal="true"
           aria-labelledby="sanidad-new-cat-title"
         >
-          <form className="modal" style={{ maxWidth: 360 }} onSubmit={handleCreateCat} onClick={e => e.stopPropagation()}>
+          <form className="modal u-mw-360" onSubmit={handleCreateCat} onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
               <h3 id="sanidad-new-cat-title">Nueva categoría</h3>
               <button type="button" className="icon-btn" onClick={() => setShowNewCat(false)} aria-label="Cerrar">
@@ -883,9 +881,8 @@ export default function Sanidad() {
             {error}
             <button
               type="button"
-              className="btn btn-sm"
+              className="btn btn-sm u-ml-12"
               onClick={fetchData}
-              style={{ marginLeft: 12 }}
             >Reintentar</button>
           </div>
         )}
@@ -922,7 +919,7 @@ export default function Sanidad() {
       )}
 
       {/* ─── Tabla resumen mensual ────────────────────────────────────────── */}
-      <div className="card" style={{ overflow: 'auto', padding: 0, marginBottom: 16 }}>
+      <div className="card u-o-auto-p-0-mb-16">
         <table className="sanidad-resumen-table">
           <thead>
             <tr>
@@ -930,7 +927,7 @@ export default function Sanidad() {
               {data.map((mes) => (
                 <th key={mes.periodo} colSpan={2} className="sanidad-th-mes">
                   {labelMes(mes.periodo)}
-                  <div className="muted tiny" style={{ fontWeight: 400, marginTop: 2 }}>
+                  <div className="muted tiny u-fw-400-mt-2">
                     {mes.dias_mes} días
                   </div>
                 </th>
@@ -970,7 +967,7 @@ export default function Sanidad() {
                         isGasto={false}
                       />
                       {(mes.bruto.real_retail_usd > 0 || mes.bruto.real_b2b_usd > 0) && (
-                        <div className="muted tiny" style={{ marginTop: 2, fontSize: 10 }}>
+                        <div className="muted tiny u-mt-2-fs-10">
                           R {fmt(mes.bruto.real_retail_usd, 0)} · B {fmt(mes.bruto.real_b2b_usd, 0)}
                         </div>
                       )}
@@ -1028,7 +1025,7 @@ export default function Sanidad() {
               ?.filter(g => g.recurrente_id != null) // skip "Otros" (no se puede override)
               .map(refGasto => (
                 <tr key={refGasto.recurrente_id} className="u-bg-surface-2">
-                  <td className="sanidad-td-concepto" style={{ paddingLeft: 24, fontSize: 12, fontWeight: 400 }}>
+                  <td className="sanidad-td-concepto u-pl-24-fs-12-fw-400">
                     {refGasto.concepto}
                   </td>
                   {data.map(mes => {
@@ -1137,7 +1134,7 @@ export default function Sanidad() {
           className="sanidad-panel-toggle"
           aria-expanded={panelOpen}
         >
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <span className="u-inline-flex-center-8">
             <Icons.ChevronDown size={14}
               style={{ transform: panelOpen ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform .15s' }} />
             <strong>Mis gastos proyectados</strong>
@@ -1145,13 +1142,13 @@ export default function Sanidad() {
           </span>
         </button>
         {panelOpen && (
-          <div style={{ padding: '12px 16px 16px', borderTop: '1px solid var(--border)' }}>
+          <div className="u-p-12-16-16-border-top">
             <ProyeccionGastosPanel onChange={fetchData} />
           </div>
         )}
       </div>
 
-      <div className="muted tiny" style={{ marginTop: 12, lineHeight: 1.6 }}>
+      <div className="muted tiny u-mt-12-lh-16">
         <strong>Cómo funciona:</strong> el bruto real sale de tus ventas no canceladas
         (R = retail, B = cuenta corriente B2B). Los gastos reales salen de
         los egresos marcados como pagados. Cargá tu bruto esperado del mes
