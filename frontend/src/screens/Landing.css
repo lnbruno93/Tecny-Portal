@@ -335,6 +335,15 @@
 
 /* ── Pricing ─────────────────────────────────────────── */
 .tecny-landing .plans { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; align-items: start; }
+/* 2026-07-20: variante 4-col para el pricing con Trial + Starter + Pro +
+   Enterprise. Grid a 4 columnas en desktop, respondida en el @media abajo
+   (2 columnas ≤940px, 1 columna ≤640px). Padding interno bajamos 30→22
+   para que las cards no queden apretadas horizontalmente. Font-size del
+   `.num` del price bajamos 44→36 por el mismo motivo (había overflow del
+   "1189" en Pro con el layout 4-col). */
+.tecny-landing .plans.plans-4col { grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.tecny-landing .plans.plans-4col .plan { padding: 22px; }
+.tecny-landing .plans.plans-4col .plan .price .num { font-size: 36px; }
 .tecny-landing .plan { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 30px; position: relative; }
 .tecny-landing .plan.featured { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 24px 60px -20px rgba(14,165,233,0.25); }
 .tecny-landing .plan .tag-pop { position: absolute; top: -11px; left: 50%; transform: translateX(-50%); background: var(--accent); color: var(--accent-ink); font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; padding: 4px 14px; border-radius: 999px; }
@@ -435,6 +444,9 @@
   .tecny-landing { --pad: 24px; }
   .tecny-landing .steps { grid-template-columns: 1fr 1fr; }
   .tecny-landing .mods, .tecny-landing .plans { grid-template-columns: 1fr; }
+  /* 4-col variante: en tablet (≤940px) va a 2 columnas (2×2 grid), en mobile
+     (heredado por el fallthrough al selector .plans arriba) a 1 columna. */
+  .tecny-landing .plans.plans-4col { grid-template-columns: repeat(2, 1fr); }
   .tecny-landing .feat { grid-template-columns: 1fr; gap: 32px; }
   /* .tests + .bigstat removidos del media query en Sprint 3 L2 — los selectores base también salieron. */
   .tecny-landing .foot-grid { grid-template-columns: 1fr 1fr; gap: 28px; }
@@ -475,6 +487,10 @@
 }
 @media (max-width: 560px) {
   .tecny-landing .steps { grid-template-columns: 1fr; }
+  /* 4-col variante: en mobile ≤560px queda 1 columna (las 4 cards apiladas
+     verticalmente). El selector .plans-4col tiene mayor especificidad que
+     el .plans genérico, así que necesitamos el override explícito acá. */
+  .tecny-landing .plans.plans-4col { grid-template-columns: 1fr; }
   /* .bigstat removida — el selector base también salió (Sprint 3 L2). */
   .tecny-landing .shot-kpis { grid-template-columns: 1fr 1fr; }
   .tecny-landing .plan .price .num { font-size: 38px; }
