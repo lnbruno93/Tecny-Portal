@@ -340,8 +340,15 @@
    (2 columnas ≤940px, 1 columna ≤640px). Padding interno bajamos 30→22
    para que las cards no queden apretadas horizontalmente. Font-size del
    `.num` del price bajamos 44→36 por el mismo motivo (había overflow del
-   "1189" en Pro con el layout 4-col). */
-.tecny-landing .plans.plans-4col { grid-template-columns: repeat(4, 1fr); gap: 14px; }
+   "1189" en Pro con el layout 4-col).
+
+   `align-items: stretch` fuerza que todas las cards de la row tengan la
+   MISMA altura (la más alta gana). Sin esto, el `align-items: start`
+   del selector base `.plans` (para el layout viejo 3-col) hacía que
+   Enterprise — que tiene "A medida" a font 30px en lugar del num 36px
+   de las otras — quedara más corta y su botón "Contactar ventas" no
+   se alineara con los "Empezar gratis". */
+.tecny-landing .plans.plans-4col { grid-template-columns: repeat(4, 1fr); gap: 14px; align-items: stretch; }
 .tecny-landing .plans.plans-4col .plan { padding: 22px; }
 .tecny-landing .plans.plans-4col .plan .price .num { font-size: 36px; }
 .tecny-landing .plan { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 30px; position: relative;
