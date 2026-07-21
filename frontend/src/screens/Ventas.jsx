@@ -1483,8 +1483,7 @@ export default function Ventas() {
       {showVenta && (
         <div ref={ventaModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowVenta(false)}>
           <div
-            className="modal"
-            style={{ maxWidth: 720 }}
+            className="modal u-mw-720"
             onClick={e => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
@@ -1499,7 +1498,7 @@ export default function Ventas() {
                 apretado en mobile con la barra Safari). Con el form flex, el
                 .modal-body.flex:1 + overflow-y:auto del base CSS scrollea
                 automáticamente. Ver Envios.jsx modal para el fix inicial. */}
-            <form onSubmit={handleSaveVenta} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+            <form onSubmit={handleSaveVenta} className="u-flex-col-flex-1-mh-0">
               <div className="modal-body">
                 <div className="stack u-gap-14">
                   <div className="row">
@@ -2006,7 +2005,7 @@ export default function Ventas() {
                                     className="input mono" placeholder="500"
                                     value={derivedUsd}
                                     onChange={e => setPagoUsd(i, e.target.value)}
-                                    style={{ paddingLeft: 36 }}
+                                    className="u-pl-36"
                                   />
                                 )}
                               </div>
@@ -2057,7 +2056,7 @@ export default function Ventas() {
                                       className="input mono"
                                       value={p.bruto_manual ? (p.monto ?? '') : Math.round(det.brutoOrig * 100) / 100}
                                       onChange={e => setPagoBruto(i, e.target.value)}
-                                      style={{ padding: '2px 6px', fontSize: 13, fontWeight: 600, width: 110 }}
+                                      className="u-p-26-fs-13-fw-600-w-110"
                                     />
                                   </div>
                                 </div>
@@ -2073,9 +2072,9 @@ export default function Ventas() {
                                       className="input mono"
                                       value={p.neto_input || Math.round(det.netoOrig * 100) / 100}
                                       onChange={e => setPagoNeto(i, e.target.value)}
-                                      style={{ padding: '2px 6px', fontSize: 13, fontWeight: 600, width: 110 }}
+                                      className="u-p-26-fs-13-fw-600-w-110"
                                     />
-                                    <span className="mono pos" style={{ fontWeight: 600, fontSize: 12 }}>= u$s{fmt(det.netoUsd)}</span>
+                                    <span className="mono pos u-fw-600-fs-12">= u$s{fmt(det.netoUsd)}</span>
                                   </div>
                                 </div>
                               </div>
@@ -2365,7 +2364,7 @@ Pago: Efectivo + Transferencia`}
       {/* ── Modal Garantías ── */}
       {showGarantias && (
         <div ref={garantiasModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowGarantias(false)}>
-          <div className="modal" style={{ maxWidth: 720 }} onClick={e => e.stopPropagation()}>
+          <div className="modal u-mw-720" onClick={e => e.stopPropagation()}>
             <div className="modal-hd"><h3>Plantillas de garantía</h3><button type="button" className="icon-btn" onClick={() => setShowGarantias(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button></div>
             {/* 2026-07-11: removido maxHeight:74vh + overflowY:auto — el .modal
                 ya es flex column con max-height calc(100svh - 48px), y el
@@ -2451,7 +2450,7 @@ Pago: Efectivo + Transferencia`}
       {/* ── Modal ver comprobantes adjuntos ── */}
       {showComprob != null && (
         <div ref={comprobModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowComprob(null)} role="dialog" aria-modal="true" aria-labelledby="comprob-modal-title">
-          <div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
+          <div className="modal u-mw-440" onClick={e => e.stopPropagation()}>
             <div className="modal-hd"><h3 id="comprob-modal-title">Comprobantes de la venta</h3><button className="icon-btn" title="Cerrar" aria-label="Cerrar" onClick={() => setShowComprob(null)}><Icons.X size={16} /></button></div>
             <div className="modal-body">
               {comprobList == null ? <div className="muted">Cargando…</div> : comprobList.length === 0 ? <div className="empty">Sin comprobantes</div> : (

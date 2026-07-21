@@ -153,7 +153,7 @@ export default function Desglose360() {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <Link to="/inventario" className="btn btn-sm" title="Volver a Inventario">
-              <Icons.ArrowRight size={13} style={{ transform: 'rotate(180deg)' }} /> Inventario
+              <Icons.ArrowRight size={13} className="u-rotate-180" /> Inventario
             </Link>
             <h1 className="page-title">Desglose 360</h1>
           </div>
@@ -211,7 +211,7 @@ export default function Desglose360() {
           <div className="u-flex-1" />
           <div>
             <div className="muted tiny u-mb-4">Categoría</div>
-            <select className="input" style={{ minWidth: 130 }} value={claseId} onChange={e => setClaseId(e.target.value)}>
+            <select className="input u-mw-min-130" value={claseId} onChange={e => setClaseId(e.target.value)}>
               <option value="">Todas</option>
               {clases.filter(c => c.activa && !c.es_sin_categoria).map(c => (
                 <option key={c.id} value={c.id}>{c.emoji ? `${c.emoji} ${c.nombre}` : c.nombre}</option>
@@ -220,7 +220,7 @@ export default function Desglose360() {
           </div>
           <div>
             <div className="muted tiny u-mb-4">Estado</div>
-            <select className="input" style={{ minWidth: 130 }} value={estadoFiltro} onChange={e => setEstadoFiltro(e.target.value)}>
+            <select className="input u-mw-min-130" value={estadoFiltro} onChange={e => setEstadoFiltro(e.target.value)}>
               <option value="">Todos</option>
               <option value="disponible">Disponible</option>
               <option value="vendido">Vendido</option>

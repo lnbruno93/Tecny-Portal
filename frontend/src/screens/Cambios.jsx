@@ -369,12 +369,12 @@ export default function Cambios() {
                   Te deben: u$s {fmt(e.saldo_usd)}
                 </div>
                 {Number(e.saldo_ars) > 0 && (
-                  <div className="mono tiny" style={{ marginTop: 2, color: 'var(--accent)' }}>
+                  <div className="mono tiny u-mt-2-color-accent">
                     + $ {fmt(e.saldo_ars)} ARS
                   </div>
                 )}
                 {Number(e.saldo_uyu) > 0 && (
-                  <div className="mono tiny" style={{ marginTop: 2, color: 'var(--accent)' }}>
+                  <div className="mono tiny u-mt-2-color-accent">
                     + $U {fmt(e.saldo_uyu)} UYU
                   </div>
                 )}
@@ -388,7 +388,7 @@ export default function Cambios() {
         ) : (
           <div className="stack u-gap-14">
             <div className="card">
-              <div className="flex-between" style={{ alignItems: 'flex-start' }}>
+              <div className="flex-between u-align-items-flex-start">
                 <div className="u-fs-18-fw-700">{detalle.nombre}</div>
                 <button className="icon-btn u-color-neg" title="Eliminar financiera" onClick={handleDeleteEntidad}><Icons.Trash size={15} /></button>
               </div>

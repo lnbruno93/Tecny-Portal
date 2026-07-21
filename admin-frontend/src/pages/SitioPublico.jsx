@@ -350,7 +350,7 @@ export default function SitioPublico() {
           <Card>
             <div className="u-p-20-grid-gap-16">
               <div>
-                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>Sección Contacto</h3>
+                <h3 className="u-m-0-fs-16-fw-600">Sección Contacto</h3>
                 <p className="muted u-m-4-0-0-fs-13">
                   Datos que aparecen en la landing pública.
                 </p>
@@ -603,13 +603,13 @@ export default function SitioPublico() {
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
                     <div>
                       <div className="muted tiny u-mb-2">Reseñas en Google</div>
-                      <div style={{ fontSize: 16, fontWeight: 600 }}>
+                      <div className="u-fs-16-fw-600">
                         {googleStatus.count > 0 ? googleStatus.count : '—'}
                       </div>
                     </div>
                     <div>
                       <div className="muted tiny u-mb-2">Rating agregado</div>
-                      <div style={{ fontSize: 16, fontWeight: 600 }}>
+                      <div className="u-fs-16-fw-600">
                         {typeof googleStatus.rating === 'number' ? googleStatus.rating.toFixed(1) + ' ★' : '—'}
                       </div>
                     </div>
@@ -683,7 +683,7 @@ export default function SitioPublico() {
             <div className="u-p-20-grid-gap-16">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>
+                  <h3 className="u-m-0-fs-16-fw-600">
                     Reseñas de clientes
                     {testimonialsDirty && (
                       <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', marginLeft: 8,

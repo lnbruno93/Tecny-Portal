@@ -355,8 +355,7 @@ export default function Login() {
         )}
 
         <p
-          className="muted tiny"
-          style={{ textAlign: 'center', margin: '20px 0 0' }}
+          className="muted tiny u-text-center-m-20-0-0"
         >
           Solo super-admins · accesos auditados
         </p>

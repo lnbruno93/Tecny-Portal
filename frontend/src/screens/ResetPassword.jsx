@@ -171,7 +171,7 @@ export default function ResetPassword() {
   // status === 'form'
   return (
     <div className="auth-screen auth-screen--center">
-      <div className="auth-card" style={{ maxWidth: 440 }}>
+      <div className="auth-card u-mw-440">
         <h1 className="u-m-0-0-8">Elegí tu nueva contraseña</h1>
         <p style={{ margin: '0 0 20px', color: 'var(--text-muted)', fontSize: 14 }}>
           Una vez confirmada, vas a poder iniciar sesión con la nueva.
@@ -246,7 +246,7 @@ export default function ResetPassword() {
           )}
         </form>
 
-        <p className="auth-card-cta" style={{ marginTop: 20 }}>
+        <p className="auth-card-cta u-mt-20">
           <Link to="/login">Volver al login</Link>
         </p>
       </div>

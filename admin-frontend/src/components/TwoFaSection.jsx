@@ -183,7 +183,7 @@ export default function TwoFaSection({ onMessage }) {
   // ── Sub-render: cargando ─────────────────────────────────────────────
   if (loading && !status) {
     return (
-      <div className="card" style={{ padding: 20 }}>
+      <div className="card u-p-20">
         <div className="muted">Cargando estado de 2FA…</div>
       </div>
     );
@@ -226,7 +226,7 @@ export default function TwoFaSection({ onMessage }) {
         {localBanner}
 
         <div className="card" style={{ padding: 18, marginBottom: 12 }}>
-          <div className="flex-between" style={{ alignItems: 'flex-start' }}>
+          <div className="flex-between u-align-items-flex-start">
             <div>
               <div className="flex-row" style={{ gap: 8, alignItems: 'center', marginBottom: 4 }}>
                 <Badge tone="pos">Activo</Badge>

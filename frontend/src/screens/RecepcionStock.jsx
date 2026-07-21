@@ -241,7 +241,7 @@ export default function RecepcionStock() {
           </div>
         </div>
         <Link to="/inventario" className="btn" aria-label="Volver al inventario">
-          <Icons.ArrowRight size={14} style={{ transform: 'rotate(180deg)' }} /> Volver
+          <Icons.ArrowRight size={14} className="u-rotate-180" /> Volver
         </Link>
       </div>
 
@@ -398,7 +398,7 @@ export default function RecepcionStock() {
                 {/* Header de card: IMEI + delete */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                   <div className="u-flex-1-minw-0">
-                    <div className="mono" style={{ fontSize: 12, fontWeight: 600 }}>{fmtImei(it.imei)}</div>
+                    <div className="mono u-fw-600-fs-12">{fmtImei(it.imei)}</div>
                     <div style={{ fontSize: 13, marginTop: 2 }}>{it.nombre}</div>
                     <div className="muted u-fs-11">
                       {[it.color, it.gb, it.condicion].filter(Boolean).join(' · ')}

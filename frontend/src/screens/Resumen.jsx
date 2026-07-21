@@ -95,7 +95,7 @@ function KpiCard({ label, valor, unidad = '', comparado, formatter = fmt, invert
     );
   }
   return (
-    <div className="card card-tight" style={{ minWidth: 0 }} role="figure" aria-label={`KPI: ${label}`}>
+    <div className="card card-tight u-mw-min-0" role="figure" aria-label={`KPI: ${label}`}>
       <div className="muted tiny u-mb-4">{label}</div>
       <div className="mono" style={{ fontSize: 22, fontWeight: 700 }}>
         {unidad && !valorIndefinido && <span style={{ fontSize: 14, color: 'var(--text-muted)', marginRight: 4 }}>{unidad}</span>}
@@ -238,7 +238,7 @@ export default function Resumen() {
       {!loading && !error && actual && (
         <>
           {/* ── Bloque 1: Ventas ── */}
-          <h3 style={{ marginTop: 18, marginBottom: 8 }}>Ventas</h3>
+          <h3 className="u-mt-18-mb-8">Ventas</h3>
           <div className="row u-gap-12-flex-wrap">
             <div className="u-flex-1-1-200">
               <KpiCard label="Ventas totales" unidad="USD" valor={ventasUsdA} comparado={ventasUsdC} />
@@ -261,7 +261,7 @@ export default function Resumen() {
           </div>
 
           {/* ── Bloque 2: Cajas (capital) ── */}
-          <h3 style={{ marginTop: 18, marginBottom: 8 }}>Capital en cajas <span className="muted tiny">(al fin del período)</span></h3>
+          <h3 className="u-mt-18-mb-8">Capital en cajas <span className="muted tiny">(al fin del período)</span></h3>
           <div className="row u-gap-12-flex-wrap">
             <div className="u-flex-1-1-220">
               <KpiCard
@@ -286,7 +286,7 @@ export default function Resumen() {
           </div>
 
           {/* ── Bloque 3: Deudas + Egresos ── */}
-          <h3 style={{ marginTop: 18, marginBottom: 8 }}>Deudas y Egresos</h3>
+          <h3 className="u-mt-18-mb-8">Deudas y Egresos</h3>
           <div className="row u-gap-12-flex-wrap">
             <div className="u-flex-1-1-220">
               <KpiCard label="Nos deben (CC clientes)" unidad="USD" valor={deudaCCA} comparado={deudaCCC} />

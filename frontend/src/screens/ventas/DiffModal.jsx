@@ -41,7 +41,7 @@ export default function DiffModal({ state, onClose }) {
     if (r) r(aceptado);
   };
   return (
-    <div ref={overlayRef} className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="diff-modal-title" style={{ zIndex: 600 }}>
+    <div ref={overlayRef} className="modal-overlay u-z-600" role="dialog" aria-modal="true" aria-labelledby="diff-modal-title">
       <div className="modal u-mw-520" onClick={e => e.stopPropagation()}>
         <div className="modal-body" style={{ padding: '32px 28px 18px', textAlign: 'left' }}>
           {/* Icono de warning grande, centrado */}
@@ -85,7 +85,7 @@ export default function DiffModal({ state, onClose }) {
           </div>
         </div>
         <div className="modal-ft" style={{ justifyContent: 'center', gap: 12 }}>
-          <button className="btn btn-ghost" onClick={() => close(false)} style={{ minWidth: 130 }}>Corregir</button>
+          <button className="btn btn-ghost" onClick={() => close(false)} className="u-mw-min-130">Corregir</button>
           <button className="btn btn-primary" onClick={() => close(true)} autoFocus style={{ minWidth: 130, background: 'var(--pos)' }}>Aceptar igual</button>
         </div>
       </div>

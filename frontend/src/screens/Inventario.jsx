@@ -1331,13 +1331,13 @@ export default function Inventario() {
           />
         </ScrollFadeX>
         <div className="flex-between u-gap-8-flex-wrap">
-          <div className="flex-row" style={{ gap: 8, alignItems: 'center' }}>
+          <div className="flex-row u-gap-8-center">
             <label className="field-label" style={{ marginBottom: 0, marginRight: 4 }}>Vista</label>
             <select
               className="input"
               value={vistaFiltro}
               onChange={e => setVistaFiltro(e.target.value)}
-              style={{ width: 240 }}
+              className="u-w-240"
             >
               {VISTAS.map(v => <option key={v.value} value={v.value}>{v.label}</option>)}
             </select>
@@ -1433,7 +1433,7 @@ export default function Inventario() {
                 <th style={{ width: 68 }}>Mon. Costo</th>
                 <th style={{ width: 96, textAlign: 'right' }}>Precio Venta</th>
                 <th style={{ width: 72 }}>Mon. Venta</th>
-                <th style={{ width: 142, whiteSpace: 'nowrap' }}>IMEI/Serial</th>
+                <th className="u-w-142-nowrap">IMEI/Serial</th>
                 <th style={{ width: 84 }}>Tipo</th>
                 {/* 2026-07-11: columna "Colección" removida — ver comentario en el
                     modal de edición sobre el sunset gradual. */}
@@ -1516,7 +1516,7 @@ export default function Inventario() {
                 <th style={{ width: 68 }}>Mon. Costo</th>
                 <th style={{ width: 96, textAlign: 'right' }}>Precio Venta</th>
                 <th style={{ width: 72 }}>Mon. Venta</th>
-                <th style={{ width: 142, whiteSpace: 'nowrap' }}>IMEI/Serial</th>
+                <th className="u-w-142-nowrap">IMEI/Serial</th>
                 <th style={{ width: 84 }}>Tipo</th>
                 {/* 2026-07-11: columna "Colección" removida — ver comentario en el
                     modal de edición sobre el sunset gradual. */}
@@ -1577,7 +1577,7 @@ export default function Inventario() {
                 clava el body al 70% del viewport. Con el form flex, el
                 .modal-body.flex:1 + overflow-y:auto del base CSS scrollea
                 automáticamente. Ver Envios.jsx modal para el fix inicial. */}
-            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+            <form onSubmit={handleSave} className="u-flex-col-flex-1-mh-0">
               <div className="modal-body">
                 <div className="stack u-gap-14">
                   <div className="row">
@@ -1745,7 +1745,7 @@ export default function Inventario() {
             trazables a su compra de origen. */}
       {showImport && (
         <div ref={importModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && !importing && setShowImport(false)}>
-          <div className="modal" style={{ maxWidth: 760 }} onClick={e => e.stopPropagation()}>
+          <div className="modal u-mw-760" onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
               <h3>Importar stock desde planilla</h3>
               <button type="button" className="icon-btn" onClick={() => setShowImport(false)} disabled={importing} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button>
@@ -1760,7 +1760,7 @@ export default function Inventario() {
                 cada proveedor distinto se vuelve <strong>una compra</strong> en su CC, con sus productos como ítems trazables.
                 Las categorías que no existan se crean automáticamente.
               </p>
-              <div className="flex-row" style={{ gap: 6, marginBottom: 12 }}>
+              <div className="flex-row u-gap-6-mb-12">
                 <button className="btn btn-sm" onClick={descargarPlantillaXlsx}><Icons.Download size={13} /> Plantilla .xlsx</button>
                 <button className="btn btn-sm" onClick={descargarPlantillaCsv}><Icons.Download size={13} /> Plantilla .csv</button>
               </div>

@@ -150,7 +150,7 @@ export default function ForgotPassword() {
                   Volver y reintentar
                 </button>
               </div>
-              <div className="lg-foot" style={{ marginTop: 20 }}>
+              <div className="lg-foot u-mt-20">
                 <Link to="/" className="lg-link u-text-none">
                   Volver a iniciar sesión →
                 </Link>
@@ -185,7 +185,7 @@ export default function ForgotPassword() {
                 </div>
 
                 {/* hCaptcha: misma config que Signup (invisible / passive) */}
-                <div style={{ margin: '12px 0', display: 'flex', justifyContent: 'center' }}>
+                <div className="u-m-12-0-flex-center">
                   <HCaptcha
                     ref={captchaRef}
                     sitekey={HCAPTCHA_SITE_KEY}

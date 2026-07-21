@@ -455,7 +455,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
               12 columnas. En mobile el modal ya scrollea horizontalmente,
               pero sin indicador el usuario asume que está roto. */}
           <div className="bulk-spreadsheet-hint">↔ Desliza horizontalmente para ver todas las columnas</div>
-          <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 6 }}>
+          <div className="u-overflow-x-border-r-6">
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1400, tableLayout: 'fixed' }}>
               <colgroup>
                 <col className="u-w-32px" />   {/* # */}
@@ -467,7 +467,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
                 <col className="u-w-100px" />  {/* Costo unit (2026-06-09) */}
                 <col className="u-w-70px" />   {/* Cant */}
                 <col className="u-w-100px" />  {/* Precio unit */}
-                <col style={{ width: 64 }} />   {/* M */}
+                <col className="u-w-64" />   {/* M */}
                 <col className="u-w-100px" />  {/* Subtotal */}
                 <col className="u-w-32px" />   {/* X */}
               </colgroup>
@@ -572,7 +572,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
                       <td style={{ padding: '3px 4px', textAlign: 'right', fontWeight: 600, fontSize: 12 }}>
                         {sub > 0 ? `${r.precio_moneda} ${sub.toLocaleString('es-AR', { maximumFractionDigits: 2 })}` : '—'}
                       </td>
-                      <td style={{ padding: '3px 4px', textAlign: 'center' }}>
+                      <td className="u-p-3-4-text-center">
                         {rows.length > 1 && (
                           <button className="icon-btn" style={{ color: 'var(--neg)', padding: 2 }}
                             onClick={() => removeRow(idx)} title="Quitar fila">
@@ -596,7 +596,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
             </div>
             <div style={{ flex: '0 0 220px', textAlign: 'right' }}>
               <div className="muted tiny">Total venta</div>
-              <div className="mono" style={{ fontSize: 22, fontWeight: 800 }}>
+              <div className="mono u-fs-22-fw-800">
                 {/* #M-13: guion en vez de "USD 0" cuando no hay filas usadas. */}
                 {rows.filter(isUsedRow).length === 0
                   ? <span className="muted">—</span>

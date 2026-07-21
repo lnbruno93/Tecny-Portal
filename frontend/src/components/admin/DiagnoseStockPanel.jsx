@@ -76,12 +76,11 @@ function RestoreModal({ producto, onClose, onDone }) {
   return (
     <div
       ref={overlayRef}
-      className="modal-overlay"
+      className="modal-overlay u-z-500"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby="restore-modal-title"
-      style={{ zIndex: 500 }}
     >
       <div
         className="modal u-mw-480"
@@ -157,7 +156,7 @@ function ProductoCard({ producto, trail, onRestore }) {
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
         <div>
-          <div style={{ fontWeight: 700, fontSize: 15 }}>
+          <div className="u-fw-700-fs-15">
             {producto.nombre}
             <span className="tiny muted u-ml-8">#{producto.id}</span>
           </div>
@@ -286,7 +285,7 @@ export default function DiagnoseStockPanel() {
   return (
     <div className="card u-mb-16">
       <div style={{ padding: 16, borderBottom: '1px solid var(--border)' }}>
-        <h3 style={{ margin: 0, fontSize: 16 }}>Diagnóstico de stock</h3>
+        <h3 className="u-m-0-fs-16">Diagnóstico de stock</h3>
         <p style={{ margin: '6px 0 0', color: 'var(--text-muted)', fontSize: 13.5 }}>
           Inspeccioná el historial completo de un producto por IMEI/serial: estado actual + todos
           los movimientos B2B que lo tocaron (incluso los borrados). Si un producto vivo quedó
@@ -311,7 +310,7 @@ export default function DiagnoseStockPanel() {
       {data && (
         <div style={{ padding: '0 16px 16px' }}>
           {data.productos.length === 0 ? (
-            <div className="tiny muted" style={{ padding: 12 }}>
+            <div className="tiny muted u-p-12">
               Sin productos con IMEI/serial <span className="mono">{data.query}</span>.
             </div>
           ) : (

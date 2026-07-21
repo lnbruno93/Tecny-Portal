@@ -124,9 +124,9 @@ export default function EgresosPanel() {
   return (
     <div>
       {/* Filtros + acciones */}
-      <div className="flex-row" style={{ gap: 10, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-        <input type="month" className="input" style={{ maxWidth: 160 }} value={periodo} onChange={e => setPeriodo(e.target.value)} />
-        <select className="input" style={{ maxWidth: 160 }} value={estadoFiltro} onChange={e => setEstadoFiltro(e.target.value)}>
+      <div className="flex-row u-gap-10-mb-12-wrap-center">
+        <input type="month" className="input u-mw-160" value={periodo} onChange={e => setPeriodo(e.target.value)} />
+        <select className="input u-mw-160" value={estadoFiltro} onChange={e => setEstadoFiltro(e.target.value)}>
           <option value="">Todos</option><option value="pendiente">Pendientes</option><option value="pagado">Pagados</option>
         </select>
         <select className="input" style={{ maxWidth: 180 }} value={catFiltro} onChange={e => setCatFiltro(e.target.value)}>
@@ -197,7 +197,7 @@ export default function EgresosPanel() {
       {/* Modal alta/edición */}
       {showForm && (
         <div ref={formModalRef} className="modal-overlay" onClick={() => setShowForm(false)}>
-          <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
+          <div className="modal u-mw-560" onClick={e => e.stopPropagation()}>
             <div className="modal-hd"><h3>{editId ? 'Editar egreso' : 'Nuevo egreso'}</h3><button className="icon-btn" onClick={() => setShowForm(false)}><Icons.X size={16} /></button></div>
             <form onSubmit={handleSubmit}>
               <div className="modal-body">
@@ -275,7 +275,7 @@ function CategoriasModal({ categorias, onClose, onChange, toast, confirm }) {
       <div className="modal u-mw-420" onClick={e => e.stopPropagation()}>
         <div className="modal-hd"><h3>Categorías de egreso</h3><button className="icon-btn" onClick={onClose}><Icons.X size={16} /></button></div>
         <div className="modal-body">
-          <div className="flex-row" style={{ gap: 6, marginBottom: 12 }}>
+          <div className="flex-row u-gap-6-mb-12">
             <input className="input u-flex-1" placeholder="Nueva categoría…" value={nombre} onChange={e => setNombre(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add(); } }} />
             <button className="btn btn-primary btn-sm" onClick={add} disabled={!nombre.trim()}>+ Agregar</button>
           </div>

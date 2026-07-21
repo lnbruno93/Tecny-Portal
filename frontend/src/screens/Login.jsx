@@ -317,7 +317,7 @@ export default function Login() {
                 (código 2FA) el user ya validó captcha en el step 1, no vale
                 pedirlo dos veces. */}
             {!twofaRequired && (
-              <div style={{ margin: '12px 0', display: 'flex', justifyContent: 'center' }}>
+              <div className="u-m-12-0-flex-center">
                 <HCaptcha
                   ref={captchaRef}
                   sitekey={HCAPTCHA_SITE_KEY}

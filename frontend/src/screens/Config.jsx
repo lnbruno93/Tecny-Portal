@@ -281,7 +281,7 @@ export default function Config() {
             <div className="field u-mb-16">
               <div className="field-label">Transferencias <span className="muted">(Financiera)</span></div>
               <div className="u-flex-center-gap-10">
-                <div className="input-group" style={{ maxWidth: 160 }}>
+                <div className="input-group u-mw-160">
                   <input
                     type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                     step="0.1" min="0" max="100"
@@ -321,8 +321,7 @@ export default function Config() {
                           <input
                             type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                             step="0.1" min="0" max="100"
-                            className="input mono"
-                            style={{ fontWeight: 700, fontSize: 15 }}
+                            className="input mono u-fw-700-fs-15"
                             data-testid={`config-pct-tarjeta-${t.id}`}
                             value={t.pct_input}
                             onChange={e => setTarjetaPct(t.id, e.target.value)}
@@ -375,7 +374,7 @@ export default function Config() {
                   marginTop: 4,
                 }}>
                   <span className="u-fs-13-fw-600">Nos queda</span>
-                  <span className="mono pos" style={{ fontWeight: 700, fontSize: 15 }}>
+                  <span className="mono pos u-fw-700-fs-15">
                     ARS {fmt(simNeto)}
                   </span>
                 </div>

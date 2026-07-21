@@ -258,14 +258,14 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
           {/* 2026-06-24 mobile lote C: planilla con minWidth 1200 (~9 columnas).
               Hint visible solo en mobile para indicar scroll horizontal. */}
           <div className="bulk-spreadsheet-hint">↔ Desliza horizontalmente para ver todas las columnas</div>
-          <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 6 }}>
+          <div className="u-overflow-x-border-r-6">
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1200, tableLayout: 'fixed' }}>
               <colgroup>
                 <col className="u-w-32px" />   {/* # */}
                 <col style={{ width: 280 }} />  {/* Cliente */}
                 <col className="u-w-100px" />  {/* Saldo */}
                 <col className="u-w-110px" />  {/* Monto */}
-                <col style={{ width: 200 }} />  {/* Caja */}
+                <col className="u-w-200" />  {/* Caja */}
                 <col className="u-w-90px" />   {/* TC */}
                 <col className="u-w-110px" />  {/* Subtotal USD */}
                 <col className="u-w-110px" />  {/* Tipo */}
@@ -357,7 +357,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
                           <option value="parte_de_pago">Parte pago</option>
                         </select>
                       </td>
-                      <td style={{ padding: '3px 4px', textAlign: 'center' }}>
+                      <td className="u-p-3-4-text-center">
                         {rows.length > 1 && (
                           <button className="icon-btn" style={{ color: 'var(--neg)', padding: 2 }}
                             onClick={() => removeRow(idx)} title="Quitar fila">
@@ -376,7 +376,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
           <div className="flex-row" style={{ marginTop: 12, justifyContent: 'flex-end', alignItems: 'center', gap: 16 }}>
             <div className="u-text-right">
               <div className="muted tiny">Total cobrado</div>
-              <div className="mono" style={{ fontSize: 22, fontWeight: 800 }}>
+              <div className="mono u-fs-22-fw-800">
                 {/* #M-13: guion en vez de "USD 0" cuando no hay filas usadas. */}
                 {rows.filter(isUsedRow).length === 0
                   ? <span className="muted">—</span>

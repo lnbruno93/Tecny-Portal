@@ -294,7 +294,7 @@ export default function RedB2BOperacionDetalle() {
       {/* F4: sección de pagos cross-tenant */}
       <section className="card" style={{ padding: 16, marginTop: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <h2 style={{ margin: 0, fontSize: 16 }}>Pagos cross-tenant</h2>
+          <h2 className="u-m-0-fs-16">Pagos cross-tenant</h2>
           {op.status === 'active' && pagosData?.saldo && !pagosData.saldo.completo && (
             <button
               type="button"

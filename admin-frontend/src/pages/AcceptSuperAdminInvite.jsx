@@ -213,8 +213,7 @@ export default function AcceptSuperAdminInvite() {
               Aceptá tu invitación
             </h1>
             <p
-              className="muted"
-              style={{ fontSize: 13, textAlign: 'center', margin: '0 0 20px' }}
+              className="muted u-fs-13-text-center-m"
             >
               {info.invited_by_username
                 ? <>@{info.invited_by_username} te invitó a ser admin de Tecny.</>

@@ -271,7 +271,7 @@ export default function MovimientosCajaPanel() {
                     <td className="mono">{fmtFecha(t.fecha)}</td>
                     <td>{t.caja_origen_nombre || '—'}</td>
                     <td>{t.caja_destino_nombre || '—'}</td>
-                    <td className="mono" style={{ textAlign: 'right', fontWeight: 600 }}>
+                    <td className="mono u-td-right-fw-600">
                       {isCross ? (
                         <span>
                           {fmtMoney(t.monto, t.moneda)}
@@ -406,7 +406,7 @@ export default function MovimientosCajaPanel() {
                   border: '1px solid rgba(59, 130, 246, 0.28)',
                   display: 'grid', gap: 10,
                 }}>
-                  <div style={{ fontWeight: 600, fontSize: 12 }}>
+                  <div className="u-fw-600-fs-12">
                     Cambio de moneda · {monedaOrigen} → {monedaDestino}
                   </div>
                   <div className="u-grid-1fr-1fr-gap-12">

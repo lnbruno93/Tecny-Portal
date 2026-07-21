@@ -3159,3 +3159,64 @@ body.modal-open { overflow: hidden; }
 .u-flex-center-gap-10            { display: flex; align-items: center; gap: 10px; }
 .u-block-fs-12-mb-6              { display: block; font-size: 12px; margin-bottom: 6px; }
 .u-td-right-fw-700-accent        { text-align: right; font-weight: 700; color: var(--accent); }
+
+/* Sprint 8 (2026-07-21) — patterns 3-hit residuales */
+
+/* Simple 1-prop */
+.u-align-items-flex-start   { align-items: flex-start; }
+.u-z-500                    { z-index: 500; }
+.u-z-600                    { z-index: 600; }
+.u-w-64                     { width: 64px; }
+.u-w-200                    { width: 200px; }
+.u-w-240                    { width: 240px; }
+.u-w-auto                   { width: auto; }
+.u-rotate-180               { transform: rotate(180deg); }
+.u-p-10                     { padding: 10px; }
+.u-p-12                     { padding: 12px; }
+.u-p-20                     { padding: 20px; }
+.u-pl-36                    { padding-left: 36px; }
+.u-mw-min-130               { min-width: 130px; }
+.u-mw-min-0                 { min-width: 0; }
+.u-mw-160                   { max-width: 160px; }
+.u-mw-440                   { max-width: 440px; }
+.u-mw-460                   { max-width: 460px; }
+.u-mw-560                   { max-width: 560px; }
+.u-mw-720                   { max-width: 720px; }
+.u-mw-760                   { max-width: 760px; }
+.u-mt-20                    { margin-top: 20px; }
+.u-fs-16                    { font-size: 16px; }
+
+/* Composed 2-prop */
+.u-td-right-fw-600          { text-align: right; font-weight: 600; }
+.u-td-left-p-6-8            { text-align: left; padding: 6px 8px; }
+.u-p-3-4-text-center        { padding: 3px 4px; text-align: center; }
+.u-gap-8-center             { display: flex; gap: 8px; align-items: center; }
+.u-gap-6-mb-12              { gap: 6px; margin-bottom: 12px; }
+.u-fw-700-fs-15             { font-weight: 700; font-size: 15px; }
+.u-fw-600-fs-12             { font-weight: 600; font-size: 12px; }
+.u-fs-22-fw-800             { font-size: 22px; font-weight: 800; }
+.u-fs-16-fw-600             { font-size: 16px; font-weight: 600; }
+.u-mt-12-fs-13              { margin-top: 12px; font-size: 13px; }
+.u-mt-18-mb-8               { margin-top: 18px; margin-bottom: 8px; }
+.u-mt-2-color-accent        { margin-top: 2px; color: var(--accent); }
+.u-w-142-nowrap             { width: 142px; white-space: nowrap; }
+.u-text-center-m-20-0-0     { text-align: center; margin: 20px 0 0; }
+
+/* Composed 3-prop */
+.u-m-0-fs-16-fw-600         { margin: 0; font-size: 16px; font-weight: 600; }
+.u-m-0-fs-16                { margin: 0; font-size: 16px; }
+.u-m-0-color-tm-fs-135      { margin: 0; color: var(--text-muted); font-size: 13.5px; }
+.u-gap-8-wrap-flex-end      { gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+.u-inline-block-w-60-h-22   { display: inline-block; width: 60px; height: 22px; }
+.u-flex-col-flex-1-mh-0     { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.u-block-fs-12-tm-mb-6      { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+.u-divider-top-4            { padding-top: 4px; border-top: 1px solid var(--hairline); margin-top: 4px; }
+.u-m-8-0-0-18-p-0           { margin: 8px 0 0 18px; padding: 0; }
+.u-m-12-0-flex-center       { margin: 12px 0; display: flex; justify-content: center; }
+.u-overflow-x-border-r-6    { overflow-x: auto; border: 1px solid var(--border); border-radius: 6px; }
+.u-fs-13-text-center-m       { font-size: 13px; text-align: center; margin: 0 0 20px; }
+.u-fs-12-fw-500-ml-4        { font-size: 12px; font-weight: 500; margin-left: 4px; }
+
+/* Composed 4-prop */
+.u-p-26-fs-13-fw-600-w-110  { padding: 2px 6px; font-size: 13px; font-weight: 600; width: 110px; }
+.u-gap-10-mb-12-wrap-center { gap: 10px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }

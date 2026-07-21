@@ -915,7 +915,7 @@ export default function Envios() {
             aria-label="Día anterior"
             onClick={() => setDateFilter(d => d ? shiftDate(d, -1) : shiftDate(todayStr(), -1))}
           >
-            <Icons.ChevronRight size={14} style={{ transform: 'rotate(180deg)' }} />
+            <Icons.ChevronRight size={14} className="u-rotate-180" />
           </button>
           <div style={{ fontWeight: 600, fontSize: 14, minWidth: 96, textAlign: 'center' }}>
             {dateLabel(dateFilter)}
@@ -1316,8 +1316,7 @@ export default function Envios() {
               capacidad + color + IMEI + costo) en la misma fila que Precio +
               Moneda + ✕. Con 600px se cortaba "MONEDA" y el botón ✕. */}
           <div
-            className="modal"
-            style={{ maxWidth: 760 }}
+            className="modal u-mw-760"
             onClick={e => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
@@ -1340,7 +1339,7 @@ export default function Envios() {
                 por debajo de su content size (default en flex es min-content).
                 Ver también nota abajo de 2026-06-24 que removió el workaround
                 maxHeight:70vh inline sin arreglar la cadena flex. */}
-            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+            <form onSubmit={handleSubmit} className="u-flex-col-flex-1-mh-0">
               {/* 2026-06-24 mobile fix: removido inline maxHeight 70vh y overflowY.
                   El base .modal-body ya tiene flex:1 + overflow-y:auto y el .modal
                   tiene max-height: calc(100svh - 48px). El override capeaba el
@@ -1632,7 +1631,7 @@ export default function Envios() {
                                     className="input mono" placeholder="500"
                                     value={derivedUsd}
                                     onChange={e => setPagoUsd(idx, e.target.value)}
-                                    style={{ paddingLeft: 36 }}
+                                    className="u-pl-36"
                                   />
                                 )}
                               </div>
@@ -1682,7 +1681,7 @@ export default function Envios() {
                                       className="input mono"
                                       value={it.bruto_manual ? (it.monto ?? '') : Math.round(det.brutoOrig * 100) / 100}
                                       onChange={e => setPagoBruto(idx, e.target.value)}
-                                      style={{ padding: '2px 6px', fontSize: 13, fontWeight: 600, width: 110 }}
+                                      className="u-p-26-fs-13-fw-600-w-110"
                                     />
                                   </div>
                                 </div>
@@ -1698,9 +1697,9 @@ export default function Envios() {
                                       className="input mono"
                                       value={it.neto_input || Math.round(det.netoOrig * 100) / 100}
                                       onChange={e => setPagoNeto(idx, e.target.value)}
-                                      style={{ padding: '2px 6px', fontSize: 13, fontWeight: 600, width: 110 }}
+                                      className="u-p-26-fs-13-fw-600-w-110"
                                     />
-                                    <span className="mono pos" style={{ fontWeight: 600, fontSize: 12 }}>= u$s{fmt(det.netoUsd)}</span>
+                                    <span className="mono pos u-fw-600-fs-12">= u$s{fmt(det.netoUsd)}</span>
                                   </div>
                                 </div>
                               </div>

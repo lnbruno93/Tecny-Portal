@@ -887,7 +887,7 @@ export default function Tarjetas() {
                 <form onSubmit={handleLiquidarMultiple} className="stack u-gap-10">
                   {/* Fila 1: fecha del depósito + período cubierto (opcional,
                       lo que la planilla de la financiera dice tipo "26-27/5"). */}
-                  <div className="flex-row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                  <div className="flex-row u-gap-8-wrap-flex-end">
                     <div className="field u-w-150px">
                       <label className="field-label tiny">Fecha depósito</label>
                       <input type="date" className="input"
@@ -936,7 +936,7 @@ export default function Tarjetas() {
                         propia línea sin salirse. Símbolos `×` y `=` tienen
                         aria-hidden por ser decorativos (lectores no los
                         anuncian sueltos). U4/U11 auditoría 2026-06-06. */}
-                    <div className="flex-row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                    <div className="flex-row u-gap-8-wrap-flex-end">
                       <div className="field" style={{ flex: '1 1 140px', minWidth: 140 }}>
                         <label htmlFor="multiliq-usd" className="field-label tiny">USD recibido (caja)</label>
                         <input id="multiliq-usd" type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input mono"
@@ -1028,7 +1028,7 @@ export default function Tarjetas() {
                       Si no hay saldo pendiente en ninguna, mostramos un empty state
                       en vez del editor (no tiene sentido liquidar contra cero). */}
                   {list.filter(t => Number(t.saldo) > 0).length === 0 ? (
-                    <div className="empty" style={{ padding: 12 }}>
+                    <div className="empty u-p-12">
                       No hay saldo pendiente en ninguna tarjeta. Cargá ventas o cobros previos primero.
                     </div>
                   ) : (
@@ -1038,7 +1038,7 @@ export default function Tarjetas() {
                       </div>
                       <div className="stack u-gap-6">
                         {list.filter(t => Number(t.saldo) > 0).map(t => (
-                          <div key={t.id} className="flex-row" style={{ gap: 8, alignItems: 'center' }}>
+                          <div key={t.id} className="flex-row u-gap-8-center">
                             <div className="u-flex-1-minw-0">
                               <div className="u-fs-13-fw-600">{t.nombre}</div>
                               <div className="muted tiny mono">Saldo pendiente: {sym(t.moneda)} {fmt(t.saldo)}</div>
@@ -1162,7 +1162,7 @@ export default function Tarjetas() {
               {/* Registrar liquidación (cuando nos pagan) */}
               <div className="card">
                 <div className="card-hd"><div className="u-fs-14-fw-600">Registrar liquidación (te pagaron)</div></div>
-                <form onSubmit={handleLiquidar} className="flex-row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <form onSubmit={handleLiquidar} className="flex-row u-gap-8-wrap-flex-end">
                   <div className="field u-w-150px"><label className="field-label tiny">Fecha</label><input type="date" className="input" value={liq.fecha} onChange={e => setLiq(f => ({ ...f, fecha: e.target.value }))} /></div>
                   <div className="field u-w-150px"><label className="field-label tiny">Monto recibido</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="0" value={liq.monto} onChange={e => setLiq(f => ({ ...f, monto: e.target.value }))} /></div>
                   <div className="field" style={{ flex: 1, minWidth: 160 }}><label className="field-label tiny">Entra a la caja</label>
@@ -1285,7 +1285,7 @@ export default function Tarjetas() {
                     }}>
                       <div className="flex-between"><span className="muted">Bruto:</span><span className="mono">{fmt(cobroPrevCalc.bruto)}</span></div>
                       <div className="flex-between"><span className="muted">Comisión ({cobroPrev.pct || 0}%):</span><span className="mono u-color-neg">− {fmt(cobroPrevCalc.comision)}</span></div>
-                      <div className="flex-between" style={{ paddingTop: 4, borderTop: '1px solid var(--hairline)', marginTop: 4 }}>
+                      <div className="flex-between u-divider-top-4">
                         <strong>Neto a cobrar:</strong>
                         <span className="mono u-color-accent-fw-700">{fmt(cobroPrevCalc.neto)}</span>
                       </div>
@@ -1366,7 +1366,7 @@ export default function Tarjetas() {
                         }}>
                           <div className="flex-between"><span className="muted">Bruto:</span><span className="mono">{fmt(editCobroCalc.bruto)}</span></div>
                           <div className="flex-between"><span className="muted">Comisión ({editForm.pct || 0}%):</span><span className="mono u-color-neg">− {fmt(editCobroCalc.comision)}</span></div>
-                          <div className="flex-between" style={{ paddingTop: 4, borderTop: '1px solid var(--hairline)', marginTop: 4 }}>
+                          <div className="flex-between u-divider-top-4">
                             <strong>Neto a cobrar:</strong>
                             <span className="mono u-color-accent-fw-700">{fmt(editCobroCalc.neto)}</span>
                           </div>

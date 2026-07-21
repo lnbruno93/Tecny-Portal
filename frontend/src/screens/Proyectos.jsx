@@ -285,7 +285,7 @@ export default function Proyectos() {
       <div className="split-master-detail" style={{ '--master-width': '320px', alignItems: 'start' }}>
         {/* ── Lista ── */}
         <div className="card card-flush" style={{ maxHeight: '78vh', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: 10 }}>
+          <div className="u-p-10">
             <input className="input" placeholder="Buscar proyecto…" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
           <div style={{ flex: 1, overflow: 'auto' }}>
@@ -302,7 +302,7 @@ export default function Proyectos() {
                   <div className="muted tiny u-mt-2">
                     {fmtFecha(p.fecha_creacion)} · {p.cant_movimientos} mov.
                   </div>
-                  <div className="mono tiny" style={{ marginTop: 2, color: 'var(--accent)' }}>
+                  <div className="mono tiny u-mt-2-color-accent">
                     u$s {fmt(p.total_usd)} {Number(p.total_ars) > 0 && <span className="muted">· $ {fmt(p.total_ars)}</span>}
                   </div>
                 </div>
@@ -319,7 +319,7 @@ export default function Proyectos() {
           <div className="stack u-gap-14">
             {/* Header */}
             <div className="card">
-              <div className="flex-between" style={{ alignItems: 'flex-start' }}>
+              <div className="flex-between u-align-items-flex-start">
                 <div>
                   {/* 2026-06-24 lote F: clamp para nombres largos en mobile (ej. "Proyecto de construcción casa zona norte"). */}
                   <div style={{ fontWeight: 700, fontSize: 'clamp(15px, 4.5vw, 18px)' }}>{detalle.nombre}</div>
@@ -466,7 +466,7 @@ export default function Proyectos() {
       {/* ── Modal: nuevo proyecto ── */}
       {showCreate && (
         <div ref={createModalRef} className="modal-overlay" onClick={() => setShowCreate(false)}>
-          <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
+          <div className="modal u-mw-560" onClick={e => e.stopPropagation()}>
             <div className="modal-hd"><h3>Nuevo proyecto</h3><button className="icon-btn" onClick={() => setShowCreate(false)}><Icons.X size={16} /></button></div>
             <form onSubmit={handleCreate}>
               <div className="modal-body">

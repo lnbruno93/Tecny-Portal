@@ -8,9 +8,17 @@
 // Mockea api/twoFa y el componente TwoFaSetup (ya tiene sus tests propios).
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, fireEvent, waitFor, cleanup, configure } from '@testing-library/react';
 import { ToastProvider } from '../contexts/ToastContext';
 import { ConfirmProvider } from './ConfirmModal';
+
+// Fix flakiness histórica en este file (2026-07-12, 2026-07-21 x2):
+// Docker de GH Actions saturado hace que waitFor con default 1000ms/findBy
+// no alcancen a re-renderizar tras mock async + setState. Local pasa < 40ms.
+// Subimos asyncUtilTimeout global a 8000ms para TODO este file — todos los
+// waitFor/findBy sin timeout explícito heredan este límite. 8s es margen
+// ancho pero no eterno: si un test tarda más de 8s, hay bug real.
+configure({ asyncUtilTimeout: 8000 });
 
 vi.mock('../lib/api', () => ({
   twoFa: {

@@ -69,14 +69,13 @@ export default function EditarVendedorModal({ state, onClose, onSave, vendedores
   return (
     <div
       ref={overlayRef}
-      className="modal-overlay"
+      className="modal-overlay u-z-600"
       role="dialog"
       aria-modal="true"
       aria-labelledby="editar-vendedor-title"
       onClick={handleOverlayClick}
-      style={{ zIndex: 600 }}
     >
-      <div className="modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
+      <div className="modal u-mw-460" onClick={e => e.stopPropagation()}>
         <form onSubmit={handleSubmit}>
           <div className="modal-hd">
             <h3 id="editar-vendedor-title">Editar vendedor del comprobante</h3>

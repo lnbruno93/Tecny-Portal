@@ -215,7 +215,7 @@ export default function EquiposUsadosContent({ onCountChange }) {
       </div>
 
       {/* ── Filtros ───────────────────────────────────────────── */}
-      <div className="flex-row" style={{ gap: 10, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div className="flex-row u-gap-10-mb-12-wrap-center">
         <input
           className="input"
           placeholder="Buscar nombre, IMEI, cliente…"
@@ -280,7 +280,7 @@ export default function EquiposUsadosContent({ onCountChange }) {
                 <th className="u-mw-180">Equipo</th>
                 <th className="u-w-120px">GB · Color</th>
                 <th className="u-w-90px">Batería</th>
-                <th style={{ width: 142, whiteSpace: 'nowrap' }}>IMEI / Serial</th>
+                <th className="u-w-142-nowrap">IMEI / Serial</th>
                 <th style={{ width: 100, textAlign: 'right' }}>Costo</th>
                 <th style={{ width: 100, textAlign: 'right' }}>Precio venta</th>
                 <th className="u-w-130px">Origen</th>

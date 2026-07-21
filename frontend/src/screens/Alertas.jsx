@@ -126,7 +126,7 @@ function GrupoAlerta({ grupo }) {
     <div className="card card-tight" style={{ marginBottom: 12, borderLeft: `4px solid ${color}` }}>
       <div className="flex-between u-cursor-pointer" onClick={() => setExpanded(e => !e)}>
         <div>
-          <span style={{ fontSize: 16, fontWeight: 600 }}>{grupo.titulo}</span>
+          <span className="u-fs-16-fw-600">{grupo.titulo}</span>
           <span className="badge" style={{ marginLeft: 8, background: color, color: '#fff' }}>{grupo.count}</span>
         </div>
         <button className="icon-btn">

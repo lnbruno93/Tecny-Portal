@@ -87,7 +87,7 @@ export default function DeleteTenantModal({ tenant, open, onClose, onDeleted }) 
       <div className="banner banner-neg u-mb-14">
         <div>
           <strong>Vas a eliminar a {tenant?.nombre || 'este tenant'}.</strong>
-          <ul style={{ margin: '8px 0 0 18px', padding: 0 }}>
+          <ul className="u-m-8-0-0-18-p-0">
             <li>Los usuarios no van a poder loguearse al portal.</li>
             <li>Los datos quedan en la base — recuperables manualmente por ahora.</li>
             <li>La acción queda registrada en el audit trail con tu user_id.</li>

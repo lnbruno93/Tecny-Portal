@@ -217,7 +217,7 @@ export default function TrustedCompaniesCard() {
       <div className="u-p-20-grid-gap-16">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
           <div>
-            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>
+            <h3 className="u-m-0-fs-16-fw-600">
               Empresas que confiaron en Tecny
             </h3>
             <p className="muted u-m-4-0-0-fs-13">
@@ -363,7 +363,7 @@ export default function TrustedCompaniesCard() {
             display: 'grid', gap: 14,
           }}>
             <div className="u-flex-between-center-nogap">
-              <h3 style={{ margin: 0, fontSize: 16 }}>Agregar empresa</h3>
+              <h3 className="u-m-0-fs-16">Agregar empresa</h3>
               <button type="button" className="icon-btn" onClick={closeAdd} aria-label="Cerrar">
                 <Icons.X size={16} />
               </button>

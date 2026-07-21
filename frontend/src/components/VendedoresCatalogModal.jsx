@@ -180,7 +180,7 @@ export default function VendedoresCatalogModal({ open, onClose, onChange }) {
 
           {/* Lista */}
           {loading ? (
-            <div className="muted tiny" style={{ padding: 12 }}>Cargando…</div>
+            <div className="muted tiny u-p-12">Cargando…</div>
           ) : vendedores.length === 0 ? (
             <div className="empty">Sin vendedores registrados</div>
           ) : (

@@ -80,12 +80,11 @@ export function ConfirmModal({
   return (
     <div
       ref={overlayRef}
-      className="modal-overlay"
+      className="modal-overlay u-z-500"
       onClick={onCancel}
       role="dialog"
       aria-modal="true"
       aria-labelledby="confirm-modal-title"
-      style={{ zIndex: 500 }}
     >
       <div
         className="modal"

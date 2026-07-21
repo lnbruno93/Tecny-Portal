@@ -121,7 +121,7 @@ export default function TwoFaSetup({ onDone, onCancel, onError }) {
   }
 
   return (
-    <div className="card" style={{ padding: 20 }}>
+    <div className="card u-p-20">
       <h3 className="u-mt-0">Activar autenticación de dos factores</h3>
       <div className="muted" style={{ marginBottom: 18, fontSize: 13 }}>
         Necesitás una app autenticadora en tu cel: Google Authenticator,
