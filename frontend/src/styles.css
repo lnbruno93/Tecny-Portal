@@ -3551,3 +3551,37 @@ body.modal-open { overflow: hidden; }
 .u-border-top-only       { border-top: 1px solid var(--border); }
 .u-self-center           { align-self: center; }
 .u-p-6-8-only            { padding: 6px 8px; }
+
+/* Sprint 17 (2026-07-21) — utilities para manual migration top files */
+
+.u-p-14-mb-14              { padding: 14px; margin-bottom: 14px; }
+.u-gap-12-flex-wrap        { gap: 12px; flex-wrap: wrap; }
+.u-fs-13-mw-78             { font-size: 13px; max-width: 78%; }
+.u-fs-13-mb-cursor         { font-size: 13px; margin-bottom: 10px; cursor: pointer; }
+.u-gap-6-mt-8              { gap: 6px; margin-top: 8px; }
+.u-gap-6-mb-14             { gap: 6px; margin-bottom: 14px; }
+.u-gap-6-mb-10             { gap: 6px; margin-bottom: 10px; }
+.u-mt-10-p-14-bg-2         { margin-top: 10px; padding: 14px; background: var(--surface-2); }
+.u-mt-10-p-10-bg-2-r-8     { margin-top: 10px; padding: 10px; background: var(--surface-2); border-radius: 8px; }
+.u-ml-6-color-accent       { margin-left: 6px; color: var(--accent); }
+.u-flex-center-8-fs-13-cursor { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.u-gap-8-fs-13-cursor      { gap: 8px; font-size: 13px; cursor: pointer; }
+.u-cursor-fs-13-accent     { cursor: pointer; font-size: 13px; color: var(--accent); }
+.u-gap-8-end-mt-4          { gap: 8px; justify-content: flex-end; margin-top: 4px; }
+.u-p-8-0-border-bottom-hl  { padding: 8px 0; border-bottom: 1px solid var(--hairline); }
+.u-fs-13-p-4-0-border-bottom { font-size: 13px; padding: 4px 0; border-bottom: 1px solid var(--hairline); }
+.u-flex-col-gap-2-mw-0     { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.u-flex-1-relative         { flex: 1; position: relative; }
+.u-flex-12                 { flex: 1.2; }
+.u-flex-08                 { flex: 0.8; }
+.u-flex-08-self-end        { flex: 0.8; align-self: end; }
+.u-align-center-mb-6       { align-items: center; margin-bottom: 6px; }
+.u-mb-14-only              { margin-bottom: 14px; }
+.u-pre-wrap-mh-50-hide     { white-space: pre-wrap; max-height: 50px; overflow: hidden; }
+.u-fs-13-border-top-mt-4-pt-4 { font-size: 13px; border-top: 1px solid var(--border); margin-top: 4px; padding-top: 4px; }
+.u-border-top-mt-6-pt-6    { border-top: 1px solid var(--border); margin-top: 6px; padding-top: 6px; }
+.u-h-auto-p-10-inherit-lh-15-resize-v { height: auto; padding: 10px; font-family: inherit; line-height: 1.5; resize: vertical; }
+.u-h-auto-mh-220-p-12-14-lh-155-fs-14-resize-v-pre { height: auto; min-height: 220px; padding: 12px 14px; line-height: 1.55; font-size: 14px; resize: vertical; white-space: pre-wrap; }
+.u-fs-11-muted-pl-4-ellipsis { font-size: 11px; color: var(--muted); padding-left: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.u-pre-wrap                { white-space: pre-wrap; }
+.u-fs-14-mb-6              { font-size: 14px; margin-bottom: 6px; }
