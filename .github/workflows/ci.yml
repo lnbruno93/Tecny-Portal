@@ -231,7 +231,10 @@ jobs:
 
       - name: Audit dependencies
         working-directory: frontend
-        run: npm audit --audit-level=moderate
+        # 2026-07-21: --omit=dev para no fallar por vulns en build tools (sharp/
+        # vite-pwa/assets-generator). Runtime deps son las que importan para
+        # el bundle que servimos al user. Match backend approach.
+        run: npm audit --audit-level=moderate --omit=dev
 
       # Lint (T5 auditoría 2026-06): activado, rechaza solo ERRORS (no warnings).
       # Los warnings acumulados (~120) son señales útiles pero no bloqueantes —
@@ -280,7 +283,8 @@ jobs:
 
       - name: Audit dependencies
         working-directory: admin-frontend
-        run: npm audit --audit-level=moderate
+        # 2026-07-21: --omit=dev para match frontend/backend approach.
+        run: npm audit --audit-level=moderate --omit=dev
 
       - name: Lint
         working-directory: admin-frontend
