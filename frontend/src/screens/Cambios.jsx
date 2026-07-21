@@ -389,7 +389,7 @@ export default function Cambios() {
           <div className="stack u-gap-14">
             <div className="card">
               <div className="flex-between" style={{ alignItems: 'flex-start' }}>
-                <div style={{ fontWeight: 700, fontSize: 18 }}>{detalle.nombre}</div>
+                <div className="u-fs-18-fw-700">{detalle.nombre}</div>
                 <button className="icon-btn u-color-neg" title="Eliminar financiera" onClick={handleDeleteEntidad}><Icons.Trash size={15} /></button>
               </div>
             </div>

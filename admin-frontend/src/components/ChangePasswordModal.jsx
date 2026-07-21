@@ -244,7 +244,7 @@ export default function ChangePasswordModal({ open, onClose, onSuccess }) {
             </button>
           </div>
           {fieldErrors.currentPassword && (
-            <div style={{ fontSize: 12, color: 'var(--neg)', marginTop: 4 }}>
+            <div className="u-color-neg-fs-12-mt-4">
               {fieldErrors.currentPassword}
             </div>
           )}
@@ -284,7 +284,7 @@ export default function ChangePasswordModal({ open, onClose, onSuccess }) {
             </button>
           </div>
           {fieldErrors.newPassword ? (
-            <div style={{ fontSize: 12, color: 'var(--neg)', marginTop: 4 }}>
+            <div className="u-color-neg-fs-12-mt-4">
               {fieldErrors.newPassword}
             </div>
           ) : (
@@ -313,7 +313,7 @@ export default function ChangePasswordModal({ open, onClose, onSuccess }) {
             className="u-w-100"
           />
           {fieldErrors.confirmPassword && (
-            <div style={{ fontSize: 12, color: 'var(--neg)', marginTop: 4 }}>
+            <div className="u-color-neg-fs-12-mt-4">
               {fieldErrors.confirmPassword}
             </div>
           )}
@@ -346,7 +346,7 @@ export default function ChangePasswordModal({ open, onClose, onSuccess }) {
               }}
             />
             {fieldErrors.twofaCode ? (
-              <div style={{ fontSize: 12, color: 'var(--neg)', marginTop: 4 }}>
+              <div className="u-color-neg-fs-12-mt-4">
                 {fieldErrors.twofaCode}
               </div>
             ) : (

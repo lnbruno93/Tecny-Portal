@@ -555,7 +555,7 @@ export default function Resumen() {
           <hr className="h-rule" />
           <div className="flex-between">
             <span className="muted tiny">MRR total</span>
-            <span className="mono" style={{ fontWeight: 700, fontSize: 18 }}>
+            <span className="mono u-fs-18-fw-700">
               {fmtMoney(totalMrr)}
               <span className="muted" style={{ fontSize: 12, fontWeight: 500 }}>/mes</span>
             </span>

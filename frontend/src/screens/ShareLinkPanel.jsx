@@ -292,15 +292,15 @@ export default function ShareLinkPanel() {
               marginBottom: 14,
             }}
           >
-            <div style={{ textAlign: 'center' }}>
+            <div className="u-text-center">
               <div style={{ fontSize: 20, fontWeight: 700 }}>{stats.vistas_ult_mes ?? 0}</div>
               <div className="muted tiny">Vistas último mes</div>
             </div>
-            <div style={{ textAlign: 'center' }}>
+            <div className="u-text-center">
               <div style={{ fontSize: 20, fontWeight: 700 }}>{stats.unicos_hoy ?? 0}</div>
               <div className="muted tiny">Únicos hoy</div>
             </div>
-            <div style={{ textAlign: 'center' }}>
+            <div className="u-text-center">
               <div style={{ fontSize: 14, fontWeight: 600, paddingTop: 6 }}>
                 {fmtUltimoAcceso(stats.ultimo_acceso)}
               </div>

@@ -1198,3 +1198,18 @@ a { color: inherit; text-decoration: none; }
 .u-color-accent-fw-700  { color: var(--accent); font-weight: 700; }
 .u-flex-center-gap-8    { align-items: center; display: flex; gap: 8px; }
 .u-flex-gap-8           { display: flex; gap: 8px; }
+
+/* Sprint 5 (2026-07-21) — sync con frontend */
+
+.u-gap-4        { gap: 4px; }
+.u-color-warn   { color: var(--warn); }
+.u-w-40px       { width: 40px; }
+.u-w-120px      { width: 120px; }
+.u-text-center  { text-align: center; }
+.u-fw-600-mb-6              { font-weight: 600; margin-bottom: 6px; }
+.u-color-neg-text-right     { color: var(--neg); text-align: right; }
+.u-text-right-nowrap        { text-align: right; white-space: nowrap; }
+.u-lh-15-mb-14              { line-height: 1.5; margin-bottom: 14px; }
+.u-fs-18-fw-700             { font-size: 18px; font-weight: 700; }
+.u-color-neg-fs-12-mt-4     { color: var(--neg); font-size: 12px; margin-top: 4px; }
+.u-flex-end-gap-8           { display: flex; gap: 8px; justify-content: flex-end; }

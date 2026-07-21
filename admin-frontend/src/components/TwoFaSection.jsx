@@ -238,7 +238,7 @@ export default function TwoFaSection({ onMessage }) {
                 <br />
                 {status.recovery_codes_remaining} de 8 recovery codes disponibles.
                 {lowRecovery && (
-                  <span style={{ color: 'var(--warn)' }}>{' '}Te quedan pocos. Considerá regenerarlos.</span>
+                  <span className="u-color-warn">{' '}Te quedan pocos. Considerá regenerarlos.</span>
                 )}
               </div>
             </div>

@@ -802,7 +802,7 @@ function EditorPermisos({ usuario, pantallas, onClose, onSaved }) {
               background: 'var(--surface-2)', borderRadius: 6,
               borderLeft: '3px solid var(--accent)', fontSize: 12.5,
             }}>
-              <div style={{ fontWeight: 600, marginBottom: 6 }}>
+              <div className="u-fw-600-mb-6">
                 {overrides.length} ajuste{overrides.length > 1 ? 's' : ''} sobre el rol base:
               </div>
               <ul style={{ margin: 0, paddingLeft: 20, lineHeight: 1.7 }}>

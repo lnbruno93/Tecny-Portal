@@ -1552,7 +1552,7 @@ export default function Financiera() {
               <h3>{viewFile === 'loading' ? 'Cargando…' : (viewFile.nombre || 'Comprobante')}</h3>
               <button className="icon-btn" onClick={() => setViewFile(null)}><Icons.X size={16} /></button>
             </div>
-            <div className="modal-body" style={{ textAlign: 'center' }}>
+            <div className="modal-body u-text-center">
               {viewFile === 'loading' ? (
                 <div className="empty">Cargando archivo…</div>
               ) : viewFile.tipo === 'application/pdf' ? (
@@ -1585,7 +1585,7 @@ export default function Financiera() {
             <form onSubmit={handleManualSave}>
               <div className="modal-body">
                 <fieldset disabled={savingManual} style={{ border: 0, padding: 0, margin: 0 }}>
-                <div className="muted tiny" style={{ marginBottom: 14, lineHeight: 1.5 }}>
+                <div className="muted tiny u-lh-15-mb-14">
                   Para ventas anteriores al sistema cobradas con la caja Financiera.
                   NO crea una venta — solo agrega el comprobante al resumen
                   (bruto, retención, neto). Cargá el % efectivo que la financiera

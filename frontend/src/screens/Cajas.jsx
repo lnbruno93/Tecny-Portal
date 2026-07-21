@@ -726,7 +726,7 @@ export default function Cajas() {
                         <th className="num">Monto ARS</th>
                         <th className="num">Monto USD</th>
                         <th>Concepto</th>
-                        <th style={{ width: 40 }}></th>
+                        <th className="u-w-40px"></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -742,7 +742,7 @@ export default function Cajas() {
                         <th className="num">Monto ARS</th>
                         <th className="num">Monto USD</th>
                         <th>Concepto</th>
-                        <th style={{ width: 40 }}></th>
+                        <th className="u-w-40px"></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -825,7 +825,7 @@ export default function Cajas() {
                     <th>Tasa</th>
                     <th className="num">Total USD</th>
                     <th className="num u-w-90px">Movs</th>
-                    <th style={{ width: 40 }}></th>
+                    <th className="u-w-40px"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -944,7 +944,7 @@ export default function Cajas() {
                 <span className="u-fs-12">Es tarjeta</span>
               </label>
               {cajaForm.es_tarjeta && (
-                <div className="field" style={{ width: 120 }}>
+                <div className="field u-w-120px">
                   <label className="field-label">% comisión</label>
                   <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" max="100" step="0.1" className="input mono" placeholder="23.5"
                          value={cajaForm.comision_pct} onChange={e => setCajaForm(f => ({ ...f, comision_pct: e.target.value }))} />
@@ -1058,7 +1058,7 @@ export default function Cajas() {
               {/* Ajuste manual */}
               <form onSubmit={handleCreateAjuste} className="card card-tight u-mb-14">
                 <div className="row" style={{ gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                  <div className="field" style={{ width: 120 }}><label className="field-label">Tipo</label>
+                  <div className="field u-w-120px"><label className="field-label">Tipo</label>
                     <select className="input" value={ajusteForm.tipo} onChange={e => setAjusteForm(f => ({ ...f, tipo: e.target.value }))}>
                       <option value="ingreso">Ingreso (+)</option>
                       <option value="egreso">Egreso (−)</option>

@@ -890,7 +890,7 @@ export default function Envios() {
         </div>
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">Pendientes</div>
-          <div className="kpi-value mono" style={{ color: 'var(--warn)' }}>{kpiPendientes}</div>
+          <div className="kpi-value mono u-color-warn">{kpiPendientes}</div>
           <div className="muted tiny u-mt-6">por despachar</div>
         </div>
         <div className="card card-tight u-flex-1">
@@ -1030,7 +1030,7 @@ export default function Envios() {
                 if (hasFilters) {
                   return (
                     <div className="empty" style={{ padding: '24px 16px' }}>
-                      <div style={{ fontWeight: 600, marginBottom: 6 }}>Sin resultados</div>
+                      <div className="u-fw-600-mb-6">Sin resultados</div>
                       <div className="muted tiny u-mb-14">
                         No hay envíos que coincidan con los filtros aplicados.
                       </div>
@@ -1045,7 +1045,7 @@ export default function Envios() {
                 }
                 return (
                   <div className="empty" style={{ padding: '28px 16px' }}>
-                    <div style={{ fontWeight: 600, marginBottom: 6 }}>Todavía no cargaste envíos</div>
+                    <div className="u-fw-600-mb-6">Todavía no cargaste envíos</div>
                     <div className="muted tiny u-mb-14">
                       Los envíos a domicilio se cargan acá. Cada uno puede luego acreditarse como venta.
                     </div>

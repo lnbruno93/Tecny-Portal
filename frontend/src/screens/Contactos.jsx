@@ -416,7 +416,7 @@ export default function Contactos() {
                     <td className="mono tiny">{c.dni || '—'}</td>
                     <td className="tiny">{c.email || '—'}</td>
                     <td><span className={origenMeta(c.origen).cls}>{origenMeta(c.origen).label}</span></td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <td className="u-text-right-nowrap">
                       <button className="icon-btn" title="Editar" onClick={() => openEdit(c)}><Icons.Edit size={14} /></button>
                       <button className="icon-btn u-color-neg" title="Eliminar" onClick={() => handleDelete(c)}><Icons.Trash size={14} /></button>
                     </td>
