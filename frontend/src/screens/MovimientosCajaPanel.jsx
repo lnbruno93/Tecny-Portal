@@ -316,8 +316,7 @@ export default function MovimientosCajaPanel() {
           onClick={e => e.target === e.currentTarget && cerrarModal()}
         >
           <div
-            className="modal"
-            style={{ maxWidth: 520 }}
+            className="modal u-mw-520"
             role="dialog"
             aria-modal="true"
             aria-labelledby="mov-caja-modal-title"
@@ -382,7 +381,7 @@ export default function MovimientosCajaPanel() {
                 </div>
                 <div className="field">
                   <label className="field-label">
-                    Costo <span className="muted" style={{ fontSize: 11 }}>(opcional)</span>
+                    Costo <span className="muted u-fs-11">(opcional)</span>
                   </label>
                   <input
                     type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
@@ -434,14 +433,14 @@ export default function MovimientosCajaPanel() {
                       />
                     </div>
                   </div>
-                  <div className="muted" style={{ fontSize: 11 }}>
+                  <div className="muted u-fs-11">
                     El monto destino se calcula del TC. Si el banco redondea (ej. tocan USD 1499.98), tipealo a mano acá.
                   </div>
                 </div>
               )}
 
               <div className="field">
-                <label className="field-label">Descripción <span className="muted" style={{ fontSize: 11 }}>(opcional)</span></label>
+                <label className="field-label">Descripción <span className="muted u-fs-11">(opcional)</span></label>
                 <input
                   className="input"
                   placeholder="Ej. Retiro banco → efectivo del día"

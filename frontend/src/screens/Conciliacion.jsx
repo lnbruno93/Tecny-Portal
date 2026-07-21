@@ -102,7 +102,7 @@ function Lista({ loading, items, onNueva, onAbrir }) {
            </thead>
            <tbody>
              {items.map(c => (
-               <tr key={c.id} style={{ cursor: 'pointer' }} onClick={() => onAbrir(c.id)}>
+               <tr key={c.id} className="u-cursor-pointer" onClick={() => onAbrir(c.id)}>
                  <td>{c.caja_nombre} <span className="muted tiny">({c.caja_moneda})</span></td>
                  <td className="mono tiny">{fmtFecha(c.fecha_desde)} → {fmtFecha(c.fecha_hasta)}</td>
                  <td className="mono u-text-right">{c.lineas_total}</td>
@@ -292,7 +292,7 @@ function Wizard({ cajas, onCancel, onCreated }) {
               </select>
             </div>
           </div>
-          <div style={{ overflowX: 'auto' }}>
+          <div className="u-overflow-x-auto">
             <table className="tbl">
               <thead><tr>{headers.map((h, i) => <th key={i}>{h || `Col ${i + 1}`}</th>)}</tr></thead>
               <tbody>
@@ -445,7 +445,7 @@ function Detalle({ id, onVolver }) {
 
       <div className="card card-flush">
         <div className="card-hd"><h3>Líneas del extracto · Matchear con tus movimientos</h3></div>
-        <div style={{ overflowX: 'auto' }}>
+        <div className="u-overflow-x-auto">
           <table className="tbl">
             <thead>
               <tr>

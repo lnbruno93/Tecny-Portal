@@ -167,7 +167,7 @@ export default function ChangePaisTenantModal({ tenant, open, onClose, onSaved }
                 <span>
                   <strong>{p.flag}</strong> {p.label}
                   {esActual && (
-                    <span className="muted tiny" style={{ marginLeft: 6 }}>
+                    <span className="muted tiny u-ml-6">
                       (actual)
                     </span>
                   )}

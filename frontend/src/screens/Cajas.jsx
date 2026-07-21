@@ -863,10 +863,10 @@ export default function Cajas() {
                             {tasaResumen
                               ? tasaResumen === 'varias'
                                 ? <span className="muted tiny" style={{ fontStyle: 'italic' }}>varias</span>
-                                : <span className="badge badge-info" style={{ fontSize: 11 }}>{tasaResumen}</span>
+                                : <span className="badge badge-info u-fs-11">{tasaResumen}</span>
                               : <span className="dim">—</span>}
                           </td>
-                          <td className="num mono" style={{ fontWeight: 700 }}>u$s {fmt(g.totalUsd)}</td>
+                          <td className="num mono u-fw-700">u$s {fmt(g.totalUsd)}</td>
                           <td className="num muted tiny">{g.items.length}</td>
                           <td>
                             {/* Si hay 1 sola inversión, mostramos delete acá
@@ -893,10 +893,10 @@ export default function Cajas() {
                             </td>
                             <td>
                               {m.tasa
-                                ? <span className="badge badge-info" style={{ fontSize: 11 }}>{m.tasa}</span>
+                                ? <span className="badge badge-info u-fs-11">{m.tasa}</span>
                                 : <span className="dim">—</span>}
                             </td>
-                            <td className="num mono" style={{ fontWeight: 500 }}>u$s {fmt(m.monto)}</td>
+                            <td className="num mono u-fw-500">u$s {fmt(m.monto)}</td>
                             <td></td>
                             <td>
                               <button className="icon-btn" onClick={() => handleDeleteInversion(m.id)}>
@@ -926,7 +926,7 @@ export default function Cajas() {
                 <input className="input" placeholder="ej. USD Efectivo, Banco Galicia, Mercado Pago"
                        value={cajaForm.nombre} onChange={e => setCajaForm(f => ({ ...f, nombre: e.target.value }))} />
               </div>
-              <div className="field" style={{ width: 110 }}>
+              <div className="field u-w-110px">
                 <label className="field-label">Moneda</label>
                 {/* 2026-06-29 Multi-país F3: monedas según país (UY ve UYU). */}
                 <select className="input" value={cajaForm.moneda} onChange={e => setCajaForm(f => ({ ...f, moneda: e.target.value }))}>
@@ -1001,7 +1001,7 @@ export default function Cajas() {
                                onBlur={e => handleSaldoInicial(c, e.target.value)}
                                title="Saldo de apertura — editá y salí del campo para guardar" />
                       </td>
-                      <td className="num mono" style={{ fontWeight: 700 }}>
+                      <td className="num mono u-fw-700">
                         {Number(c.saldo_actual || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })}
                       </td>
                       <td>
@@ -1063,9 +1063,9 @@ export default function Cajas() {
                       <option value="ingreso">Ingreso (+)</option>
                       <option value="egreso">Egreso (−)</option>
                     </select></div>
-                  <div className="field" style={{ width: 130 }}><label className="field-label">Fecha</label>
+                  <div className="field u-w-130px"><label className="field-label">Fecha</label>
                     <input type="date" className="input" value={ajusteForm.fecha} onChange={e => setAjusteForm(f => ({ ...f, fecha: e.target.value }))} /></div>
-                  <div className="field" style={{ width: 110 }}><label className="field-label">Monto</label>
+                  <div className="field u-w-110px"><label className="field-label">Monto</label>
                     <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} step="0.01" className="input" value={ajusteForm.monto} onChange={e => setAjusteForm(f => ({ ...f, monto: e.target.value }))} /></div>
                   {cajaSel.moneda === 'ARS' && (
                     <div className="field" style={{ width: 90 }}><label className="field-label">TC</label>
@@ -1147,7 +1147,7 @@ export default function Cajas() {
                       <option value="ipro team">Tecny Team</option>
                     </select>
                   </div>
-                  {cError && <div style={{ color: 'var(--neg)', fontSize: 13 }}>{cError}</div>}
+                  {cError && <div className="u-color-neg-fs-13">{cError}</div>}
                 </div>
               </div>
               <div className="modal-ft">
@@ -1217,7 +1217,7 @@ export default function Cajas() {
                       value={deudaForm.concepto}
                       onChange={e => setDeudaForm(f => ({ ...f, concepto: e.target.value }))} />
                   </div>
-                  {deudaError && <div style={{ color: 'var(--neg)', fontSize: 13 }}>{deudaError}</div>}
+                  {deudaError && <div className="u-color-neg-fs-13">{deudaError}</div>}
                 </div>
               </div>
               <div className="modal-ft">
@@ -1267,7 +1267,7 @@ export default function Cajas() {
                       value={invForm.tasa}
                       onChange={e => setInvForm(f => ({ ...f, tasa: e.target.value }))} />
                   </div>
-                  {invError && <div style={{ color: 'var(--neg)', fontSize: 13 }}>{invError}</div>}
+                  {invError && <div className="u-color-neg-fs-13">{invError}</div>}
                 </div>
               </div>
               <div className="modal-ft">

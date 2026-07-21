@@ -378,7 +378,7 @@ export default function Usuarios() {
                 <th>Rol</th>
                 <th>Permisos efectivos</th>
                 <th>Overrides</th>
-                <th style={{ width: 100 }}></th>
+                <th className="u-w-100px"></th>
               </tr>
             </thead>
             <tbody>
@@ -391,7 +391,7 @@ export default function Usuarios() {
                 return (
                   <tr key={u.id}>
                     <td>
-                      <div className="flex-row" style={{ gap: 10 }}>
+                      <div className="flex-row u-gap-10">
                         <div style={{
                           width: 32, height: 32, borderRadius: '50%',
                           background: bypass ? 'var(--accent-soft)' : 'var(--surface-3)',
@@ -550,7 +550,7 @@ export default function Usuarios() {
                   </div>
 
                   {createError && (
-                    <div style={{ color: 'var(--neg)', fontSize: 13 }}>{createError}</div>
+                    <div className="u-color-neg-fs-13">{createError}</div>
                   )}
                 </div>
               </div>

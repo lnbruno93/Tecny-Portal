@@ -460,15 +460,15 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
               <colgroup>
                 <col style={{ width: 32 }} />   {/* # */}
                 <col style={{ width: 320 }} />  {/* Producto (picker) */}
-                <col style={{ width: 130 }} />  {/* IMEI */}
+                <col className="u-w-130px" />  {/* IMEI */}
                 <col style={{ width: 60 }} />   {/* GB */}
                 <col style={{ width: 90 }} />   {/* Color */}
                 <col style={{ width: 80 }} />   {/* Stock */}
-                <col style={{ width: 100 }} />  {/* Costo unit (2026-06-09) */}
+                <col className="u-w-100px" />  {/* Costo unit (2026-06-09) */}
                 <col style={{ width: 70 }} />   {/* Cant */}
-                <col style={{ width: 100 }} />  {/* Precio unit */}
+                <col className="u-w-100px" />  {/* Precio unit */}
                 <col style={{ width: 64 }} />   {/* M */}
-                <col style={{ width: 100 }} />  {/* Subtotal */}
+                <col className="u-w-100px" />  {/* Subtotal */}
                 <col style={{ width: 32 }} />   {/* X */}
               </colgroup>
               <thead>
@@ -501,7 +501,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
                     }}
                     title={dup ? 'IMEI duplicado en otra fila — eliminá una' : undefined}>
                       <td style={{ padding: '3px 6px', textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>{idx + 1}</td>
-                      <td style={{ padding: '3px 4px' }}>
+                      <td className="u-p-3-4">
                         <ProductoPicker
                           value={r.nombre}
                           locked={!!r.producto_id}
@@ -511,15 +511,15 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
                           cellInp={cellInp}
                         />
                       </td>
-                      <td style={{ padding: '3px 4px' }}>
+                      <td className="u-p-3-4">
                         <input style={{ ...cellInp, fontFamily: 'monospace', opacity: r.producto_id ? 0.7 : 1 }}
                           value={r.imei} readOnly={!!r.producto_id} placeholder="—" />
                       </td>
-                      <td style={{ padding: '3px 4px' }}>
+                      <td className="u-p-3-4">
                         <input style={{ ...cellInp, textAlign: 'right', opacity: r.producto_id ? 0.7 : 1 }}
                           value={r.gb} readOnly={!!r.producto_id} placeholder="—" />
                       </td>
-                      <td style={{ padding: '3px 4px' }}>
+                      <td className="u-p-3-4">
                         <input style={{ ...cellInp, opacity: r.producto_id ? 0.7 : 1 }}
                           value={r.color} readOnly={!!r.producto_id} placeholder="—" />
                       </td>
@@ -534,14 +534,14 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
                           ? `${r.costo_moneda || 'USD'} ${Number(r.costo).toLocaleString('es-AR', { maximumFractionDigits: 2 })}`
                           : '—'}
                       </td>
-                      <td style={{ padding: '3px 4px' }}>
+                      <td className="u-p-3-4">
                         <input type="number" onKeyDown={blockInvalidNumberKeys} min="1" style={{
                           ...cellInp, textAlign: 'right',
                           borderColor: exceeds ? 'var(--neg)' : 'var(--border)',
                         }} value={r.cantidad}
                           onChange={e => updCell(idx, 'cantidad', e.target.value)} />
                       </td>
-                      <td style={{ padding: '3px 4px' }}>
+                      <td className="u-p-3-4">
                         {/* Si precio < costo en la misma moneda, fondo rojo tenue para
                             avisar que vende a pérdida. Comparamos solo cuando ambos
                             están en la misma moneda (sin TC para no inventar conversión). */}
@@ -561,7 +561,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
                           );
                         })()}
                       </td>
-                      <td style={{ padding: '3px 4px' }}>
+                      <td className="u-p-3-4">
                         {/* 2026-06-29 Multi-país F3: USD + moneda local. */}
                         <select style={{ ...cellInp, cursor: 'pointer' }} value={r.precio_moneda}
                           onChange={e => updCell(idx, 'precio_moneda', e.target.value)}>
@@ -660,7 +660,7 @@ function ProductoPicker({ value, locked, onPick, onClear, onChange, cellInp }) {
         <>
           <div className="u-fw-600">
             {p.nombre}
-            <span className="muted tiny" style={{ marginLeft: 6 }}>
+            <span className="muted tiny u-ml-6">
               {p.gb && `${p.gb}GB`}{p.gb && p.color && ' · '}{p.color}
             </span>
           </div>

@@ -197,7 +197,7 @@ function ProductoCard({ producto, trail, onRestore }) {
         {trail.length === 0 ? (
           <div className="tiny muted">— Ninguno —</div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
+          <div className="u-overflow-x-auto">
             <table className="tbl u-w-100">
               <thead>
                 <tr>

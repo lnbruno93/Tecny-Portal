@@ -164,7 +164,7 @@ export default function PorCategoriaBreakdownModal({
                     <span className="cat-name">
                       {r.nombre}
                       {r.es_sin_categoria && !r.emoji && (
-                        <span className="muted tiny" style={{ marginLeft: 6 }}>sin categoría</span>
+                        <span className="muted tiny u-ml-6">sin categoría</span>
                       )}
                     </span>
                     {pct != null && (

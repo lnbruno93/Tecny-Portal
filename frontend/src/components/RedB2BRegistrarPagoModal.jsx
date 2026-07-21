@@ -132,7 +132,7 @@ export default function RedB2BRegistrarPagoModal({ operation, restanteUsd, onClo
       aria-labelledby="rb2b-pago-title"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="modal" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+      <div className="modal u-mw-520" onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd">
           <h3 id="rb2b-pago-title">
             Registrar pago · operación #{operation?.id}
@@ -282,7 +282,7 @@ export default function RedB2BRegistrarPagoModal({ operation, restanteUsd, onClo
               />
             </div>
 
-            <div className="field" style={{ marginBottom: 0 }}>
+            <div className="field u-mb-0">
               <label className="field-label" htmlFor="notas-pago">
                 Notas (opcional)
               </label>

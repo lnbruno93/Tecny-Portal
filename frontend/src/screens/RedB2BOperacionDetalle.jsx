@@ -225,7 +225,7 @@ export default function RedB2BOperacionDetalle() {
 
       <section className="card u-mb-16">
         <h2 style={{ padding: '12px 16px', margin: 0, fontSize: 16 }}>Items</h2>
-        <div style={{ overflowX: 'auto' }}>
+        <div className="u-overflow-x-auto">
           <table className="data-table">
             <thead>
               <tr>
@@ -317,7 +317,7 @@ export default function RedB2BOperacionDetalle() {
           </div>
         )}
         {pagosData?.pagos && pagosData.pagos.length > 0 ? (
-          <div style={{ overflowX: 'auto' }}>
+          <div className="u-overflow-x-auto">
             <table className="data-table">
               <thead>
                 <tr>

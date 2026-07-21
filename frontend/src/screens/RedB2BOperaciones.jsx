@@ -158,7 +158,7 @@ export default function RedB2BOperaciones() {
             </p>
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
+          <div className="u-overflow-x-auto">
             <table className="data-table">
               <thead>
                 <tr>

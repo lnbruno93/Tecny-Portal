@@ -260,7 +260,7 @@ export default function Proyectos() {
                   </thead>
                   <tbody>
                     {list.map(p => (
-                      <tr key={p.id} className="tbl-row-click" style={{ cursor: 'pointer' }}
+                      <tr key={p.id} className="tbl-row-click u-cursor-pointer"
                         onClick={() => { setSelectedId(p.id); setVista('detalle'); }}>
                         <td className="u-fw-600">{p.nombre}</td>
                         <td className="muted tiny" style={{ maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.objetivo || '—'}</td>
@@ -507,7 +507,7 @@ export default function Proyectos() {
                       })}
                     </div>
                   </div>
-                  {createError && <div style={{ color: 'var(--neg)', fontSize: 13 }}>{createError}</div>}
+                  {createError && <div className="u-color-neg-fs-13">{createError}</div>}
                 </div>
               </div>
               <div className="modal-ft">

@@ -376,7 +376,7 @@ function MergeModal({ source, onClose, onSubmit }) {
                     disabled={submitting}
                     style={{ marginRight: 10 }}
                   />
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="u-flex-1-minw-0">
                     <div className="u-fw-600">{p.nombre}</div>
                     <div className="muted tiny">
                       Stock actual: {p.cantidad ?? 0}

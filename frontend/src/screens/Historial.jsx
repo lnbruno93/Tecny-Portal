@@ -351,7 +351,7 @@ export default function Historial() {
         <div className="muted tiny">
           Página {page} de {totalPages} · {fmt(totalRows)} evento{totalRows !== 1 ? 's' : ''}
         </div>
-        <div className="flex-row" style={{ gap: 6 }}>
+        <div className="flex-row u-gap-6">
           <button
             className="btn btn-ghost btn-sm"
             disabled={page <= 1 || loading}

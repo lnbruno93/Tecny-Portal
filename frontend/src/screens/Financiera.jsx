@@ -857,15 +857,15 @@ export default function Financiera() {
                       <td className="muted">{c.vendedor_nombre || vendName(c.vendedor_id)}</td>
                       <td><Badge>{c.referencia || '—'}</Badge></td>
                       <td className="num mono">
-                        <span className="muted" style={{ fontWeight: 500 }}>ARS </span>
+                        <span className="muted u-fw-500">ARS </span>
                         {fmt(c.monto)}
                       </td>
                       <td className="num mono u-color-accent">
-                        <span className="muted" style={{ fontWeight: 500 }}>ARS </span>
+                        <span className="muted u-fw-500">ARS </span>
                         {fmt(c.monto_financiera)}
                       </td>
                       <td className="num mono pos u-fw-600">
-                        <span className="muted" style={{ fontWeight: 500 }}>ARS </span>
+                        <span className="muted u-fw-500">ARS </span>
                         {fmt(c.monto_neto)}
                       </td>
                       <td>
@@ -1270,7 +1270,7 @@ export default function Financiera() {
                     </td>
                     <td><Badge>{c.referencia || '—'}</Badge></td>
                     <td className="num mono">
-                      <span className="muted" style={{ fontWeight: 500 }}>ARS </span>
+                      <span className="muted u-fw-500">ARS </span>
                       {fmt(c.monto)}
                     </td>
                     <td className="num mono u-color-accent">
@@ -1338,7 +1338,7 @@ export default function Financiera() {
                 {/* Fila 1: fecha + referencia + toggle USD. La elección se
                     persiste en localStorage (default según última vez). */}
                 <div className="row" style={{ marginBottom: 12, alignItems: 'flex-end' }}>
-                  <div className="field" style={{ width: 150 }}>
+                  <div className="field u-w-150px">
                     <div className="field-label">Fecha</div>
                     <input type="date" className="input mono"
                       value={pagoForm.fecha}
@@ -1575,7 +1575,7 @@ export default function Financiera() {
       {showManual && (
         <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="manual-title"
              onClick={(e) => { if (e.target === e.currentTarget && !savingManual) setShowManual(false); }}>
-          <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+          <div className="modal u-mw-520" onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
               <h3 id="manual-title">{editingManualId ? 'Editar venta previa' : 'Cargar venta previa'}</h3>
               <button className="icon-btn" aria-label="Cerrar modal" onClick={() => setShowManual(false)} disabled={savingManual}>
@@ -1593,7 +1593,7 @@ export default function Financiera() {
                 </div>
                 <div className="stack u-gap-12">
                   <div className="row u-gap-8">
-                    <div className="field" style={{ width: 150 }}>
+                    <div className="field u-w-150px">
                       <label className="field-label">Fecha</label>
                       <input type="date" className="input" value={manualForm.fecha}
                              onChange={e => setManualForm(f => ({ ...f, fecha: e.target.value }))} />
@@ -1621,7 +1621,7 @@ export default function Financiera() {
                              value={manualForm.monto_bruto}
                              onChange={e => setManualForm(f => ({ ...f, monto_bruto: e.target.value }))} />
                     </div>
-                    <div className="field" style={{ width: 110 }}>
+                    <div className="field u-w-110px">
                       <label className="field-label">% retención</label>
                       <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" max="100" step="0.01"
                              className="input mono"
@@ -1638,7 +1638,7 @@ export default function Financiera() {
                       <div className="flex-between"><span className="muted">Retención ({manualPct}%):</span><span className="mono u-color-accent">− ARS {fmt(manualFinCalc)}</span></div>
                       <div className="flex-between" style={{ paddingTop: 4, borderTop: '1px solid var(--hairline)', marginTop: 4 }}>
                         <strong>Neto recibido:</strong>
-                        <span className="mono pos" style={{ fontWeight: 700 }}>ARS {fmt(manualNetoCalc)}</span>
+                        <span className="mono pos u-fw-700">ARS {fmt(manualNetoCalc)}</span>
                       </div>
                     </div>
                   )}
@@ -1648,7 +1648,7 @@ export default function Financiera() {
                            value={manualForm.referencia}
                            onChange={e => setManualForm(f => ({ ...f, referencia: e.target.value }))} />
                   </div>
-                  {manualError && <div style={{ color: 'var(--neg)', fontSize: 13 }}>{manualError}</div>}
+                  {manualError && <div className="u-color-neg-fs-13">{manualError}</div>}
                 </div>
                 </fieldset>
               </div>

@@ -101,7 +101,7 @@ export default function AutocompletePicker({
   }
 
   return (
-    <div ref={boxRef} style={{ position: 'relative' }}>
+    <div ref={boxRef} className="u-pos-rel">
       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
         <input
           style={{

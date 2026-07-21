@@ -1143,7 +1143,7 @@ function ClasesDuplicadasCard({ tenantId }) {
                   <th scope="col">Duplicada sugerida</th>
                   <th scope="col" className="num">Sim.</th>
                   <th scope="col">Confianza</th>
-                  <th scope="col" style={{ width: 100 }}>Acción</th>
+                  <th scope="col" className="u-w-100px">Acción</th>
                 </tr>
               </thead>
               <tbody>

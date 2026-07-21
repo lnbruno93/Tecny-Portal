@@ -80,7 +80,7 @@ function KpiCard({ label, valor, unidad = '', comparado, formatter = fmt, invert
     badge = hint ? <span className="muted tiny">{hint}</span> : null;
   } else if (d === null) {
     // Sin base de comparación: si el actual > 0, mostrar 'Nuevo'.
-    if (Number(valor) > 0) badge = <span className="badge badge-info" style={{ fontSize: 11 }}>Nuevo</span>;
+    if (Number(valor) > 0) badge = <span className="badge badge-info u-fs-11">Nuevo</span>;
   } else if (Math.abs(d) < 0.5) {
     badge = <span className="muted tiny">≈ igual</span>;
   } else {

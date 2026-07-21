@@ -298,7 +298,7 @@ export default function Config() {
                   <span className="addon" style={{ fontWeight: 700, color: 'var(--accent)' }}>%</span>
                 </div>
                 <span className="muted tiny">
-                  Guardado: <span className="mono" style={{ fontWeight: 700 }}>{pct.toFixed(1)}%</span>
+                  Guardado: <span className="mono u-fw-700">{pct.toFixed(1)}%</span>
                 </span>
               </div>
             </div>
@@ -358,7 +358,7 @@ export default function Config() {
               }}>
                 Simulación Financiera con ARS 1.000.000
               </div>
-              <div className="stack" style={{ gap: 6 }}>
+              <div className="stack u-gap-6">
                 <div className="flex-between">
                   <span className="muted tiny">Bruto</span>
                   <span className="mono u-fw-600">ARS 1.000.000</span>

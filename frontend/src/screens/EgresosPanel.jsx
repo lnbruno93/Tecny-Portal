@@ -218,7 +218,7 @@ export default function EgresosPanel() {
                       </select>
                     </div>
                     <div className="field u-flex-1"><label className="field-label">Monto</label>
-                      <div className="flex-row" style={{ gap: 6 }}>
+                      <div className="flex-row u-gap-6">
                         <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="0" value={form.monto} onChange={e => setForm(f => ({ ...f, monto: e.target.value }))} className="u-flex-1" />
                         <select className="input" style={{ width: 80 }} value={form.moneda} onChange={e => setForm(f => ({ ...f, moneda: e.target.value }))}>{Array.from(new Set([...monedas, form.moneda].filter(Boolean))).map(m => <option key={m} value={m}>{m}</option>)}</select>
                       </div>
@@ -240,7 +240,7 @@ export default function EgresosPanel() {
                     </div>
                   </div>
                   <div className="field"><label className="field-label">Notas</label><input className="input" value={form.notas} onChange={e => setForm(f => ({ ...f, notas: e.target.value }))} /></div>
-                  {formError && <div style={{ color: 'var(--neg)', fontSize: 13 }}>{formError}</div>}
+                  {formError && <div className="u-color-neg-fs-13">{formError}</div>}
                 </div>
               </div>
               <div className="modal-ft"><button type="button" className="btn btn-ghost" onClick={() => setShowForm(false)}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Guardando…' : (editId ? 'Guardar' : 'Crear egreso')}</button></div>

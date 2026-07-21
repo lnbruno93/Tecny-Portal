@@ -285,7 +285,7 @@ export default function Contactos() {
         <span className="muted tiny" style={{ marginLeft: 'auto' }}>{total} contacto{total === 1 ? '' : 's'}</span>
         {/* 2026-07-04 (#508): dropdown Exportar mails con 3 acciones.
             Menú se cierra por click-outside (registrado condicionalmente en useEffect). */}
-        <div ref={exportMenuRef} style={{ position: 'relative' }}>
+        <div ref={exportMenuRef} className="u-pos-rel">
           <button
             type="button"
             className="btn btn-sm"
@@ -430,7 +430,7 @@ export default function Contactos() {
       {/* ── Modal: alta / edición ── */}
       {showForm && (
         <div ref={formModalRef} className="modal-overlay" onClick={() => setShowForm(false)}>
-          <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+          <div className="modal u-mw-520" onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
               <h3>{editId ? 'Editar contacto' : 'Nuevo contacto'}</h3>
               <button className="icon-btn" onClick={() => setShowForm(false)}><Icons.X size={16} /></button>
@@ -478,7 +478,7 @@ export default function Contactos() {
                       </select>
                     </div>
                   </div>
-                  {formError && <div style={{ color: 'var(--neg)', fontSize: 13 }}>{formError}</div>}
+                  {formError && <div className="u-color-neg-fs-13">{formError}</div>}
                 </div>
               </div>
               <div className="modal-ft">

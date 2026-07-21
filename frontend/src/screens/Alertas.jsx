@@ -124,7 +124,7 @@ function GrupoAlerta({ grupo }) {
   const color = COLOR_SEVERIDAD[grupo.severidad] || 'var(--accent)';
   return (
     <div className="card card-tight" style={{ marginBottom: 12, borderLeft: `4px solid ${color}` }}>
-      <div className="flex-between" style={{ cursor: 'pointer' }} onClick={() => setExpanded(e => !e)}>
+      <div className="flex-between u-cursor-pointer" onClick={() => setExpanded(e => !e)}>
         <div>
           <span style={{ fontSize: 16, fontWeight: 600 }}>{grupo.titulo}</span>
           <span className="badge" style={{ marginLeft: 8, background: color, color: '#fff' }}>{grupo.count}</span>

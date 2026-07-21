@@ -720,7 +720,7 @@ export default function Tarjetas() {
               </thead>
               <tbody>
                 {list.map(t => (
-                  <tr key={t.id} style={{ cursor: 'pointer' }} onClick={() => { setSelectedId(t.id); setVista('detalle'); }}>
+                  <tr key={t.id} className="u-cursor-pointer" onClick={() => { setSelectedId(t.id); setVista('detalle'); }}>
                     <td className="u-fw-600">{t.nombre}</td>
                     <td className="mono tiny u-text-right">{Number(t.comision_pct || 0)}%</td>
                     <td className="mono u-text-right">$ {fmt(t.bruto_total)}</td>
@@ -884,23 +884,23 @@ export default function Tarjetas() {
                   con validación en vivo de "suma === total". */}
               <div className="card">
                 <div className="card-hd"><div className="u-fs-14-fw-600">Registrar liquidación múltiple</div></div>
-                <form onSubmit={handleLiquidarMultiple} className="stack" style={{ gap: 10 }}>
+                <form onSubmit={handleLiquidarMultiple} className="stack u-gap-10">
                   {/* Fila 1: fecha del depósito + período cubierto (opcional,
                       lo que la planilla de la financiera dice tipo "26-27/5"). */}
                   <div className="flex-row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                    <div className="field" style={{ width: 150 }}>
+                    <div className="field u-w-150px">
                       <label className="field-label tiny">Fecha depósito</label>
                       <input type="date" className="input"
                              value={multiLiq.fecha}
                              onChange={e => setMultiLiq(f => ({ ...f, fecha: e.target.value }))} />
                     </div>
-                    <div className="field" style={{ width: 150 }}>
+                    <div className="field u-w-150px">
                       <label className="field-label tiny">Período desde (opc.)</label>
                       <input type="date" className="input"
                              value={multiLiq.periodo_desde}
                              onChange={e => setMultiLiq(f => ({ ...f, periodo_desde: e.target.value }))} />
                     </div>
-                    <div className="field" style={{ width: 150 }}>
+                    <div className="field u-w-150px">
                       <label className="field-label tiny">Período hasta (opc.)</label>
                       <input type="date" className="input"
                              value={multiLiq.periodo_hasta}
@@ -1036,10 +1036,10 @@ export default function Tarjetas() {
                       <div className="muted tiny" style={{ fontWeight: 600, marginTop: 4 }}>
                         Reparto por modalidad (suma debe ser igual al total):
                       </div>
-                      <div className="stack" style={{ gap: 6 }}>
+                      <div className="stack u-gap-6">
                         {list.filter(t => Number(t.saldo) > 0).map(t => (
                           <div key={t.id} className="flex-row" style={{ gap: 8, alignItems: 'center' }}>
-                            <div style={{ flex: 1, minWidth: 0 }}>
+                            <div className="u-flex-1-minw-0">
                               <div className="u-fs-13-fw-600">{t.nombre}</div>
                               <div className="muted tiny mono">Saldo pendiente: {sym(t.moneda)} {fmt(t.saldo)}</div>
                             </div>
@@ -1163,8 +1163,8 @@ export default function Tarjetas() {
               <div className="card">
                 <div className="card-hd"><div className="u-fs-14-fw-600">Registrar liquidación (te pagaron)</div></div>
                 <form onSubmit={handleLiquidar} className="flex-row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                  <div className="field" style={{ width: 150 }}><label className="field-label tiny">Fecha</label><input type="date" className="input" value={liq.fecha} onChange={e => setLiq(f => ({ ...f, fecha: e.target.value }))} /></div>
-                  <div className="field" style={{ width: 150 }}><label className="field-label tiny">Monto recibido</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="0" value={liq.monto} onChange={e => setLiq(f => ({ ...f, monto: e.target.value }))} /></div>
+                  <div className="field u-w-150px"><label className="field-label tiny">Fecha</label><input type="date" className="input" value={liq.fecha} onChange={e => setLiq(f => ({ ...f, fecha: e.target.value }))} /></div>
+                  <div className="field u-w-150px"><label className="field-label tiny">Monto recibido</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="0" value={liq.monto} onChange={e => setLiq(f => ({ ...f, monto: e.target.value }))} /></div>
                   <div className="field" style={{ flex: 1, minWidth: 160 }}><label className="field-label tiny">Entra a la caja</label>
                     <select className="input" value={liq.caja_id} onChange={e => setLiq(f => ({ ...f, caja_id: e.target.value }))}>
                       <option value="">Elegí la caja…</option>
@@ -1269,7 +1269,7 @@ export default function Tarjetas() {
                              value={cobroPrev.monto_bruto}
                              onChange={e => setCobroPrev(f => ({ ...f, monto_bruto: e.target.value }))} />
                     </div>
-                    <div className="field" style={{ width: 100 }}>
+                    <div className="field u-w-100px">
                       <label className="field-label">% comisión</label>
                       <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" max="100" step="0.01"
                              className="input mono" placeholder="0"
@@ -1297,7 +1297,7 @@ export default function Tarjetas() {
                            value={cobroPrev.comentarios}
                            onChange={e => setCobroPrev(f => ({ ...f, comentarios: e.target.value }))} />
                   </div>
-                  {cobroPrevError && <div style={{ color: 'var(--neg)', fontSize: 13 }}>{cobroPrevError}</div>}
+                  {cobroPrevError && <div className="u-color-neg-fs-13">{cobroPrevError}</div>}
                 </div>
                 </fieldset>
               </div>
@@ -1352,7 +1352,7 @@ export default function Tarjetas() {
                                  className="input mono" value={editForm.monto_bruto || ''}
                                  onChange={e => setEditForm(f => ({ ...f, monto_bruto: e.target.value }))} />
                         </div>
-                        <div className="field" style={{ width: 100 }}>
+                        <div className="field u-w-100px">
                           <label className="field-label">% comisión</label>
                           <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" max="100" step="0.01"
                                  className="input mono" value={editForm.pct || ''}
@@ -1375,12 +1375,12 @@ export default function Tarjetas() {
                     </>
                   ) : (
                     <div className="row u-gap-8">
-                      <div className="field" style={{ width: 150 }}>
+                      <div className="field u-w-150px">
                         <label className="field-label">Fecha</label>
                         <input type="date" className="input" value={editForm.fecha || ''}
                                onChange={e => setEditForm(f => ({ ...f, fecha: e.target.value }))} />
                       </div>
-                      <div className="field" style={{ width: 150 }}>
+                      <div className="field u-w-150px">
                         <label className="field-label">Monto recibido <span className="u-color-neg">*</span></label>
                         <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
                                className="input mono" value={editForm.monto || ''}
@@ -1404,7 +1404,7 @@ export default function Tarjetas() {
                     <input className="input" value={editForm.comentarios || ''}
                            onChange={e => setEditForm(f => ({ ...f, comentarios: e.target.value }))} />
                   </div>
-                  {editError && <div style={{ color: 'var(--neg)', fontSize: 13 }}>{editError}</div>}
+                  {editError && <div className="u-color-neg-fs-13">{editError}</div>}
                 </div>
                 </fieldset>
               </div>

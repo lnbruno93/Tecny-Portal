@@ -1400,11 +1400,11 @@ export default function Ventas() {
           {/* Auditoría 2026-06-30 F-07: setParams batch — periodo + desde se
               actualizan en un solo render para que el segundo setParam no use
               un searchParams stale del primero (pierde el cambio del primero). */}
-          <input type="date" className="input" style={{ width: 150 }} value={desde} onChange={e => setParams([
+          <input type="date" className="input u-w-150px" value={desde} onChange={e => setParams([
             { key: 'periodo', value: 'custom', def: 'hoy' },
             { key: 'desde', value: e.target.value, def: _today },
           ])} />
-          <input type="date" className="input" style={{ width: 150 }} value={hasta} onChange={e => setParams([
+          <input type="date" className="input u-w-150px" value={hasta} onChange={e => setParams([
             { key: 'periodo', value: 'custom', def: 'hoy' },
             { key: 'hasta', value: e.target.value, def: _today },
           ])} />
@@ -1510,7 +1510,7 @@ export default function Ventas() {
                   {/* Productos */}
                   <div>
                     <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Productos</div>
-                    <div style={{ position: 'relative' }}>
+                    <div className="u-pos-rel">
                       <input className="input" placeholder="Buscar producto del inventario (nombre, IMEI, color…)" value={prodSearch} onChange={e => searchProducto(e.target.value)} />
                       {prodResults.length > 0 && (
                         <div className="card" style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 60, maxHeight: 220, overflowY: 'auto', marginTop: 2, padding: 4 }}>
@@ -1688,14 +1688,14 @@ export default function Ventas() {
                           <div className="muted tiny u-mb-12">
                             Solo el nombre es obligatorio. El resto es opcional pero ayuda al seguimiento post-venta.
                           </div>
-                          <div className="stack" style={{ gap: 10 }}>
+                          <div className="stack u-gap-10">
                             <div className="field">
                               <label className="field-label" htmlFor="qc-nombre">Nombre completo <span className="u-color-neg">*</span></label>
                               <input id="qc-nombre" className="input" autoFocus
                                 value={quickClient.nombre}
                                 onChange={e => setQuickClient(q => ({ ...q, nombre: e.target.value }))} />
                             </div>
-                            <div className="row" style={{ gap: 10 }}>
+                            <div className="row u-gap-10">
                               <div className="field u-flex-1">
                                 <label className="field-label" htmlFor="qc-dni">DNI</label>
                                 <input id="qc-dni" className="input" inputMode="numeric" pattern="[0-9]*" placeholder="Ej: 12345678"
@@ -1709,7 +1709,7 @@ export default function Ventas() {
                                   onChange={e => setQuickClient(q => ({ ...q, telefono: e.target.value }))} />
                               </div>
                             </div>
-                            <div className="row" style={{ gap: 10 }}>
+                            <div className="row u-gap-10">
                               <div className="field u-flex-1">
                                 <label className="field-label" htmlFor="qc-email">Correo electrónico</label>
                                 <input id="qc-email" className="input" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" autoCorrect="off" placeholder="email@ejemplo.com"
@@ -1724,7 +1724,7 @@ export default function Ventas() {
                               </div>
                             </div>
                             {quickClientError && (
-                              <div style={{ color: 'var(--neg)', fontSize: 13 }} role="alert">{quickClientError}</div>
+                              <div className="u-color-neg-fs-13" role="alert">{quickClientError}</div>
                             )}
                             <div className="flex-row" style={{ gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
                               <button type="button" className="btn btn-ghost btn-sm" onClick={cerrarQuickClient} disabled={quickClientSaving}>Cancelar</button>
@@ -1782,7 +1782,7 @@ export default function Ventas() {
                         Sin equipos en canje. Si el cliente entrega uno como parte de pago, agregalo acá.
                       </div>
                     )}
-                    <div className="stack" style={{ gap: 10 }}>
+                    <div className="stack u-gap-10">
                       {/* Auditoría 2026-06-30 F-13/14: key={_id} en canjes. */}
                       {(vForm.canjes || []).map((c, i) => (
                         <div key={c._id} style={{
@@ -1912,7 +1912,7 @@ export default function Ventas() {
                   {/* Pagos */}
                   <div>
                     <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Pagos</div>
-                    <div className="stack" style={{ gap: 6 }}>
+                    <div className="stack u-gap-6">
                       {pagos.map((p, i) => {
                         // Tema C rev5 (2026-06-14): el operador tipea USD (su mental
                         // model), el sistema arma el bruto ARS según el método. CC
@@ -1984,7 +1984,7 @@ export default function Ventas() {
                                 {metodos.map(mm => <option key={mm.id} value={mm.nombre}>{mm.nombre}</option>)}
                                 <option value="__CC__">Cuenta corriente (deuda)</option>
                               </select>
-                              <div style={{ position: 'relative' }}>
+                              <div className="u-pos-rel">
                                 <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: 11, pointerEvents: 'none' }}>
                                   {/* 2026-06-29 Multi-país F3: símbolo local del input ARS-direct
                                       ahora distingue $ (ARS) vs $U (UYU). */}
@@ -2011,7 +2011,7 @@ export default function Ventas() {
                                 )}
                               </div>
                               {showTc && (
-                                <div style={{ position: 'relative' }}>
+                                <div className="u-pos-rel">
                                   <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: 11, pointerEvents: 'none' }}>TC</span>
                                   <input
                                     type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
@@ -2188,7 +2188,7 @@ export default function Ventas() {
 
                   {/* Totales */}
                   <div className="card card-tight" style={{ padding: '10px 14px' }}>
-                    <div className="flex-between u-fs-13"><span className="muted">Total venta</span><span className="mono" style={{ fontWeight: 700 }}>u$s{fmt(totales.items)}</span></div>
+                    <div className="flex-between u-fs-13"><span className="muted">Total venta</span><span className="mono u-fw-700">u$s{fmt(totales.items)}</span></div>
                     <div className="flex-between u-fs-13">
                       <span
                         className="muted"
@@ -2245,7 +2245,7 @@ export default function Ventas() {
                             <span className="u-fw-600">{realNeg ? 'Pérdida' : 'Ganancia real'}</span>
                             <span
                               className={`mono ${realNeg ? 'neg' : realPos ? 'pos' : ''}`}
-                              style={{ fontWeight: 700 }}
+                              className="u-fw-700"
                             >
                               {realNeg ? '−' : ''}u$s{fmt(totales.real)}
                             </span>
@@ -2279,7 +2279,7 @@ export default function Ventas() {
                   </div>
 
                   <div className="field"><label className="field-label">Observaciones</label><input className="input" placeholder="Notas adicionales…" value={vForm.notas} onChange={e => setVF('notas', e.target.value)} /></div>
-                  {ventaError && <div style={{ color: 'var(--neg)', fontSize: 13 }}>{ventaError}</div>}
+                  {ventaError && <div className="u-color-neg-fs-13">{ventaError}</div>}
                 </div>
               </div>
               <div className="modal-ft">
@@ -2301,7 +2301,7 @@ export default function Ventas() {
           notas debajo. Header con icon ⚡ para identidad visual. */}
       {showRapida && (
         <div ref={rapidaModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowRapida(false)}>
-          <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+          <div className="modal u-mw-520" onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
               <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Icons.Bolt size={18} /> Nueva Venta Rápida

@@ -233,7 +233,7 @@ export default function PaymentMethodsModal({ open, onClose, onSaved }) {
                     ) : (
                       <span
                         onClick={() => setEditing({ id: item.id, nombre: item.nombre })}
-                        style={{ cursor: 'pointer' }}
+                        className="u-cursor-pointer"
                         title="Click para editar"
                       >
                         {item.nombre}

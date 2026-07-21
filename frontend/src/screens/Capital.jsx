@@ -281,8 +281,8 @@ export default function Capital() {
               {cajasList.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
             </select>
           </div>
-          <div className="field" style={{ marginBottom: 0 }}><label className="field-label">Desde</label><input type="date" className="input" value={filtros.desde} onChange={e => setLF('desde', e.target.value)} /></div>
-          <div className="field" style={{ marginBottom: 0 }}><label className="field-label">Hasta</label><input type="date" className="input" value={filtros.hasta} onChange={e => setLF('hasta', e.target.value)} /></div>
+          <div className="field u-mb-0"><label className="field-label">Desde</label><input type="date" className="input" value={filtros.desde} onChange={e => setLF('desde', e.target.value)} /></div>
+          <div className="field u-mb-0"><label className="field-label">Hasta</label><input type="date" className="input" value={filtros.hasta} onChange={e => setLF('hasta', e.target.value)} /></div>
           <div className="field" style={{ marginBottom: 0, minWidth: 150 }}>
             <label className="field-label">Origen</label>
             <select className="input" value={filtros.origen} onChange={e => setLF('origen', e.target.value)}>
@@ -296,7 +296,7 @@ export default function Capital() {
               <option value="">Todos</option><option value="ingreso">Ingreso</option><option value="egreso">Egreso</option>
             </select>
           </div>
-          <button className="btn btn-ghost" style={{ marginBottom: 0 }} onClick={() => setFiltros(EMPTY_FILTROS)}>Limpiar</button>
+          <button className="btn btn-ghost u-mb-0" onClick={() => setFiltros(EMPTY_FILTROS)}>Limpiar</button>
         </div>
       </div>
 

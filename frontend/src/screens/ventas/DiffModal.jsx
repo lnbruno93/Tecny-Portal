@@ -42,7 +42,7 @@ export default function DiffModal({ state, onClose }) {
   };
   return (
     <div ref={overlayRef} className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="diff-modal-title" style={{ zIndex: 600 }}>
-      <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+      <div className="modal u-mw-520" onClick={e => e.stopPropagation()}>
         <div className="modal-body" style={{ padding: '32px 28px 18px', textAlign: 'left' }}>
           {/* Icono de warning grande, centrado */}
           <div style={{ textAlign: 'center', marginBottom: 18 }}>
@@ -66,7 +66,7 @@ export default function DiffModal({ state, onClose }) {
             </div>
             <div className="flex-between" style={{ fontSize: 14, marginBottom: 8 }}>
               <strong>Total pagado:</strong>
-              <span className="mono pos" style={{ fontWeight: 700 }}>u$s {state.cubierto.toFixed(2)}</span>
+              <span className="mono pos u-fw-700">u$s {state.cubierto.toFixed(2)}</span>
             </div>
             <div className="flex-between u-fs-14">
               <strong>{aFavor ? 'Sobrante:' : 'Restante:'}</strong>

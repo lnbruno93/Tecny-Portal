@@ -257,7 +257,7 @@ export default function Desglose360() {
       ) : filasOrdenadas.length === 0 ? (
         <div className="empty">Sin resultados para los filtros aplicados.</div>
       ) : (
-        <div className="card card-flush" style={{ overflowX: 'auto' }}>
+        <div className="card card-flush u-overflow-x-auto">
           <table className="tbl">
             <thead>
               <tr>

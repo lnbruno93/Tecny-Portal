@@ -4,7 +4,7 @@
 //
 // Uso:
 //   <Badge tone="pos">Acreditado</Badge>
-//   <Badge tone="info" style={{ fontSize: 11 }}>Etiqueta chica</Badge>
+//   <Badge tone="info" className="u-fs-11">Etiqueta chica</Badge>
 //
 // Históricamente este componente vivía duplicado en cada screen. En U-13
 // (auditoría 2026-06-10) se centralizó y se migraron Inventario, Envíos,

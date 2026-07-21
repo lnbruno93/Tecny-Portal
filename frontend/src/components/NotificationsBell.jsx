@@ -353,7 +353,7 @@ export default function NotificationsBell() {
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        style={{ position: 'relative' }}
+        className="u-pos-rel"
       >
         <Icons.Bell size={17} />
         {badge != null && (
@@ -500,7 +500,7 @@ export default function NotificationsBell() {
                             }}
                           >
                             <span style={{ fontSize: 16, flexShrink: 0, lineHeight: 1.4 }}>{emoji}</span>
-                            <div style={{ flex: 1, minWidth: 0 }}>
+                            <div className="u-flex-1-minw-0">
                               <div style={{
                                 fontSize: 13, fontWeight: isUnseen ? 600 : 500,
                                 marginBottom: 2, overflow: 'hidden',
