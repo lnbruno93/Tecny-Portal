@@ -1845,3 +1845,30 @@ a { color: inherit; text-decoration: none; }
 .u-border-top-2               { border-top: 2px solid var(--border); }
 .u-border-right-flex-col      { border-right: 1px solid var(--border); display: flex; flex-direction: column; }
 .u-border-bottom-hairline     { border-bottom: 1px solid var(--hairline); }
+
+/* Sprint 28 (2026-07-22) — sync frontend */
+
+.mercaderia-inp {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 12px;
+  border-radius: 4px;
+}
+.u-merc-inp-center            { text-align: center; }
+.u-merc-inp-right             { text-align: right; }
+.u-merc-inp-mono              { font-family: monospace; }
+.u-modal-body-col-82vh        { padding: 0; display: flex; flex-direction: column; max-height: 82vh; }
+.u-modal-wide                 { max-width: 1200px; width: 96vw; }
+.u-modal-sticky-header        { padding: 14px 20px; border-bottom: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; gap: 10px; flex-shrink: 0; }
+.u-modal-sticky-footer        { padding: 12px 20px; border-top: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+.u-modal-ft-right             { padding: 12px 20px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; }
+.u-warn-banner-fs-11          { padding: 8px 10px; border-radius: 4px; background: var(--warn-soft, rgba(251,191,36,0.14)); border: 1px solid var(--warn); font-size: 11px; }
+.u-grid-150-1fr-10            { display: grid; grid-template-columns: 150px 1fr; gap: 10px; }
+.u-flex-1-oy-mh-180           { flex: 1; overflow-y: auto; min-height: 180px; }
+.u-table-header-uppercase     { padding: 10px 20px 6px; position: sticky; top: 0; background: var(--surface); border-bottom: 1px solid var(--hairline); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); z-index: 1; }
+.u-p-4-20-12                  { padding: 4px 20px 12px; }
+.u-btn-add-item               { margin-top: 10px; width: 100%; justify-content: center; }
+.u-total-box                  { display: flex; justify-content: space-between; align-items: baseline; padding: 10px 14px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; }
+.u-total-label-uppercase      { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.u-total-value-pos            { font-size: 18px; font-weight: 700; color: var(--pos); font-variant-numeric: tabular-nums; }
+.u-btn-remove-row             { width: 24px; height: 24px; border-radius: 4px; background: transparent; border: none; display: grid; place-items: center; }

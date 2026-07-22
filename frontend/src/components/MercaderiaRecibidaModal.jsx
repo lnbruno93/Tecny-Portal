@@ -260,7 +260,6 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
   // 2026-07-22: +col GB (60px) entre IMEI y Color.
   const gridCols = 'minmax(160px, 1.4fr) 130px minmax(100px, 1fr) 60px 90px 60px 55px 90px 90px 28px';
   const cellPad = '6px 8px';
-  const inputCell = { width: '100%', padding: '6px 8px', fontSize: 12, borderRadius: 4 };
   const previewStyle = {
     padding: '10px 12px',
     background: saldoCierraEnCero
@@ -284,7 +283,7 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
     <div ref={overlayRef} className="modal-overlay" role="dialog" aria-modal="true"
          aria-labelledby="mercaderia-recibida-modal-title"
          onClick={(e) => { if (e.target === e.currentTarget) tryClose(); }}>
-      <div className="modal" style={{ maxWidth: 1200, width: '96vw' }} onClick={e => e.stopPropagation()}>
+      <div className="modal u-modal-wide" onClick={e => e.stopPropagation()}>
         <div className="modal-hd">
           <h3 id="mercaderia-recibida-modal-title" className="u-flex-center-gap-8">
             <Icons.Box size={16} /> Recibir mercadería · {nombreCliente}
@@ -294,22 +293,11 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
           </button>
         </div>
 
-        <div className="modal-body" style={{ padding: 0, display: 'flex', flexDirection: 'column', maxHeight: '82vh' }}>
+        <div className="modal-body u-modal-body-col-82vh">
           {/* ── Header sticky: saldo + fecha + concepto ── */}
-          <div style={{
-            padding: '14px 20px',
-            borderBottom: '1px solid var(--border)',
-            background: 'var(--surface)',
-            display: 'flex', flexDirection: 'column', gap: 10,
-            flexShrink: 0,
-          }}>
+          <div className="u-modal-sticky-header">
             {catalogosError && (
-              <div style={{
-                padding: '8px 10px', borderRadius: 4,
-                background: 'var(--warn-soft, rgba(251,191,36,0.14))',
-                border: '1px solid var(--warn)',
-                fontSize: 11,
-              }}>
+              <div className="u-warn-banner-fs-11">
                 ⚠ No se pudieron cargar: <strong>{catalogosError.join(', ')}</strong>. Algunos selectores estarán vacíos.
               </div>
             )}
@@ -325,7 +313,7 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
                 {fmtUSD(Number(saldoActual || 0))}
               </span>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 10 }}>
+            <div className="u-grid-150-1fr-10">
               <input type="date" className="input" value={fecha}
                      onChange={e => setFecha(e.target.value)}
                      className="u-fs-12-p-6-8" />
@@ -337,24 +325,17 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
           </div>
 
           {/* ── Tabla scrolleable ── */}
-          <div style={{ flex: 1, overflowY: 'auto', minHeight: 180 }}>
+          <div className="u-flex-1-oy-mh-180">
             {/* Datalist HTML nativo para autocomplete de nombres */}
             <datalist id="mercaderia-recibida-productos-catalogo">
               {productosCatalogo.map((n, i) => <option key={i} value={n} />)}
             </datalist>
 
             {/* Header sticky de la tabla */}
-            <div style={{
-              display: 'grid', gridTemplateColumns: gridCols, gap: 4,
-              padding: '10px 20px 6px',
-              position: 'sticky', top: 0,
-              background: 'var(--surface)',
-              borderBottom: '1px solid var(--hairline)',
-              fontSize: 10, fontWeight: 700,
-              textTransform: 'uppercase', letterSpacing: '0.05em',
-              color: 'var(--text-muted)',
-              zIndex: 1,
-            }}>
+            <div
+              className="u-table-header-uppercase"
+              style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 4 }}
+            >
               <span>Producto</span>
               <span>Categoría</span>
               <span>IMEI / Serial</span>
@@ -368,7 +349,7 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
             </div>
 
             {/* Filas */}
-            <div style={{ padding: '4px 20px 12px' }}>
+            <div className="u-p-4-20-12">
               {items.map((it, idx) => {
                 const st = subtotalDe(it);
                 return (
@@ -380,68 +361,68 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
                   }}>
                     <input
                       type="text"
-                      className="input"
+                      className="input mercaderia-inp"
                       list="mercaderia-recibida-productos-catalogo"
                       placeholder="Ej: PlayStation 5 Slim"
                       value={it.nombre}
                       onChange={e => updItem(idx, 'nombre', e.target.value)}
                       autoFocus={idx === 0 && items.length === 1}
-                      style={inputCell}
                     />
-                    <select className="input" value={it.clase_id}
-                            onChange={e => updItem(idx, 'clase_id', e.target.value)}
-                            style={inputCell}>
+                    <select
+                            className="input mercaderia-inp"
+                            value={it.clase_id}
+                            onChange={e => updItem(idx, 'clase_id', e.target.value)}>
                       <option value="">—</option>
                       {clases.filter(c => c.activa !== false && !c.es_sin_categoria).map(c => (
                         <option key={c.id} value={c.id}>{c.emoji ? `${c.emoji} ${c.nombre}` : c.nombre}</option>
                       ))}
                     </select>
                     <input
-                      type="text" className="input"
+                      type="text"
+                      className="input mercaderia-inp u-merc-inp-mono"
                       value={it.imei}
                       onChange={e => updItem(idx, 'imei', e.target.value)}
                       placeholder="—"
-                      style={{ ...inputCell, fontFamily: 'monospace' }}
                     />
                     <input
-                      type="text" className="input"
+                      type="text"
+                      className="input mercaderia-inp u-merc-inp-center"
                       value={it.gb}
                       onChange={e => updItem(idx, 'gb', e.target.value)}
                       placeholder="256"
-                      style={{ ...inputCell, textAlign: 'center' }}
                     />
                     <input
-                      type="text" className="input"
+                      type="text"
+                      className="input mercaderia-inp"
                       value={it.color}
                       onChange={e => updItem(idx, 'color', e.target.value)}
                       placeholder="Negro"
-                      style={inputCell}
                     />
                     <input
-                      type="number" className="input mono"
+                      type="number"
+                      className="input mono mercaderia-inp u-merc-inp-center"
                       min="0" max="100" step="1"
                       onKeyDown={blockInvalidNumberKeys}
                       value={it.bateria}
                       onChange={e => updItem(idx, 'bateria', e.target.value)}
                       placeholder="—"
-                      style={{ ...inputCell, textAlign: 'center' }}
                     />
                     <input
-                      type="number" className="input mono"
+                      type="number"
+                      className="input mono mercaderia-inp u-merc-inp-center"
                       min="1" step="1"
                       onKeyDown={blockInvalidNumberKeys}
                       value={it.cantidad}
                       onChange={e => updItem(idx, 'cantidad', e.target.value)}
-                      style={{ ...inputCell, textAlign: 'center' }}
                     />
                     <input
-                      type="number" className="input mono"
+                      type="number"
+                      className="input mono mercaderia-inp u-merc-inp-right"
                       min="0" step="0.01"
                       onKeyDown={blockInvalidNumberKeys}
                       value={it.valor_unitario}
                       onChange={e => updItem(idx, 'valor_unitario', e.target.value)}
                       placeholder="0.00"
-                      style={{ ...inputCell, textAlign: 'right' }}
                     />
                     <span style={{
                       textAlign: 'right', padding: cellPad,
@@ -473,35 +454,18 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
               })}
 
               {/* Botón agregar producto */}
-              <button className="btn btn-sm btn-ghost" onClick={addItem} type="button"
-                      style={{ marginTop: 10, width: '100%', justifyContent: 'center' }}>
+              <button className="btn btn-sm btn-ghost u-btn-add-item" onClick={addItem} type="button">
                 <Icons.Plus size={13} /> Agregar producto
               </button>
             </div>
           </div>
 
           {/* ── Footer sticky: total + preview + botones ── */}
-          <div style={{
-            padding: '12px 20px',
-            borderTop: '1px solid var(--border)',
-            background: 'var(--surface)',
-            display: 'flex', flexDirection: 'column', gap: 8,
-            flexShrink: 0,
-          }}>
+          <div className="u-modal-sticky-footer">
             {/* Total */}
-            <div style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-              padding: '10px 14px', background: 'var(--surface-2)',
-              border: '1px solid var(--border)', borderRadius: 6,
-            }}>
-              <span style={{
-                fontSize: 11, color: 'var(--text-muted)',
-                textTransform: 'uppercase', letterSpacing: '0.05em',
-              }}>Total a cancelar</span>
-              <span style={{
-                fontSize: 18, fontWeight: 700, color: 'var(--pos)',
-                fontVariantNumeric: 'tabular-nums',
-              }}>{fmtUSD(totalUsd)}</span>
+            <div className="u-total-box">
+              <span className="u-total-label-uppercase">Total a cancelar</span>
+              <span className="u-total-value-pos">{fmtUSD(totalUsd)}</span>
             </div>
 
             {/* Preview del saldo post-op */}
@@ -530,7 +494,7 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
           </div>
         </div>
 
-        <div className="modal-ft" style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <div className="modal-ft u-modal-ft-right">
           <button className="btn btn-ghost" onClick={tryClose} disabled={saving} type="button">
             Cancelar
           </button>
