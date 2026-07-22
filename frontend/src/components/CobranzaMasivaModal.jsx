@@ -196,13 +196,13 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
   return (
     <div ref={overlayRef} className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="cobranza-masiva-modal-title"
          onClick={(e) => { if (e.target === e.currentTarget) tryClose(); }}>
-      <div className="modal" style={{ maxWidth: 1400, width: '96vw' }} onClick={e => e.stopPropagation()}>
+      <div className="modal u-modal-w-1400" onClick={e => e.stopPropagation()}>
         <div className="modal-hd">
           <h3 id="cobranza-masiva-modal-title">Cobranza masiva</h3>
           <button className="icon-btn" onClick={tryClose} aria-label="Cerrar modal"><Icons.X size={16} /></button>
         </div>
 
-        <div className="modal-body" style={{ maxHeight: '82vh', overflowY: 'auto' }}>
+        <div className="modal-body u-modal-body-82vh">
           {/* #H-12: banner si catálogos fallaron */}
           {catalogosError && (
             <div style={catalogosErrorBanner}>
@@ -230,7 +230,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
                 value={tcDefault} onChange={e => setTCD(e.target.value)} placeholder="0" />
               <TcWarning tc={tcDefault} />
             </div>
-            <div className="field" style={{ flex: '0 0 140px', alignSelf: 'flex-end' }}>
+            <div className="field u-field-flex-0-0-140-end">
               <button className="btn btn-sm btn-ghost u-w-100" onClick={applyDefaultsToEmpty}
                 title="Aplica los defaults a las filas aún vacías">
                 Aplicar a vacías
@@ -243,8 +243,8 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
             <div className="u-fs-13-fw-600">
               Cobranzas · {rows.filter(isUsedRow).length} usadas / {rows.length} filas
             </div>
-            <div className="flex-row" style={{ gap: 6, alignItems: 'center' }}>
-              <label className="flex-row" style={{ gap: 6, fontSize: 12, cursor: 'pointer' }}>
+            <div className="flex-row u-flex-gap-6-center">
+              <label className="flex-row u-label-flex-gap-6-fs-12">
                 <input type="checkbox" checked={showZero} onChange={e => setShowZero(e.target.checked)} />
                 Mostrar todos los clientes (incluso saldo 0)
               </label>
@@ -259,7 +259,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
               Hint visible solo en mobile para indicar scroll horizontal. */}
           <div className="bulk-spreadsheet-hint">↔ Desliza horizontalmente para ver todas las columnas</div>
           <div className="u-overflow-x-border-r-6">
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1200, tableLayout: 'fixed' }}>
+            <table className="u-table-cobranza-1200">
               <colgroup>
                 <col className="u-w-32px" />   {/* # */}
                 <col className="u-w-280" />  {/* Cliente */}
@@ -294,10 +294,8 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
                     // la planilla arranca con 8 filas vacías; el spec scopea cada
                     // fila por índice (nth(0), nth(1)) para no acoplarse al
                     // texto del cliente o al placeholder.
-                    <tr key={r._id} data-testid="cobranza-row" style={{
-                      background: used ? 'rgba(99,102,241,0.04)' : 'transparent',
-                      borderTop: '1px solid var(--hairline)',
-                    }}>
+                    <tr key={r._id} data-testid="cobranza-row" className="u-tr-b2b-row"
+                      style={{ background: used ? 'rgba(99,102,241,0.04)' : 'transparent' }}>
                       <td className="u-badge-mini-muted">{idx + 1}</td>
                       <td className="u-p-3-4">
                         <ClientePicker
@@ -309,9 +307,9 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
                           onChange={v => updCell(idx, 'cliente_nombre', v)}
                         />
                       </td>
-                      <td style={{ padding: '3px 4px', textAlign: 'right', fontSize: 12 }}>
+                      <td className="u-td-3-4-right-fs-12">
                         {r.saldo_actual != null
-                          ? <span className={r.saldo_actual > 0 ? 'neg' : r.saldo_actual < 0 ? 'pos' : 'muted'} className="u-fw-600">
+                          ? <span className={`u-fw-600 ${r.saldo_actual > 0 ? 'neg' : r.saldo_actual < 0 ? 'pos' : 'muted'}`}>
                               USD {r.saldo_actual.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
                             </span>
                           : <span className="dim">—</span>}
@@ -339,13 +337,13 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
                               onChange={e => updCell(idx, 'tc', e.target.value)} />
                             <TcWarning tc={r.tc} />
                           </>
-                        ) : <span className="dim" style={{ fontSize: 11, paddingLeft: 6 }}>—</span>}
+                        ) : <span className="dim u-fs-11-pl-6">—</span>}
                       </td>
-                      <td style={{ padding: '3px 4px', textAlign: 'right', fontSize: 12, fontWeight: 600 }}>
+                      <td className="u-td-3-4-right-fs-12-fw-600">
                         {subUsd > 0 ? (
                           <div>
                             <div>USD {subUsd.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</div>
-                            {sobrepago && <div style={{ fontSize: 10, color: 'var(--warn, #d97706)' }}>+a favor USD {diferencia}</div>}
+                            {sobrepago && <div className="u-fs-10-warn">+a favor USD {diferencia}</div>}
                           </div>
                         ) : <span className="dim">—</span>}
                       </td>
@@ -372,7 +370,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
           </div>
 
           {/* ── Total ── */}
-          <div className="flex-row" style={{ marginTop: 12, justifyContent: 'flex-end', alignItems: 'center', gap: 16 }}>
+          <div className="flex-row u-flex-end-center-gap-16-mt-12">
             <div className="u-text-right">
               <div className="muted tiny">Total cobrado</div>
               <div className="mono u-fs-22-fw-800">
