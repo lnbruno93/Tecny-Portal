@@ -381,7 +381,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
   return (
     <div ref={overlayRef} className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="compra-prov-modal-title"
          onClick={(e) => { if (e.target === e.currentTarget) tryClose(); }}>
-      <div className="modal" style={{ maxWidth: 1800, width: '98vw' }} onClick={e => e.stopPropagation()}>
+      <div className="modal u-modal-w-1800" onClick={e => e.stopPropagation()}>
         <div className="modal-hd">
           <h3 id="compra-prov-modal-title">Cargar compra · {proveedor.nombre}</h3>
           <button className="icon-btn" onClick={tryClose} aria-label="Cerrar modal"><Icons.X size={16} /></button>
@@ -429,9 +429,9 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
           </div>
 
           {/* ── Defaults para nuevas filas ── */}
-          <div className="card card-tight" style={{ padding: 10, marginBottom: 12, background: 'var(--surface-2)' }}>
+          <div className="card card-tight u-defaults-card">
             <div className="flex-between u-mb-8">
-              <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+              <div className="u-defaults-title">
                 Defaults para nuevas filas
               </div>
               <button className="btn btn-sm btn-ghost" onClick={applyDefaultsToEmpty}
@@ -489,11 +489,11 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
               Hint visible solo en mobile para indicar scroll horizontal. */}
           <div className="bulk-spreadsheet-hint">↔ Desliza horizontalmente para ver todas las columnas</div>
           <div className="u-overflow-x-border-r-6">
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1500, tableLayout: 'fixed' }}>
+            <table className="u-table-compra-1500">
               <colgroup>
-                <col style={{ width: 28 }} />   {/* # */}
-                <col style={{ width: 38 }} />   {/* Stock */}
-                <col style={{ width: 180 }} />  {/* Nombre */}
+                <col className="u-w-28" />   {/* # */}
+                <col className="u-w-38" />   {/* Stock */}
+                <col className="u-w-180" />  {/* Nombre */}
                 <col className="u-w-130px" />  {/* IMEI */}
                 <col className="u-w-60px" />   {/* GB */}
                 <col className="u-w-90px" />   {/* Color */}
@@ -523,15 +523,9 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
                   // #B-10: marca visual si el IMEI de esta fila está en conflicto.
                   const imeiBad = r.imei && imeisConflicto.has(r.imei.trim());
                   return (
-                    <tr key={r._id} style={{
-                      background: imeiBad
-                        ? 'rgba(239,68,68,0.10)'
-                        : used ? 'rgba(99,102,241,0.04)' : 'transparent',
-                      borderTop: '1px solid var(--hairline)',
-                      boxShadow: imeiBad ? 'inset 3px 0 0 0 var(--neg)' : undefined,
-                    }}>
+                    <tr key={r._id} className={`u-tr-b2b-row ${imeiBad ? 'u-tr-imei-conflict' : (used ? 'u-tr-used' : '')}`}>
                       <td className="u-badge-mini-muted">{idx + 1}</td>
-                      <td style={{ padding: '3px 6px', textAlign: 'center' }}>
+                      <td className="u-td-3-6-center">
                         <input type="checkbox" checked={r.crear_stock}
                           onChange={e => updCell(idx, 'crear_stock', e.target.checked)} />
                       </td>
@@ -673,7 +667,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
 // Helper: campo compacto para la zona de defaults.
 function Field({ label, children }) {
   return (
-    <div className="field" style={{ flex: 1, minWidth: 110 }}>
+    <div className="field u-field-flex-1-min-110">
       <label className="field-label u-fs-10">{label}</label>
       {children}
     </div>
