@@ -2091,3 +2091,17 @@ a { color: inherit; text-decoration: none; }
 .u-modal-w-420                { max-width: 420px; width: 92vw; }
 .u-label-checkbox-mt-12       { display: flex; align-items: center; gap: 6px; margin-top: 12px; cursor: pointer; }
 .u-p-neg-mt-12-fs-13          { color: var(--neg); margin-top: 12px; font-size: 13px; }
+/* — Cambios (Sprint 44) — */
+.u-cambios-split-300          { display: grid; grid-template-columns: 300px 1fr; gap: 16px; align-items: start; }
+.u-p-8                        { padding: 8px; }
+.u-skeleton-row               { padding: 10px 13px; }
+.u-list-item-clickable        { padding: 10px 13px; cursor: pointer; border-left: 3px solid transparent; }
+.u-list-item-selected         { background: var(--surface-2); border-left-color: var(--accent) !important; }
+.u-list-item-unselected       { background: transparent; }
+.u-p-14                       { padding: 14px; }
+.u-grid-gap-10-mb-12          { display: grid; gap: 10px; margin-bottom: 12px; }
+.u-cambios-input-row          { display: grid; gap: 10px; align-items: end; border-top: 1px solid var(--hairline); padding-top: 12px; }
+.u-cambios-cols-tc            { grid-template-columns: 130px 1fr 100px 1fr 220px 1fr 110px; }
+.u-cambios-cols-notc          { grid-template-columns: 130px 1fr 220px 1fr 110px; }
+.u-input-preview-equiv        { background: rgba(56,182,255,0.08); cursor: default; }
+.u-hidden-spacer              { margin-bottom: 3px; font-size: 10.5px; visibility: hidden; }

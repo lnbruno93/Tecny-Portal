@@ -324,16 +324,16 @@ export default function Cambios() {
         </div>
       </div>
 
-      <div className="grid-2" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 16, alignItems: 'start' }}>
+      <div className="grid-2 u-cambios-split-300">
         {/* Lista de financieras */}
         <div className="card card-flush u-mh-78vh-o-auto">
           {/* 2026-06-25 UX-3 (audit pre-live): skeleton bars en lugar del
               "Cargando…" plano. Mantiene la altura del card estable mientras
               llega la lista, evita el "salto" visual al renderizar. */}
           {loadingList ? (
-            <div style={{ padding: 8 }}>
+            <div className="u-p-8">
               {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} style={{ padding: '10px 13px', borderBottom: i < 4 ? '1px solid var(--hairline)' : 0 }}>
+                <div key={i} className={`u-skeleton-row ${i < 4 ? 'u-border-bottom-hairline' : ''}`}>
                   <Skeleton width="60%" height={14} />
                   <div className="u-mt-6"><Skeleton width="40%" height={11} /></div>
                 </div>
@@ -355,17 +355,14 @@ export default function Cambios() {
             )
             : list.length === 0 ? <div className="empty">Sin financieras. Creá la primera con "Nueva financiera".</div>
             : list.map((e, i) => (
-              <div key={e.id} onClick={() => setSelectedId(e.id)} style={{
-                padding: '10px 13px', cursor: 'pointer',
-                borderBottom: i < list.length - 1 ? '1px solid var(--hairline)' : 0,
-                background: selectedId === e.id ? 'var(--surface-2)' : 'transparent',
-                borderLeft: selectedId === e.id ? '3px solid var(--accent)' : '3px solid transparent',
-              }}>
+              <div key={e.id} onClick={() => setSelectedId(e.id)} className={`u-list-item-clickable ${
+                i < list.length - 1 ? 'u-border-bottom-hairline' : ''
+              } ${selectedId === e.id ? 'u-list-item-selected' : 'u-list-item-unselected'}`}>
                 <div className="u-fs-13-fw-600">{e.nombre}{!e.activo && <span className="muted tiny"> (inactiva)</span>}</div>
                 {/* 2026-07-14 (dirección inversa): puede haber saldos en 3 monedas
                    simultáneamente. Mostramos los que son != 0 (o solo USD si
                    no hay deuda local, para no romper la altura de la card). */}
-                <div className="mono tiny" style={{ marginTop: 2, color: Number(e.saldo_usd) > 0 ? 'var(--accent)' : 'var(--text-muted)' }}>
+                <div className={`mono tiny u-mt-2 ${Number(e.saldo_usd) > 0 ? 'u-color-accent' : 'u-color-muted'}`}>
                   Te deben: u$s {fmt(e.saldo_usd)}
                 </div>
                 {Number(e.saldo_ars) > 0 && (
@@ -397,20 +394,20 @@ export default function Cambios() {
             <div className="row">
               <div className="card card-tight u-flex-1">
                 <div className="kpi-label">Te deben · USD</div>
-                <div className="kpi-value mono" style={{ color: Number(r.saldo_usd) > 0 ? 'var(--accent)' : 'inherit' }}>u$s {fmt(r.saldo_usd)}</div>
+                <div className={`kpi-value mono ${Number(r.saldo_usd) > 0 ? 'u-color-accent' : ''}`}>u$s {fmt(r.saldo_usd)}</div>
               </div>
               {/* 2026-07-14 (dirección inversa): saldos en moneda local, solo
                  si != 0 para no llenar de "0" a users que no usan la inversa. */}
               {Number(r.saldo_ars) !== 0 && (
                 <div className="card card-tight u-flex-1">
                   <div className="kpi-label">Te deben · ARS</div>
-                  <div className="kpi-value mono" style={{ color: Number(r.saldo_ars) > 0 ? 'var(--accent)' : 'inherit' }}>$ {fmt(r.saldo_ars)}</div>
+                  <div className={`kpi-value mono ${Number(r.saldo_ars) > 0 ? 'u-color-accent' : ''}`}>$ {fmt(r.saldo_ars)}</div>
                 </div>
               )}
               {Number(r.saldo_uyu) !== 0 && (
                 <div className="card card-tight u-flex-1">
                   <div className="kpi-label">Te deben · UYU</div>
-                  <div className="kpi-value mono" style={{ color: Number(r.saldo_uyu) > 0 ? 'var(--accent)' : 'inherit' }}>$U {fmt(r.saldo_uyu)}</div>
+                  <div className={`kpi-value mono ${Number(r.saldo_uyu) > 0 ? 'u-color-accent' : ''}`}>$U {fmt(r.saldo_uyu)}</div>
                 </div>
               )}
               <div className="card card-tight u-flex-1">
@@ -432,8 +429,8 @@ export default function Cambios() {
                tipo enum se persiste. La fila de inputs debajo muestra SOLO
                los campos relevantes según el tipo — cada uno con label y
                espacio propio. La tabla del histórico queda para lectura. */}
-            <div className="card" style={{ padding: 14 }}>
-              <div style={{ display: 'grid', gap: 10, marginBottom: 12 }}>
+            <div className="card u-p-14">
+              <div className="u-grid-gap-10-mb-12">
                 <div className="u-flex-center-gap-12-wrap">
                   <span className="u-badge-uppercase-tiny">Dirección:</span>
                   <Seg
@@ -479,16 +476,7 @@ export default function Cambios() {
               {/* Fila de inputs — cada campo con label + espacio. Los inputs
                  no relevantes al tipo se ocultan (grid dinámico) para que la
                  UI muestre solo lo que hay que llenar. */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: inputTcActivo
-                  ? '130px 1fr 100px 1fr 220px 1fr 110px'
-                  : '130px 1fr 220px 1fr 110px',
-                gap: 10,
-                alignItems: 'end',
-                borderTop: '1px solid var(--hairline)',
-                paddingTop: 12,
-              }}>
+              <div className={`u-cambios-input-row ${inputTcActivo ? 'u-cambios-cols-tc' : 'u-cambios-cols-notc'}`}>
                 <div>
                   <div className="muted tiny u-uppercase-label">Fecha</div>
                   <input type="date" className="input" value={mov.fecha} onChange={e => setMovField('fecha', e.target.value)} />
@@ -556,8 +544,7 @@ export default function Cambios() {
                     </div>
                     <input
                       type="text" readOnly
-                      className="input mono"
-                      style={{ background: 'rgba(56,182,255,0.08)', cursor: 'default' }}
+                      className="input mono u-input-preview-equiv"
                       value={isEntregaLocal ? (usdPreview ? `u$s ${usdPreview}` : '—') : (localPreview ? `$ ${localPreview}` : '—')}
                     />
                   </div>
@@ -592,7 +579,7 @@ export default function Cambios() {
 
                 {/* Botón Agregar */}
                 <div>
-                  <div className="muted tiny" style={{ marginBottom: 3, fontSize: 10.5, visibility: 'hidden' }}>·</div>
+                  <div className="muted tiny u-hidden-spacer">·</div>
                   <button className="btn btn-primary u-w-100" disabled={savingMov} onClick={handleAddMov}>
                     {savingMov ? 'Guardando…' : 'Agregar'}
                   </button>
