@@ -195,8 +195,8 @@ export default function TwoFaSection({ onMessage }) {
   const localBanner = localMessage && !onMessage ? (
     <div
       role={localMessage.type === 'error' ? 'alert' : 'status'}
+      className="u-notice-banner"
       style={{
-        marginBottom: 10, padding: '8px 10px', fontSize: 13, borderRadius: 6,
         background: localMessage.type === 'error' ? 'rgba(239,68,68,0.1)' : 'rgba(34,197,94,0.1)',
         color: `var(--${localMessage.type === 'error' ? 'neg' : 'pos'})`,
       }}
@@ -232,7 +232,7 @@ export default function TwoFaSection({ onMessage }) {
                 <Badge tone="pos">Activo</Badge>
                 <strong>Autenticación de dos factores</strong>
               </div>
-              <div className="muted" style={{ fontSize: 12, lineHeight: 1.5 }}>
+              <div className="muted u-fs-12-lh-15">
                 Activado el {fmtFecha(status.enabled_at)}.
                 {status.last_used_at && <> Último uso: {fmtFecha(status.last_used_at)}.</>}
                 <br />
@@ -258,30 +258,20 @@ export default function TwoFaSection({ onMessage }) {
             que pedir /regenerate-recovery de nuevo. */}
         {newRecoveryCodes && (
           <div
-            className="card"
+            className="card u-warn-card"
             role="alert"
             aria-live="assertive"
-            style={{
-              padding: 14, marginBottom: 12,
-              background: 'rgba(234, 179, 8, 0.08)',
-              border: '1px solid rgba(234, 179, 8, 0.3)',
-            }}
           >
-            <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 13 }}>
+            <div className="u-fw-600-mb-8-fs-13">
               Nuevos recovery codes — guardalos AHORA
             </div>
-            <div className="muted" style={{ fontSize: 12, marginBottom: 10, lineHeight: 1.4 }}>
+            <div className="muted u-fs-12-mb-10-lh-14">
               Los anteriores ya no funcionan. Si cerrás esta pantalla sin copiarlos,
               no se vuelven a mostrar.
             </div>
-            <div style={{
-              display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6,
-              fontFamily: 'monospace', fontSize: 13, marginBottom: 10,
-            }}>
+            <div className="u-recovery-grid">
               {newRecoveryCodes.map((c, i) => (
-                <div key={i} style={{
-                  padding: '6px 10px', background: 'var(--surface)', borderRadius: 4,
-                }}>{c}</div>
+                <div key={i} className="u-recovery-cell">{c}</div>
               ))}
             </div>
             <div className="flex-row u-gap-8">
@@ -340,7 +330,7 @@ export default function TwoFaSection({ onMessage }) {
           }
         >
           <form onSubmit={submitCode}>
-            <p className="muted" style={{ fontSize: 12, marginTop: 0, marginBottom: 12, lineHeight: 1.5 }}>
+            <p className="muted u-fs-12-mt-0-mb-12-lh-15">
               {codeDesc}
             </p>
             <input
@@ -357,16 +347,10 @@ export default function TwoFaSection({ onMessage }) {
               disabled={codeLoading}
               aria-invalid={!!codeError}
               autoFocus
-              style={{
-                width: '100%', fontFamily: 'monospace', fontSize: 16,
-                letterSpacing: 1, textAlign: 'center',
-                padding: '8px 12px', borderRadius: 4,
-                border: '1px solid var(--border, rgba(148,163,184,0.3))',
-                background: 'var(--bg)', color: 'var(--text)',
-              }}
+              className="u-code-input"
             />
             {codeError && (
-              <div role="alert" style={{ fontSize: 12, color: 'var(--neg)', marginTop: 6 }}>
+              <div role="alert" className="u-fs-12-color-neg-mt-6">
                 {codeError}
               </div>
             )}
@@ -386,14 +370,7 @@ export default function TwoFaSection({ onMessage }) {
     return (
       <div>
         {localBanner}
-        <div
-          className="card"
-          style={{
-            padding: 18,
-            background: 'rgba(234, 179, 8, 0.08)',
-            border: '1px solid rgba(234, 179, 8, 0.3)',
-          }}
-        >
+        <div className="card u-warn-card-p-18">
           <div className="flex-row u-gap-8-center-mb-6">
             <Badge tone="warn">Setup pendiente</Badge>
             <strong>Autenticación de dos factores</strong>

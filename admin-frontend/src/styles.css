@@ -1788,3 +1788,16 @@ a { color: inherit; text-decoration: none; }
 .u-form-label-strong          { display: block; font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
 .u-totp-input                 { font-family: monospace; font-size: 18px; letter-spacing: 2px; text-align: center; max-width: 200px; padding: 8px 12px; border-radius: 4px; border: 1px solid var(--border, rgba(148,163,184,0.3)); background: var(--bg); color: var(--text); }
 .u-error-inline               { color: var(--neg); font-size: 13px; margin-bottom: 10px; }
+
+/* Sprint 26 (2026-07-22) — TwoFaSection.jsx semantic + composed */
+
+.u-warn-card                  { padding: 14px; margin-bottom: 12px; background: rgba(234, 179, 8, 0.08); border: 1px solid rgba(234, 179, 8, 0.3); }
+.u-warn-card-p-18             { padding: 18px; background: rgba(234, 179, 8, 0.08); border: 1px solid rgba(234, 179, 8, 0.3); }
+.u-fs-12-lh-15                { font-size: 12px; line-height: 1.5; }
+.u-fw-600-mb-8-fs-13          { font-weight: 600; margin-bottom: 8px; font-size: 13px; }
+.u-fs-12-mb-10-lh-14          { font-size: 12px; margin-bottom: 10px; line-height: 1.4; }
+.u-fs-12-mt-0-mb-12-lh-15     { font-size: 12px; margin-top: 0; margin-bottom: 12px; line-height: 1.5; }
+.u-code-input                 { width: 100%; font-family: monospace; font-size: 16px; letter-spacing: 1px; text-align: center; padding: 8px 12px; border-radius: 4px; border: 1px solid var(--border, rgba(148,163,184,0.3)); background: var(--bg); color: var(--text); }
+.u-fs-12-color-neg-mt-6       { font-size: 12px; color: var(--neg); margin-top: 6px; }
+.u-notice-banner              { margin-bottom: 10px; padding: 8px 10px; font-size: 13px; border-radius: 6px; }
+.u-recovery-cell              { padding: 6px 10px; background: var(--surface); border-radius: 4px; }
