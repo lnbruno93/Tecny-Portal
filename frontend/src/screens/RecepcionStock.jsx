@@ -229,14 +229,14 @@ export default function RecepcionStock() {
   };
 
   return (
-    <div className="content" style={{ paddingBottom: 80 }}>
+    <div className="content u-pb-80">
       {/* Header */}
       <div className="page-head u-mb-16">
         <div>
-          <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <h2 className="u-recepcion-h2">
             <Icons.Box size={20} /> Recepción de stock
           </h2>
-          <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+          <div className="muted u-fs-13-mt-4">
             Escaneá los IMEIs con la cámara. Cambiá el modelo activo cuando cambies de producto.
           </div>
         </div>
@@ -248,7 +248,7 @@ export default function RecepcionStock() {
       {/* 1. Datos comunes */}
       <div className="card u-mb-14">
         <div className="card-hd"><h3>1. Datos comunes de la recepción</h3></div>
-        <div style={{ padding: 14, display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+        <div className="u-recepcion-grid-180">
           <label>
             <div className="muted tiny u-mb-4">Depósito</div>
             <select className="input" value={deposito_id} onChange={e => setDepositoId(e.target.value)} disabled={loadingCats}>
@@ -277,8 +277,8 @@ export default function RecepcionStock() {
         <div className="card-hd">
           <h3>2. Modelo activo <span className="muted tiny u-ml-6">(se aplica a los próximos scans)</span></h3>
         </div>
-        <div style={{ padding: 14, display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
-          <label style={{ gridColumn: 'span 2' }}>
+        <div className="u-recepcion-grid-160">
+          <label className="u-grid-col-span-2">
             <div className="muted tiny u-mb-4">Nombre / Modelo *</div>
             <input className="input" placeholder="Ej: Samsung Galaxy A55" value={mNombre} onChange={e => setMNombre(e.target.value)} />
           </label>
@@ -327,7 +327,7 @@ export default function RecepcionStock() {
           </label>
         </div>
         {!modeloListo && (
-          <div style={{ padding: '0 14px 14px', color: 'var(--neg)', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div className="u-recepcion-error-msg">
             <Icons.Alert size={12} /> Completá nombre + categoría para habilitar el scanner.
           </div>
         )}
@@ -338,12 +338,11 @@ export default function RecepcionStock() {
         <div className="card-hd">
           <h3>3. Escanear IMEI <span className="muted tiny u-ml-6">({items.length} cargados)</span></h3>
         </div>
-        <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className="u-p-14-flex-col-gap-10">
           <button
-            className="btn btn-primary"
+            className="btn btn-primary u-btn-scanner-big"
             onClick={() => setScannerOpen(true)}
             disabled={!modeloListo}
-            style={{ minHeight: 56, fontSize: 16, fontWeight: 600 }}
             aria-label="Abrir cámara para escanear IMEI"
           >
             <Icons.Camera size={18} /> Escanear con cámara
@@ -380,26 +379,17 @@ export default function RecepcionStock() {
               Tocá costo o precio para ajustarlo individualmente.
             </div>
           </div>
-          <div style={{ maxHeight: '55vh', overflowY: 'auto', padding: 8 }}>
+          <div className="u-mh-55vh-p-8-scroll">
             {items.map((it, idx) => (
               <div
                 key={it.imei}
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 8,
-                  padding: 10,
-                  marginBottom: 8,
-                  border: '1px solid var(--hairline)',
-                  borderRadius: 8,
-                  background: 'var(--surface)',
-                }}
+                className="u-recepcion-item-card"
               >
                 {/* Header de card: IMEI + delete */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                <div className="u-flex-between-start-gap-8">
                   <div className="u-flex-1-minw-0">
                     <div className="mono u-fw-600-fs-12">{fmtImei(it.imei)}</div>
-                    <div style={{ fontSize: 13, marginTop: 2 }}>{it.nombre}</div>
+                    <div className="u-fs-13-mt-2">{it.nombre}</div>
                     <div className="muted u-fs-11">
                       {[it.color, it.gb, it.condicion].filter(Boolean).join(' · ')}
                     </div>
@@ -472,12 +462,7 @@ export default function RecepcionStock() {
       )}
 
       {/* 5. Acciones — sticky bottom para alcanzarlas con el pulgar en mobile */}
-      <div style={{
-        position: 'sticky', bottom: 0, marginTop: 16,
-        padding: '12px 0',
-        background: 'linear-gradient(0deg, var(--surface) 70%, transparent)',
-        display: 'flex', gap: 8,
-      }}>
+      <div className="u-recepcion-sticky-actions">
         <button className="btn u-flex-1" onClick={cancelar} disabled={guardando}>
           Cancelar
         </button>
