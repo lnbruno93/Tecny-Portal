@@ -1725,3 +1725,18 @@ a { color: inherit; text-decoration: none; }
 .u-pt-8-border-top-hl         { padding-top: 8px; border-top: 1px solid var(--hairline); }
 .u-label-checkbox             { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
 .u-grid-2gap-8-p-12           { display: grid; gap: 8px; padding: 12px; }
+
+/* Sprint 22 (2026-07-21) — Novedades.jsx admin manual migration */
+
+.u-w-92                       { width: 92px; }
+.u-table-fixed                { table-layout: fixed; }
+.u-resize-v-mh-80             { resize: vertical; min-height: 80px; }
+.u-empty-p-40-muted-fs-13     { padding: 40px; text-align: center; color: var(--text-muted); font-size: 13px; }
+.u-empty-p-24-muted-fs-13     { padding: 24px; text-align: center; color: var(--text-muted); font-size: 13px; }
+.u-error-p-24-neg-fs-13       { padding: 24px; text-align: center; color: var(--neg); font-size: 13px; }
+.u-fw-500-color-text-mb-2     { font-weight: 500; color: var(--text); margin-bottom: 2px; }
+.u-fs-11-color-dim-mt-4       { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+.u-fs-11-color-neg-mt-4       { font-size: 11px; color: var(--neg); margin-top: 4px; }
+.u-flex-gap-4-end             { display: flex; gap: 4px; justify-content: flex-end; }
+.u-muted-fs-12-nowrap         { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+.u-text-2-fs-12-lh-15         { color: var(--text-2); font-size: 12px; line-height: 1.5; }

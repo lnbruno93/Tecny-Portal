@@ -237,18 +237,18 @@ export default function Novedades() {
           subtitle={notas.length ? `Última: ${fmtDateTime(notas[0].publicado_en)}` : null}
         >
           {loading ? (
-            <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+            <div className="u-empty-p-24-muted-fs-13">
               Cargando…
             </div>
           ) : error ? (
-            <div style={{ padding: 24, textAlign: 'center', color: 'var(--neg)', fontSize: 13 }}>
+            <div className="u-error-p-24-neg-fs-13">
               {error}
               <div className="u-mt-12">
                 <Btn sm onClick={load}>Reintentar</Btn>
               </div>
             </div>
           ) : notas.length === 0 ? (
-            <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+            <div className="u-empty-p-40-muted-fs-13">
               No hay notas publicadas todavía.
               <div className="u-mt-12">
                 <Btn sm kind="primary" icon="Plus" onClick={startNew}>
@@ -258,9 +258,9 @@ export default function Novedades() {
             </div>
           ) : (
             <div className="table-wrap">
-              <table className="tbl" style={{ tableLayout: 'fixed' }}>
+              <table className="tbl u-table-fixed">
                 <colgroup>
-                  <col style={{ width: 92 }} />
+                  <col className="u-w-92" />
                   <col />
                   <col className="u-w-130px" />
                   <col className="u-w-150px" />
@@ -285,7 +285,7 @@ export default function Novedades() {
                         <TipoPill tipo={n.tipo} />
                       </td>
                       <td className="u-mw-min-0">
-                        <div style={{ fontWeight: 500, color: 'var(--text)', marginBottom: 2 }}>
+                        <div className="u-fw-500-color-text-mb-2">
                           {n.titulo}
                         </div>
                         <div
@@ -302,11 +302,11 @@ export default function Novedades() {
                           {n.descripcion}
                         </div>
                       </td>
-                      <td style={{ color: 'var(--text-muted)', fontSize: 12, whiteSpace: 'nowrap' }}>
+                      <td className="u-muted-fs-12-nowrap">
                         {fmtDateTime(n.publicado_en)}
                       </td>
                       <td>
-                        <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                        <div className="u-flex-gap-4-end">
                           <Btn sm kind="ghost" onClick={() => startEdit(n)}>
                             Editar
                           </Btn>
@@ -389,7 +389,7 @@ export default function Novedades() {
                   rows={4}
                   value={form.descripcion}
                   onChange={(e) => setField('descripcion', e.target.value)}
-                  style={{ resize: 'vertical', minHeight: 80 }}
+                  className="u-resize-v-mh-80"
                 />
               </Field>
 
@@ -486,12 +486,12 @@ function Field({ label, error, counter, hint, children }) {
       {children}
       {counter}
       {hint && !error && (
-        <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4 }}>
+        <div className="u-fs-11-color-dim-mt-4">
           {hint}
         </div>
       )}
       {error && (
-        <div role="alert" style={{ fontSize: 11, color: 'var(--neg)', marginTop: 4 }}>
+        <div role="alert" className="u-fs-11-color-neg-mt-4">
           {error}
         </div>
       )}
@@ -542,7 +542,7 @@ function Preview({ form }) {
       <div className="u-fw-600-fs-13-mb-4">
         <span aria-hidden="true">{meta.emoji}</span> {titulo}
       </div>
-      <div style={{ color: 'var(--text-2)', fontSize: 12, lineHeight: 1.5 }}>
+      <div className="u-text-2-fs-12-lh-15">
         {desc}
       </div>
     </div>
