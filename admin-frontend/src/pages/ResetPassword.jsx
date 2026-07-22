@@ -119,54 +119,19 @@ export default function ResetPassword() {
   // ─── Success screen ───────────────────────────────────────────────────
   if (status === 'success') {
     return (
-      <div
-        style={{
-          minHeight: '100vh',
-          display: 'grid',
-          placeItems: 'center',
-          background: 'var(--bg)',
-          padding: 24,
-        }}
-      >
+      <div className="u-auth-screen">
         <div
-          className="card"
-          style={{
-            width: '100%',
-            maxWidth: 400,
-            padding: 32,
-            boxShadow: 'var(--shadow-md)',
-            textAlign: 'center',
-          }}
+          className="card u-auth-card-400"
           role="status"
           aria-live="polite"
         >
-          <div
-            className="brand-mark"
-            aria-hidden="true"
-            style={{
-              width: 48,
-              height: 48,
-              borderRadius: 12,
-              fontSize: 18,
-              margin: '0 auto 16px',
-              background: 'var(--pos-soft, #e6f8ee)',
-              color: 'var(--pos, #1a7f4c)',
-            }}
-          >
+          <div className="brand-mark u-brand-mark-48-pos" aria-hidden="true">
             ✓
           </div>
-          <h1
-            style={{
-              fontSize: 22,
-              fontWeight: 600,
-              letterSpacing: '-0.02em',
-              margin: '0 0 4px',
-              color: 'var(--text)',
-            }}
-          >
+          <h1 className="u-auth-h1">
             ¡Contraseña actualizada!
           </h1>
-          <p className="muted" style={{ fontSize: 13, margin: 0 }}>
+          <p className="muted u-fs-13-m-0">
             Te llevamos al login para que inicies sesión con la nueva.
           </p>
         </div>
@@ -177,54 +142,19 @@ export default function ResetPassword() {
   // ─── Token-error screen ────────────────────────────────────────────────
   if (status === 'token-error') {
     return (
-      <div
-        style={{
-          minHeight: '100vh',
-          display: 'grid',
-          placeItems: 'center',
-          background: 'var(--bg)',
-          padding: 24,
-        }}
-      >
+      <div className="u-auth-screen">
         <div
-          className="card"
-          style={{
-            width: '100%',
-            maxWidth: 400,
-            padding: 32,
-            boxShadow: 'var(--shadow-md)',
-            textAlign: 'center',
-          }}
+          className="card u-auth-card-400"
           role="alert"
           aria-live="assertive"
         >
-          <div
-            className="brand-mark"
-            aria-hidden="true"
-            style={{
-              width: 48,
-              height: 48,
-              borderRadius: 12,
-              fontSize: 18,
-              margin: '0 auto 16px',
-              background: 'var(--neg-soft)',
-              color: 'var(--neg)',
-            }}
-          >
+          <div className="brand-mark u-brand-mark-48-neg" aria-hidden="true">
             !
           </div>
-          <h1
-            style={{
-              fontSize: 22,
-              fontWeight: 600,
-              letterSpacing: '-0.02em',
-              margin: '0 0 8px',
-              color: 'var(--text)',
-            }}
-          >
+          <h1 className="u-auth-h1-mb-8">
             No se pudo resetear
           </h1>
-          <p className="muted" style={{ fontSize: 13, margin: '0 0 20px' }}>
+          <p className="muted u-fs-13-m-0-0-20">
             {error}
           </p>
           <div className="stack u-gap-8">
@@ -238,12 +168,7 @@ export default function ResetPassword() {
             </Btn>
             <Link
               to="/login"
-              className="muted tiny"
-              style={{
-                textAlign: 'center',
-                textDecoration: 'underline',
-                color: 'var(--muted)',
-              }}
+              className="muted tiny u-text-center u-color-muted-underline"
             >
               Volver al login
             </Link>
@@ -255,47 +180,12 @@ export default function ResetPassword() {
 
   // ─── Form (default) ────────────────────────────────────────────────────
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'grid',
-        placeItems: 'center',
-        background: 'var(--bg)',
-        padding: 24,
-      }}
-    >
-      <div
-        className="card"
-        style={{
-          width: '100%',
-          maxWidth: 440,
-          padding: 32,
-          boxShadow: 'var(--shadow-md)',
-        }}
-      >
-        <div
-          className="brand-mark"
-          aria-hidden="true"
-          style={{
-            width: 48,
-            height: 48,
-            borderRadius: 12,
-            fontSize: 18,
-            margin: '0 auto 16px',
-          }}
-        >
+    <div className="u-auth-screen">
+      <div className="card u-auth-card-440">
+        <div className="brand-mark u-brand-mark-48" aria-hidden="true">
           T
         </div>
-        <h1
-          style={{
-            fontSize: 22,
-            fontWeight: 600,
-            letterSpacing: '-0.02em',
-            textAlign: 'center',
-            margin: '0 0 4px',
-            color: 'var(--text)',
-          }}
-        >
+        <h1 className="u-auth-h1-center">
           Elegí tu nueva contraseña
         </h1>
         <p
@@ -305,18 +195,7 @@ export default function ResetPassword() {
         </p>
 
         {error && (
-          <div
-            role="alert"
-            style={{
-              background: 'var(--neg-soft)',
-              color: 'var(--neg)',
-              padding: '10px 12px',
-              borderRadius: 8,
-              fontSize: 13,
-              marginBottom: 14,
-              border: '1px solid transparent',
-            }}
-          >
+          <div role="alert" className="u-error-banner">
             {error}
           </div>
         )}
@@ -348,11 +227,11 @@ export default function ResetPassword() {
               </div>
               <div
                 id="reset-new-hint"
-                className={fieldErrors.newPassword ? 'tiny' : 'muted tiny'}
-                style={{
-                  marginTop: 4,
-                  color: fieldErrors.newPassword ? 'var(--neg)' : undefined,
-                }}
+                className={
+                  fieldErrors.newPassword
+                    ? 'tiny u-color-neg-mt-4'
+                    : 'muted tiny u-mt-4'
+                }
               >
                 {fieldErrors.newPassword || PASSWORD_POLICY_HINT}
               </div>
