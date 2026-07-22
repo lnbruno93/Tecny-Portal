@@ -161,32 +161,20 @@ export default function ShareLinkPanel() {
   const stats = link.stats || {};
 
   return (
-    <div className="card" style={{ marginBottom: 16, padding: '14px 16px' }}>
+    <div className="card u-share-panel-card">
       {/* Header colapsable */}
       <button
         type="button"
         onClick={() => setAbierto(v => !v)}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          width: '100%',
-          background: 'transparent',
-          border: 'none',
-          padding: 0,
-          cursor: 'pointer',
-          color: 'inherit',
-          textAlign: 'left',
-        }}
+        className="u-btn-collapse-header"
         aria-expanded={abierto}
       >
         <span className="u-fs-18-only">🔗</span>
         <div className="u-flex-1">
-          <div style={{ fontWeight: 600, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div className="u-share-panel-title">
             Link público de equipos usados
             <span
-              className={`badge ${link.activo ? 'badge-pos' : ''}`}
-              style={{ fontSize: 11, fontWeight: 500 }}
+              className={`badge u-badge-mini ${link.activo ? 'badge-pos' : ''}`}
             >
               {link.activo ? 'Activo' : 'Desactivado'}
             </span>
@@ -197,24 +185,19 @@ export default function ShareLinkPanel() {
         </div>
         <Icons.ChevronDown
           size={16}
-          style={{
-            transition: 'transform 0.2s',
-            transform: abierto ? 'rotate(180deg)' : 'rotate(0)',
-            opacity: 0.6,
-          }}
+          className={`u-chevron-toggle ${abierto ? 'u-rotate-180' : ''}`}
         />
       </button>
 
       {abierto && (
-        <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+        <div className="u-section-top-border-16">
           {/* URL box con acciones */}
-          <div className="flex-row" style={{ gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+          <div className="flex-row u-share-url-row">
             <input
-              className="input mono"
+              className="input mono u-share-url-input"
               value={publicUrl}
               readOnly
               onClick={e => e.target.select()}
-              style={{ flex: 1, minWidth: 240, fontSize: 12 }}
             />
             <button className="btn btn-sm btn-primary" onClick={onCopy}>
               <Icons.Copy size={13} /> Copiar
@@ -255,7 +238,7 @@ export default function ShareLinkPanel() {
           </div>
 
           {/* Toggles */}
-          <div style={{ marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div className="u-share-toggles-wrap">
             <label className="flex-row u-card-hover-row">
               <input
                 type="checkbox"
@@ -281,17 +264,7 @@ export default function ShareLinkPanel() {
           </div>
 
           {/* Stats */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(3, 1fr)',
-              gap: 10,
-              padding: 10,
-              background: 'var(--surface-2)',
-              borderRadius: 8,
-              marginBottom: 14,
-            }}
-          >
+          <div className="u-share-stats-grid">
             <div className="u-text-center">
               <div className="u-fs-20-fw-700">{stats.vistas_ult_mes ?? 0}</div>
               <div className="muted tiny">Vistas último mes</div>
@@ -301,7 +274,7 @@ export default function ShareLinkPanel() {
               <div className="muted tiny">Únicos hoy</div>
             </div>
             <div className="u-text-center">
-              <div style={{ fontSize: 14, fontWeight: 600, paddingTop: 6 }}>
+              <div className="u-share-stats-last">
                 {fmtUltimoAcceso(stats.ultimo_acceso)}
               </div>
               <div className="muted tiny">Último acceso</div>
@@ -309,7 +282,7 @@ export default function ShareLinkPanel() {
           </div>
 
           {/* Acciones */}
-          <div className="flex-row" style={{ gap: 8, flexWrap: 'wrap', justifyContent: 'space-between' }}>
+          <div className="flex-row u-share-actions-row">
             <div className="flex-row u-gap-8-flex-wrap">
               <button className="btn btn-sm btn-primary" onClick={onSave} disabled={saving}>
                 {saving ? 'Guardando…' : 'Guardar cambios'}
@@ -319,8 +292,7 @@ export default function ShareLinkPanel() {
               </button>
             </div>
             <button
-              className={`btn btn-sm btn-ghost`}
-              style={link.activo ? { color: 'var(--neg)' } : {}}
+              className={`btn btn-sm btn-ghost ${link.activo ? 'u-color-neg' : ''}`}
               onClick={onToggleActivo}
               title={link.activo ? 'Desactivar el link — clientes ven mensaje "no disponible"' : 'Reactivar el link'}
             >
