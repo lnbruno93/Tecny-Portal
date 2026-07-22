@@ -52,18 +52,25 @@ function hashToken(token) {
 //
 // - httpOnly: true — inaccesible desde JS (defensa XSS).
 // - secure: true en prod, false en dev/test — HTTPS-only en prod.
-// - sameSite: 'lax' — protección CSRF sin romper navegación desde
-//   emails/links externos (el refresh igual requiere el POST endpoint
-//   que valida por sí mismo).
+// - sameSite: 'none' en prod, 'lax' en dev — CRÍTICO: frontend
+//   (tecnyapp.com) y backend (Railway subdomain) están en dominios
+//   distintos → cross-site. Con 'lax' el browser NO envía el cookie en
+//   fetch POST cross-site → refresh siempre falla → user deslogueado
+//   cada 15min (bug reportado 2026-07-22).
+//   'none' requiere 'secure: true' (mandatorio desde Chrome 80/2020).
+//   La defensa contra CSRF ya la da: (a) httpOnly, (b) path scoping
+//   solo al /refresh, (c) el refresh endpoint valida via body/token
+//   rotation.
 // - path: '/api/auth/refresh' — cookie SOLO enviada al refresh endpoint.
 //   Reduce superficie de ataque: cualquier otro endpoint del backend
 //   NO ve el refresh token en ningún request header.
 // - maxAge: 30 días — misma vida que el DB record.
 function cookieOptions() {
+  const isProduction = process.env.NODE_ENV === 'production';
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : 'lax',
     path: '/api/auth/refresh',
     maxAge: REFRESH_TOKEN_TTL_MS,
   };
