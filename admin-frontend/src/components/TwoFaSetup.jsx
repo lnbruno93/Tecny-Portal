@@ -102,12 +102,7 @@ export default function TwoFaSetup({ onDone, onCancel, onError }) {
   if (step === 'done') {
     return (
       <div className="card u-p-40-text-center">
-        <div style={{
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          width: 64, height: 64, borderRadius: '50%',
-          border: '3px solid var(--pos)', color: 'var(--pos)',
-          marginBottom: 16,
-        }}>
+        <div className="u-checkmark-circle-pos">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="20 6 9 17 4 12" />
           </svg>
@@ -123,7 +118,7 @@ export default function TwoFaSetup({ onDone, onCancel, onError }) {
   return (
     <div className="card u-p-20">
       <h3 className="u-mt-0">Activar autenticación de dos factores</h3>
-      <div className="muted" style={{ marginBottom: 18, fontSize: 13 }}>
+      <div className="muted u-mb-18-fs-13">
         Necesitás una app autenticadora en tu cel: Google Authenticator,
         Authy, 1Password o cualquier otra compatible con TOTP.
       </div>
@@ -133,10 +128,7 @@ export default function TwoFaSetup({ onDone, onCancel, onError }) {
         <div className="u-fs-12-fw-600-color-text-mb-8">
           Paso 1 — Escaneá el QR con tu app autenticadora
         </div>
-        <div style={{
-          display: 'flex', gap: 20, alignItems: 'flex-start',
-          padding: 16, background: 'var(--surface)', borderRadius: 'var(--radius)',
-        }}>
+        <div className="u-qr-panel">
           <canvas
             ref={canvasRef}
             role="img"
@@ -144,16 +136,12 @@ export default function TwoFaSetup({ onDone, onCancel, onError }) {
             className="u-flex-shrink-0-r-4-bg-white"
           />
           <div className="u-flex-1-minw-0">
-            <div className="muted" style={{ marginBottom: 6, fontSize: 12 }}>
+            <div className="muted u-mb-6-fs-12">
               ¿No podés escanear? Ingresá este código manualmente:
             </div>
             <div
               data-testid="twofa-secret"
-              style={{
-                fontFamily: 'monospace', fontSize: 13, wordBreak: 'break-all',
-                padding: '8px 10px', background: 'var(--bg)', borderRadius: 4,
-                marginBottom: 6,
-              }}
+              className="u-secret-display"
             >
               {setupData.secret}
             </div>
@@ -173,23 +161,15 @@ export default function TwoFaSetup({ onDone, onCancel, onError }) {
         <div className="u-fs-12-fw-600-color-text-mb-8">
           Paso 2 — Guardá estos recovery codes ⚠️
         </div>
-        <div style={{
-          padding: 14, background: 'rgba(234, 179, 8, 0.08)',
-          border: '1px solid rgba(234, 179, 8, 0.3)', borderRadius: 'var(--radius)',
-        }}>
-          <div style={{ fontSize: 12, marginBottom: 10, lineHeight: 1.5 }}>
+        <div className="u-warn-box">
+          <div className="u-fs-12-mb-10-lh-15">
             Si perdés tu cel, podés usar uno de estos códigos (una sola vez cada uno)
             para entrar al portal. <strong>Guardalos en un lugar seguro</strong> —
             password manager, papel impreso, etc. No se vuelven a mostrar.
           </div>
-          <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6,
-            fontFamily: 'monospace', fontSize: 13, marginBottom: 10,
-          }}>
+          <div className="u-recovery-grid">
             {setupData.recovery_codes.map((c, i) => (
-              <div key={i} style={{
-                padding: '6px 10px', background: 'var(--surface)', borderRadius: 4,
-              }}>{c}</div>
+              <div key={i} className="u-recovery-code">{c}</div>
             ))}
           </div>
           <Btn
@@ -207,7 +187,7 @@ export default function TwoFaSetup({ onDone, onCancel, onError }) {
         <div className="u-mb-12">
           <label
             htmlFor="twofa-verify-code"
-            style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}
+            className="u-form-label-strong"
           >
             Paso 3 — Ingresá el código de 6 dígitos de tu app
           </label>
@@ -220,22 +200,14 @@ export default function TwoFaSetup({ onDone, onCancel, onError }) {
             maxLength={6}
             value={code}
             onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-            style={{
-              fontFamily: 'monospace', fontSize: 18, letterSpacing: 2,
-              textAlign: 'center', maxWidth: 200,
-              padding: '8px 12px', borderRadius: 4,
-              border: '1px solid var(--border, rgba(148,163,184,0.3))',
-              background: 'var(--bg)', color: 'var(--text)',
-            }}
+            className="u-totp-input"
             disabled={step === 'verifying'}
           />
         </div>
         {error && (
-          <div role="alert" style={{
-            color: 'var(--neg)', fontSize: 13, marginBottom: 10,
-          }}>{error}</div>
+          <div role="alert" className="u-error-inline">{error}</div>
         )}
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
+        <div className="flex u-gap-8-mt-14-end">
           <Btn kind="ghost" onClick={onCancel} disabled={step === 'verifying'}>
             Cancelar
           </Btn>
