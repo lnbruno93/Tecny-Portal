@@ -3925,3 +3925,19 @@ body.modal-open { overflow: hidden; }
 .u-cmd-palette-empty          { padding: 24px 16px; text-align: center; color: var(--text-muted); font-size: 14px; }
 .u-cmd-palette-footer         { font-size: 11px; color: var(--text-dim); padding: 10px 16px; border-top: 1px solid var(--hairline); display: flex; gap: 16px; }
 .u-cmd-palette-kbd            { background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-size: 10px; font-family: monospace; }
+/* — Financiera (Sprint 34) — */
+.u-fin-header-flex            { margin-bottom: 20px; gap: 12px; flex-wrap: wrap; align-items: center; }
+.u-fin-error-card             { padding: 12px 16px; color: var(--neg); font-size: 13px; margin-bottom: 16px; }
+.u-fin-calc-summary           { padding: 14px 16px; background: var(--surface-2); border-radius: 10px; border: 1px solid var(--border); margin-bottom: 16px; }
+.u-color-neg-fs-13-mb-12      { color: var(--neg); font-size: 13px; margin-bottom: 12px; }
+.u-fin-info-card-body         { padding: 0 18px 18px; display: flex; flex-direction: column; gap: 16px; }
+.u-gap-6-wrap                 { gap: 6px; flex-wrap: wrap; }
+.u-fin-pct-display            { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; color: var(--accent); }
+.u-fin-comps-error            { padding: 12px 16px; color: var(--neg); font-size: 13px; }
+.u-fin-comps-loading          { padding: 20px; color: var(--text-muted); font-size: 13px; text-align: center; }
+.u-fin-pagos-error            { grid-column: 1 / -1; padding: 12px 16px; color: var(--neg); font-size: 13px; background: var(--surface-2); border-radius: 8px; border: 1px solid var(--border); }
+.u-fin-pagos-left             { display: flex; flex-direction: column; gap: 16px; }
+.u-fin-pago-usd-label         { display: flex; gap: 6px; align-items: center; cursor: pointer; padding-bottom: 8px; }
+.u-fin-iframe-comprobante     { width: 100%; height: 70vh; border: 0; }
+.u-fin-img-comprobante        { max-width: 100%; max-height: 70vh; border-radius: 8px; }
+.u-fin-manual-summary         { padding: 8px 12px; background: var(--surface-2); border-radius: 6px; font-size: 13px; line-height: 1.6; }
