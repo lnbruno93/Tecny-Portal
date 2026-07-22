@@ -3658,3 +3658,21 @@ body.modal-open { overflow: hidden; }
 .u-fs-13-mb-8                 { font-size: 13px; margin-bottom: 8px; }
 .u-fs-12-fw-500-ml-10         { font-size: 12px; font-weight: 500; margin-left: 10px; }
 .u-flex-00-100                { flex: 0 0 100px; }
+
+/* Sprint 21 (2026-07-21) — SitioPublico.jsx (admin) manual migration */
+
+.u-badge-modified             { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); }
+.u-badge-modified-ml-8        { font-size: 10px; font-weight: 700; padding: 2px 6px; margin-left: 8px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); }
+.u-p-16-center                { padding: 16px; text-align: center; }
+.u-p-12-center-fs-12          { padding: 12px; text-align: center; font-size: 12px; }
+.u-p-2-h-32                   { padding: 2px; height: 32px; }
+.u-td-right-fs-12             { font-size: 12px; text-align: right; }
+.u-fs-12-color-accent         { font-size: 12px; color: var(--accent); }
+.u-fs-11-mt-4-only            { font-size: 11px; margin-top: 4px; }
+.u-fs-11-pos-center           { font-size: 11px; color: var(--pos); text-align: center; }
+.u-grid-autofit-140-12        { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+.u-grid-4col-2fr-1fr-8        { display: grid; grid-template-columns: 2fr 1fr 1fr 1.5fr; gap: 8px; }
+.u-grid-gap-16-only           { display: grid; gap: 16px; }
+.u-pt-8-border-top-hl         { padding-top: 8px; border-top: 1px solid var(--hairline); }
+.u-label-checkbox             { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
+.u-grid-2gap-8-p-12           { display: grid; gap: 8px; padding: 12px; }
