@@ -3892,3 +3892,17 @@ body.modal-open { overflow: hidden; }
 .u-flex-end-gap-8-mt-16       { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
 .u-flex-gap-16-wrap-fs-14     { display: flex; gap: 16px; flex-wrap: wrap; font-size: 14px; }
 .u-kpi-value                  { font-size: 18px; font-weight: 600; }
+/* — VentaB2BModal (Sprint 32) — */
+.u-modal-w-1700               { max-width: 1700px; width: 98vw; }
+.u-b2b-header-badge           { margin-left: 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; padding: 2px 8px; border-radius: 12px; background: var(--accent-bg, rgba(59, 130, 246, 0.12)); color: var(--accent, #2563eb); border: 1px solid var(--accent, #2563eb); vertical-align: middle; }
+.u-b2b-cross-tenant-banner    { background: var(--accent-bg, rgba(59, 130, 246, 0.08)); border: 1px solid var(--accent, #2563eb); color: var(--accent, #2563eb); padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; font-size: 13px; display: flex; gap: 10px; align-items: flex-start; }
+.u-fs-11-mb-8                 { font-size: 11px; margin-bottom: 8px; }
+.u-table-b2b-1400             { width: 100%; border-collapse: collapse; min-width: 1400px; table-layout: fixed; }
+.u-w-320px                    { width: 320px; }
+.u-td-3-4-right-fs-12-muted   { padding: 3px 4px; text-align: right; font-size: 12px; color: var(--text-muted); }
+.u-td-3-4-right-fs-12-muted-mono { padding: 3px 4px; text-align: right; font-size: 12px; color: var(--text-muted); font-family: monospace; }
+.u-td-3-4-right-fs-12-fw-600  { padding: 3px 4px; text-align: right; font-weight: 600; font-size: 12px; }
+.u-b2b-duplicates-warn        { flex: 1; font-size: 12px; color: var(--neg); font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.u-flex-gap-10                { display: flex; gap: 10px; }
+.u-font-mono                  { font-family: monospace; }
+.u-tr-b2b-row                 { border-top: 1px solid var(--hairline); }

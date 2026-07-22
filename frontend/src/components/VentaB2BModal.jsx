@@ -330,7 +330,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
   return (
     <div ref={overlayRef} className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="b2b-modal-title"
          onClick={(e) => { if (e.target === e.currentTarget) tryClose(); }}>
-      <div className="modal" style={{ maxWidth: 1700, width: '98vw' }} onClick={e => e.stopPropagation()}>
+      <div className="modal u-modal-w-1700" onClick={e => e.stopPropagation()}>
         <div className="modal-hd">
           <h3 id="b2b-modal-title">
             Cargar venta B2B · {cliente.nombre} {cliente.apellido || ''}
@@ -341,19 +341,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
               <span
                 data-testid="b2b-cross-tenant-badge"
                 title="Esta venta se va a replicar automáticamente en el partner Red B2B"
-                style={{
-                  marginLeft: 8,
-                  fontSize: 11,
-                  fontWeight: 600,
-                  letterSpacing: '0.02em',
-                  textTransform: 'uppercase',
-                  padding: '2px 8px',
-                  borderRadius: 12,
-                  background: 'var(--accent-bg, rgba(59, 130, 246, 0.12))',
-                  color: 'var(--accent, #2563eb)',
-                  border: '1px solid var(--accent, #2563eb)',
-                  verticalAlign: 'middle',
-                }}
+                className="u-b2b-header-badge"
               >
                 Red B2B
               </span>
@@ -370,18 +358,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
             <div
               data-testid="b2b-cross-tenant-banner"
               role="status"
-              style={{
-                background: 'var(--accent-bg, rgba(59, 130, 246, 0.08))',
-                border: '1px solid var(--accent, #2563eb)',
-                color: 'var(--accent, #2563eb)',
-                padding: '10px 12px',
-                borderRadius: 8,
-                marginBottom: 12,
-                fontSize: 13,
-                display: 'flex',
-                gap: 10,
-                alignItems: 'flex-start',
-              }}
+              className="u-b2b-cross-tenant-banner"
             >
               <strong className="u-flex-shrink-0">Red B2B:</strong>
               <span>
@@ -403,8 +380,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
           {partnershipsError && cliente?.nombre && (
             <div
               data-testid="b2b-partnerships-fetch-warn"
-              className="muted"
-              style={{ fontSize: 11, marginBottom: 8 }}
+              className="muted u-fs-11-mb-8"
             >
               No se pudo verificar partnerships Red B2B (sin permiso o error). La venta se guardará como CC local.
             </div>
@@ -456,10 +432,10 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
               pero sin indicador el usuario asume que está roto. */}
           <div className="bulk-spreadsheet-hint">↔ Desliza horizontalmente para ver todas las columnas</div>
           <div className="u-overflow-x-border-r-6">
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1400, tableLayout: 'fixed' }}>
+            <table className="u-table-b2b-1400">
               <colgroup>
                 <col className="u-w-32px" />   {/* # */}
-                <col style={{ width: 320 }} />  {/* Producto (picker) */}
+                <col className="u-w-320px" />  {/* Producto (picker) */}
                 <col className="u-w-130px" />  {/* IMEI */}
                 <col className="u-w-60px" />   {/* GB */}
                 <col className="u-w-90px" />   {/* Color */}
@@ -494,12 +470,12 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
                       // aleatorio) y no tienen un wrapping accesible único.
                       // Sin testid, scopear inputs por fila requiere CSS frágil.
                       data-testid="b2b-item-row"
+                      className="u-tr-b2b-row"
                       style={{
-                      background: dup ? 'rgba(220, 38, 38, 0.08)'
-                                      : used ? 'rgba(99,102,241,0.04)' : 'transparent',
-                      borderTop: '1px solid var(--hairline)',
-                    }}
-                    title={dup ? 'IMEI duplicado en otra fila — eliminá una' : undefined}>
+                        background: dup ? 'rgba(220, 38, 38, 0.08)'
+                                        : used ? 'rgba(99,102,241,0.04)' : 'transparent',
+                      }}
+                      title={dup ? 'IMEI duplicado en otra fila — eliminá una' : undefined}>
                       <td className="u-badge-mini-muted">{idx + 1}</td>
                       <td className="u-p-3-4">
                         <ProductoPicker
@@ -522,13 +498,13 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
                         <input className="cell-inp" style={{ opacity: r.producto_id ? 0.7 : 1 }}
                           value={r.color} readOnly={!!r.producto_id} placeholder="—" />
                       </td>
-                      <td style={{ padding: '3px 4px', textAlign: 'right', fontSize: 12, color: 'var(--text-muted)' }}>
+                      <td className="u-td-3-4-right-fs-12-muted">
                         {r.stock_disp != null ? r.stock_disp : '—'}
                       </td>
                       {/* Costo unit (2026-06-09) — informativo, snapshot del picker.
                           Si moneda del costo difiere de la del precio, mostramos igual
                           la moneda explícita para no confundir (ej. costo USD, precio ARS). */}
-                      <td style={{ padding: '3px 4px', textAlign: 'right', fontSize: 12, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                      <td className="u-td-3-4-right-fs-12-muted-mono">
                         {r.costo != null
                           ? `${r.costo_moneda || 'USD'} ${Number(r.costo).toLocaleString('es-AR', { maximumFractionDigits: 2 })}`
                           : '—'}
@@ -569,7 +545,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
                             .map(m => <option key={m} value={m}>{m}</option>)}
                         </select>
                       </td>
-                      <td style={{ padding: '3px 4px', textAlign: 'right', fontWeight: 600, fontSize: 12 }}>
+                      <td className="u-td-3-4-right-fs-12-fw-600">
                         {sub > 0 ? `${r.precio_moneda} ${sub.toLocaleString('es-AR', { maximumFractionDigits: 2 })}` : '—'}
                       </td>
                       <td className="u-p-3-4-text-center">
@@ -608,10 +584,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
 
         <div className="modal-ft">
           {hayDuplicados && (
-            <div style={{
-              flex: 1, fontSize: 12, color: 'var(--neg)', fontWeight: 600,
-              display: 'flex', alignItems: 'center', gap: 6,
-            }}>
+            <div className="u-b2b-duplicates-warn">
               <Icons.Alert size={12} /> Hay {dupProductoIds.size} producto{dupProductoIds.size > 1 ? 's' : ''} repetido{dupProductoIds.size > 1 ? 's' : ''} (filas en rojo) — eliminá las duplicadas
             </div>
           )}
@@ -663,8 +636,8 @@ function ProductoPicker({ value, locked, onPick, onClear, onChange }) {
               {p.gb && `${p.gb}GB`}{p.gb && p.color && ' · '}{p.color}
             </span>
           </div>
-          <div className="muted tiny" style={{ display: 'flex', gap: 10 }}>
-            {p.imei && <span style={{ fontFamily: 'monospace' }}>IMEI {p.imei}</span>}
+          <div className="muted tiny u-flex-gap-10">
+            {p.imei && <span className="u-font-mono">IMEI {p.imei}</span>}
             <span>Stock: {p.cantidad}</span>
             {p.precio_venta != null && <span>Precio sugerido: USD {p.precio_venta}</span>}
           </div>
