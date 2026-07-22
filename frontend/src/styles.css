@@ -3827,3 +3827,29 @@ body.modal-open { overflow: hidden; }
 .u-total-label-uppercase      { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
 .u-total-value-pos            { font-size: 18px; font-weight: 700; color: var(--pos); font-variant-numeric: tabular-nums; }
 .u-btn-remove-row             { width: 24px; height: 24px; border-radius: 4px; background: transparent; border: none; display: grid; place-items: center; }
+
+/* Sprint 29 (2026-07-22) — Usuarios.jsx manual migration */
+
+.u-modal-overlay              { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.u-modal-card-780             { width: 100%; max-width: 780px; max-height: 92vh; overflow: hidden; padding: 0; display: flex; flex-direction: column; }
+.u-p-18-22-border-bottom      { padding: 18px 22px; border-bottom: 1px solid var(--border); }
+.u-p-16-22-border-bottom-hl   { padding: 16px 22px; border-bottom: 1px solid var(--hairline); }
+.u-p-16-22-flex-1-o-auto      { padding: 16px 22px; flex: 1; overflow: auto; }
+.u-flex-between-start          { justify-content: space-between; align-items: flex-start; }
+.u-flex-between-center-mb-12  { justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.u-fw-600-fs-13-mb-6-a        { font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+.u-select-permisos            { min-width: 180px; font-size: 14px; padding: 8px 12px; }
+.u-flex-1-mw-200-lh-15        { flex: 1; min-width: 200px; line-height: 1.5; }
+.u-gap-12-start-wrap          { gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+.u-bypass-banner              { padding: 12px 14px; margin-bottom: 12px; background: var(--accent-soft, rgba(96,165,250,0.14)); border-left: 3px solid var(--accent); border-radius: 6px; font-size: 13px; }
+.u-pantalla-card              { margin-bottom: 10px; border: 1px solid var(--hairline); border-radius: 8px; overflow: hidden; }
+.u-pantalla-header-flex       { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--hairline); }
+.u-p-6-14-10                  { padding: 6px 14px 10px; }
+.u-label-permiso-row          { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 13px; }
+.u-badge-override             { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 10px; }
+.u-checkbox-16                { width: 16px; height: 16px; }
+.u-overrides-summary          { margin-top: 12px; padding: 10px 14px; background: var(--surface-2); border-radius: 6px; border-left: 3px solid var(--accent); font-size: 12.5px; }
+.u-ul-lh-17                   { margin: 0; padding-left: 20px; line-height: 1.7; }
+.u-mt-4-lh-15                 { margin-top: 4px; line-height: 1.5; }
+.u-modal-footer-actions       { padding: 14px 22px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 10px; }
+.u-avatar-32                  { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 11px; flex-shrink: 0; }

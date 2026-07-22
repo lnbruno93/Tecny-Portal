@@ -392,14 +392,13 @@ export default function Usuarios() {
                   <tr key={u.id}>
                     <td>
                       <div className="flex-row u-gap-10">
-                        <div style={{
-                          width: 32, height: 32, borderRadius: '50%',
-                          background: bypass ? 'var(--accent-soft)' : 'var(--surface-3)',
-                          display: 'grid', placeItems: 'center',
-                          fontWeight: 700, fontSize: 11,
-                          color: bypass ? 'var(--accent)' : 'var(--text)',
-                          flexShrink: 0,
-                        }}>
+                        <div
+                          className="u-avatar-32"
+                          style={{
+                            background: bypass ? 'var(--accent-soft)' : 'var(--surface-3)',
+                            color: bypass ? 'var(--accent)' : 'var(--text)',
+                          }}
+                        >
                           {initials(u.nombre)}
                         </div>
                         <div>
@@ -532,16 +531,15 @@ export default function Usuarios() {
                   <div className="field">
                     <label className="field-label">Rol base</label>
                     <select
-                      className="input"
+                      className="input u-fs-14"
                       value={newUser.rol}
                       onChange={e => setNU('rol', e.target.value)}
-                      className="u-fs-14"
                     >
                       {ROLES_EDITABLES.map(r => (
                         <option key={r} value={r}>{ROL_LABELS[r]}</option>
                       ))}
                     </select>
-                    <div className="muted tiny" style={{ marginTop: 4, lineHeight: 1.5 }}>
+                    <div className="muted tiny u-mt-4-lh-15">
                       {ROL_DESCRIPCION[newUser.rol]}
                     </div>
                     <div className="muted tiny u-mt-4">
@@ -656,24 +654,16 @@ function EditorPermisos({ usuario, pantallas, onClose, onSaved }) {
     <div
       role="dialog"
       aria-modal="true"
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
-        zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 20,
-      }}
+      className="u-modal-overlay"
       onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="card"
-        style={{
-          width: '100%', maxWidth: 780, maxHeight: '92vh', overflow: 'hidden',
-          padding: 0, display: 'flex', flexDirection: 'column',
-        }}
+        className="card u-modal-card-780"
       >
         {/* Header */}
-        <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--border)' }}>
-          <div className="flex-row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div className="u-p-18-22-border-bottom">
+          <div className="flex-row u-flex-between-start">
             <div>
               <div className="u-fs-16-fw-600">Permisos: {usuario.nombre}</div>
               <div className="muted tiny u-mt-4">@{usuario.username}{usuario.email && ` · ${usuario.email}`}</div>
@@ -685,29 +675,28 @@ function EditorPermisos({ usuario, pantallas, onClose, onSaved }) {
         </div>
 
         {/* Rol base dropdown */}
-        <div style={{ padding: '16px 22px', borderBottom: '1px solid var(--hairline)' }}>
-          <div className="field-label" style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>Rol base</div>
-          <div className="flex-row" style={{ gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <div className="u-p-16-22-border-bottom-hl">
+          <div className="field-label u-fw-600-fs-13-mb-6-a">Rol base</div>
+          <div className="flex-row u-gap-12-start-wrap">
             <select
-              className="input"
+              className="input u-select-permisos"
               value={rol}
               onChange={(e) => cambiarRol(e.target.value)}
               disabled={saving}
-              style={{ minWidth: 180, fontSize: 14, padding: '8px 12px' }}
             >
               {ROLES_EDITABLES.map(r => (
                 <option key={r} value={r}>{ROL_LABELS[r]}</option>
               ))}
             </select>
-            <div className="muted tiny" style={{ flex: 1, minWidth: 200, lineHeight: 1.5 }}>
+            <div className="muted tiny u-flex-1-mw-200-lh-15">
               {ROL_DESCRIPCION[rol]}
             </div>
           </div>
         </div>
 
         {/* Capabilities por pantalla */}
-        <div style={{ padding: '16px 22px', flex: 1, overflow: 'auto' }}>
-          <div className="flex-row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div className="u-p-16-22-flex-1-o-auto">
+          <div className="flex-row u-flex-between-center-mb-12">
             <div className="u-fs-13-fw-600">Permisos por pantalla</div>
             {!bypass && overrides.length > 0 && (
               <button className="btn btn-sm" onClick={restaurarAlRol} disabled={saving}>
@@ -717,11 +706,7 @@ function EditorPermisos({ usuario, pantallas, onClose, onSaved }) {
           </div>
 
           {bypass && (
-            <div style={{
-              padding: '12px 14px', marginBottom: 12,
-              background: 'var(--accent-soft, rgba(96,165,250,0.14))',
-              borderLeft: '3px solid var(--accent)', borderRadius: 6, fontSize: 13,
-            }}>
+            <div className="u-bypass-banner">
               <strong>{ROL_LABELS[rol]}</strong> tiene <strong>acceso total</strong> a todas las pantallas y capabilities. No se editan permisos individuales — el rol manda.
             </div>
           )}
@@ -733,29 +718,26 @@ function EditorPermisos({ usuario, pantallas, onClose, onSaved }) {
             return (
               <div
                 key={pantalla.id}
+                className="u-pantalla-card"
                 style={{
-                  marginBottom: 10,
-                  border: '1px solid var(--hairline)',
-                  borderRadius: 8,
                   background: capsOn === 0 ? 'transparent' : 'var(--surface)',
-                  overflow: 'hidden',
                   opacity: bypass ? 0.6 : 1,
                 }}
               >
-                <div style={{
-                  padding: '10px 14px',
-                  background: capsOn === total ? 'color-mix(in oklab, var(--pos) 8%, var(--surface))'
-                            : capsOn > 0     ? 'var(--surface)'
-                            :                  'transparent',
-                  borderBottom: '1px solid var(--hairline)',
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                }}>
+                <div
+                  className="u-pantalla-header-flex"
+                  style={{
+                    background: capsOn === total ? 'color-mix(in oklab, var(--pos) 8%, var(--surface))'
+                              : capsOn > 0     ? 'var(--surface)'
+                              :                  'transparent',
+                  }}
+                >
                   <div className="u-fs-13-fw-600">{pantalla.label}</div>
                   <div className="muted tiny">
                     {capsOn}/{total} {capsOn === total ? '✓ acceso completo' : capsOn === 0 ? '✕ sin acceso' : 'parcial'}
                   </div>
                 </div>
-                <div style={{ padding: '6px 14px 10px' }}>
+                <div className="u-p-6-14-10">
                   {caps.map(cap => {
                     const isOn  = bypass || effectiveCaps?.has(cap.slug) === true;
                     const isBase = bypass || baseCaps?.has(cap.slug) === true;
@@ -763,27 +745,28 @@ function EditorPermisos({ usuario, pantallas, onClose, onSaved }) {
                     return (
                       <label
                         key={cap.slug}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: 10,
-                          padding: '6px 0', cursor: bypass || saving ? 'default' : 'pointer', fontSize: 13,
-                        }}
+                        className="u-label-permiso-row"
+                        style={{ cursor: bypass || saving ? 'default' : 'pointer' }}
                       >
                         <input
                           type="checkbox"
                           checked={isOn}
                           disabled={bypass || saving}
                           onChange={() => toggle(cap.slug)}
-                          style={{ width: 16, height: 16, cursor: bypass ? 'default' : 'pointer' }}
+                          className="u-checkbox-16"
+                          style={{ cursor: bypass ? 'default' : 'pointer' }}
                         />
                         <span className="u-flex-1">{cap.label}</span>
                         {esOverride && (
-                          <span style={{
-                            fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10,
-                            background: isOn
-                              ? 'color-mix(in oklab, var(--pos) 18%, transparent)'
-                              : 'color-mix(in oklab, var(--neg) 18%, transparent)',
-                            color: isOn ? 'var(--pos)' : 'var(--neg)',
-                          }}>
+                          <span
+                            className="u-badge-override"
+                            style={{
+                              background: isOn
+                                ? 'color-mix(in oklab, var(--pos) 18%, transparent)'
+                                : 'color-mix(in oklab, var(--neg) 18%, transparent)',
+                              color: isOn ? 'var(--pos)' : 'var(--neg)',
+                            }}
+                          >
                             {isOn ? '+ override' : '− revocado'}
                           </span>
                         )}
@@ -797,15 +780,11 @@ function EditorPermisos({ usuario, pantallas, onClose, onSaved }) {
 
           {/* Overrides summary — solo se muestra si hay overrides y no es bypass. */}
           {!bypass && overrides.length > 0 && (
-            <div style={{
-              marginTop: 12, padding: '10px 14px',
-              background: 'var(--surface-2)', borderRadius: 6,
-              borderLeft: '3px solid var(--accent)', fontSize: 12.5,
-            }}>
+            <div className="u-overrides-summary">
               <div className="u-fw-600-mb-6">
                 {overrides.length} ajuste{overrides.length > 1 ? 's' : ''} sobre el rol base:
               </div>
-              <ul style={{ margin: 0, paddingLeft: 20, lineHeight: 1.7 }}>
+              <ul className="u-ul-lh-17">
                 {overrides.map((o, i) => {
                   // Buscamos label de cap + pantalla en el catálogo.
                   let pantallaLabel = o.capability_slug;
@@ -829,10 +808,7 @@ function EditorPermisos({ usuario, pantallas, onClose, onSaved }) {
         </div>
 
         {/* Footer */}
-        <div style={{
-          padding: '14px 22px', borderTop: '1px solid var(--border)',
-          display: 'flex', justifyContent: 'flex-end', gap: 10,
-        }}>
+        <div className="u-modal-footer-actions">
           <button className="btn" onClick={onClose} disabled={saving}>Cancelar</button>
           <button className="btn btn-primary" onClick={handleSubmit} disabled={saving}>
             {saving ? 'Guardando…' : 'Guardar'}
