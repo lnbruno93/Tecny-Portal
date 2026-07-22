@@ -3853,3 +3853,22 @@ body.modal-open { overflow: hidden; }
 .u-mt-4-lh-15                 { margin-top: 4px; line-height: 1.5; }
 .u-modal-footer-actions       { padding: 14px 22px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 10px; }
 .u-avatar-32                  { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 11px; flex-shrink: 0; }
+/* — NotificationsBell (Sprint 30) — */
+.u-inline-flex-rel            { position: relative; display: inline-flex; }
+.u-notif-badge                { position: absolute; top: -4px; right: -4px; min-width: 16px; height: 16px; padding: 0 4px; background: #ef4444; color: #fff; border-radius: 999px; font-size: 10px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; line-height: 1; box-shadow: 0 0 0 2px var(--bg, #fff); }
+.u-notif-panel                { position: fixed; width: 380px; max-width: calc(100vw - 24px); max-height: 70vh; background: var(--surface, #131a2b); color: var(--text, #e8ecf6); border: 1px solid var(--border, #2c3656); border-radius: 10px; box-shadow: 0 16px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04); z-index: 10000; overflow: hidden; display: flex; flex-direction: column; }
+.u-notif-header               { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--border, #2c3656); font-size: 13px; font-weight: 600; }
+.u-notif-mark-all-btn         { background: transparent; border: none; color: var(--accent, #0ea5e9); font-size: 12px; font-weight: 600; cursor: pointer; padding: 0; }
+.u-notif-body                 { flex: 1; overflow-y: auto; background: var(--surface, #131a2b); }
+.u-notif-loading              { padding: 24px; text-align: center; color: var(--text-muted, #7c87a5); font-size: 13px; }
+.u-notif-section-header       { padding: 8px 14px; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted, #7c87a5); background: var(--surface-2, #1a2238); display: flex; align-items: center; justify-content: space-between; }
+.u-notif-count-badge          { background: var(--accent, #0ea5e9); color: #fff; padding: 1px 6px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: 0; text-transform: none; }
+.u-notif-item-btn             { width: 100%; padding: 10px 14px; border: none; border-bottom: 1px solid var(--hairline, rgba(255,255,255,0.06)); text-align: left; cursor: pointer; display: flex; gap: 10px; font: inherit; color: inherit; }
+.u-notif-item-emoji           { font-size: 16px; flex-shrink: 0; line-height: 1.4; }
+.u-notif-item-title           { font-size: 13px; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.u-notif-item-meta            { font-size: 11px; color: var(--text-muted, #7c87a5); }
+.u-notif-item-dot             { width: 8px; height: 8px; border-radius: 999px; background: var(--accent, #0ea5e9); flex-shrink: 0; align-self: center; }
+.u-notif-item-dot-inline      { width: 8px; height: 8px; border-radius: 999px; background: var(--accent, #0ea5e9); flex-shrink: 0; }
+.u-notif-footer-btn           { width: 100%; padding: 8px 14px; background: transparent; border: none; border-bottom: 1px solid var(--border, #2c3656); color: var(--accent, #0ea5e9); font-size: 12px; font-weight: 600; cursor: pointer; text-align: center; }
+.u-notif-b2b-item-btn         { width: 100%; padding: 10px 14px; border: none; border-bottom: 1px solid var(--hairline, rgba(255,255,255,0.06)); text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 4px; font: inherit; color: inherit; }
+.u-notif-b2b-title-row        { display: flex; align-items: center; gap: 8px; font-size: 13px; }

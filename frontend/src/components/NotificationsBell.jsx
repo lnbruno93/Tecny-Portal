@@ -343,41 +343,23 @@ export default function NotificationsBell() {
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ position: 'relative', display: 'inline-flex' }}>
+    <div className="u-inline-flex-rel">
       <button
         ref={btnRef}
         type="button"
-        className="icon-btn"
+        className="icon-btn u-pos-rel"
         title="Notificaciones"
         aria-label="Notificaciones"
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="u-pos-rel"
       >
         <Icons.Bell size={17} />
         {badge != null && (
           <span
             data-testid="notif-bell-badge"
             aria-label={`${totalUnread} ${totalUnread === 1 ? 'notificación' : 'notificaciones'} sin leer`}
-            style={{
-              position: 'absolute',
-              top: -4,
-              right: -4,
-              minWidth: 16,
-              height: 16,
-              padding: '0 4px',
-              background: '#ef4444',
-              color: '#fff',
-              borderRadius: 999,
-              fontSize: 10,
-              fontWeight: 700,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              lineHeight: 1,
-              boxShadow: '0 0 0 2px var(--bg, #fff)',
-            }}
+            className="u-notif-badge"
           >
             {badge}
           </span>
@@ -385,55 +367,31 @@ export default function NotificationsBell() {
       </button>
 
       {open && createPortal(
+        // 2026-07-17 (post-#658): renderizado vía React Portal en <body>
+        // para escapar CUALQUIER stacking context del árbol del Shell.
+        // El fix previo con `isolation: isolate` + z-index 1000 no
+        // alcanzó — el sticky header de las tablas debajo (CuentasCC,
+        // etc) seguía atravesando el panel. Renderear en el body directo
+        // + position: fixed + z-index 10000 es la solución bulletproof:
+        // el panel NO comparte stacking context con ningún elemento de
+        // la página, por lo que ningún z-index de la página puede
+        // "escaparse" hacia arriba y pintarse encima.
         <div
           ref={panelRef}
           role="dialog"
           aria-label="Notificaciones"
           data-testid="notif-bell-panel"
-          style={{
-            // 2026-07-17 (post-#658): renderizado vía React Portal en <body>
-            // para escapar CUALQUIER stacking context del árbol del Shell.
-            // El fix previo con `isolation: isolate` + z-index 1000 no
-            // alcanzó — el sticky header de las tablas debajo (CuentasCC,
-            // etc) seguía atravesando el panel. Renderear en el body directo
-            // + position: fixed + z-index 10000 es la solución bulletproof:
-            // el panel NO comparte stacking context con ningún elemento de
-            // la página, por lo que ningún z-index de la página puede
-            // "escaparse" hacia arriba y pintarse encima.
-            position: 'fixed',
-            top: panelPos.top,
-            right: panelPos.right,
-            width: 380,
-            maxWidth: 'calc(100vw - 24px)',
-            maxHeight: '70vh',
-            background: 'var(--surface, #131a2b)',
-            color: 'var(--text, #e8ecf6)',
-            border: '1px solid var(--border, #2c3656)',
-            borderRadius: 10,
-            boxShadow: '0 16px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04)',
-            zIndex: 10000,
-            overflow: 'hidden',
-            display: 'flex',
-            flexDirection: 'column',
-          }}
+          className="u-notif-panel"
+          style={{ top: panelPos.top, right: panelPos.right }}
         >
           {/* Header */}
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '12px 14px',
-            borderBottom: '1px solid var(--border, #2c3656)',
-            fontSize: 13, fontWeight: 600,
-          }}>
+          <div className="u-notif-header">
             <span>Notificaciones</span>
             {totalUnread > 0 && (
               <button
                 type="button"
                 onClick={handleMarkAll}
-                style={{
-                  background: 'transparent', border: 'none',
-                  color: 'var(--accent, #0ea5e9)',
-                  fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0,
-                }}
+                className="u-notif-mark-all-btn"
               >
                 Marcar todo como leído
               </button>
@@ -443,9 +401,9 @@ export default function NotificationsBell() {
           {/* Body scrolleable — background explícito por defensa: aunque el
               contenedor padre ya tiene --surface, cualquier hueco/gap entre
               items o padding transparente podría dejar ver el layout debajo. */}
-          <div style={{ flex: 1, overflowY: 'auto', background: 'var(--surface, #131a2b)' }}>
+          <div className="u-notif-body">
             {loadingList && (
-              <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted, #7c87a5)', fontSize: 13 }}>
+              <div className="u-notif-loading">
                 Cargando…
               </div>
             )}
@@ -453,21 +411,10 @@ export default function NotificationsBell() {
             {/* ── Sección Novedades ─────────────────────────────────────── */}
             {!loadingList && (
               <div>
-                <div style={{
-                  padding: '8px 14px',
-                  fontSize: 10, fontWeight: 700,
-                  letterSpacing: '0.06em', textTransform: 'uppercase',
-                  color: 'var(--text-muted, #7c87a5)',
-                  background: 'var(--surface-2, #1a2238)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                }}>
+                <div className="u-notif-section-header">
                   <span>Novedades</span>
                   {hayNovedadesUnseen && (
-                    <span style={{
-                      background: 'var(--accent, #0ea5e9)', color: '#fff',
-                      padding: '1px 6px', borderRadius: 999, fontSize: 10, fontWeight: 700,
-                      letterSpacing: 0, textTransform: 'none',
-                    }}>
+                    <span className="u-notif-count-badge">
                       {novedadesCount} nueva{novedadesCount === 1 ? '' : 's'}
                     </span>
                   )}
@@ -488,36 +435,23 @@ export default function NotificationsBell() {
                             type="button"
                             onClick={() => handleNovedadClick(nota)}
                             data-testid="notif-bell-novedad"
-                            style={{
-                              width: '100%',
-                              padding: '10px 14px',
-                              background: isUnseen ? 'rgba(14,165,233,0.06)' : 'transparent',
-                              border: 'none',
-                              borderBottom: '1px solid var(--hairline, rgba(255,255,255,0.06))',
-                              textAlign: 'left', cursor: 'pointer',
-                              display: 'flex', gap: 10,
-                              font: 'inherit', color: 'inherit',
-                            }}
+                            className="u-notif-item-btn"
+                            style={{ background: isUnseen ? 'rgba(14,165,233,0.06)' : 'transparent' }}
                           >
-                            <span style={{ fontSize: 16, flexShrink: 0, lineHeight: 1.4 }}>{emoji}</span>
+                            <span className="u-notif-item-emoji">{emoji}</span>
                             <div className="u-flex-1-minw-0">
-                              <div style={{
-                                fontSize: 13, fontWeight: isUnseen ? 600 : 500,
-                                marginBottom: 2, overflow: 'hidden',
-                                textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                              }}>
+                              <div
+                                className="u-notif-item-title"
+                                style={{ fontWeight: isUnseen ? 600 : 500 }}
+                              >
                                 {nota.titulo}
                               </div>
-                              <div style={{ fontSize: 11, color: 'var(--text-muted, #7c87a5)' }}>
+                              <div className="u-notif-item-meta">
                                 {fmtRelative(nota.publicado_en)}
                               </div>
                             </div>
                             {isUnseen && (
-                              <span style={{
-                                width: 8, height: 8, borderRadius: 999,
-                                background: 'var(--accent, #0ea5e9)',
-                                flexShrink: 0, alignSelf: 'center',
-                              }} />
+                              <span className="u-notif-item-dot" />
                             )}
                           </button>
                         </li>
@@ -528,14 +462,7 @@ export default function NotificationsBell() {
                 <button
                   type="button"
                   onClick={() => { setOpen(false); navigate('/novedades'); }}
-                  style={{
-                    width: '100%', padding: '8px 14px',
-                    background: 'transparent', border: 'none',
-                    borderBottom: '1px solid var(--border, #2c3656)',
-                    color: 'var(--accent, #0ea5e9)',
-                    fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                    textAlign: 'center',
-                  }}
+                  className="u-notif-footer-btn"
                 >
                   Ver todas las novedades →
                 </button>
@@ -545,21 +472,10 @@ export default function NotificationsBell() {
             {/* ── Sección Red B2B (solo si el user tiene cap) ───────────── */}
             {!loadingList && hasB2b && (
               <div>
-                <div style={{
-                  padding: '8px 14px',
-                  fontSize: 10, fontWeight: 700,
-                  letterSpacing: '0.06em', textTransform: 'uppercase',
-                  color: 'var(--text-muted, #7c87a5)',
-                  background: 'var(--surface-2, #1a2238)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                }}>
+                <div className="u-notif-section-header">
                   <span>Red B2B</span>
                   {b2bCount > 0 && (
-                    <span style={{
-                      background: 'var(--accent, #0ea5e9)', color: '#fff',
-                      padding: '1px 6px', borderRadius: 999, fontSize: 10, fontWeight: 700,
-                      letterSpacing: 0, textTransform: 'none',
-                    }}>
+                    <span className="u-notif-count-badge">
                       {b2bCount} nueva{b2bCount === 1 ? '' : 's'}
                     </span>
                   )}
@@ -579,31 +495,22 @@ export default function NotificationsBell() {
                             type="button"
                             onClick={() => handleB2bClick(n)}
                             data-testid="notif-bell-b2b"
-                            style={{
-                              width: '100%',
-                              padding: '10px 14px',
-                              background: unread ? 'rgba(14,165,233,0.06)' : 'transparent',
-                              border: 'none',
-                              borderBottom: '1px solid var(--hairline, rgba(255,255,255,0.06))',
-                              textAlign: 'left', cursor: 'pointer',
-                              display: 'flex', flexDirection: 'column', gap: 4,
-                              font: 'inherit', color: 'inherit',
-                            }}
+                            className="u-notif-b2b-item-btn"
+                            style={{ background: unread ? 'rgba(14,165,233,0.06)' : 'transparent' }}
                           >
-                            <div style={{
-                              display: 'flex', alignItems: 'center', gap: 8,
-                              fontSize: 13, fontWeight: unread ? 600 : 400,
-                            }}>
+                            <div
+                              className="u-notif-b2b-title-row"
+                              style={{ fontWeight: unread ? 600 : 400 }}
+                            >
                               {unread && (
-                                <span style={{
-                                  width: 8, height: 8, borderRadius: 999,
-                                  background: 'var(--accent, #0ea5e9)',
-                                  flexShrink: 0,
-                                }} />
+                                <span className="u-notif-item-dot-inline" />
                               )}
                               <span className="u-flex-1">{label}</span>
                             </div>
-                            <div style={{ fontSize: 11, color: 'var(--text-muted, #7c87a5)', paddingLeft: unread ? 16 : 0 }}>
+                            <div
+                              className="u-notif-item-meta"
+                              style={{ paddingLeft: unread ? 16 : 0 }}
+                            >
                               {fmtRelative(n.created_at)}
                             </div>
                           </button>
