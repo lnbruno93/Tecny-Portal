@@ -7,7 +7,7 @@
  * Diseño UX (validado con Lucas, iterado post-#652):
  *   - Header sticky con banner de saldo actual + fecha + concepto.
  *   - Tabla compacta de items — 1 fila por producto con columnas:
- *     [Producto][Categoría][IMEI][Cant][Valor unit.][Subtotal][✕]
+ *     [Producto][Categoría][IMEI][GB][Color][Bat.%][Cant][Valor unit.][Subtotal][✕]
  *     Header sticky, filas scrolleables. Escala bien con 10+ productos
  *     sin romper el layout (v1 con cards se ponía inusable a partir de 4).
  *   - Footer sticky con total + preview del saldo post-op + botones.
@@ -44,12 +44,15 @@ function todayISO() { return new Date().toLocaleDateString('sv'); }
 // unitario nuevo que trae el cliente).
 // 2026-07-17 (pedido de Lucas post-#654): agregado `color` + `bateria` para
 // alinear con los campos que ya usa el modal Inventario (celulares/consolas).
+// 2026-07-22 (pedido de Lucas): agregado `gb` — el campo ya lo aceptaba el
+// backend (routes/cuentas.js:893) pero el modal no lo exponía.
 const mkItem = () => ({
   _id: Math.random().toString(36).slice(2),
   nombre: '',
   categoria_id: '',
   clase_id: '',
   imei: '',
+  gb: '',
   color: '',
   bateria: '',
   cantidad: '1',
@@ -190,6 +193,8 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
             clase_id: it.clase_id,
             nombre: it.nombre.trim(),
             imei: it.imei.trim() || null,
+            // GB es text en DB (soporta "256", "1TB", etc.) — no lo casteamos.
+            gb: it.gb?.toString().trim() || null,
             color: it.color.trim() || null,
             // Batería en %: 0..100. Vacío → null (el schema es opcional).
             bateria: it.bateria !== '' && it.bateria != null
@@ -251,8 +256,9 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
     fontSize: 12,
   };
   // Grid compartido para header + filas. Un cambio acá y todo queda alineado.
-  //  Producto | Categoría | IMEI | Color | Bat% | Cant | Valor unit. | Subtotal | ✕
-  const gridCols = 'minmax(160px, 1.4fr) 130px minmax(100px, 1fr) 90px 60px 55px 90px 90px 28px';
+  //  Producto | Categoría | IMEI | GB | Color | Bat% | Cant | Valor unit. | Subtotal | ✕
+  // 2026-07-22: +col GB (60px) entre IMEI y Color.
+  const gridCols = 'minmax(160px, 1.4fr) 130px minmax(100px, 1fr) 60px 90px 60px 55px 90px 90px 28px';
   const cellPad = '6px 8px';
   const inputCell = { width: '100%', padding: '6px 8px', fontSize: 12, borderRadius: 4 };
   const previewStyle = {
@@ -352,6 +358,7 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
               <span>Producto</span>
               <span>Categoría</span>
               <span>IMEI / Serial</span>
+              <span className="u-text-center">GB</span>
               <span>Color</span>
               <span className="u-text-center">Bat.%</span>
               <span className="u-text-center">Cant.</span>
@@ -395,6 +402,13 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
                       onChange={e => updItem(idx, 'imei', e.target.value)}
                       placeholder="—"
                       style={{ ...inputCell, fontFamily: 'monospace' }}
+                    />
+                    <input
+                      type="text" className="input"
+                      value={it.gb}
+                      onChange={e => updItem(idx, 'gb', e.target.value)}
+                      placeholder="256"
+                      style={{ ...inputCell, textAlign: 'center' }}
                     />
                     <input
                       type="text" className="input"
