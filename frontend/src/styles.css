@@ -3708,3 +3708,19 @@ body.modal-open { overflow: hidden; }
 .u-error-banner               { background: var(--neg-soft); color: var(--neg); padding: 10px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 14px; border: 1px solid transparent; }
 .u-fs-13-m-0                  { font-size: 13px; margin: 0; }
 .u-fs-13-m-0-0-20             { font-size: 13px; margin: 0 0 20px; }
+
+/* Sprint 24 (2026-07-22) — Ficha.jsx manual + skeleton utilities */
+
+.u-skeleton-block             { display: block; }
+.u-sk-80-11-mb-8              { display: block; width: 80px; height: 11px; margin-bottom: 8px; }
+.u-sk-240-26-mb-6             { display: block; width: 240px; height: 26px; margin-bottom: 6px; }
+.u-sk-320-13                  { display: block; width: 320px; height: 13px; }
+.u-sk-70-11-mb-10             { display: block; width: 70px; height: 11px; margin-bottom: 10px; }
+.u-sk-90-22                   { display: block; width: 90px; height: 22px; }
+.u-sk-14-70pc                 { height: 14px; width: 70%; }
+.u-gap-10-flex-wrap-only      { gap: 10px; flex-wrap: wrap; }
+.u-m-0-0-6                    { margin: 0 0 6px; }
+.u-m-0-0-4                    { margin: 0 0 4px; }
+.u-mw-280-ellipsis            { max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+.u-fw-600-op-85               { font-weight: 600; opacity: 0.85; }
+.u-footer-preview             { padding: 14px 18px; background: var(--surface-2); border-top: 1px solid var(--border); border-radius: 6px; font-size: 12px; line-height: 1.55; color: var(--text-muted); text-align: center; white-space: pre-wrap; }
