@@ -205,15 +205,15 @@ export default function Historial() {
 
       {/* ── Table card ────────────────────────────────────────────────────── */}
       <div className="card card-flush">
-        <div className="card-hd" style={{ flexWrap: 'wrap', gap: 10 }}>
+        <div className="card-hd u-card-hd-wrap-gap-10">
           <div className="u-fs-14-fw-600">
             Eventos{hayFiltros ? ' · filtrado' : ''} — {fmt(totalRows)} resultado{totalRows !== 1 ? 's' : ''}
           </div>
 
           {/* ── Fila de filtros ─────────────────────────────────────────── */}
-          <div className="flex-row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div className="flex-row u-hist-filters-row">
             {/* Búsqueda libre */}
-            <div className="input-group" style={{ width: 210 }}>
+            <div className="input-group u-w-210">
               <span className="addon addon-l"><Icons.Search size={14} /></span>
               <input
                 className="input"
@@ -226,8 +226,7 @@ export default function Historial() {
 
             {/* Módulo */}
             <select
-              className="input"
-              style={{ width: 172 }}
+              className="input u-w-172"
               value={tablaFilter}
               onChange={handleTabla}
             >
@@ -239,8 +238,7 @@ export default function Historial() {
 
             {/* Acción */}
             <select
-              className="input"
-              style={{ width: 148 }}
+              className="input u-w-148"
               value={accionFilter}
               onChange={handleAccion}
             >
@@ -324,7 +322,7 @@ export default function Historial() {
                     <td className="mono tiny u-color-text-2">
                       {tabla || <span className="dim">—</span>}
                     </td>
-                    <td className="tiny" style={{ fontSize: 12.5, maxWidth: 300 }}>
+                    <td className="tiny u-td-detalle-300">
                       {h.detalle || <span className="dim">—</span>}
                     </td>
                     <td>
@@ -357,7 +355,7 @@ export default function Historial() {
           >
             Anterior
           </button>
-          <span className="btn btn-primary btn-sm" style={{ pointerEvents: 'none' }}>
+          <span className="btn btn-primary btn-sm u-pointer-none">
             {page}
           </span>
           <button
@@ -387,31 +385,19 @@ export default function Historial() {
               </button>
             </div>
             <div className="modal-body">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+              <div className="u-hist-modal-body">
                 {/* Qué pasó — la descripción humanizada, prominente. */}
                 <div>
-                  <div
-                    className="muted tiny"
-                    style={{ textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6, fontWeight: 600 }}
-                  >
+                  <div className="muted tiny u-hist-field-label">
                     Qué pasó
                   </div>
-                  <div style={{ fontSize: 15, fontWeight: 500, lineHeight: 1.4 }}>
+                  <div className="u-hist-que-paso">
                     {detail.detalle || <span className="dim">Sin descripción disponible.</span>}
                   </div>
                 </div>
 
                 {/* Metadatos en grilla — 2×2 en desktop, stack en mobile. */}
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-                    gap: 12,
-                    padding: '14px 16px',
-                    background: 'var(--surface-2)',
-                    borderRadius: 8,
-                  }}
-                >
+                <div className="u-hist-meta-grid">
                   <DetailField label="Usuario">
                     {detail.usuario_nombre || <span className="dim">Sistema</span>}
                   </DetailField>
@@ -448,10 +434,7 @@ export default function Historial() {
 function DetailField({ label, children }) {
   return (
     <div>
-      <div
-        className="muted tiny"
-        style={{ textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4, fontWeight: 600 }}
-      >
+      <div className="muted tiny u-hist-detailfield-label">
         {label}
       </div>
       <div className="u-fs-13">{children}</div>
