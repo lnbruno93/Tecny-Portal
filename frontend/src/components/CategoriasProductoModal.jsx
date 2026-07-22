@@ -191,7 +191,7 @@ export default function CategoriasProductoModal({
               hasta N colecciones tipo "iPhones 2024", "Rebajados", etc.
               Complementaria a Categorías (tipo de producto). */}
           {colecciones !== undefined && (
-            <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid var(--border)' }}>
+            <div className="u-section-with-top-border">
               <div className="u-fw-600-fs-14-mb-4">Colecciones</div>
               <p className="muted tiny u-mb-12">
                 Agrupación libre auxiliar, independiente del tipo de producto. Útil para separar
@@ -217,10 +217,10 @@ export default function CategoriasProductoModal({
                   const stock = Number(c.stock_disponible ?? 0);
                   return (
                     <div key={c.id} className="flex-between u-fs-13-p-6-0-border-bottom">
-                      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.nombre}>
+                      <span className="u-flex-1-ellipsis-nowrap" title={c.nombre}>
                         {c.nombre}
                       </span>
-                      <span className="muted tiny" style={{ marginRight: 8, whiteSpace: 'nowrap' }} title={`${count} producto${count === 1 ? '' : 's'} cargado${count === 1 ? '' : 's'} · ${stock} unidad${stock === 1 ? '' : 'es'} en stock`}>
+                      <span className="muted tiny u-mr-8-nowrap" title={`${count} producto${count === 1 ? '' : 's'} cargado${count === 1 ? '' : 's'} · ${stock} unidad${stock === 1 ? '' : 'es'} en stock`}>
                         {count} prod · {stock} u
                       </span>
                       <button type="button" className="icon-btn u-color-neg" onClick={() => onDelColeccion?.(c)}>
@@ -256,7 +256,7 @@ function CatList({ items, onEdit, onDelete, onReorder }) {
   const [dropTarget, setDropTarget] = useState(null);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div className="u-flex-col-gap-6">
       {items.map(row => {
         const isDragging = dragId === row.id;
         const isDropTarget = dropTarget === row.id && dragId && dragId !== row.id;
@@ -284,31 +284,24 @@ function CatList({ items, onEdit, onDelete, onReorder }) {
               setDropTarget(null);
             }}
             onDragEnd={() => { setDragId(null); setDropTarget(null); }}
-            className="card card-tight"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              padding: '10px 12px',
-              cursor: row.es_sin_categoria ? 'default' : 'grab',
-              opacity: isDragging ? 0.4 : 1,
-              // Hint visual del drop target: borde superior más grueso.
-              borderTop: isDropTarget ? '2px solid var(--accent)' : undefined,
-              transition: 'border-top 0.1s',
-            }}
+            className={`card card-tight u-cat-drag-item ${
+              row.es_sin_categoria ? 'u-cursor-default' : 'u-cursor-grab'
+            } ${isDragging ? 'u-opacity-40' : ''} ${
+              isDropTarget ? 'u-drop-target' : ''
+            }`}
           >
             {!row.es_sin_categoria ? (
-              <Icons.Menu size={14} style={{ color: 'var(--text-dim)', flexShrink: 0 }} />
+              <Icons.Menu size={14} className="u-icon-drag-handle" />
             ) : (
-              <div style={{ width: 14, flexShrink: 0 }} />
+              <div className="u-w-14-noflex" />
             )}
 
-            <span style={{ minWidth: 26, textAlign: 'center', fontSize: 18, flexShrink: 0 }}>
+            <span className="u-cat-emoji-cell">
               {row.emoji || ''}
             </span>
 
             <div className="u-flex-1-minw-0">
-              <div style={{ fontWeight: 500, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div className="u-cat-title-row">
                 <span>{row.nombre}</span>
                 {row.es_sin_categoria && (
                   <span className="chip tiny" title="Categoría del sistema, no editable ni borrable">Sistema</span>
@@ -394,13 +387,11 @@ function EditModal({ row, onSave, onCancel }) {
   return (
     <div
       ref={overlayRef}
-      className="modal-overlay"
-      style={{ zIndex: 100 }}
+      className="modal-overlay u-z-100"
       onClick={e => e.target === e.currentTarget && !saving && onCancel()}
     >
       <div
-        className="modal"
-        style={{ maxWidth: 420, width: '92vw' }}
+        className="modal u-modal-w-420"
         role="dialog"
         aria-labelledby="cat-edit-title"
         aria-modal="true"
@@ -450,7 +441,7 @@ function EditModal({ row, onSave, onCancel }) {
             En Mac: <kbd>Ctrl</kbd>+<kbd>Cmd</kbd>+<kbd>Espacio</kbd> abre el picker del sistema.
           </p>
 
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 12, cursor: 'pointer' }}>
+          <label className="u-label-checkbox-mt-12">
             <input
               type="checkbox"
               checked={draft.activa}
@@ -464,7 +455,7 @@ function EditModal({ row, onSave, onCancel }) {
           </label>
 
           {error && (
-            <p style={{ color: 'var(--neg)', marginTop: 12, fontSize: 13 }}>{error}</p>
+            <p className="u-p-neg-mt-12-fs-13">{error}</p>
           )}
         </div>
 
