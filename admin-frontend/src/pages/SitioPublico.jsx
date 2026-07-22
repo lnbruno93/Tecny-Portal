@@ -345,7 +345,7 @@ export default function SitioPublico() {
       {loading ? (
         <div className="muted u-p-32-text-center">Cargando…</div>
       ) : (
-        <div style={{ display: 'grid', gap: 16 }}>
+        <div className="u-grid-gap-16-only">
           {/* ── SECCIÓN CONTACTO ── */}
           <Card>
             <div className="u-p-20-grid-gap-16">
@@ -363,8 +363,7 @@ export default function SitioPublico() {
                     <label className="field-label u-flex-center-gap-8" htmlFor={`sc-${f.key}`}>
                       {f.label}
                       {changed && (
-                        <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px',
-                                       borderRadius: 4, background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                        <span className="u-badge-modified">
                           MODIFICADO
                         </span>
                       )}
@@ -374,7 +373,7 @@ export default function SitioPublico() {
                            value={contact[f.key]}
                            onChange={e => setContact(x => ({ ...x, [f.key]: e.target.value }))}
                            disabled={saving} className="u-w-100" />
-                    {f.hint && <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>{f.hint}</div>}
+                    {f.hint && <div className="muted u-fs-11-mt-4-only">{f.hint}</div>}
                   </div>
                 );
               })}
@@ -388,8 +387,7 @@ export default function SitioPublico() {
                 <h3 className="u-modal-title">
                   Hero (top de la landing)
                   {dirtyHeroKeys.length > 0 && (
-                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px',
-                                   borderRadius: 4, background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                    <span className="u-badge-modified">
                       {dirtyHeroKeys.length} MODIFICADO{dirtyHeroKeys.length > 1 ? 'S' : ''}
                     </span>
                   )}
@@ -405,8 +403,7 @@ export default function SitioPublico() {
                     <label className="field-label u-flex-center-gap-8" htmlFor={`sc-${f.key}`}>
                       {f.label}
                       {changed && (
-                        <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px',
-                                       borderRadius: 4, background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                        <span className="u-badge-modified">
                           MODIFICADO
                         </span>
                       )}
@@ -439,8 +436,7 @@ export default function SitioPublico() {
                 <h3 className="u-modal-title">
                   CTA final
                   {dirtyCtaKeys.length > 0 && (
-                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px',
-                                   borderRadius: 4, background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                    <span className="u-badge-modified">
                       {dirtyCtaKeys.length} MODIFICADO{dirtyCtaKeys.length > 1 ? 'S' : ''}
                     </span>
                   )}
@@ -456,8 +452,7 @@ export default function SitioPublico() {
                     <label className="field-label u-flex-center-gap-8" htmlFor={`sc-${f.key}`}>
                       {f.label}
                       {changed && (
-                        <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px',
-                                       borderRadius: 4, background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                        <span className="u-badge-modified">
                           MODIFICADO
                         </span>
                       )}
@@ -491,8 +486,7 @@ export default function SitioPublico() {
                   <h3 className="u-modal-title">
                     Preguntas frecuentes (FAQ)
                     {faqDirty && (
-                      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px',
-                                     borderRadius: 4, background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                      <span className="u-badge-modified">
                         MODIFICADO
                       </span>
                     )}
@@ -568,8 +562,7 @@ export default function SitioPublico() {
                   <h3 className="u-modal-title">
                     Reseñas de Google
                     {googleEnabledDirty && (
-                      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px',
-                                     borderRadius: 4, background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                      <span className="u-badge-modified">
                         MODIFICADO
                       </span>
                     )}
@@ -600,7 +593,7 @@ export default function SitioPublico() {
                 <div style={{ display: 'grid', gap: 8, padding: 12,
                               borderRadius: 6, background: 'rgba(255,255,255,0.02)',
                               border: '1px solid var(--hairline)' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
+                  <div className="u-grid-autofit-140-12">
                     <div>
                       <div className="muted tiny u-mb-2">Reseñas en Google</div>
                       <div className="u-fs-16-fw-600">
@@ -625,7 +618,7 @@ export default function SitioPublico() {
                                   display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                       <a href={`https://www.google.com/maps/place/?q=place_id:${googleStatus.place_id}`}
                          target="_blank" rel="noopener noreferrer"
-                         style={{ fontSize: 12, color: 'var(--accent)' }}>
+                         className="u-fs-12-color-accent">
                         Ver listing en Google Maps →
                       </a>
                       <button type="button" onClick={copyReviewLink}
@@ -671,7 +664,7 @@ export default function SitioPublico() {
               </label>
 
               {copyMsg && (
-                <div className="muted" style={{ fontSize: 11, color: 'var(--pos)', textAlign: 'center' }}>
+                <div className="muted u-fs-11-pos-center">
                   {copyMsg}
                 </div>
               )}
@@ -686,8 +679,7 @@ export default function SitioPublico() {
                   <h3 className="u-m-0-fs-16-fw-600">
                     Reseñas de clientes
                     {testimonialsDirty && (
-                      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', marginLeft: 8,
-                                     borderRadius: 4, background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                      <span className="u-badge-modified-ml-8">
                         MODIFICADO
                       </span>
                     )}
@@ -743,7 +735,7 @@ export default function SitioPublico() {
                         </div>
                       </div>
 
-                      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1.5fr', gap: 8 }}>
+                      <div className="u-grid-4col-2fr-1fr-8">
                         <div className="field">
                           <div className="muted tiny u-mb-2">Nombre</div>
                           <input className="input" placeholder="Ej. Tomás R."
@@ -758,7 +750,7 @@ export default function SitioPublico() {
                         </div>
                         <div className="field">
                           <div className="muted tiny u-mb-2">Color</div>
-                          <input type="color" className="input" style={{ padding: 2, height: 32 }}
+                          <input type="color" className="input u-p-2-h-32"
                                  value={t.color || '#4285F4'} disabled={saving}
                                  onChange={e => updateTestimonial(idx, 'color', e.target.value)} />
                         </div>
@@ -816,7 +808,7 @@ export default function SitioPublico() {
           )}
 
           {meta.updated_at && (
-            <div className="muted" style={{ fontSize: 12, textAlign: 'right' }}>
+            <div className="muted u-td-right-fs-12">
               Última edición: {fmtDateTime(meta.updated_at)}
             </div>
           )}
