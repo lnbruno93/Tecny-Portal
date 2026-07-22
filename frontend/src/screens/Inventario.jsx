@@ -1152,7 +1152,7 @@ export default function Inventario() {
           El PO prefiere el botón con texto en el toolbar de la pantalla —
           ahora no hay problema de wrap porque redujimos la cantidad de
           botones secundarios en #553/#554. */}
-      <div className="page-actions" style={{ marginBottom: 18, justifyContent: 'flex-start' }}>
+      <div className="page-actions u-mb-18-start">
         {canCreateProducto && (
           <button className="btn btn-primary" onClick={openCreate}>
             <Icons.Plus size={14} /> Agregar producto
@@ -1210,8 +1210,7 @@ export default function Inventario() {
           buckets arbitrarios en la vista principal. El desglose granular vive en
           el modal InventarioPorCategoriaModal — 1 click desde el botón abajo. */}
       <div
-        className="kpi-grid"
-        style={{ marginBottom: 12, gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}
+        className="kpi-grid u-mb-12-grid-3col"
       >
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">En técnico</div>
@@ -1332,7 +1331,7 @@ export default function Inventario() {
         </ScrollFadeX>
         <div className="flex-between u-gap-8-flex-wrap">
           <div className="flex-row u-gap-8-center">
-            <label className="field-label" style={{ marginBottom: 0, marginRight: 4 }}>Vista</label>
+            <label className="field-label u-mb-0-mr-4">Vista</label>
             <select
               className="input"
               value={vistaFiltro}
@@ -1342,7 +1341,7 @@ export default function Inventario() {
               {VISTAS.map(v => <option key={v.value} value={v.value}>{v.label}</option>)}
             </select>
           </div>
-          <div className="input-group" style={{ width: 300 }}>
+          <div className="input-group u-w-300">
             <span className="addon addon-l"><Icons.Search size={14} /></span>
             <input className="input" placeholder="Buscar nombre, IMEI, color, GB…" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
@@ -1351,7 +1350,7 @@ export default function Inventario() {
             Presets compartidos con Financiera y Tarjetas (lib/dateRange). Default 'todo'
             = sin filtro. En 'custom' se muestran 2 date pickers. */}
         {vistaFiltro === 'vendidos' && (
-          <div className="flex-row" style={{ gap: 6, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div className="flex-row u-gap-6-mt-10-wrap-center">
             <span className="muted tiny u-mr-4">Vendidos:</span>
             {RANGE_PRESETS.map(p => (
               <button
@@ -1386,7 +1385,7 @@ export default function Inventario() {
 
       {/* ── Chip de drill-down ── */}
       {hasDrillDown && (
-        <div className="card card-tight" style={{ marginBottom: 12, background: 'var(--surface-2)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <div className="card card-tight u-toolbar-filters">
           <Icons.Filter size={14} />
           <span className="muted tiny">Filtrado desde Desglose 360:</span>
           {Object.entries(drillFilters).map(([k, v]) => {
@@ -1482,7 +1481,7 @@ export default function Inventario() {
             );
           }
           return (
-            <div className="empty" style={{ padding: '32px 16px' }}>
+            <div className="empty u-p-32-16">
               <div className="u-fw-600-mb-6">Todavía no cargaste productos</div>
               <div className="muted tiny u-mb-14">
                 {canCreateProducto
@@ -1754,7 +1753,7 @@ export default function Inventario() {
                 .modal-body base tiene flex:1 + overflow-y:auto. El body es hijo
                 directo del .modal (sin form wrapper), scroll interno automático. */}
             <div className="modal-body">
-              <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
+              <p className="muted u-fs-13-mt-0">
                 Subí un <strong>.xlsx</strong> o <strong>.csv</strong>. La columna <strong>proveedor</strong> define el agrupamiento:
                 cada proveedor distinto se vuelve <strong>una compra</strong> en su CC, con sus productos como ítems trazables.
                 Las categorías que no existan se crean automáticamente.
@@ -1769,7 +1768,7 @@ export default function Inventario() {
               </div>
               {importRows.length > 0 && (
                 <div className="u-mt-12">
-                  <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>
+                  <div className="muted u-fs-13-mb-8">
                     <span className="pos">{importValidos.length} válidos</span>
                     {importWarnings.length > 0 && (
                       <> · <span className="u-color-warn-hex">{importWarnings.length} con aviso</span></>
@@ -1791,13 +1790,13 @@ export default function Inventario() {
                       border: '1px solid rgba(239, 68, 68, 0.45)',
                       borderRadius: 6, color: 'var(--neg)', fontSize: 12,
                     }} role="alert">
-                      <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                      <div className="u-fw-700-mb-4">
                         ⚠ {importDupImeis.length} IMEI{importDupImeis.length === 1 ? '' : 's'} duplicado{importDupImeis.length === 1 ? '' : 's'} en este archivo
                       </div>
                       <div className="u-mb-4">
                         Corregilos antes de continuar. La importación queda bloqueada.
                       </div>
-                      <div style={{ maxHeight: 100, overflowY: 'auto' }}>
+                      <div className="u-mh-100-oy">
                         {importDupImeis.map((d, i) => (
                           <div key={i} className="mono u-fs-11">
                             · IMEI <strong>{fmtImei(d.imei)}</strong> aparece en filas{' '}
@@ -1919,7 +1918,7 @@ export default function Inventario() {
                                   value={g.monto}
                                   onChange={e => updateImportGroup(g.key, { monto: e.target.value })} />
                               </div>
-                              <div className="field" style={{ flex: '0 0 100px' }}>
+                              <div className="field u-flex-00-100">
                                 <label className="field-label">Moneda</label>
                                 {/* 2026-06-29 Multi-país F3: monedas según país del tenant. */}
                                 <select className="input" value={g.moneda}
@@ -2067,7 +2066,7 @@ export default function Inventario() {
                 <h3>
                   {producto?.nombre || 'Producto'}
                   {producto?.imei && (
-                    <span className="mono muted" style={{ fontSize: 12, fontWeight: 500, marginLeft: 10 }}>
+                    <span className="mono muted u-fs-12-fw-500-ml-10">
                       {fmtImei(producto.imei)}
                     </span>
                   )}
@@ -2141,7 +2140,7 @@ function HistorialModalContent({ producto, data, loading, error, categorias, dep
       />
 
       {tab === 'detalle' && (
-        <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <div className="u-mt-14-grid-1fr1fr-14">
           <DetalleField label="Categoría" value={claseLabelDisplay} />
           <DetalleField label="Estado" value={producto.estado} />
           <DetalleField label="Condición" value={producto.condicion || 'nuevo'} />
@@ -2310,7 +2309,7 @@ const InventarioRow = memo(function InventarioRow({
           UX 2026-06-15): toda la grilla son EditableCells, así que
           click en fila chocaría con edit-inline. Una columna
           dedicada con ícono es discoverable + 0 conflicto. */}
-      <td style={{ width: 32, padding: '4px 8px' }}>
+      <td className="u-w-32-p-4-8">
         <button className="icon-btn"
           title="Ver detalle e historial del producto"
           onClick={handleOpenHistorial}>

@@ -1689,3 +1689,21 @@ a { color: inherit; text-decoration: none; }
 .u-fw-400-mt-2                { font-weight: 400; margin-top: 2px; }
 .u-fs-9-mt-2-right            { font-size: 9px; margin-top: 2px; text-align: right; }
 .u-inline-flex-center-8       { display: inline-flex; align-items: center; gap: 8px; }
+
+/* Sprint 20 (2026-07-21) — sync con frontend */
+
+.u-w-32-p-4-8                 { width: 32px; padding: 4px 8px; }
+.u-w-300                      { width: 300px; }
+.u-p-32-16                    { padding: 32px 16px; }
+.u-mh-100-oy                  { max-height: 100px; overflow-y: auto; }
+.u-mt-14-grid-1fr1fr-14       { margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.u-mb-18-start                { margin-bottom: 18px; justify-content: flex-start; }
+.u-mb-12-grid-3col            { margin-bottom: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.u-toolbar-filters            { margin-bottom: 12px; background: var(--surface-2); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.u-mb-0-mr-4                  { margin-bottom: 0; margin-right: 4px; }
+.u-gap-6-mt-10-wrap-center    { gap: 6px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
+.u-fw-700-mb-4                { font-weight: 700; margin-bottom: 4px; }
+.u-fs-13-mt-0                 { font-size: 13px; margin-top: 0; }
+.u-fs-13-mb-8                 { font-size: 13px; margin-bottom: 8px; }
+.u-fs-12-fw-500-ml-10         { font-size: 12px; font-weight: 500; margin-left: 10px; }
+.u-flex-00-100                { flex: 0 0 100px; }
