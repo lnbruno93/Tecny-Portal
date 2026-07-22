@@ -140,16 +140,7 @@ export default function Novedades() {
           <h1 className="page-title u-flex-center-gap-10">
             Novedades
             {totalUnseen > 0 && (
-              <span
-                style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  padding: '3px 10px',
-                  borderRadius: 12,
-                  background: 'var(--accent-soft)',
-                  color: 'var(--accent-2)',
-                }}
-              >
+              <span className="u-novedades-count-badge">
                 {totalUnseen} nueva{totalUnseen === 1 ? '' : 's'}
               </span>
             )}
@@ -164,13 +155,7 @@ export default function Novedades() {
       <div
         role="tablist"
         aria-label="Filtrar por tipo"
-        style={{
-          display: 'flex',
-          gap: 2,
-          borderBottom: '1px solid var(--border)',
-          marginBottom: 20,
-          flexWrap: 'wrap',
-        }}
+        className="u-novedades-tablist"
       >
         {[
           { value: 'todas',   label: 'Todas',          emoji: null },
@@ -205,7 +190,7 @@ export default function Novedades() {
             >
               {t.emoji && <span aria-hidden="true">{t.emoji}</span>}
               {t.label}
-              <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>{n}</span>
+              <span className="u-color-dim-fs-11">{n}</span>
             </button>
           );
         })}
@@ -217,7 +202,7 @@ export default function Novedades() {
           Cargando…
         </div>
       ) : error ? (
-        <div style={{ padding: 24, color: 'var(--neg)', fontSize: 13 }}>
+        <div className="u-p-24-color-neg-fs-13">
           {error}
         </div>
       ) : notasFiltradas.length === 0 ? (
@@ -232,24 +217,12 @@ export default function Novedades() {
         <div className="u-mw-760">
           {grupos.map((g, gi) => (
             <div key={g.label + gi}>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  color: 'var(--text-dim)',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.06em',
-                  margin: gi === 0 ? '0 0 10px' : '20px 0 10px',
-                }}
-              >
+              <div className={`u-novedades-group-label ${gi === 0 ? 'u-mb-10' : 'u-mt-20-mb-10'}`}>
                 <span className="u-flex-1-h-1-bg-border" />
                 <span>{g.label}</span>
                 <span className="u-flex-1-h-1-bg-border" />
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div className="u-flex-col-gap-12">
                 {g.notas.map((n) => (
                   <Nota key={n.id} nota={n} unseen={unseenIds.has(n.id)} groupLabel={g.label} />
                 ))}
@@ -318,36 +291,21 @@ function Nota({ nota, unseen, groupLabel }) {
         >
           {meta.label}
         </span>
-        <h3 style={{ fontSize: 15, fontWeight: 600, margin: '0 0 4px' }}>
+        <h3 className="u-novedades-title">
           {nota.titulo}
           {unseen && (
             <span
               aria-label="Nueva"
               title="Nueva desde tu última visita"
-              style={{
-                display: 'inline-block',
-                width: 7,
-                height: 7,
-                background: 'var(--accent)',
-                borderRadius: '50%',
-                marginLeft: 8,
-                verticalAlign: 'middle',
-              }}
+              className="u-novedades-unseen-dot"
             />
           )}
         </h3>
-        <p style={{ color: 'var(--text-2)', fontSize: 13, lineHeight: 1.5, margin: 0 }}>
+        <p className="u-novedades-desc">
           {nota.descripcion}
         </p>
       </div>
-      <div
-        style={{
-          textAlign: 'right',
-          fontSize: 11,
-          color: 'var(--text-dim)',
-          whiteSpace: 'nowrap',
-        }}
-      >
+      <div className="u-novedades-date">
         {showHora ? groupLabel : ''}
         {showHora && <br />}
         {showHora ? fmtHora(nota.publicado_en) : new Date(nota.publicado_en).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}

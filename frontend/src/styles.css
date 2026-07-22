@@ -4000,3 +4000,16 @@ body.modal-open { overflow: hidden; }
 .u-fs-11-pl-6                 { font-size: 11px; padding-left: 6px; }
 .u-fs-10-warn                 { font-size: 10px; color: var(--warn, #d97706); }
 .u-flex-end-center-gap-16-mt-12 { margin-top: 12px; justify-content: flex-end; align-items: center; gap: 16px; }
+/* — Novedades (Sprint 41) — */
+.u-novedades-count-badge      { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 12px; background: var(--accent-soft); color: var(--accent-2); }
+.u-novedades-tablist          { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 20px; flex-wrap: wrap; }
+.u-color-dim-fs-11            { color: var(--text-dim); font-size: 11px; }
+.u-p-24-color-neg-fs-13       { padding: 24px; color: var(--neg); font-size: 13px; }
+.u-novedades-group-label      { display: flex; align-items: center; gap: 12px; color: var(--text-dim); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+.u-mb-10                      { margin: 0 0 10px; }
+.u-mt-20-mb-10                { margin: 20px 0 10px; }
+.u-flex-col-gap-12            { display: flex; flex-direction: column; gap: 12px; }
+.u-novedades-title            { font-size: 15px; font-weight: 600; margin: 0 0 4px; }
+.u-novedades-unseen-dot       { display: inline-block; width: 7px; height: 7px; background: var(--accent); border-radius: 50%; margin-left: 8px; vertical-align: middle; }
+.u-novedades-desc             { color: var(--text-2); font-size: 13px; line-height: 1.5; margin: 0; }
+.u-novedades-date             { text-align: right; font-size: 11px; color: var(--text-dim); white-space: nowrap; }
