@@ -219,61 +219,27 @@ export default function CommandPalette({ open, onClose }) {
 
   return (
     <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 300,
-        background: 'rgba(0,0,0,0.6)',
-        backdropFilter: 'blur(4px)',
-        display: 'flex',
-        alignItems: 'flex-start',
-        justifyContent: 'center',
-        paddingTop: '12vh',
-      }}
+      className="u-cmd-palette-overlay"
       onClick={onClose}
     >
       <div
-        style={{
-          maxWidth: 520,
-          width: 'calc(100% - 32px)',
-          background: 'var(--surface)',
-          border: '1px solid var(--border-strong)',
-          borderRadius: 14,
-          boxShadow: 'var(--shadow-lg)',
-          overflow: 'hidden',
-        }}
+        className="u-cmd-palette-modal"
         onClick={e => e.stopPropagation()}
       >
         {/* Search input row */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 16px' }}>
-          <Icons.Search size={16} style={{ flexShrink: 0, color: 'var(--text-muted)' }} />
+        <div className="u-cmd-palette-search-row">
+          <Icons.Search size={16} className="u-cmd-palette-search-icon" />
           <input
             ref={inputRef}
             value={query}
             onChange={e => setQuery(e.target.value)}
             placeholder="Buscar pantallas, productos, ventas, clientes…"
-            style={{
-              flex: 1,
-              border: 'none',
-              outline: 'none',
-              fontSize: 16,
-              padding: '16px 0',
-              background: 'transparent',
-              color: 'var(--text)',
-            }}
+            className="u-cmd-palette-input"
           />
           {query && (
             <button
               onClick={() => setQuery('')}
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                color: 'var(--text-muted)',
-                padding: 0,
-                display: 'flex',
-                alignItems: 'center',
-              }}
+              className="u-cmd-palette-clear-btn"
             >
               <Icons.X size={14} />
             </button>
@@ -281,21 +247,14 @@ export default function CommandPalette({ open, onClose }) {
         </div>
 
         {/* Divider */}
-        <div style={{ height: 1, background: 'var(--hairline)' }} />
+        <div className="u-cmd-palette-divider" />
 
         {/* Results — grouped by section (Navegación + 6 categorías API) */}
-        <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+        <div className="u-cmd-palette-results">
           {filtered.length > 0 ? (
             grouped.map(group => (
               <div key={group.key}>
-                <div style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  letterSpacing: '0.08em',
-                  textTransform: 'uppercase',
-                  color: 'var(--text-muted)',
-                  padding: '10px 16px 4px',
-                }}>
+                <div className="u-cmd-palette-group-header">
                   {group.label}
                 </div>
                 {group.items.map(item => {
@@ -310,56 +269,38 @@ export default function CommandPalette({ open, onClose }) {
                       key={`${item._type}-${item.id ?? item.path}`}
                       onClick={() => handleSelect(item)}
                       onMouseEnter={() => setActiveIndex(globalIdx)}
+                      className="u-cmd-palette-item"
                       style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
-                        padding: '10px 16px',
-                        cursor: 'pointer',
-                        borderRadius: 8,
-                        margin: '2px 6px',
                         background: isActive ? 'var(--accent-soft)' : 'transparent',
                         color: isActive ? 'var(--accent)' : 'var(--text)',
-                        transition: 'background 0.1s, color 0.1s',
                       }}
                     >
-                      <span style={{ flexShrink: 0, opacity: isActive ? 1 : 0.6 }}>
+                      <span
+                        className="u-cmd-palette-item-icon"
+                        style={{ opacity: isActive ? 1 : 0.6 }}
+                      >
                         {Icon && <Icon size={16} />}
                       </span>
-                      <span style={{ fontWeight: 600, fontSize: 14, flex: '0 1 auto', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span className="u-cmd-palette-item-title">
                         {item._type === 'nav' ? item.label : item.label}
                       </span>
-                      <span style={{
-                        fontSize: 13,
-                        color: isActive ? 'var(--accent)' : 'var(--text-muted)',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        flex: 1,
-                      }}>
+                      <span
+                        className="u-cmd-palette-item-subtitle"
+                        style={{ color: isActive ? 'var(--accent)' : 'var(--text-muted)' }}
+                      >
                         {item._type === 'nav' ? item.desc : item.sublabel}
                       </span>
                       {/* Badge + amount opcionales para items API (estado + total) */}
                       {item._type === 'api' && item.badge && (
-                        <span style={{
-                          fontSize: 10,
-                          fontWeight: 700,
-                          textTransform: 'uppercase',
-                          padding: '2px 6px',
-                          borderRadius: 4,
-                          background: 'var(--surface-2)',
-                          color: 'var(--text-muted)',
-                          flexShrink: 0,
-                        }}>{item.badge}</span>
+                        <span className="u-cmd-palette-item-badge">{item.badge}</span>
                       )}
                       {item._type === 'api' && item.amount && (
-                        <span style={{
-                          fontSize: 12,
-                          fontWeight: 600,
-                          fontFamily: 'monospace',
-                          color: isActive ? 'var(--accent)' : 'var(--text)',
-                          flexShrink: 0,
-                        }}>{item.amount}</span>
+                        <span
+                          className="u-cmd-palette-item-amount"
+                          style={{ color: isActive ? 'var(--accent)' : 'var(--text)' }}
+                        >
+                          {item.amount}
+                        </span>
                       )}
                     </div>
                   );
@@ -367,50 +308,17 @@ export default function CommandPalette({ open, onClose }) {
               </div>
             ))
           ) : (
-            <div style={{
-              padding: '24px 16px',
-              textAlign: 'center',
-              color: 'var(--text-muted)',
-              fontSize: 14,
-            }}>
+            <div className="u-cmd-palette-empty">
               {apiLoading ? 'Buscando…' : `Sin resultados para "${query}"`}
             </div>
           )}
         </div>
 
         {/* Footer hint */}
-        <div style={{
-          fontSize: 11,
-          color: 'var(--text-dim)',
-          padding: '10px 16px',
-          borderTop: '1px solid var(--hairline)',
-          display: 'flex',
-          gap: 16,
-        }}>
-          <span><kbd style={{
-            background: 'var(--surface-2)',
-            border: '1px solid var(--border)',
-            borderRadius: 4,
-            padding: '1px 5px',
-            fontSize: 10,
-            fontFamily: 'monospace',
-          }}>Esc</kbd> para cerrar</span>
-          <span><kbd style={{
-            background: 'var(--surface-2)',
-            border: '1px solid var(--border)',
-            borderRadius: 4,
-            padding: '1px 5px',
-            fontSize: 10,
-            fontFamily: 'monospace',
-          }}>↑↓</kbd> para navegar</span>
-          <span><kbd style={{
-            background: 'var(--surface-2)',
-            border: '1px solid var(--border)',
-            borderRadius: 4,
-            padding: '1px 5px',
-            fontSize: 10,
-            fontFamily: 'monospace',
-          }}>Enter</kbd> para ir</span>
+        <div className="u-cmd-palette-footer">
+          <span><kbd className="u-cmd-palette-kbd">Esc</kbd> para cerrar</span>
+          <span><kbd className="u-cmd-palette-kbd">↑↓</kbd> para navegar</span>
+          <span><kbd className="u-cmd-palette-kbd">Enter</kbd> para ir</span>
         </div>
       </div>
     </div>
