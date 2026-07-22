@@ -679,7 +679,7 @@ export default function Tarjetas() {
 
       {sinTarjetas ? (
         // 2026-06-24 lote F: padding fluido — 14px mobile / 24px desktop.
-        <div className="card" style={{ padding: 'clamp(14px, 4vw, 24px)' }}>
+        <div className="card u-p-clamp-14-24">
           <div className="u-fw-600-mb-6">Todavía no hay tarjetas configuradas</div>
           <div className="muted u-fs-13">
             Creá los métodos de pago tarjeta en <b>Cajas → Config Cajas</b> (tildá "Es tarjeta" y poné su % de comisión).
@@ -782,7 +782,7 @@ export default function Tarjetas() {
                       <td className="mono tiny u-text-right">
                         {m.tipo === 'cobro' ? `${sym(m.moneda)} ${fmt(m.monto_bruto)}` : '—'}
                       </td>
-                      <td className="mono" style={{ textAlign: 'right', color: m.tipo === 'cobro' ? 'var(--accent)' : 'var(--neg)' }}>
+                      <td className="mono u-text-right" style={{ color: m.tipo === 'cobro' ? 'var(--accent)' : 'var(--neg)' }}>
                         {m.tipo === 'cobro' ? '+' : '−'} {sym(m.moneda)} {fmt(m.monto_neto)}
                       </td>
                       <td className="mono u-td-right-fw-700">$ {fmt(m.saldo_acum)}</td>
@@ -906,7 +906,7 @@ export default function Tarjetas() {
                              value={multiLiq.periodo_hasta}
                              onChange={e => setMultiLiq(f => ({ ...f, periodo_hasta: e.target.value }))} />
                     </div>
-                    <label className="flex-row" style={{ gap: 6, alignItems: 'center', cursor: 'pointer', marginLeft: 'auto', marginBottom: 6 }}>
+                    <label className="flex-row u-label-ml-auto">
                       <input type="checkbox"
                              checked={multiLiq.convertir_usd}
                              onChange={e => setMultiLiq(f => ({
@@ -1033,7 +1033,7 @@ export default function Tarjetas() {
                     </div>
                   ) : (
                     <>
-                      <div className="muted tiny" style={{ fontWeight: 600, marginTop: 4 }}>
+                      <div className="muted tiny u-fw-600-mt-4">
                         Reparto por modalidad (suma debe ser igual al total):
                       </div>
                       <div className="stack u-gap-6">
@@ -1043,8 +1043,8 @@ export default function Tarjetas() {
                               <div className="u-fs-13-fw-600">{t.nombre}</div>
                               <div className="muted tiny mono">Saldo pendiente: {sym(t.moneda)} {fmt(t.saldo)}</div>
                             </div>
-                            <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono"
-                                   style={{ width: 160, textAlign: 'right' }}
+                            <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0"
+                                   className="input mono u-w-160-right"
                                    placeholder="0"
                                    value={multiLiq.repartos[t.id] ?? ''}
                                    onChange={e => setReparto(t.id, e.target.value)} />
@@ -1055,7 +1055,7 @@ export default function Tarjetas() {
                       {/* Validador en vivo + (si aplica) preview del USD que
                           va a entrar a la caja. Si delta ≈ 0 → verde; sino
                           mostrar cuánto falta o sobra. */}
-                      <div className="flex-row" style={{ gap: 12, alignItems: 'center', marginTop: 4, flexWrap: 'wrap' }}>
+                      <div className="flex-row u-flex-gap-12-center-mt-4-wrap">
                         <button type="button" className="btn btn-ghost btn-sm" onClick={sugerirFifo}
                                 disabled={!(Number(multiLiq.monto) > 0)}>
                           Sugerir reparto (FIFO)
@@ -1279,10 +1279,7 @@ export default function Tarjetas() {
                   </div>
                   {/* Preview client-side del cálculo (el server recalcula al guardar). */}
                   {Number(cobroPrev.monto_bruto) > 0 && (
-                    <div style={{
-                      padding: '8px 12px', background: 'var(--surface-2)', borderRadius: 6,
-                      fontSize: 13, lineHeight: 1.6,
-                    }}>
+                    <div className="u-fin-manual-summary">
                       <div className="flex-between"><span className="muted">Bruto:</span><span className="mono">{fmt(cobroPrevCalc.bruto)}</span></div>
                       <div className="flex-between"><span className="muted">Comisión ({cobroPrev.pct || 0}%):</span><span className="mono u-color-neg">− {fmt(cobroPrevCalc.comision)}</span></div>
                       <div className="flex-between u-divider-top-4">
@@ -1360,10 +1357,7 @@ export default function Tarjetas() {
                         </div>
                       </div>
                       {Number(editForm.monto_bruto) > 0 && (
-                        <div style={{
-                          padding: '8px 12px', background: 'var(--surface-2)', borderRadius: 6,
-                          fontSize: 13, lineHeight: 1.6,
-                        }}>
+                        <div className="u-fin-manual-summary">
                           <div className="flex-between"><span className="muted">Bruto:</span><span className="mono">{fmt(editCobroCalc.bruto)}</span></div>
                           <div className="flex-between"><span className="muted">Comisión ({editForm.pct || 0}%):</span><span className="mono u-color-neg">− {fmt(editCobroCalc.comision)}</span></div>
                           <div className="flex-between u-divider-top-4">
