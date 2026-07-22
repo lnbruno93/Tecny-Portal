@@ -391,7 +391,7 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
                                para que el histórico + reportes diferencien.
                   "Parte pago" (parte_de_pago) removido del dropdown por
                   simplificar — sigue soportado por backend, solo no expuesto. */}
-              <select style={{ ...inp, cursor: 'pointer' }}
+              <select className="cuentas-inp u-cuentas-inp-cursor"
                 value={row.tipo}
                 onChange={e => upd(i, 'tipo', e.target.value)}>
                 <option value="pago">− Me pagan</option>
@@ -412,14 +412,14 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
                 // directo el monto.
                 const esGrupoDolar = monedaCaja === 'USD' || monedaCaja === 'USDT';
                 return (
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <div className="u-flex-gap-6-center">
                   <span className="u-fs-11-fw-700-muted-nowrap">$ {monedaCaja}</span>
                   {!esGrupoDolar && (
                     <>
                       <input
                         ref={setRef(i, 'first')}
                         type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0"
-                        style={{ ...inp, flex: '1.6 1 0', textAlign: 'right' }}
+                        className="cuentas-inp u-cuentas-inp-flex-16-td-right"
                         placeholder="0"
                         value={row.ars}
                         onChange={e => upd(i, 'ars', e.target.value)}
@@ -428,13 +428,13 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
                       <span className="u-fs-11-fw-700-muted-nowrap">TC</span>
                       <input
                         type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0"
-                        style={{ ...inp, flex: '1 1 0', textAlign: 'right' }}
+                        className="cuentas-inp u-cuentas-inp-flex-1-td-right"
                         placeholder="1200"
                         value={row.tc}
                         onChange={e => upd(i, 'tc', e.target.value)}
                       />
                       <span className="u-color-muted-fs-14-nosel">→</span>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--pos)', whiteSpace: 'nowrap' }}>USD</span>
+                      <span className="u-fs-11-fw-700-pos-nowrap">USD</span>
                     </>
                   )}
                   <input
@@ -456,7 +456,7 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
                   />
                   <span className="u-color-muted-fs-14-nosel">→</span>
                   <select
-                    style={{ ...inp, flex: '1.4 1 0', cursor: 'pointer' }}
+                    className="cuentas-inp u-cuentas-inp-flex-14-cursor"
                     title="Caja donde ingresa/sale el pago"
                     value={row.caja_id}
                     onChange={e => upd(i, 'caja_id', e.target.value)}>
@@ -482,7 +482,7 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
                 marcaba el check esperando guardar y no pasaba nada. Ahora el
                 click guarda y, si saveRow tiene éxito, la fila se resetea y
                 el check vuelve a falso por consecuencia. */}
-            <td style={{ padding: '4px 8px', textAlign: 'center' }}>
+            <td className="u-td-4-8-center">
               <input type="checkbox"
                 aria-label="Confirmar y guardar fila"
                 title="Confirmar pago y guardar"
@@ -503,8 +503,7 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
             <td className="u-p-4-5">
               <input
                 type="text"
-                className="input"
-                style={{ ...inp, fontSize: 12 }}
+                className="input cuentas-inp u-cuentas-inp-fs-12"
                 placeholder="—"
                 title="Comentarios (opcional)"
                 value={row.notas || ''}
@@ -514,8 +513,8 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
             </td>
 
             {/* Estado */}
-            <td style={{ padding: '4px 5px', textAlign: 'center' }}>
-              {errs[i] && <span style={{ color: 'var(--neg)', fontSize: 11 }} title={errs[i]}>⚠</span>}
+            <td className="u-td-4-5-center">
+              {errs[i] && <span className="u-color-neg-fs-11" title={errs[i]}>⚠</span>}
             </td>
           </tr>
         );
@@ -1001,7 +1000,7 @@ export default function CuentasCC() {
           </div>
         </div>
         {!rgData ? (
-          <div className="muted" style={{ padding: '12px 0', fontSize: 13 }}>Cargando…</div>
+          <div className="muted u-p-12-0-fs-13">Cargando…</div>
         ) : (
           <>
             <div className="row u-mb-20">
@@ -1051,7 +1050,7 @@ export default function CuentasCC() {
                         <td className="num mono neg u-fw-700">USD {fmt(c.saldo)}</td>
                         <td>
                           <div className="bar-track u-h-6"><div className="bar-fill" style={{ width: pct + '%' }} /></div>
-                          <div className="muted tiny mono" style={{ marginTop: 3, textAlign: 'right' }}>{pct}%</div>
+                          <div className="muted tiny mono u-mt-3-right">{pct}%</div>
                         </td>
                       </tr>
                     );
@@ -1117,7 +1116,7 @@ export default function CuentasCC() {
       }}>
 
         {/* ── Sidebar ── */}
-        <div style={{ borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
+        <div className="u-border-right-flex-col">
           <div className="u-p-12-border-bottom">
             <div className="input-group u-mb-8">
               <span className="addon addon-l"><Icons.Search size={13} /></span>
@@ -1166,7 +1165,7 @@ export default function CuentasCC() {
               </div>
             ))}
             {!loadingClientes && clientesPag.page < clientesPag.pages && (
-              <button className="btn btn-ghost btn-sm" style={{ width: '100%', margin: '8px 0' }}
+              <button className="btn btn-ghost btn-sm u-mini-progress-bar"
                 onClick={() => loadClientes(clientesPag.page + 1, true)}>
                 Ver más clientes ({clientes.length} de {clientesPag.total})
               </button>
@@ -1256,7 +1255,7 @@ export default function CuentasCC() {
                 placeholder="Notas internas (se guarda solo)…"
                 value={cliente.notas || ''}
                 onChange={e => handleNotasChange(e.target.value)}
-                style={{ fontSize: 12.5, height: 30 }}
+                className="u-fs-125-h-30"
               />
             </div>
 
@@ -1344,7 +1343,7 @@ export default function CuentasCC() {
                         <td className="cell">
                           <Status tone={t.tone}>{t.label}</Status>
                           {isCrossTenant && (
-                            <Badge tone="info" style={{ marginLeft: 6, fontSize: 10 }}>RED B2B</Badge>
+                            <Badge tone="info" className="u-ml-6-fs-10">RED B2B</Badge>
                           )}
                         </td>
                         <td className="cell">
@@ -1394,7 +1393,7 @@ export default function CuentasCC() {
                         <td className="cell u-color-text-2 u-fs-12"
                             title={m.notas || ''}>
                           {m.notas
-                            ? <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', whiteSpace: 'nowrap' }}>{m.notas}</span>
+                            ? <span className="u-ellipsis-block">{m.notas}</span>
                             : <span className="dim">—</span>}
                         </td>
                         <td className="u-p-7-6">
@@ -1406,8 +1405,8 @@ export default function CuentasCC() {
                         </td>
                       </tr>
                       {isExpanded && (
-                        <tr key={`${m.id}-detail`} style={{ borderBottom: '1px solid var(--hairline)' }}>
-                          <td colSpan={11} style={{ padding: '4px 12px 12px 36px', background: 'var(--surface-2, rgba(0,0,0,0.02))' }}>
+                        <tr key={`${m.id}-detail`} className="u-border-bottom-hairline">
+                          <td colSpan={11} className="u-drilldown-cell">
                             <MovimientoDesglose mov={m} onDevolverItem={handleDevolverItem} />
                           </td>
                         </tr>
@@ -1649,9 +1648,9 @@ function MovimientoDesglose({ mov, onDevolverItem }) {
 
   return (
     <div>
-      <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+      <table className="u-drilldown-table">
         <thead>
-          <tr style={{ color: 'var(--text-muted)', borderBottom: '1px solid var(--hairline)' }}>
+          <tr className="u-color-muted-border-bottom">
             <th className="u-td-left-p-6-8">Producto</th>
             <th className="u-td-left-p-6-8">IMEI / Serial</th>
             <th className="u-td-left-p-6-8">Var.</th>
@@ -1660,7 +1659,7 @@ function MovimientoDesglose({ mov, onDevolverItem }) {
             <th className="u-td-right-p-6-8">P. mayorista unit.</th>
             <th className="u-td-right-p-6-8">Subtotal</th>
             <th className="u-td-right-p-6-8">Ganancia</th>
-            {movEsCompra && <th style={{ textAlign: 'center', padding: '6px 8px', width: 56 }}>↺</th>}
+            {movEsCompra && <th className="u-td-6-8-w-56-center">↺</th>}
           </tr>
         </thead>
         <tbody>
@@ -1694,7 +1693,7 @@ function MovimientoDesglose({ mov, onDevolverItem }) {
                     }}>↺ Devuelto</span>
                   )}
                 </td>
-                <td style={{ padding: '6px 8px', fontFamily: 'monospace', fontSize: 11 }}>{it.imei_serial || <span className="dim">—</span>}</td>
+                <td className="u-td-6-8-mono-fs-11">{it.imei_serial || <span className="dim">—</span>}</td>
                 <td className="muted tiny u-p-6-8-only">
                   {[it.tamano, it.color].filter(Boolean).join(' · ') || '—'}
                 </td>
@@ -1705,7 +1704,7 @@ function MovimientoDesglose({ mov, onDevolverItem }) {
                 <td className="u-p-6-8-td-right-mono">
                   USD {fmtMoney(precioUnit)}
                 </td>
-                <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 }}>
+                <td className="u-td-6-8-right-mono-600">
                   USD {fmtMoney(valor)}
                 </td>
                 <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600,
@@ -1713,13 +1712,13 @@ function MovimientoDesglose({ mov, onDevolverItem }) {
                   {ganancia != null ? `${ganancia >= 0 ? '+' : ''}USD ${fmtMoney(ganancia)}` : '—'}
                 </td>
                 {movEsCompra && (
-                  <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                  <td className="u-td-6-8-center">
                     {puedeDevolver ? (
                       <button
                         className="icon-btn"
                         title="Devolver este item al stock (resta del saldo del cliente)"
                         onClick={() => onDevolverItem && onDevolverItem(mov.id, it)}
-                        style={{ color: 'var(--warn, #f59e0b)', fontSize: 14 }}
+                        className="u-color-warn-hex-fs-14"
                       >↺</button>
                     ) : devuelto ? null : (
                       <span className="dim tiny" title="Sin producto del Inventario — no se puede devolver">—</span>
@@ -1731,11 +1730,11 @@ function MovimientoDesglose({ mov, onDevolverItem }) {
           })}
         </tbody>
         <tfoot>
-          <tr style={{ borderTop: '2px solid var(--border)' }}>
-            <td colSpan={6} style={{ padding: '8px', textAlign: 'right', fontWeight: 700 }}>
+          <tr className="u-border-top-2">
+            <td colSpan={6} className="u-td-8-right-bold">
               Totales{hayDevueltos ? ' (sin devueltos)' : ''}:
             </td>
-            <td style={{ padding: '8px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace' }}>
+            <td className="u-td-8-right-bold-mono">
               USD {fmtMoney(totalVenta)}
             </td>
             <td style={{ padding: '8px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace',
