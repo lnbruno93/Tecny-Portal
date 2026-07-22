@@ -198,10 +198,7 @@ export default function Capital() {
           usuario que el patrimonio total puede estar incompleto. Sin esto,
           un error en cualquier endpoint dejaba la línea en $0 y mentía. */}
       {fuentesError.length > 0 && (
-        <div className="card card-tight" style={{
-          marginBottom: 14, borderLeft: '3px solid var(--warn, var(--neg))',
-          background: 'var(--surface-2)',
-        }}>
+        <div className="card card-tight u-fuentes-error-banner">
           <div className="u-fs-13-fw-600">
             ⚠ El patrimonio mostrado puede estar incompleto
           </div>
@@ -239,15 +236,18 @@ export default function Capital() {
           const color = g.tone === 'neg' ? 'var(--neg)' : 'var(--pos)';
           return (
             <div key={g.tone}>
-              <div className="kpi-label" style={{ padding: '12px 16px 2px' }}>{g.titulo}</div>
+              <div className="kpi-label u-p-12-16-2">{g.titulo}</div>
               {patrimonio.cards.filter(c => c.tone === g.tone).map((c, idx) => (
-                <div key={c.label + idx} className="flex-row" style={{ justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', borderTop: '1px solid var(--border)' }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, flex: '0 0 auto' }} />
+                <div key={c.label + idx} className="flex-row u-flex-between-center-p-10-16-border-top">
+                  <span className="u-inline-flex-center-gap-9">
+                    <span
+                      className="u-capital-dot"
+                      style={{ background: color }}
+                    />
                     <span className="u-fw-600">{c.label}</span>
-                    {c.moneda && <span className="ccy" style={{ marginLeft: 2 }}>{c.moneda}</span>}
+                    {c.moneda && <span className="ccy u-ml-2">{c.moneda}</span>}
                   </span>
-                  <span className="mono" style={{ display: 'inline-flex', gap: 18, fontWeight: 700 }}>
+                  <span className="mono u-inline-flex-gap-18-fw-700">
                     {c.montos.map(([pre, v], i) => {
                       const resta = g.tone === 'neg' || Number(v) < 0;
                       return <span key={i} style={{ color: resta ? 'var(--neg)' : 'var(--pos)' }}>{(resta ? '− ' : '') + pre + ' ' + fmt(v)}</span>;
@@ -273,8 +273,8 @@ export default function Capital() {
 
       {/* Filtros */}
       <div className="card card-tight u-mb-12">
-        <div className="row" style={{ gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div className="field" style={{ marginBottom: 0, minWidth: 160 }}>
+        <div className="row u-row-gap-10-wrap-end">
+          <div className="field u-field-mb-0-min-160">
             <label className="field-label">Caja</label>
             <select className="input" value={filtros.caja_id} onChange={e => setLF('caja_id', e.target.value)}>
               <option value="">Todas</option>
@@ -283,14 +283,14 @@ export default function Capital() {
           </div>
           <div className="field u-mb-0"><label className="field-label">Desde</label><input type="date" className="input" value={filtros.desde} onChange={e => setLF('desde', e.target.value)} /></div>
           <div className="field u-mb-0"><label className="field-label">Hasta</label><input type="date" className="input" value={filtros.hasta} onChange={e => setLF('hasta', e.target.value)} /></div>
-          <div className="field" style={{ marginBottom: 0, minWidth: 150 }}>
+          <div className="field u-field-mb-0-min-150">
             <label className="field-label">Origen</label>
             <select className="input" value={filtros.origen} onChange={e => setLF('origen', e.target.value)}>
               <option value="">Todos</option>
               {Object.entries(ORIGEN_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
           </div>
-          <div className="field" style={{ marginBottom: 0, minWidth: 120 }}>
+          <div className="field u-field-mb-0-min-120">
             <label className="field-label">Tipo</label>
             <select className="input" value={filtros.tipo} onChange={e => setLF('tipo', e.target.value)}>
               <option value="">Todos</option><option value="ingreso">Ingreso</option><option value="egreso">Egreso</option>
@@ -323,7 +323,7 @@ export default function Capital() {
                       <td>{m.caja_nombre} <span className="muted tiny">{m.moneda}</span></td>
                       <td><Badge tone={ORIGEN_TONE[m.origen] || 'default'}>{ORIGEN_LABEL[m.origen] || m.origen}</Badge></td>
                       <td className="muted tiny">{m.concepto || '—'}</td>
-                      <td className={'mono ' + tone} className="u-td-right-fw-700">{signo}{fmt(m.monto)}</td>
+                      <td className={'mono u-td-right-fw-700 ' + tone}>{signo}{fmt(m.monto)}</td>
                       <td className="mono tiny u-text-right">{Number(m.monto_usd) > 0 ? 'u$s ' + fmt(m.monto_usd) : '—'}</td>
                     </tr>
                   );
@@ -332,7 +332,7 @@ export default function Capital() {
             </table>
           )}
         {ledger.pagination.pages > 1 && (
-          <div className="flex-row" style={{ justifyContent: 'center', gap: 12, padding: 12, alignItems: 'center' }}>
+          <div className="flex-row u-flex-center-gap-12-p-12">
             <button className="btn btn-ghost btn-sm" disabled={filtros.page <= 1} onClick={() => setLF('page', filtros.page - 1)}>Anterior</button>
             <span className="muted tiny">Página {ledger.pagination.page} de {ledger.pagination.pages}</span>
             <button className="btn btn-ghost btn-sm" disabled={filtros.page >= ledger.pagination.pages} onClick={() => setLF('page', filtros.page + 1)}>Siguiente</button>
