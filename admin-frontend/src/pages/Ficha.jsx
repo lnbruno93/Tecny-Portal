@@ -228,16 +228,16 @@ export default function Ficha() {
         <BackBtn />
         <div className="page-head" aria-busy="true">
           <div>
-            <span className="skeleton" style={{ display: 'block', width: 80, height: 11, marginBottom: 8 }} />
-            <span className="skeleton" style={{ display: 'block', width: 240, height: 26, marginBottom: 6 }} />
-            <span className="skeleton" style={{ display: 'block', width: 320, height: 13 }} />
+            <span className="skeleton u-sk-80-11-mb-8" />
+            <span className="skeleton u-sk-240-26-mb-6" />
+            <span className="skeleton u-sk-320-13" />
           </div>
         </div>
         <div className="kpi-grid u-mt-var-gap">
           {[0, 1, 2, 3].map((i) => (
             <div key={i} className="kpi">
-              <span className="skeleton" style={{ display: 'block', width: 70, height: 11, marginBottom: 10 }} />
-              <span className="skeleton" style={{ display: 'block', width: 90, height: 22 }} />
+              <span className="skeleton u-sk-70-11-mb-10" />
+              <span className="skeleton u-sk-90-22" />
             </div>
           ))}
         </div>
@@ -270,7 +270,7 @@ export default function Ficha() {
 
       <PageHead
         title={
-          <span className="flex-row" style={{ gap: 10, flexWrap: 'wrap' }}>
+          <span className="flex-row u-gap-10-flex-wrap-only">
             <span>{tenant.nombre || '—'}</span>
             <Badge tone={planTone(tenant.plan)}>{planLabel(tenant.plan)}</Badge>
             <Status tone={statusMeta.tone}>{statusMeta.label}</Status>
@@ -538,7 +538,7 @@ export default function Ficha() {
       {activeTab === 'resumen' && (
         <div className="card u-mt-var-gap">
           <h3 className="u-m-0-0-8">País del tenant</h3>
-          <p style={{ margin: '0 0 6px' }}>
+          <p className="u-m-0-0-6">
             Actualmente:{' '}
             <strong>
               {tenant.pais === 'UY' ? 'Uruguay (UYU)' : 'Argentina (ARS)'}
@@ -684,7 +684,7 @@ function ActivityPanel({ type, data, loading, error }) {
             {Array.from({ length: 5 }).map((_, i) => (
               <tr key={i} className="tbl-skel-row">
                 <td colSpan={5}>
-                  <div className="skeleton" style={{ height: 14, width: '70%' }} />
+                  <div className="skeleton u-sk-14-70pc" />
                 </td>
               </tr>
             ))}
@@ -878,7 +878,7 @@ function AlertasPanel({ items }) {
                   {a.activa ? 'Activa' : 'Inactiva'}
                 </Status>
               </td>
-              <td className="mono tiny" style={{ maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <td className="mono tiny u-mw-280-ellipsis">
                 {a.parametros ? JSON.stringify(a.parametros) : '—'}
               </td>
               <td className="muted tiny">{fmtDateTime(a.updated_at)}</td>
@@ -1018,17 +1018,7 @@ function ComprobanteEmailFooterCard({ tenant, onSaved }) {
       {/* Preview — aproximación visual al footer del email */}
       <div className="u-mt-16">
         <div className="muted tiny u-mb-6">Vista previa del footer:</div>
-        <div style={{
-          padding: '14px 18px',
-          background: 'var(--surface-2)',
-          borderTop: '1px solid var(--border)',
-          borderRadius: 6,
-          fontSize: 12,
-          lineHeight: 1.55,
-          color: 'var(--text-muted)',
-          textAlign: 'center',
-          whiteSpace: 'pre-wrap',
-        }}>
+        <div className="u-footer-preview">
           {previewText}
         </div>
       </div>
@@ -1089,7 +1079,7 @@ function ClasesDuplicadasCard({ tenantId }) {
       <div className="card u-mt-var-gap">
         <div className="flex-between u-mb-8">
           <div>
-            <h3 style={{ margin: '0 0 4px' }}>Categorías duplicadas</h3>
+            <h3 className="u-m-0-0-4">Categorías duplicadas</h3>
             <p className="muted tiny u-m-0">
               Detecta categorías de producto casi-duplicadas dentro del tenant
               (ej: <code>iPads</code> vs <code>ipad</code>) via trigram similarity
@@ -1162,7 +1152,7 @@ function ClasesDuplicadasCard({ tenantId }) {
                         </div>
                       </td>
                       <td>
-                        <div style={{ fontWeight: 600, opacity: 0.85 }}>{duplicada.nombre}</div>
+                        <div className="u-fw-600-op-85">{duplicada.nombre}</div>
                         <div className="muted tiny">
                           {duplicada.count_productos} prod
                           {duplicada.es_base && ' · base'}
