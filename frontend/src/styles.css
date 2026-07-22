@@ -4028,3 +4028,21 @@ body.modal-open { overflow: hidden; }
 .u-flex-between-start-gap-8   { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
 .u-fs-13-mt-2                 { font-size: 13px; margin-top: 2px; }
 .u-recepcion-sticky-actions   { position: sticky; bottom: 0; margin-top: 16px; padding: 12px 0; background: linear-gradient(0deg, var(--surface) 70%, transparent); display: flex; gap: 8px; }
+/* — CategoriasProductoModal (Sprint 43) — */
+.u-section-with-top-border    { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border); }
+.u-flex-1-ellipsis-nowrap     { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.u-mr-8-nowrap                { margin-right: 8px; white-space: nowrap; }
+.u-flex-col-gap-6             { display: flex; flex-direction: column; gap: 6px; }
+.u-cat-drag-item              { display: flex; align-items: center; gap: 10px; padding: 10px 12px; transition: border-top 0.1s; }
+.u-cursor-default             { cursor: default; }
+.u-cursor-grab                { cursor: grab; }
+.u-opacity-40                 { opacity: 0.4; }
+.u-drop-target                { border-top: 2px solid var(--accent) !important; }
+.u-icon-drag-handle           { color: var(--text-dim); flex-shrink: 0; }
+.u-w-14-noflex                { width: 14px; flex-shrink: 0; }
+.u-cat-emoji-cell             { min-width: 26px; text-align: center; font-size: 18px; flex-shrink: 0; }
+.u-cat-title-row              { font-weight: 500; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.u-z-100                      { z-index: 100; }
+.u-modal-w-420                { max-width: 420px; width: 92vw; }
+.u-label-checkbox-mt-12       { display: flex; align-items: center; gap: 6px; margin-top: 12px; cursor: pointer; }
+.u-p-neg-mt-12-fs-13          { color: var(--neg); margin-top: 12px; font-size: 13px; }
