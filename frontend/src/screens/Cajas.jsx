@@ -847,9 +847,9 @@ export default function Cajas() {
                           onClick={() => g.items.length > 1 && toggleInversor(key)}
                           style={{ cursor: g.items.length > 1 ? 'pointer' : 'default' }}
                         >
-                          <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                          <td className="u-td-center-muted">
                             {g.items.length > 1 && (
-                              <span style={{ fontSize: 11, fontWeight: 700 }}>
+                              <span className="u-fs-11-fw-700">
                                 {expandido ? '▾' : '▸'}
                               </span>
                             )}
@@ -860,7 +860,7 @@ export default function Cajas() {
                           <td>
                             {tasaResumen
                               ? tasaResumen === 'varias'
-                                ? <span className="muted tiny" style={{ fontStyle: 'italic' }}>varias</span>
+                                ? <span className="muted tiny u-italic">varias</span>
                                 : <span className="badge badge-info u-fs-11">{tasaResumen}</span>
                               : <span className="dim">—</span>}
                           </td>
@@ -883,7 +883,7 @@ export default function Cajas() {
                         {expandido && g.items.length > 1 && g.items.map(m => (
                           <tr key={m.id} className="u-bg-surface-2">
                             <td></td>
-                            <td className="muted mono tiny" style={{ paddingLeft: 24 }}>
+                            <td className="muted mono tiny u-pl-24">
                               └ {fmtFecha(m.fecha)}
                             </td>
                             <td colSpan={2} className="muted tiny">
@@ -918,8 +918,8 @@ export default function Cajas() {
         <>
           <div className="card card-tight u-mb-16">
             <div className="card-hd"><h3>Nueva caja</h3></div>
-            <form onSubmit={handleCreateCaja} style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap', padding: '4px 2px' }}>
-              <div className="field" style={{ flex: 2, minWidth: 220 }}>
+            <form onSubmit={handleCreateCaja} className="u-cajas-create-form">
+              <div className="field u-field-flex-2-min-220">
                 <label className="field-label">Nombre</label>
                 <input className="input" placeholder="ej. USD Efectivo, Banco Galicia, Mercado Pago"
                        value={cajaForm.nombre} onChange={e => setCajaForm(f => ({ ...f, nombre: e.target.value }))} />
@@ -937,7 +937,7 @@ export default function Cajas() {
                 <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} step="0.01" className="input" placeholder="0"
                        value={cajaForm.saldo_inicial} onChange={e => setCajaForm(f => ({ ...f, saldo_inicial: e.target.value }))} />
               </div>
-              <label className="field" style={{ width: 'auto', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <label className="field u-label-row-inline">
                 <input type="checkbox" checked={cajaForm.es_tarjeta} onChange={e => setCajaForm(f => ({ ...f, es_tarjeta: e.target.checked, comision_pct: '' }))} className="u-accent-color" />
                 <span className="u-fs-12">Es tarjeta</span>
               </label>
@@ -995,7 +995,7 @@ export default function Cajas() {
                       <td className="num">
                         <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} step="0.01" defaultValue={Number(c.saldo_inicial) || 0}
                                key={`si-${c.id}-${c.saldo_inicial}`}
-                               className="input num" style={{ maxWidth: 110, textAlign: 'right' }}
+                               className="input num u-input-max-110-right"
                                onBlur={e => handleSaldoInicial(c, e.target.value)}
                                title="Saldo de apertura — editá y salí del campo para guardar" />
                       </td>
@@ -1003,8 +1003,7 @@ export default function Cajas() {
                         {Number(c.saldo_actual || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })}
                       </td>
                       <td>
-                        <button className={'badge ' + (c.activo ? 'badge-pos' : 'badge-warn')}
-                                className="u-cursor-borderless"
+                        <button className={'badge u-cursor-borderless ' + (c.activo ? 'badge-pos' : 'badge-warn')}
                                 onClick={() => handleToggleCaja(c)}
                                 title="Click para activar / desactivar">
                           {c.activo ? 'Activa' : 'Inactiva'}
@@ -1055,7 +1054,7 @@ export default function Cajas() {
             <div className="modal-body">
               {/* Ajuste manual */}
               <form onSubmit={handleCreateAjuste} className="card card-tight u-mb-14">
-                <div className="row" style={{ gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                <div className="row u-row-gap-8-end-wrap">
                   <div className="field u-w-120px"><label className="field-label">Tipo</label>
                     <select className="input" value={ajusteForm.tipo} onChange={e => setAjusteForm(f => ({ ...f, tipo: e.target.value }))}>
                       <option value="ingreso">Ingreso (+)</option>
@@ -1069,7 +1068,7 @@ export default function Cajas() {
                     <div className="field u-w-90px"><label className="field-label">TC</label>
                       <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} step="0.01" className="input" value={ajusteForm.tc} onChange={e => setAjusteForm(f => ({ ...f, tc: e.target.value }))} /></div>
                   )}
-                  <div className="field" style={{ flex: 1, minWidth: 120 }}><label className="field-label">Concepto</label>
+                  <div className="field u-field-flex-1-min-120"><label className="field-label">Concepto</label>
                     <input className="input" placeholder="ej. arqueo, retiro" value={ajusteForm.concepto} onChange={e => setAjusteForm(f => ({ ...f, concepto: e.target.value }))} /></div>
                   <button className="btn btn-primary btn-sm" type="submit" disabled={ajusteSaving}>{ajusteSaving ? '…' : 'Agregar'}</button>
                 </div>
