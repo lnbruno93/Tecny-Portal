@@ -158,34 +158,24 @@ export default function RedB2BOperacionDetalle() {
 
   return (
     <div className="screen-wrap">
-      <header className="page-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+      <header className="page-head u-page-head-flex-between">
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+          <div className="u-flex-center-gap-8-mb-4">
             <Link to="/red-b2b/operaciones" className="btn-link u-fs-14">
               ← Operaciones
             </Link>
           </div>
           <h1 className="u-mb-4">Operación #{op.id}</h1>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div className="u-flex-gap-8-wrap">
             <span
-              className="badge"
-              style={{
-                background: sideBadge.color,
-                color: 'white',
-                padding: '2px 10px',
-                borderRadius: 4,
-                fontSize: 13,
-                fontWeight: 500,
-              }}
+              className="badge u-side-badge"
+              style={{ background: sideBadge.color }}
             >
               {sideBadge.label}
             </span>
             <span
-              className={`status-badge status-${statusInfo.color}`}
+              className={`status-badge status-${statusInfo.color} u-status-badge`}
               style={{
-                padding: '2px 10px',
-                borderRadius: 4,
-                fontSize: 13,
                 background: `var(--${statusInfo.color}-bg, #f3f4f6)`,
                 color: `var(--${statusInfo.color}-fg, #374151)`,
               }}
@@ -266,11 +256,11 @@ export default function RedB2BOperacionDetalle() {
               onChange={(e) => setNotesDraft(e.target.value)}
               maxLength={1000}
               rows={4}
-              style={{ width: '100%', padding: 8, fontFamily: 'inherit', fontSize: 14 }}
+              className="u-textarea-notas"
               placeholder="Notas internas (opcional). Visibles para ambos lados."
               aria-label="Notas de la operación"
             />
-            <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div className="u-mt-8-flex-gap-8-center">
               <button
                 type="button"
                 className="btn-primary"
@@ -285,7 +275,7 @@ export default function RedB2BOperacionDetalle() {
             </div>
           </>
         ) : (
-          <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
+          <p className="u-p-margin-0-prewrap">
             {op.notes || <span className="muted">Sin notas.</span>}
           </p>
         )}
@@ -293,7 +283,7 @@ export default function RedB2BOperacionDetalle() {
 
       {/* F4: sección de pagos cross-tenant */}
       <section className="card u-p-16-mt-16">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div className="u-flex-between-center-mb-12">
           <h2 className="u-m-0-fs-16">Pagos cross-tenant</h2>
           {op.status === 'active' && pagosData?.saldo && !pagosData.saldo.completo && (
             <button
@@ -306,7 +296,7 @@ export default function RedB2BOperacionDetalle() {
           )}
         </div>
         {pagosData?.saldo && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 12 }}>
+          <div className="u-grid-kpi-140-mb-12">
             <KpiBox label="Pagado USD" value={fmtMoney(pagosData.saldo.pagado_usd, 'USD')} />
             <KpiBox
               label="Restante USD"
@@ -338,11 +328,13 @@ export default function RedB2BOperacionDetalle() {
                     <td className="u-text-right">{fmtMoney(p.monto_usd, 'USD')}</td>
                     <td>{p.moneda_pago}</td>
                     <td className="u-text-right">{p.tc_pago ? Number(p.tc_pago).toFixed(2) : '—'}</td>
-                    <td style={{
-                      textAlign: 'right',
-                      color: p.diferencia_cambiaria_ars > 0 ? 'var(--green-fg, #166534)' :
-                             p.diferencia_cambiaria_ars < 0 ? 'var(--red-fg, #991b1b)' : 'inherit',
-                    }}>
+                    <td
+                      className="u-text-right"
+                      style={{
+                        color: p.diferencia_cambiaria_ars > 0 ? 'var(--green-fg, #166534)' :
+                               p.diferencia_cambiaria_ars < 0 ? 'var(--red-fg, #991b1b)' : 'inherit',
+                      }}
+                    >
                       {p.diferencia_cambiaria_ars !== 0 ? fmtMoney(p.diferencia_cambiaria_ars, 'ARS') : '—'}
                     </td>
                     <td>{p.registered_by_username || '—'}</td>
@@ -373,28 +365,22 @@ export default function RedB2BOperacionDetalle() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="cancel-op-title"
-          style={{
-            position: 'fixed', inset: 0, zIndex: 60,
-            background: 'rgba(0,0,0,0.55)',
-            display: 'grid', placeItems: 'center',
-            padding: 16,
-          }}
+          className="u-modal-overlay-z60"
           onKeyDown={(e) => { if (e.key === 'Escape') setCancelReason(null); }}
         >
           <div
-            className="card"
-            style={{ width: '100%', maxWidth: 480, padding: 20 }}
+            className="card u-modal-card-480"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 id="cancel-op-title" style={{ margin: 0, marginBottom: 12, color: 'var(--neg)' }}>
+            <h3 id="cancel-op-title" className="u-h3-cancel-title">
               Cancelar operación
             </h3>
-            <p className="muted" style={{ marginTop: 0, fontSize: 13, lineHeight: 1.5 }}>
+            <p className="muted u-p-mt0-fs-13-lh-15">
               Vas a cancelar la operación con <strong>{op.partner?.nombre}</strong>.
               Esto revierte el stock del vendedor y baja las unidades del
               comprador en ambos tenants.
             </p>
-            <label htmlFor="cancel-reason" style={{ display: 'block', marginTop: 12, marginBottom: 6, fontSize: 13, fontWeight: 600 }}>
+            <label htmlFor="cancel-reason" className="u-label-cancel">
               Motivo (opcional)
             </label>
             <textarea
@@ -405,13 +391,12 @@ export default function RedB2BOperacionDetalle() {
               placeholder="Ej: cliente se arrepintió, error de carga, etc."
               rows={3}
               maxLength={500}
-              className="input"
-              style={{ width: '100%', resize: 'vertical', fontFamily: 'inherit' }}
+              className="input u-textarea-cancel"
             />
-            <div className="muted" style={{ fontSize: 11, marginTop: 4, textAlign: 'right' }}>
+            <div className="muted u-counter-cancel">
               {cancelReason.length}/500
             </div>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+            <div className="u-flex-end-gap-8-mt-16">
               <button
                 type="button"
                 className="btn"
@@ -435,7 +420,7 @@ export default function RedB2BOperacionDetalle() {
 
       <section className="card u-p-16-mt-16">
         <h2 className="u-mt-0-fs-16">Trazabilidad</h2>
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 14 }}>
+        <div className="u-flex-gap-16-wrap-fs-14">
           {isSeller && (
             <div>
               <span className="muted">Venta CC (seller): </span>
@@ -462,7 +447,7 @@ function KpiBox({ label, value }) {
   return (
     <div className="u-p-12-bg-subtle-r-4">
       <div className="muted u-fs-12-mb-4">{label}</div>
-      <div style={{ fontSize: 18, fontWeight: 600 }}>{value}</div>
+      <div className="u-kpi-value">{value}</div>
     </div>
   );
 }
