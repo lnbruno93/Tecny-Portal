@@ -15,7 +15,7 @@
 const request = require('supertest');
 const app = require('../src/app');
 const db = require('../src/config/database');
-const { setupTestDb, teardownTestDb, TEST_USER } = require('./helpers/setup');
+const { setupTestDb, teardownTestDb, TEST_USER, createTestUser } = require('./helpers/setup');
 const refreshTokens = require('../src/lib/refreshTokens');
 
 let pool;
@@ -156,6 +156,37 @@ describe('POST /api/auth/refresh', () => {
     const clearCookieRaw = res.headers['set-cookie']?.find((c) => c.startsWith(`${refreshTokens.COOKIE_NAME}=`));
     expect(clearCookieRaw).toBeDefined();
     expect(clearCookieRaw).toMatch(/Expires=Thu, 01 Jan 1970|Max-Age=0/);
+  });
+
+  // Regression test para bug 2026-07-22 (Sentry TypeError):
+  // El happy path arriba usa TEST_USER que tiene role='admin' → bypass caps.
+  // Pero para un user non-admin, capsForJwt debe ser llamado con la shape
+  // correcta {rol, caps}. Antes se le pasaba loadUserCapsForTenant() entero
+  // como primer arg, dejando el segundo como undefined → `for (of undefined)`.
+  it('user non-admin: refresh funciona sin TypeError (caps is iterable)', async () => {
+    // Crear user con role='op' (no admin) → path que llama capsForJwt.
+    await createTestUser(pool, {
+      nombre: 'Op User', username: 'opuser', email: 'op@test.com',
+      password: 'testpass', role: 'op', tenantId: 1,
+      tenantRol: 'member', capRol: 'custom',
+    });
+
+    // Login como op user.
+    const loginRes = await request(app).post('/api/auth/login').send({
+      username: 'opuser', password: 'testpass',
+    });
+    expect(loginRes.status).toBe(200);
+    const cookieHeader = loginRes.headers['set-cookie'];
+    const refreshCookie = cookieHeader
+      .find((c) => c.startsWith(`${refreshTokens.COOKIE_NAME}=`))
+      .split(';')[0];
+
+    // Refresh — antes tiraba TypeError: caps is not iterable.
+    const res = await request(app)
+      .post('/api/auth/refresh')
+      .set('Cookie', refreshCookie);
+    expect(res.status).toBe(200);
+    expect(res.body.token).toBeDefined();
   });
 
   it('cookie con token malformado (length ≠ 64) → 401', async () => {

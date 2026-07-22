@@ -730,9 +730,17 @@ router.post('/refresh', async (req, res, next) => {
       return res.status(401).json({ error: 'Usuario sin tenant activo', code: 'NO_TENANT' });
     }
 
-    const capInfo = user.role === 'admin'
-      ? null
-      : capsForJwt(await loadUserCapsForTenant(user.id, tenant.tenant_id));
+    // Match del pattern usado en login (línea ~485): loadUserCapsForTenant
+    // devuelve {rol, caps} (NO caps sola), y makeToken/capInfo espera la
+    // shape completa {rol, caps: capsForJwt(rol, caps)}. Bug reportado por
+    // Sentry 2026-07-22: "caps is not iterable" — el código pasaba el
+    // objeto {rol, caps} entero como primer arg de capsForJwt, dejando el
+    // segundo arg como undefined, y for-of undefined = TypeError.
+    let capInfo = null;
+    if (user.role !== 'admin') {
+      const { rol, caps } = await loadUserCapsForTenant(user.id, tenant.tenant_id);
+      capInfo = { rol, caps: capsForJwt(rol, caps) };
+    }
 
     // Setear el nuevo refresh cookie (el viejo ya está revocado en DB).
     res.cookie(refreshTokens.COOKIE_NAME, result.newToken, refreshTokens.cookieOptions());
