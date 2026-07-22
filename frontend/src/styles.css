@@ -4060,3 +4060,17 @@ body.modal-open { overflow: hidden; }
 .u-cambios-cols-notc          { grid-template-columns: 130px 1fr 220px 1fr 110px; }
 .u-input-preview-equiv        { background: rgba(56,182,255,0.08); cursor: default; }
 .u-hidden-spacer              { margin-bottom: 3px; font-size: 10.5px; visibility: hidden; }
+/* — Config (Sprint 45) — */
+.u-tabs-row                   { gap: 4px; margin-bottom: 16px; }
+.u-config-split-340           { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; margin-bottom: 16px; }
+.u-p-0-0-16                   { padding: 0 0 16px; }
+.u-fw-700-fs-16               { font-weight: 700; font-size: 16px; }
+.u-config-tarjeta-row         { display: grid; grid-template-columns: 1fr 160px 110px; gap: 10px; align-items: center; }
+.u-config-sim-box             { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 16px; }
+.u-config-sim-title           { font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 10px; }
+.u-config-sim-total           { padding-top: 8px; border-top: 1px solid var(--hairline); margin-top: 4px; }
+.u-alert-neg                  { padding: 8px 12px; background: var(--neg-soft, #fef2f2); color: var(--neg); border-radius: 8px; font-size: 13px; margin-bottom: 12px; }
+.u-alert-pos                  { padding: 8px 12px; background: var(--pos-soft, #f0fdf4); color: var(--pos); border-radius: 8px; font-size: 13px; margin-bottom: 12px; }
+.u-config-limits-grid         { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; padding: 0 0 16px; }
+.u-config-limit-card          { padding: 14px; background: var(--surface-2); border-radius: 8px; border: 1px solid var(--border); }
+.u-lh-14                      { line-height: 1.4; }
