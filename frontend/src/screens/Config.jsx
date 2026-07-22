@@ -225,7 +225,7 @@ export default function Config() {
           General, el hash quedaba pegado y un F5 lo devolvía a Mantenimiento. */}
       {/* 2026-06-23 F5c: tabs visibles según caps del user. Seguridad (2FA
           propia) siempre visible — todo user puede gestionar su propia 2FA. */}
-      <div className="flex-row" style={{ gap: 4, marginBottom: 16 }}>
+      <div className="flex-row u-tabs-row">
         {canGeneral && (
           <button className={'btn ' + (tab === 'general' ? 'btn-primary' : '')}
                   onClick={() => goToTab('general')}>
@@ -258,12 +258,7 @@ export default function Config() {
       <>
 
       {/* ── Split layout ──────────────────────────────────────────────────── */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
-        gap: 16,
-        marginBottom: 16,
-      }}>
+      <div className="u-config-split-340">
         {/* Left: Comisiones de métodos de pago (2026-06-14, pedido Lucas).
             Unifica el % de Financiera con el % de cada tarjeta es_tarjeta=true.
             Antes había que editar las tarjetas por separado en Cajas → Config —
@@ -276,7 +271,7 @@ export default function Config() {
             </div>
           </div>
 
-          <div style={{ padding: '0 0 16px' }}>
+          <div className="u-p-0-0-16">
             {/* Fila Transferencia (= pct_financiera) */}
             <div className="field u-mb-16">
               <div className="field-label">Transferencias <span className="muted">(Financiera)</span></div>
@@ -285,8 +280,7 @@ export default function Config() {
                   <input
                     type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                     step="0.1" min="0" max="100"
-                    className="input mono"
-                    style={{ fontWeight: 700, fontSize: 16 }}
+                    className="input mono u-fw-700-fs-16"
                     data-testid="config-pct-financiera"
                     value={inputVal}
                     onChange={e => {
@@ -315,7 +309,7 @@ export default function Config() {
                   {tarjetas.map(t => {
                     const tDirty = parseFloat(t.pct_input) !== t._original;
                     return (
-                      <div key={t.id} style={{ display: 'grid', gridTemplateColumns: '1fr 160px 110px', gap: 10, alignItems: 'center' }}>
+                      <div key={t.id} className="u-config-tarjeta-row">
                         <div className="u-fs-13-fw-600">{t.nombre}</div>
                         <div className="input-group">
                           <input
@@ -342,19 +336,8 @@ export default function Config() {
 
             {/* Simulación (solo para Financiera — las tarjetas el operador
                 ya entiende el % de cada cuota) */}
-            <div style={{
-              background: 'var(--surface-2)',
-              border: '1px solid var(--border)',
-              borderRadius: 10,
-              padding: 14,
-              marginBottom: 16,
-            }}>
-              <div className="muted tiny" style={{
-                fontWeight: 700,
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
-                marginBottom: 10,
-              }}>
+            <div className="u-config-sim-box">
+              <div className="muted tiny u-config-sim-title">
                 Simulación Financiera con ARS 1.000.000
               </div>
               <div className="stack u-gap-6">
@@ -368,11 +351,7 @@ export default function Config() {
                     ARS {fmt(simRet)}
                   </span>
                 </div>
-                <div className="flex-between" style={{
-                  paddingTop: 8,
-                  borderTop: '1px solid var(--hairline)',
-                  marginTop: 4,
-                }}>
+                <div className="flex-between u-config-sim-total">
                   <span className="u-fs-13-fw-600">Nos queda</span>
                   <span className="mono pos u-fw-700-fs-15">
                     ARS {fmt(simNeto)}
@@ -383,26 +362,12 @@ export default function Config() {
 
             {/* Error / success messages */}
             {error && (
-              <div style={{
-                padding: '8px 12px',
-                background: 'var(--neg-soft, #fef2f2)',
-                color: 'var(--neg)',
-                borderRadius: 8,
-                fontSize: 13,
-                marginBottom: 12,
-              }}>
+              <div className="u-alert-neg">
                 {error}
               </div>
             )}
             {saved && (
-              <div style={{
-                padding: '8px 12px',
-                background: 'var(--pos-soft, #f0fdf4)',
-                color: 'var(--pos)',
-                borderRadius: 8,
-                fontSize: 13,
-                marginBottom: 12,
-              }}>
+              <div className="u-alert-pos">
                 Configuración guardada correctamente.
               </div>
             )}
@@ -434,24 +399,14 @@ export default function Config() {
               Comportamientos que conviene tener presentes
             </div>
           </div>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: 12,
-            padding: '0 0 16px',
-          }}>
+          <div className="u-config-limits-grid">
             {systemLimits.map(({ t, d }) => (
               <div
                 key={t}
-                style={{
-                  padding: 14,
-                  background: 'var(--surface-2)',
-                  borderRadius: 8,
-                  border: '1px solid var(--border)',
-                }}
+                className="u-config-limit-card"
               >
                 <div className="u-fw-600-fs-13-mb-4">{t}</div>
-                <div className="muted tiny" style={{ lineHeight: 1.4 }}>{d}</div>
+                <div className="muted tiny u-lh-14">{d}</div>
               </div>
             ))}
           </div>
