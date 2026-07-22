@@ -2015,3 +2015,16 @@ a { color: inherit; text-decoration: none; }
 .u-fw-600-mt-4                { font-weight: 600; margin-top: 4px; }
 .u-w-160-right                { width: 160px; text-align: right; }
 .u-flex-gap-12-center-mt-4-wrap { gap: 12px; align-items: center; margin-top: 4px; flex-wrap: wrap; }
+/* — Capital (Sprint 38) — */
+.u-fuentes-error-banner       { margin-bottom: 14px; border-left: 3px solid var(--warn, var(--neg)); background: var(--surface-2); }
+.u-p-12-16-2                  { padding: 12px 16px 2px; }
+.u-flex-between-center-p-10-16-border-top { justify-content: space-between; align-items: center; padding: 10px 16px; border-top: 1px solid var(--border); }
+.u-inline-flex-center-gap-9   { display: inline-flex; align-items: center; gap: 9px; }
+.u-capital-dot                { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
+.u-ml-2                       { margin-left: 2px; }
+.u-inline-flex-gap-18-fw-700  { display: inline-flex; gap: 18px; font-weight: 700; }
+.u-row-gap-10-wrap-end        { gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+.u-field-mb-0-min-160         { margin-bottom: 0; min-width: 160px; }
+.u-field-mb-0-min-150         { margin-bottom: 0; min-width: 150px; }
+.u-field-mb-0-min-120         { margin-bottom: 0; min-width: 120px; }
+.u-flex-center-gap-12-p-12    { justify-content: center; gap: 12px; padding: 12px; align-items: center; }
