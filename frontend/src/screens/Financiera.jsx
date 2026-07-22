@@ -696,7 +696,7 @@ export default function Financiera() {
       </div>
 
       {/* Tabs bar + botones en la misma fila */}
-      <div className="flex-between" style={{ marginBottom: 20, gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div className="flex-between u-fin-header-flex">
         <div className="tabs">
           {[
             { value: 'dashboard',    label: 'Dashboard' },
@@ -731,7 +731,7 @@ export default function Financiera() {
       {tab === 'dashboard' && (
         <>
           {dashError && (
-            <div className="card" style={{ padding: '12px 16px', color: 'var(--neg)', fontSize: 13, marginBottom: 16 }}>
+            <div className="card u-fin-error-card">
               Error cargando dashboard: {dashError}
             </div>
           )}
@@ -998,13 +998,7 @@ export default function Financiera() {
               </div>
 
               {/* Live calc summary */}
-              <div style={{
-                padding: '14px 16px',
-                background: 'var(--surface-2)',
-                borderRadius: 10,
-                border: '1px solid var(--border)',
-                marginBottom: 16,
-              }}>
+              <div className="u-fin-calc-summary">
                 {/* 2026-06-24 mobile lote D: usar .kpi-grid que respeta el
                     breakpoint <=640px (1 col en mobile) en vez de 3 fijas
                     que truncan los valores numéricos. */}
@@ -1021,7 +1015,7 @@ export default function Financiera() {
                     <div className="muted tiny u-uppercase-06-fw-600">
                       Retención ({pct.toFixed(1)}%)
                     </div>
-                    <div className="mono" style={{ fontSize: 17, fontWeight: 600, marginTop: 4, color: 'var(--accent)' }}>
+                    <div className="mono u-fs-17-fw-600-mt-4 u-color-accent">
                       ${fmt(finCalc)}
                     </div>
                   </div>
@@ -1038,7 +1032,7 @@ export default function Financiera() {
 
               {/* Error */}
               {saveError && (
-                <div style={{ color: 'var(--neg)', fontSize: 13, marginBottom: 12 }}>
+                <div className="u-color-neg-fs-13-mb-12">
                   {saveError}
                 </div>
               )}
@@ -1075,7 +1069,7 @@ export default function Financiera() {
             <div className="card-hd">
               <h3>¿Cómo funciona la retención?</h3>
             </div>
-            <div style={{ padding: '0 18px 18px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="u-fin-info-card-body">
               <div>
                 <div className="muted tiny u-section-title">
                   Modelo
@@ -1097,10 +1091,10 @@ export default function Financiera() {
               </div>
               <hr className="hr-divider" />
               <div>
-                <div className="muted tiny" style={{ fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>
+                <div className="muted tiny u-section-title">
                   Formatos aceptados
                 </div>
-                <div className="flex-row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                <div className="flex-row u-gap-6-wrap">
                   <Badge>JPG</Badge>
                   <Badge>PNG</Badge>
                   <Badge>WEBP</Badge>
@@ -1113,7 +1107,7 @@ export default function Financiera() {
                 <div className="muted tiny u-section-title">
                   Porcentaje actual
                 </div>
-                <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--accent)' }}>
+                <div className="u-fin-pct-display">
                   {pct.toFixed(1)}%
                 </div>
                 <div className="muted tiny u-mt-4">
@@ -1227,11 +1221,11 @@ export default function Financiera() {
             </div>
           </div>
           {compsError ? (
-            <div style={{ padding: '12px 16px', color: 'var(--neg)', fontSize: 13 }}>
+            <div className="u-fin-comps-error">
               Error cargando comprobantes: {compsError}
             </div>
           ) : loadingComps ? (
-            <div style={{ padding: 20, color: 'var(--text-muted)', fontSize: 13, textAlign: 'center' }}>
+            <div className="u-fin-comps-loading">
               Cargando…
             </div>
           ) : filteredComps.length === 0 ? (
@@ -1316,12 +1310,12 @@ export default function Financiera() {
       {tab === 'pagos' && (
         <div className="split-2">
           {pagosError && (
-            <div style={{ gridColumn: '1 / -1', padding: '12px 16px', color: 'var(--neg)', fontSize: 13, background: 'var(--surface-2)', borderRadius: 8, border: '1px solid var(--border)' }}>
+            <div className="u-fin-pagos-error">
               Error cargando pagos: {pagosError}
             </div>
           )}
           {/* Left column */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="u-fin-pagos-left">
             {/* Register pago */}
             <div className="card">
               <div className="card-hd">
@@ -1350,7 +1344,7 @@ export default function Financiera() {
                       value={pagoForm.referencia}
                       onChange={e => setPagoForm(f => ({ ...f, referencia: e.target.value }))} />
                   </div>
-                  <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', paddingBottom: 8 }}>
+                  <label className="u-fin-pago-usd-label">
                     <input type="checkbox"
                       checked={pagoForm.convertir_usd}
                       onChange={e => setPagoForm(f => ({
@@ -1555,9 +1549,9 @@ export default function Financiera() {
               {viewFile === 'loading' ? (
                 <div className="empty">Cargando archivo…</div>
               ) : viewFile.tipo === 'application/pdf' ? (
-                <iframe title="comprobante" src={viewFile.src} style={{ width: '100%', height: '70vh', border: 0 }} />
+                <iframe title="comprobante" src={viewFile.src} className="u-fin-iframe-comprobante" />
               ) : (
-                <img src={viewFile.src} alt={viewFile.nombre || 'comprobante'} style={{ maxWidth: '100%', maxHeight: '70vh', borderRadius: 8 }} />
+                <img src={viewFile.src} alt={viewFile.nombre || 'comprobante'} className="u-fin-img-comprobante" />
               )}
             </div>
             {viewFile !== 'loading' && (
@@ -1629,10 +1623,7 @@ export default function Financiera() {
                     </div>
                   </div>
                   {manualBruto > 0 && (
-                    <div style={{
-                      padding: '8px 12px', background: 'var(--surface-2)', borderRadius: 6,
-                      fontSize: 13, lineHeight: 1.6,
-                    }}>
+                    <div className="u-fin-manual-summary">
                       <div className="flex-between"><span className="muted">Bruto:</span><span className="mono">ARS {fmt(manualBruto)}</span></div>
                       <div className="flex-between"><span className="muted">Retención ({manualPct}%):</span><span className="mono u-color-accent">− ARS {fmt(manualFinCalc)}</span></div>
                       <div className="flex-between u-divider-top-4">
