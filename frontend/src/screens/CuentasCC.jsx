@@ -366,10 +366,7 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
         // Siempre pago en esta planilla (ventas van por VentaB2BModal)
         const autoUSD = parseFloat(row.ars) > 0 && parseFloat(row.tc) > 0;
         return (
-          <tr key={row._id} style={{
-            background: 'rgba(99,102,241,0.04)',
-            borderTop: i === 0 ? '2px solid var(--accent)' : '1px solid var(--hairline)',
-          }}>
+          <tr key={row._id} className={i === 0 ? 'u-tr-planilla-row u-border-top-accent' : 'u-tr-planilla-row'}>
 
             {/* Fecha */}
             <td className="u-p-4-5">
@@ -1109,11 +1106,7 @@ export default function CuentasCC() {
       </div>
 
       {/* Split layout */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: '240px 1fr',
-        background: 'var(--surface)', border: '1px solid var(--border)',
-        borderRadius: 12, overflow: 'hidden', flex: 1, minHeight: 580,
-      }}>
+      <div className="u-cuentas-split-layout">
 
         {/* ── Sidebar ── */}
         <div className="u-border-right-flex-col">
@@ -1261,11 +1254,7 @@ export default function CuentasCC() {
 
             {/* ── Tabla spreadsheet ── */}
             <div className="u-flex-1-overflow-mh-0">
-              <table style={{
-                width: '100%', borderCollapse: 'collapse',
-                tableLayout: 'fixed', minWidth: 860,
-                fontSize: 13,
-              }}>
+              <table className="u-cuentas-table-860">
                 <colgroup>
                   <col className="u-w-88" />{/* Fecha        */}
                   <col className="u-w-108" />{/* Tipo         */}
@@ -1352,10 +1341,7 @@ export default function CuentasCC() {
                               onClick={() => toggleExpand(m.id)}
                               aria-label={isExpanded ? 'Ocultar desglose' : 'Ver desglose'}
                               title={isExpanded ? 'Ocultar desglose' : 'Ver desglose'}
-                              style={{
-                                background: 'none', border: 'none', cursor: 'pointer',
-                                marginRight: 6, padding: 0, verticalAlign: 'middle',
-                              }}
+                              className="u-btn-expand-inline"
                             >
                               <Icons.ChevronRight size={12}
                                 style={{ transform: isExpanded ? 'rotate(90deg)' : 'none',
@@ -1686,11 +1672,7 @@ function MovimientoDesglose({ mov, onDevolverItem }) {
                 <td className="u-p-6-8-only">
                   {it.producto || <span className="dim">—</span>}
                   {devuelto && (
-                    <span style={{
-                      marginLeft: 8, padding: '1px 6px', borderRadius: 4,
-                      background: 'var(--neg)', color: 'white', fontSize: 10,
-                      textDecoration: 'none', fontWeight: 600, verticalAlign: 'middle',
-                    }}>↺ Devuelto</span>
+                    <span className="u-badge-devuelto">↺ Devuelto</span>
                   )}
                 </td>
                 <td className="u-td-6-8-mono-fs-11">{it.imei_serial || <span className="dim">—</span>}</td>
@@ -1707,18 +1689,20 @@ function MovimientoDesglose({ mov, onDevolverItem }) {
                 <td className="u-td-6-8-right-mono-600">
                   USD {fmtMoney(valor)}
                 </td>
-                <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600,
-                             color: devuelto ? 'var(--text-muted)' : ganancia == null ? 'var(--text-muted)' : ganancia >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
+                <td className={`u-td-6-8-right-mono-600 ${
+                  devuelto || ganancia == null ? 'u-color-muted'
+                  : ganancia >= 0 ? 'u-color-pos'
+                  : 'u-color-neg'
+                }`}>
                   {ganancia != null ? `${ganancia >= 0 ? '+' : ''}USD ${fmtMoney(ganancia)}` : '—'}
                 </td>
                 {movEsCompra && (
                   <td className="u-td-6-8-center">
                     {puedeDevolver ? (
                       <button
-                        className="icon-btn"
+                        className="icon-btn u-color-warn-hex-fs-14"
                         title="Devolver este item al stock (resta del saldo del cliente)"
                         onClick={() => onDevolverItem && onDevolverItem(mov.id, it)}
-                        className="u-color-warn-hex-fs-14"
                       >↺</button>
                     ) : devuelto ? null : (
                       <span className="dim tiny" title="Sin producto del Inventario — no se puede devolver">—</span>
@@ -1737,8 +1721,11 @@ function MovimientoDesglose({ mov, onDevolverItem }) {
             <td className="u-td-8-right-bold-mono">
               USD {fmtMoney(totalVenta)}
             </td>
-            <td style={{ padding: '8px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace',
-                         color: hayHistoricos ? 'var(--text-muted)' : totalGanancia >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
+            <td className={`u-td-8-right-bold-mono ${
+              hayHistoricos ? 'u-color-muted'
+              : totalGanancia >= 0 ? 'u-color-pos'
+              : 'u-color-neg'
+            }`}>
               {hayHistoricos
                 ? <span title="Algunos items pre-migración no tienen costo histórico — ganancia parcial">USD {fmtMoney(totalGanancia)}*</span>
                 : `${totalGanancia >= 0 ? '+' : ''}USD ${fmtMoney(totalGanancia)}`}
