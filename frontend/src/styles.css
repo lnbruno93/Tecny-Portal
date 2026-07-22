@@ -4013,3 +4013,18 @@ body.modal-open { overflow: hidden; }
 .u-novedades-unseen-dot       { display: inline-block; width: 7px; height: 7px; background: var(--accent); border-radius: 50%; margin-left: 8px; vertical-align: middle; }
 .u-novedades-desc             { color: var(--text-2); font-size: 13px; line-height: 1.5; margin: 0; }
 .u-novedades-date             { text-align: right; font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+/* — RecepcionStock (Sprint 42) — */
+.u-pb-80                      { padding-bottom: 80px; }
+.u-recepcion-h2               { margin: 0; display: flex; align-items: center; gap: 8px; }
+.u-fs-13-mt-4                 { font-size: 13px; margin-top: 4px; }
+.u-recepcion-grid-180         { padding: 14px; display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.u-recepcion-grid-160         { padding: 14px; display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.u-grid-col-span-2            { grid-column: span 2; }
+.u-recepcion-error-msg        { padding: 0 14px 14px; color: var(--neg); font-size: 12px; display: flex; align-items: center; gap: 6px; }
+.u-p-14-flex-col-gap-10       { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.u-btn-scanner-big            { min-height: 56px; font-size: 16px; font-weight: 600; }
+.u-mh-55vh-p-8-scroll         { max-height: 55vh; overflow-y: auto; padding: 8px; }
+.u-recepcion-item-card        { display: flex; flex-direction: column; gap: 8px; padding: 10px; margin-bottom: 8px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface); }
+.u-flex-between-start-gap-8   { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.u-fs-13-mt-2                 { font-size: 13px; margin-top: 2px; }
+.u-recepcion-sticky-actions   { position: sticky; bottom: 0; margin-top: 16px; padding: 12px 0; background: linear-gradient(0deg, var(--surface) 70%, transparent); display: flex; gap: 8px; }
