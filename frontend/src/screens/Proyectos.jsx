@@ -263,7 +263,7 @@ export default function Proyectos() {
                       <tr key={p.id} className="tbl-row-click u-cursor-pointer"
                         onClick={() => { setSelectedId(p.id); setVista('detalle'); }}>
                         <td className="u-fw-600">{p.nombre}</td>
-                        <td className="muted tiny" style={{ maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.objetivo || '—'}</td>
+                        <td className="muted tiny u-td-ellipsis-280">{p.objetivo || '—'}</td>
                         <td className="mono tiny">{fmtFecha(p.fecha_creacion)}</td>
                         <td className="mono tiny">{p.desde ? `${fmtFecha(p.desde)} → ${fmtFecha(p.hasta)}` : '—'}</td>
                         <td className="mono u-text-right">{Number(p.total_ars) > 0 ? '$ ' + fmt(p.total_ars) : '—'}</td>
@@ -284,7 +284,7 @@ export default function Proyectos() {
       // 320px = 85% del ancho y el detail queda con ~30px ilegible.
       <div className="split-master-detail" style={{ '--master-width': '320px', alignItems: 'start' }}>
         {/* ── Lista ── */}
-        <div className="card card-flush" style={{ maxHeight: '78vh', display: 'flex', flexDirection: 'column' }}>
+        <div className="card card-flush u-card-78vh-col">
           <div className="u-p-10">
             <input className="input" placeholder="Buscar proyecto…" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
@@ -322,11 +322,11 @@ export default function Proyectos() {
               <div className="flex-between u-align-items-flex-start">
                 <div>
                   {/* 2026-06-24 lote F: clamp para nombres largos en mobile (ej. "Proyecto de construcción casa zona norte"). */}
-                  <div style={{ fontWeight: 700, fontSize: 'clamp(15px, 4.5vw, 18px)' }}>{detalle.nombre}</div>
-                  {detalle.objetivo && <div className="muted" style={{ marginTop: 4, maxWidth: 600 }}>{detalle.objetivo}</div>}
+                  <div className="u-fs-clamp-title">{detalle.nombre}</div>
+                  {detalle.objetivo && <div className="muted u-mt-4-mw-600">{detalle.objetivo}</div>}
                   <div className="muted tiny u-mt-6">Creado el {fmtFecha(detalle.fecha_creacion)}</div>
                   {detalle.participantes?.length > 0 && (
-                    <div className="flex-row" style={{ gap: 4, flexWrap: 'wrap', marginTop: 8 }}>
+                    <div className="flex-row u-gap-4-wrap-mt-8">
                       {detalle.participantes.map(c => <span key={c.id} className="badge badge-info">{nombreContacto(c)}</span>)}
                     </div>
                   )}
@@ -351,7 +351,7 @@ export default function Proyectos() {
               </div>
               <div className="card card-tight u-flex-1">
                 <div className="kpi-label">Período</div>
-                <div className="mono" style={{ fontSize: 13, fontWeight: 600, marginTop: 4 }}>
+                <div className="mono u-fs-13-fw-600-mt-4">
                   {r.desde ? `${fmtFecha(r.desde)} → ${fmtFecha(r.hasta)}` : '—'}
                 </div>
               </div>
@@ -395,7 +395,7 @@ export default function Proyectos() {
                     ))}
 
                     {/* Fila de carga */}
-                    <tr style={{ background: 'rgba(99,102,241,0.05)' }}>
+                    <tr className="u-tr-form-row">
                       <td><input type="date" className="input u-h-30-fs-12" value={mov.fecha} onChange={e => setMov(m => ({ ...m, fecha: e.target.value }))} /></td>
                       <td><input className="input u-h-30-fs-12" placeholder="Detalle…" value={mov.detalle} onChange={e => setMov(m => ({ ...m, detalle: e.target.value }))} /></td>
                       <td><input className="input u-h-30-fs-12" list="proy-cats" placeholder="Categoría" value={mov.categoria} onChange={e => setMov(m => ({ ...m, categoria: e.target.value }))} /></td>
@@ -414,8 +414,8 @@ export default function Proyectos() {
                         {/* Caja: selector + tipo (ingreso/egreso). Opcional. Si elegís
                             caja, el movimiento postea al ledger; si no, queda solo
                             como log en la hoja del proyecto. */}
-                        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                          <select className="input" style={{ height: 30, fontSize: 12, flex: 1 }}
+                        <div className="u-flex-gap-4-center">
+                          <select className="input u-h-30-fs-12-flex-1"
                                   value={mov.caja_id}
                                   onChange={e => setMov(m => ({ ...m, caja_id: e.target.value }))}>
                             <option value="">— Sin caja —</option>
@@ -451,7 +451,7 @@ export default function Proyectos() {
                 </datalist>
               </div>
               {movsPag.page < movsPag.pages && (
-                <div style={{ textAlign: 'center', padding: 8 }}>
+                <div className="u-text-center-p-8">
                   <button className="btn btn-ghost btn-sm" onClick={loadMasMovs} disabled={loadingMasMovs}>
                     {loadingMasMovs ? 'Cargando…' : `Ver más antiguos (${movs.length} de ${movsPag.total})`}
                   </button>
@@ -494,7 +494,7 @@ export default function Proyectos() {
                         {addingContacto ? '…' : '+ Agregar'}
                       </button>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 6, maxHeight: 160, overflow: 'auto' }}>
+                    <div className="u-grid-checkbox-150-160">
                       {contactos.length === 0 && <div className="muted tiny">No hay contactos cargados.</div>}
                       {contactos.map(c => {
                         const on = form.participantes.includes(c.id);

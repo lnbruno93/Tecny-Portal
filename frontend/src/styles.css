@@ -3952,3 +3952,15 @@ body.modal-open { overflow: hidden; }
 .u-input-max-110-right        { max-width: 110px; text-align: right; }
 .u-row-gap-8-end-wrap         { gap: 8px; align-items: flex-end; flex-wrap: wrap; }
 .u-field-flex-1-min-120       { flex: 1; min-width: 120px; }
+/* — Proyectos (Sprint 36) — */
+.u-td-ellipsis-280            { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.u-card-78vh-col              { max-height: 78vh; display: flex; flex-direction: column; }
+.u-fs-clamp-title             { font-weight: 700; font-size: clamp(15px, 4.5vw, 18px); }
+.u-mt-4-mw-600                { margin-top: 4px; max-width: 600px; }
+.u-gap-4-wrap-mt-8            { gap: 4px; flex-wrap: wrap; margin-top: 8px; }
+.u-fs-13-fw-600-mt-4          { font-size: 13px; font-weight: 600; margin-top: 4px; }
+.u-tr-form-row                { background: rgba(99,102,241,0.05); }
+.u-flex-gap-4-center          { display: flex; gap: 4px; align-items: center; }
+.u-h-30-fs-12-flex-1          { height: 30px; font-size: 12px; flex: 1; }
+.u-text-center-p-8            { text-align: center; padding: 8px; }
+.u-grid-checkbox-150-160      { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; max-height: 160px; overflow: auto; }
