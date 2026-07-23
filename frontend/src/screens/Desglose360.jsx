@@ -167,7 +167,7 @@ export default function Desglose360() {
       </div>
 
       {/* ── KPIs ── */}
-      <div className="row" style={{ marginBottom: 18, gap: 12, flexWrap: 'wrap' }}>
+      <div className="row u-row-kpis">
         <div className="card card-tight u-flex-1-1-180">
           <div className="kpi-label">Productos</div>
           <div className="kpi-value mono">{fmt(tot.productos)}</div>
@@ -186,7 +186,7 @@ export default function Desglose360() {
         </div>
         <div className="card card-tight u-flex-1-1-180">
           <div className="kpi-label">Margen potencial USD</div>
-          <div className="kpi-value mono" style={{ color: (tot.margen_usd || 0) >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
+          <div className={`kpi-value mono ${(tot.margen_usd || 0) >= 0 ? 'u-color-pos' : 'u-color-neg'}`}>
             {money(tot.margen_usd, 'USD')}
           </div>
           <div className="muted tiny u-mt-6">
@@ -197,7 +197,7 @@ export default function Desglose360() {
 
       {/* ── Controles ── */}
       <div className="card card-tight u-mb-14">
-        <div className="flex-row" style={{ gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div className="flex-row u-flex-gap-14-wrap-center">
           <div>
             <div className="muted tiny u-mb-4">Agrupar por</div>
             <div className="seg">
@@ -228,11 +228,11 @@ export default function Desglose360() {
               <option value="reservado">Reservado</option>
             </select>
           </div>
-          <label className="flex-row" style={{ gap: 6, fontSize: 13, color: 'var(--text-muted)', cursor: 'pointer', alignSelf: 'flex-end', paddingBottom: 8 }}>
+          <label className="flex-row u-desglose-checkbox-label">
             <input type="checkbox" checked={soloStock} onChange={e => setSoloStock(e.target.checked)} />
             Solo en stock
           </label>
-          <div className="input-group" style={{ width: 240, alignSelf: 'flex-end' }}>
+          <div className="input-group u-input-group-240-end">
             <span className="addon addon-l"><Icons.Search size={14} /></span>
             <input className="input" placeholder="Buscar nombre, IMEI, color…" value={buscar} onChange={e => setBuscar(e.target.value)} />
           </div>
@@ -241,8 +241,8 @@ export default function Desglose360() {
 
       {/* ── Estado / Tabla ── */}
       {error ? (
-        <div className="card card-tight" style={{ background: 'rgba(255, 80, 80, 0.08)', border: '1px solid var(--neg)', color: 'var(--text)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+        <div className="card card-tight u-desglose-error-card">
+          <div className="u-flex-center-gap-10-mb-6">
             <Icons.X size={16} className="u-color-neg" />
             <strong>No se pudo cargar el desglose</strong>
           </div>
@@ -253,7 +253,7 @@ export default function Desglose360() {
           </div>
         </div>
       ) : loading ? (
-        <div style={{ color: 'var(--text-muted)', fontSize: 13, padding: '12px 0' }}>Calculando…</div>
+        <div className="u-desglose-loading">Calculando…</div>
       ) : filasOrdenadas.length === 0 ? (
         <div className="empty">Sin resultados para los filtros aplicados.</div>
       ) : (
@@ -288,11 +288,11 @@ export default function Desglose360() {
                     <td className="mono u-text-right">{f.inv_ars ? money(f.inv_ars, monedaLocal) : <span className="muted">—</span>}</td>
                     <td className="mono pos u-text-right">{f.valorizado_usd ? money(f.valorizado_usd, 'USD') : <span className="muted">—</span>}</td>
                     <td className="mono pos u-text-right">{f.valorizado_ars ? money(f.valorizado_ars, monedaLocal) : <span className="muted">—</span>}</td>
-                    <td className="mono" style={{ textAlign: 'right', color: f.margen_usd >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
+                    <td className={`mono u-text-right ${f.margen_usd >= 0 ? 'u-color-pos' : 'u-color-neg'}`}>
                       {f.margen_usd ? money(f.margen_usd, 'USD') : <span className="muted">—</span>}
                     </td>
                     <td className="mono muted tiny u-text-right">{pct != null ? pct + '%' : '—'}</td>
-                    <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>
+                    <td className="u-text-right u-color-muted">
                       <Icons.ChevronRight size={14} />
                     </td>
                   </tr>
