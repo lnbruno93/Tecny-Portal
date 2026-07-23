@@ -282,18 +282,7 @@ export default function Resumen() {
           genérico. Link directo a /mi-cuenta?tab=seguridad para que Lucas
           active 2FA en un click. */}
       {needs2fa && (
-        <div
-          role="alert"
-          className="card"
-          style={{
-            marginBottom: 'var(--gap)',
-            background: 'rgba(234, 179, 8, 0.08)',
-            border: '1px solid rgba(234, 179, 8, 0.3)',
-            fontSize: 13,
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            gap: 12,
-          }}
-        >
+        <div role="alert" className="card u-alert-2fa-warn">
           <div>
             <strong>Activá 2FA para acceder al panel super-admin.</strong>
             <div className="muted u-fs-12-mt-4">
@@ -311,17 +300,7 @@ export default function Resumen() {
       )}
 
       {error && !needs2fa && (
-        <div
-          role="alert"
-          className="card"
-          style={{
-            marginBottom: 'var(--gap)',
-            background: 'var(--neg-soft)',
-            border: '1px solid transparent',
-            color: 'var(--neg)',
-            fontSize: 13,
-          }}
-        >
+        <div role="alert" className="card u-planes-alert-error">
           {error}
         </div>
       )}
@@ -390,11 +369,11 @@ export default function Resumen() {
           <ColChart series={history} />
           <div className="chart-legend">
             <span>
-              <span className="lg-dot" style={{ background: 'var(--accent)' }} />
+              <span className="lg-dot u-bg-accent" />
               Altas
             </span>
             <span>
-              <span className="lg-dot" style={{ background: 'var(--neg)' }} />
+              <span className="lg-dot u-bg-neg" />
               Suspensiones
             </span>
           </div>
@@ -427,10 +406,7 @@ export default function Resumen() {
                 const d = describeAction(a);
                 return (
                   <div key={a.id} className="activity-item">
-                    <div
-                      className="dot-ico"
-                      style={{ color: `var(--${d.tone === 'muted' ? 'text-muted' : d.tone})` }}
-                    >
+                    <div className={`dot-ico u-tone-${d.tone === 'muted' ? 'text-muted' : d.tone}`}>
                       <d.IconCmp size={14} />
                     </div>
                     <div className="activity-msg">{actionLongText(a)}</div>
@@ -532,7 +508,7 @@ export default function Resumen() {
                         {fmtMoney(p.mrr_usd ?? 0)} MRR
                       </span>
                     </div>
-                    <div className="bar-track" style={{ height: 8 }}>
+                    <div className="bar-track u-h-8">
                       <div
                         className="bar-fill"
                         style={{
@@ -556,7 +532,7 @@ export default function Resumen() {
             <span className="muted tiny">MRR total</span>
             <span className="mono u-fs-18-fw-700">
               {fmtMoney(totalMrr)}
-              <span className="muted" style={{ fontSize: 12, fontWeight: 500 }}>/mes</span>
+              <span className="muted u-fs-12-fw-500">/mes</span>
             </span>
           </div>
         </Card>
