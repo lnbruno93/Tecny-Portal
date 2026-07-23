@@ -21,7 +21,6 @@ import {
   getTenantStatus,
   TENANT_STATUS,
   healthProxy,
-  healthColor,
 } from '../lib/uiHelpers.js';
 import CreateTenantModal from '../components/modals/CreateTenantModal.jsx';
 
@@ -169,17 +168,7 @@ export default function Clientes() {
       />
 
       {error && (
-        <div
-          role="alert"
-          className="card"
-          style={{
-            marginBottom: 'var(--gap)',
-            background: 'var(--neg-soft)',
-            border: '1px solid transparent',
-            color: 'var(--neg)',
-            fontSize: 13,
-          }}
-        >
+        <div role="alert" className="card u-planes-alert-error">
           {error}
         </div>
       )}
@@ -237,12 +226,12 @@ export default function Clientes() {
               // Skeleton: 5 rows con barras pulse mientras carga el primer fetch.
               Array.from({ length: 5 }).map((_, i) => (
                 <tr key={`skel-${i}`} className="tbl-skel-row">
-                  <td><div className="skeleton" style={{ height: 16, width: '60%' }} /></td>
-                  <td><div className="skeleton" style={{ height: 16, width: 48 }} /></td>
+                  <td><div className="skeleton u-skel-h-16-w-60p" /></td>
+                  <td><div className="skeleton u-skel-h-16-w-48" /></td>
                   <td><div className="skeleton u-h-16-w-60" /></td>
-                  <td><div className="skeleton" style={{ height: 16, width: 30 }} /></td>
-                  <td><div className="skeleton" style={{ height: 16, width: 80 }} /></td>
-                  <td><div className="skeleton" style={{ height: 16, width: 70 }} /></td>
+                  <td><div className="skeleton u-skel-h-16-w-30" /></td>
+                  <td><div className="skeleton u-skel-h-16-w-80" /></td>
+                  <td><div className="skeleton u-skel-h-16-w-70" /></td>
                   <td><div className="skeleton u-h-16-w-60" /></td>
                   <td />
                 </tr>
@@ -275,7 +264,23 @@ export default function Clientes() {
                 // t.health_score si viene del backend; fallback al proxy viejo
                 // basado en last_venta_at para cache stale tras deploy.
                 const health = healthProxy(t);
-                const hColor = healthColor(health, t.health_category);
+                // healthColor devuelve una var(--*) string. Derivamos la class
+                // equivalente (usada en text-color + bar-fill background) para
+                // evitar inline styles y cumplir CSP.
+                const hToneClass =
+                  t.health_category === 'onboarding' ? 'u-tone-accent'
+                  : t.health_category === 'suspended' ? 'u-tone-text-muted'
+                  : health >= 80 ? 'u-tone-pos'
+                  : health >= 55 ? 'u-tone-accent'
+                  : health >= 40 ? 'u-tone-warn'
+                  : 'u-tone-neg';
+                const hBgClass =
+                  t.health_category === 'onboarding' ? 'u-bg-accent'
+                  : t.health_category === 'suspended' ? 'u-bg-muted'
+                  : health >= 80 ? 'u-bg-pos'
+                  : health >= 55 ? 'u-bg-accent'
+                  : health >= 40 ? 'u-bg-warn'
+                  : 'u-bg-neg';
                 return (
                   <tr
                     key={t.id}
@@ -300,11 +305,11 @@ export default function Clientes() {
                     <td className="u-w-130px">
                       <div className="bar-track u-mb-3">
                         <div
-                          className="bar-fill"
-                          style={{ width: health + '%', background: hColor }}
+                          className={`bar-fill ${hBgClass}`}
+                          style={{ width: health + '%' }}
                         />
                       </div>
-                      <span className="tiny mono" style={{ color: hColor }}>{health}</span>
+                      <span className={`tiny mono ${hToneClass}`}>{health}</span>
                     </td>
                     <td>
                       <Status tone={statusMeta.tone}>{statusMeta.label}</Status>
