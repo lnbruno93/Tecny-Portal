@@ -1536,7 +1536,7 @@ export default function Ventas() {
                         // hace que en <=520px todas las columnas colapsen a 1fr
                         // (stack vertical, delete right-aligned). Desktop sin cambios.
                         // Auditoría 2026-06-30 F-13/14: key={_id} en vez de index.
-                        <div key={it._id} data-testid="venta-item-row" className="item-grid" style={{ '--cols': '1fr 60px 90px 78px auto', gap: 6, alignItems: 'center' }}>
+                        <div key={it._id} data-testid="venta-item-row" className="item-grid u-ventas-item-grid">
                           {/* 2026-07-07 (Lucas #525): wrapper vertical en la
                               1ra columna para mostrar la chip "IMEI · Bat X%"
                               debajo del input cuando el ítem vino de un pick
@@ -1784,10 +1784,7 @@ export default function Ventas() {
                     <div className="stack u-gap-10">
                       {/* Auditoría 2026-06-30 F-13/14: key={_id} en canjes. */}
                       {(vForm.canjes || []).map((c, i) => (
-                        <div key={c._id} style={{
-                          padding: 12, background: 'var(--surface-2)', border: '1px solid var(--border)',
-                          borderRadius: 8,
-                        }}>
+                        <div key={c._id} className="u-ventas-canje-card">
                           {/* Header del canje: índice + botón quitar */}
                           <div className="flex-between u-align-center-mb-8">
                             <div className="muted tiny u-fw-600">
@@ -1884,7 +1881,7 @@ export default function Ventas() {
                                   _existing — cambiar de true a false requeriría borrar
                                   el producto asociado, y eso lo hacemos desde Inventario
                                   (flow más seguro con confirmación). */}
-                              <label className="flex-row" style={{ gap: 6, fontSize: 12, cursor: c._existing ? 'not-allowed' : 'pointer' }}>
+                              <label className={'flex-row u-ventas-canje-check' + (c._existing ? ' u-cursor-not-allowed' : '')}>
                                 <input type="checkbox" checked={c.agregar_stock}
                                        disabled={c._existing}
                                        onChange={e => setCanje(c._id, 'agregar_stock', e.target.checked)} />
@@ -1934,7 +1931,7 @@ export default function Ventas() {
                         if (p.es_cuenta_corriente) {
                           return (
                             <div key={p._id}>
-                              <div data-testid="venta-pago-row" style={{ display: 'grid', gridTemplateColumns: '1fr 90px 78px 78px auto', gap: 6, alignItems: 'center' }}>
+                              <div data-testid="venta-pago-row" className="u-ventas-cc-pago-grid">
                                 <select className="input" value="__CC__" onChange={e => setPagoMetodo(i, e.target.value)}><option value="">Método…</option>{metodos.map(mm => <option key={mm.id} value={mm.nombre}>{mm.nombre}</option>)}<option value="__CC__">Cuenta corriente (deuda)</option></select>
                                 <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Monto" value={p.monto} onChange={e => setPago(p._id, 'monto', e.target.value)} />
                                 <select className="input" value={p.moneda} onChange={e => setPago(p._id, 'moneda', e.target.value)}>
@@ -1972,11 +1969,7 @@ export default function Ventas() {
                           <div key={p._id}>
                             <div
                               data-testid="venta-pago-row"
-                              style={{
-                                display: 'grid',
-                                gridTemplateColumns: showTc ? '1fr 110px 90px auto' : '1fr 110px auto',
-                                gap: 6, alignItems: 'center',
-                              }}
+                              className={'u-envios-pago-grid' + (showTc ? ' u-envios-pago-grid-tc' : '')}
                             >
                               <select className="input" value={p.metodo_nombre} onChange={e => setPagoMetodo(i, e.target.value)}>
                                 <option value="">Método…</option>
@@ -1993,19 +1986,17 @@ export default function Ventas() {
                                   <input
                                     type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                                     data-testid="venta-pago-ars"
-                                    className="input mono" placeholder="730.000"
+                                    className="input mono u-pl-22" placeholder="730.000"
                                     value={p.monto}
                                     onChange={e => setPagoArsAmount(i, e.target.value)}
-                                    style={{ paddingLeft: localDirect ? 22 : 36 }}
                                   />
                                 ) : (
                                   <input
                                     type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                                     data-testid="venta-pago-usd"
-                                    className="input mono" placeholder="500"
+                                    className="input mono u-pl-36" placeholder="500"
                                     value={derivedUsd}
                                     onChange={e => setPagoUsd(i, e.target.value)}
-                                    className="u-pl-36"
                                   />
                                 )}
                               </div>
@@ -2014,38 +2005,23 @@ export default function Ventas() {
                                   <span className="u-input-icon-abs">TC</span>
                                   <input
                                     type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
-                                    className="input mono" placeholder="1460"
+                                    className="input mono u-pl-30" placeholder="1460"
                                     value={p.tc}
                                     onChange={e => setPagoTc(i, e.target.value)}
-                                    className="u-pl-30"
                                   />
                                 </div>
                               )}
                               <button type="button" className="icon-btn" title="Quitar pago" aria-label="Quitar pago" onClick={() => rmPago(p._id)}><Icons.X size={14} /></button>
                             </div>
                             {showDesglose && (
-                              <div
-                                data-testid="venta-pago-desglose"
-                                style={{
-                                  marginTop: 8, display: 'grid',
-                                  gridTemplateColumns: '1fr 1fr 1fr',
-                                  gap: 10, fontSize: 12, alignItems: 'start',
-                                  paddingLeft: 2,
-                                }}
-                              >
+                              <div data-testid="venta-pago-desglose" className="u-envios-desglose-grid">
                                 <div>
                                   <div className="muted tiny u-mb-2-flex-center-6">
                                     <span>Le cobrás al cliente <span className="u-color-text-muted">(editable)</span></span>
                                     {p.bruto_manual && (
                                       <span
                                         title="Estás editando el monto manualmente. Al cambiar USD/TC/método el cálculo vuelve a la fórmula."
-                                        style={{
-                                          fontSize: 9, fontWeight: 700, letterSpacing: '0.04em',
-                                          padding: '1px 5px', borderRadius: 3,
-                                          background: 'rgba(217, 119, 6, 0.15)',
-                                          color: '#d97706',
-                                          border: '1px solid rgba(217, 119, 6, 0.35)',
-                                        }}
+                                        className="u-envios-manual-chip"
                                       >MANUAL</span>
                                     )}
                                   </div>
@@ -2053,10 +2029,9 @@ export default function Ventas() {
                                     <span className="mono u-fs-13-fw-600">{sym(p.moneda)}</span>
                                     <input
                                       type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
-                                      className="input mono"
+                                      className="input mono u-p-26-fs-13-fw-600-w-110"
                                       value={p.bruto_manual ? (p.monto ?? '') : Math.round(det.brutoOrig * 100) / 100}
                                       onChange={e => setPagoBruto(i, e.target.value)}
-                                      className="u-p-26-fs-13-fw-600-w-110"
                                     />
                                   </div>
                                 </div>
@@ -2069,10 +2044,9 @@ export default function Ventas() {
                                   <div className="u-flex-center-gap-4-wrap">
                                     <input
                                       type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
-                                      className="input mono"
+                                      className="input mono u-p-26-fs-13-fw-600-w-110"
                                       value={p.neto_input || Math.round(det.netoOrig * 100) / 100}
                                       onChange={e => setPagoNeto(i, e.target.value)}
-                                      className="u-p-26-fs-13-fw-600-w-110"
                                     />
                                     <span className="mono pos u-fw-600-fs-12">= u$s{fmt(det.netoUsd)}</span>
                                   </div>
@@ -2094,7 +2068,7 @@ export default function Ventas() {
                       automáticamente. Colapsable: por defecto compacto con
                       link "Agregar vuelto"; se expande al hacer click. */}
                   <div className="u-card-hint-row">
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: vForm.vuelto_monto ? 8 : 0 }}>
+                    <div className={'u-envios-vuelto-header' + (vForm.vuelto_monto ? ' u-mb-8' : '')}>
                       <div className="u-fs-13-fw-600">
                         Vuelto/Cambio
                         <span className="muted tiny u-ml-8-fw-400">
@@ -2112,20 +2086,18 @@ export default function Ventas() {
                         <div className="muted tiny u-mb-2">Monto</div>
                         <input
                           type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
-                          className="input mono"
+                          className="input mono u-w-100"
                           value={vForm.vuelto_monto}
                           onChange={e => setVF('vuelto_monto', e.target.value)}
                           placeholder="0"
-                          className="u-w-100"
                         />
                       </div>
                       <div>
                         <div className="muted tiny u-mb-2">Moneda</div>
                         <select
-                          className="input"
+                          className="input u-w-100"
                           value={vForm.vuelto_moneda}
                           onChange={e => setVF('vuelto_moneda', e.target.value)}
-                          className="u-w-100"
                         >
                           <option value="ARS">ARS</option>
                           <option value="UYU">UYU</option>
@@ -2141,10 +2113,9 @@ export default function Ventas() {
                           )}
                         </div>
                         <select
-                          className="input"
+                          className="input u-w-100"
                           value={vForm.vuelto_caja_id}
                           onChange={e => setVF('vuelto_caja_id', e.target.value)}
-                          className="u-w-100"
                         >
                           <option value="">— Elegí caja —</option>
                           {metodos.filter(m => !m.deleted_at).map(m => (
@@ -2159,7 +2130,7 @@ export default function Ventas() {
                        rentabilidad de la venta. Backend rechaza el submit si
                        falta. Default sugerido: TC de la venta si está cargado. */}
                     {(vForm.vuelto_moneda === 'ARS' || vForm.vuelto_moneda === 'UYU') && vForm.vuelto_monto && (
-                      <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 8, alignItems: 'center' }}>
+                      <div className="u-ventas-vuelto-tc-grid">
                         <div>
                           <div className="muted tiny u-mb-2">
                             TC del vuelto{' '}
@@ -2310,15 +2281,7 @@ export default function Ventas() {
             <form onSubmit={handleSaveRapida}>
               <div className="modal-body">
                 {/* Info box estilo "info" — bg sutil con accent-soft + border accent-ring. */}
-                <div style={{
-                  background: 'var(--accent-soft)',
-                  border: '1px solid var(--accent-ring)',
-                  borderRadius: 8,
-                  padding: '10px 12px',
-                  marginBottom: 14,
-                  fontSize: 12.5,
-                  lineHeight: 1.5,
-                }}>
+                <div className="u-ventas-info-box">
                   <strong>Instrucciones:</strong> Escribí toda la info de la venta abajo —
                   producto, accesorios, vendedor, cliente, precio, método de pago. Después la
                   cargás como venta completa con los datos estructurados.
