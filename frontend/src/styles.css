@@ -4446,6 +4446,15 @@ body.modal-open { overflow: hidden; }
 .u-opacity-70                 { opacity: 0.7; }
 .u-inp-border-neg             { border-color: var(--neg); }
 .u-b2b-input-perdida          { border-color: var(--neg); background: rgba(220, 38, 38, 0.08); }
+/* — MantenimientoSection (Sprint 82) — */
+.u-mant-td-total-left         { padding-right: 16px; font-weight: 700; padding-top: 6px; }
+.u-mant-td-total-right        { text-align: right; font-weight: 700; padding-top: 6px; }
+.u-mant-desc                  { font-size: 13px; color: var(--text-muted); margin-bottom: 6px; }
+.u-mant-saldo-cell            { text-align: right; font-weight: 700; }
+.u-mant-saldo-span            { display: inline-flex; align-items: center; gap: 4px; justify-content: flex-end; }
+.u-mant-scroll-8              { margin-top: 8px; overflow-x: auto; }
+.u-mant-error-box             { margin-top: 10px; padding: 10px; background: var(--surface-2); border-radius: 6px; font-size: 13px; color: var(--neg); }
+.u-mant-error-ul              { margin: 6px 0 0 18px; }
 /* — DiffModal (Sprint 59) — */
 .u-diff-modal-body            { padding: 32px 28px 18px; text-align: left; }
 .u-diff-icon-wrap             { text-align: center; margin-bottom: 18px; }

@@ -67,10 +67,10 @@ function FinancieraReport({ report }) {
             </td>
           </tr>
           <tr className="u-border-top-only">
-            <td style={{ paddingRight: 16, fontWeight: 700, paddingTop: 6 }}>
+            <td className="u-mant-td-total-left">
               Saldo {report.apply ? 'final' : 'proyectado'}
             </td>
-            <td className="mono" style={{ textAlign: 'right', fontWeight: 700, paddingTop: 6 }}>
+            <td className="mono u-mant-td-total-right">
               {fmtARS(report.saldoFinal ?? report.saldoProyectado)}
             </td>
           </tr>
@@ -132,7 +132,7 @@ function TarjetasReport({ report }) {
   }
   return (
     <>
-      <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6 }}>
+      <div className="u-mant-desc">
         {report.cobros} cobros + {report.liquidaciones} liquidaciones pendientes.
         Detalle por tarjeta:
       </div>
@@ -168,8 +168,8 @@ function TarjetasReport({ report }) {
                   <td className="mono tiny u-color-neg-text-right">
                     {g.liquidaciones > 0 ? `−${fmt(g.totalLiq)} (${g.liquidaciones})` : '—'}
                   </td>
-                  <td className="mono" style={{ textAlign: 'right', fontWeight: 700, color: negativo ? 'var(--neg)' : 'inherit' }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
+                  <td className={'mono u-mant-saldo-cell' + (negativo ? ' u-color-neg' : '')}>
+                    <span className="u-mant-saldo-span">
                       {fmt(g.saldoProyectado)}
                       {negativo && <Icons.Alert size={12} aria-label="Saldo negativo" />}
                     </span>
@@ -216,7 +216,7 @@ function OrphanMovsReport({ report }) {
           <summary className="u-cursor-muted">
             Ver primeros 10 movimientos huérfanos
           </summary>
-          <div style={{ marginTop: 8, overflowX: 'auto' }}>
+          <div className="u-mant-scroll-8">
             <table className="tbl">
               <thead>
                 <tr>
@@ -241,9 +241,9 @@ function OrphanMovsReport({ report }) {
         </details>
       )}
       {report.apply && Array.isArray(report.errores) && report.errores.length > 0 && (
-        <div style={{ marginTop: 10, padding: 10, background: 'var(--surface-2)', borderRadius: 6, fontSize: 13, color: 'var(--neg)' }}>
+        <div className="u-mant-error-box">
           <b>{report.errores.length} movimiento(s) con error</b> — los demás se procesaron OK. Revisá y reintentá:
-          <ul style={{ margin: '6px 0 0 18px' }}>
+          <ul className="u-mant-error-ul">
             {report.errores.slice(0, 5).map(e => <li key={e.mov_id}>Mov #{e.mov_id}: {e.error}</li>)}
           </ul>
         </div>
