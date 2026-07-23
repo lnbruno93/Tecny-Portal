@@ -65,7 +65,7 @@ function PlanRow({ row, onEdit, dirty, saving }) {
   return (
     <Card flush>
       <header className="card-hd">
-        <div className="flex-row" style={{ gap: 10, alignItems: 'center' }}>
+        <div className="flex-row u-gap-10-items-center">
           <Badge tone={planTone(row.plan)}>{planLabel(row.plan)}</Badge>
           {isTrial && <span className="muted tiny">(no editable)</span>}
           {isEnterprise && <span className="muted tiny">(custom per-tenant)</span>}
@@ -90,7 +90,7 @@ function PlanRow({ row, onEdit, dirty, saving }) {
           <div>
             <label className="form-label" htmlFor={priceId}>Precio USD/mes</label>
             {isEnterprise ? (
-              <div className="input" style={{ background: 'var(--bg-soft)', color: 'var(--text-dim)' }}>
+              <div className="input u-input-disabled-look">
                 Sin precio fijo
               </div>
             ) : (
@@ -120,13 +120,12 @@ function PlanRow({ row, onEdit, dirty, saving }) {
             <label className="form-label" htmlFor={notesId}>Notas (opcional)</label>
             <textarea
               id={notesId}
-              className="input"
+              className="input u-textarea-resize-v-48"
               rows={2}
               value={row.notes ?? ''}
               onChange={(e) => onEdit(row.plan, { notes: e.target.value })}
               placeholder="Ej: subido 10% por inflación junio 2026"
               disabled={!isEditable || saving}
-              style={{ resize: 'vertical', minHeight: 48 }}
               aria-label={`Notas del plan ${row.plan}`}
             />
           </div>
@@ -375,33 +374,13 @@ export default function Planes() {
       />
 
       {error && (
-        <div
-          role="alert"
-          className="card"
-          style={{
-            marginBottom: 'var(--gap)',
-            background: 'var(--neg-soft)',
-            border: '1px solid transparent',
-            color: 'var(--neg)',
-            fontSize: 13,
-          }}
-        >
+        <div role="alert" className="card u-planes-alert-error">
           {error}
         </div>
       )}
 
       {success && (
-        <div
-          role="status"
-          className="card"
-          style={{
-            marginBottom: 'var(--gap)',
-            background: 'var(--pos-soft)',
-            border: '1px solid transparent',
-            color: 'var(--pos)',
-            fontSize: 13,
-          }}
-        >
+        <div role="status" className="card u-planes-alert-status">
           {success}
         </div>
       )}
@@ -409,9 +388,9 @@ export default function Planes() {
       {loading ? (
         <div className="stack u-gap-var-gap">
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="card" style={{ minHeight: 140 }}>
-              <span className="skeleton" style={{ display: 'inline-block', width: 100, height: 16, marginBottom: 12 }} />
-              <span className="skeleton" style={{ display: 'block', width: '100%', height: 38 }} />
+            <div key={i} className="card u-skeleton-card-140">
+              <span className="skeleton u-skeleton-line-16-mb-12" />
+              <span className="skeleton u-skeleton-block-38" />
             </div>
           ))}
         </div>
@@ -426,10 +405,7 @@ export default function Planes() {
                 saving={submitting && pendingChange?.plan === row.plan}
               />
               {dirtyByPlan[row.plan] && (
-                <div
-                  className="flex-row"
-                  style={{ gap: 8, marginTop: 8, justifyContent: 'flex-end' }}
-                >
+                <div className="flex-row u-flex-gap-8-mt-8-end">
                   <Btn kind="ghost" sm onClick={() => handleDiscard(row.plan)}>
                     Descartar
                   </Btn>

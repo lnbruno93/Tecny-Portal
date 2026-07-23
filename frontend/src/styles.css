@@ -4255,6 +4255,16 @@ body.modal-open { overflow: hidden; }
 .u-quote-summary-line         { padding-bottom: 12px; margin-bottom: 12px; }
 .u-quote-summary-line:not(:last-child) { border-bottom: 1px solid var(--hairline); }
 .u-quote-bottom-hint          { padding-top: 8px; border-top: 1px solid var(--hairline); line-height: 1.6; }
+/* — Planes admin (Sprint 64) — */
+.u-gap-10-items-center        { gap: 10px; align-items: center; }
+.u-input-disabled-look        { background: var(--bg-soft); color: var(--text-dim); }
+.u-textarea-resize-v-48       { resize: vertical; min-height: 48px; }
+.u-planes-alert-error         { margin-bottom: var(--gap); background: var(--neg-soft); border: 1px solid transparent; color: var(--neg); font-size: 13px; }
+.u-planes-alert-status        { margin-bottom: var(--gap); background: var(--pos-soft); border: 1px solid transparent; color: var(--pos); font-size: 13px; }
+.u-skeleton-card-140          { min-height: 140px; }
+.u-skeleton-line-16-mb-12     { display: inline-block; width: 100px; height: 16px; margin-bottom: 12px; }
+.u-skeleton-block-38          { display: block; width: 100%; height: 38px; }
+.u-flex-gap-8-mt-8-end        { gap: 8px; margin-top: 8px; justify-content: flex-end; }
 /* — DiffModal (Sprint 59) — */
 .u-diff-modal-body            { padding: 32px 28px 18px; text-align: left; }
 .u-diff-icon-wrap             { text-align: center; margin-bottom: 18px; }
