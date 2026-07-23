@@ -234,51 +234,25 @@ export default function TrustedCompaniesCard() {
         </div>
 
         {error && (
-          <div role="alert" style={{
-            padding: 10, borderRadius: 6, fontSize: 13,
-            background: 'rgba(220, 38, 38, 0.08)',
-            border: '1px solid rgba(220, 38, 38, 0.3)',
-            color: 'var(--neg)',
-          }}>{error}</div>
+          <div role="alert" className="u-alert-error">{error}</div>
         )}
         {savedMsg && (
-          <div role="status" style={{
-            padding: 10, borderRadius: 6, fontSize: 13,
-            background: 'rgba(16, 185, 129, 0.08)',
-            border: '1px solid rgba(16, 185, 129, 0.3)',
-            color: 'var(--pos)',
-          }}>{savedMsg}</div>
+          <div role="status" className="u-alert-success">{savedMsg}</div>
         )}
 
         {loading ? (
           <div className="muted u-p-16-text-center">Cargando…</div>
         ) : companies.length === 0 ? (
-          <div className="muted" style={{ padding: 16, textAlign: 'center',
-               border: '1px dashed var(--hairline)', borderRadius: 8, fontSize: 13 }}>
+          <div className="muted u-cms-empty-16">
             Todavía no cargaste ninguna empresa. Al no haber ninguna, la sección
             se oculta en la landing.
           </div>
         ) : (
-          <div style={{
-            display: 'grid', gap: 10,
-            gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-          }}>
+          <div className="u-tc-grid-autofill-220">
             {companies.map((c, idx) => (
-              <div key={c.id} style={{
-                padding: 12, borderRadius: 8,
-                border: '1px solid var(--border)',
-                background: 'rgba(255,255,255,0.02)',
-                display: 'grid', gap: 10, alignContent: 'space-between',
-                opacity: busyId === c.id ? 0.5 : 1,
-              }}>
+              <div key={c.id} className={`u-tc-company-card ${busyId === c.id ? 'u-opacity-50' : ''}`}>
                 {/* Preview del logo — 100% width, altura fija, contain para no deformar */}
-                <div style={{
-                  height: 64,
-                  background: '#fff',
-                  borderRadius: 6,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  padding: 8,
-                }}>
+                <div className="u-tc-logo-preview">
                   <img
                     src={`${BACKEND_BASE}/api/public/trusted-companies/${c.id}/logo`}
                     alt={c.nombre}
@@ -291,14 +265,13 @@ export default function TrustedCompaniesCard() {
                   <form onSubmit={(e) => { e.preventDefault(); handleRename(c.id); }}
                         className="u-flex-gap-4">
                     <input
-                      className="input"
+                      className="input u-fs-13"
                       autoFocus
                       value={editingNombre}
                       onChange={(e) => setEditingNombre(e.target.value)}
                       onBlur={() => handleRename(c.id)}
                       disabled={busyId === c.id}
                       maxLength={120}
-                      className="u-fs-13"
                     />
                     <button type="submit" className="icon-btn" title="Guardar"
                             disabled={busyId === c.id}>✓</button>
@@ -307,13 +280,7 @@ export default function TrustedCompaniesCard() {
                   <div
                     onClick={() => { setEditingId(c.id); setEditingNombre(c.nombre); }}
                     title="Click para renombrar"
-                    style={{
-                      fontSize: 13, fontWeight: 500,
-                      cursor: 'pointer',
-                      padding: '4px 6px', borderRadius: 4,
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    className="u-tc-rename-clickable"
                   >
                     {c.nombre}
                   </div>
@@ -349,19 +316,9 @@ export default function TrustedCompaniesCard() {
       {showAdd && (
         <div
           onClick={(e) => { if (e.target === e.currentTarget) closeAdd(); }}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 100,
-            background: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 16,
-          }}
+          className="u-modal-overlay-fixed"
         >
-          <form onSubmit={submitAdd} style={{
-            width: '100%', maxWidth: 480,
-            background: 'var(--surface)', border: '1px solid var(--border)',
-            borderRadius: 12, padding: 20,
-            display: 'grid', gap: 14,
-          }}>
+          <form onSubmit={submitAdd} className="u-modal-form-480">
             <div className="u-flex-between-center-nogap">
               <h3 className="u-m-0-fs-16">Agregar empresa</h3>
               <button type="button" className="icon-btn" onClick={closeAdd} aria-label="Cerrar">
@@ -396,14 +353,7 @@ export default function TrustedCompaniesCard() {
                 disabled={adding}
               />
               {addPreview && (
-                <div style={{
-                  marginTop: 8,
-                  height: 80,
-                  background: '#fff',
-                  borderRadius: 6,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  padding: 8,
-                }}>
+                <div className="u-tc-logo-preview-80">
                   <img
                     src={addPreview}
                     alt="Preview"
@@ -414,15 +364,10 @@ export default function TrustedCompaniesCard() {
             </div>
 
             {error && (
-              <div role="alert" style={{
-                padding: 8, borderRadius: 6, fontSize: 12,
-                background: 'rgba(220, 38, 38, 0.08)',
-                border: '1px solid rgba(220, 38, 38, 0.3)',
-                color: 'var(--neg)',
-              }}>{error}</div>
+              <div role="alert" className="u-alert-error-sm">{error}</div>
             )}
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <div className="u-flex-end-gap-8">
               <Btn variant="ghost" onClick={closeAdd} disabled={adding} type="button">
                 Cancelar
               </Btn>
