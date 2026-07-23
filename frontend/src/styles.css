@@ -4330,6 +4330,16 @@ body.modal-open { overflow: hidden; }
 .u-scanner-mira               { width: min(80vw, 320px); height: min(35vw, 140px); border: 3px solid rgba(255,255,255,0.85); border-radius: 12px; box-shadow: 0 0 0 9999px rgba(0,0,0,0.35); }
 .u-scanner-footer             { position: absolute; bottom: 0; left: 0; right: 0; z-index: 2; padding: 16px 20px env(safe-area-inset-bottom, 16px); background: linear-gradient(0deg, rgba(0,0,0,0.7), transparent); color: white; text-align: center; font-size: 13px; }
 .u-scanner-error              { color: #ffb4b4; font-weight: 600; }
+/* — ErrorBoundary frontend (Sprint 72) — */
+.u-eb-wrap                    { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 12px; padding: 32px; text-align: center; }
+.u-eb-wrap-lg                 { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 16px; padding: 32px; text-align: center; }
+.u-eb-icon-28                 { font-size: 28px; }
+.u-eb-icon-36                 { font-size: 36px; }
+.u-eb-text                    { color: var(--text-muted); font-size: 14px; }
+.u-eb-title                   { font-weight: 700; font-size: 18px; color: var(--text); }
+.u-eb-desc                    { color: var(--text-muted); font-size: 14px; max-width: 420px; }
+.u-eb-code                    { font-size: 11px; color: var(--text-dim); background: var(--surface-2); padding: 8px 14px; border-radius: 8px; max-width: 480px; overflow: auto; display: block; }
+.u-eb-btn-row                 { display: flex; gap: 10px; margin-top: 8px; }
 /* — DiffModal (Sprint 59) — */
 .u-diff-modal-body            { padding: 32px 28px 18px; text-align: left; }
 .u-diff-icon-wrap             { text-align: center; margin-bottom: 18px; }

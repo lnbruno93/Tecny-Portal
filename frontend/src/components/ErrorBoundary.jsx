@@ -33,9 +33,9 @@ export default class ErrorBoundary extends Component {
 
     if (this.state.reloading) {
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12, padding: 32, textAlign: 'center' }}>
-          <div style={{ fontSize: 28 }}>⏳</div>
-          <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>Actualizando a la última versión…</div>
+        <div className="u-eb-wrap">
+          <div className="u-eb-icon-28">⏳</div>
+          <div className="u-eb-text">Actualizando a la última versión…</div>
         </div>
       );
     }
@@ -43,38 +43,20 @@ export default class ErrorBoundary extends Component {
     const chunkErr = isChunkLoadError(this.state.error);
 
     return (
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100%',
-        gap: 16,
-        padding: 32,
-        textAlign: 'center',
-      }}>
-        <div style={{ fontSize: 36 }}>⚠️</div>
-        <div style={{ fontWeight: 700, fontSize: 18, color: 'var(--text)' }}>
+      <div className="u-eb-wrap-lg">
+        <div className="u-eb-icon-36">⚠️</div>
+        <div className="u-eb-title">
           Algo salió mal
         </div>
-        <div style={{ color: 'var(--text-muted)', fontSize: 14, maxWidth: 420 }}>
+        <div className="u-eb-desc">
           Esta pantalla tuvo un error inesperado. Podés intentar recargar o volver al inicio.
         </div>
         {this.state.error && (
-          <code style={{
-            fontSize: 11,
-            color: 'var(--text-dim)',
-            background: 'var(--surface-2)',
-            padding: '8px 14px',
-            borderRadius: 8,
-            maxWidth: 480,
-            overflow: 'auto',
-            display: 'block',
-          }}>
+          <code className="u-eb-code">
             {this.state.error.message}
           </code>
         )}
-        <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+        <div className="u-eb-btn-row">
           <button
             className="btn btn-ghost"
             onClick={() => window.location.assign('/inicio')}
