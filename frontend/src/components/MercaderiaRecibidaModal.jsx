@@ -244,35 +244,14 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
   const overlayRef = useRef(null);
   useModal({ open: true, onClose: tryClose, overlayRef });
 
-  // ── Estilos ─────────────────────────────────────────────────────────────
-  const bannerSaldoStyle = {
-    background: 'var(--warn-soft, rgba(251,191,36,0.14))',
-    border: '1px solid var(--warn, #fbbf24)',
-    borderRadius: 6,
-    padding: '8px 12px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    fontSize: 12,
-  };
-  // Grid compartido para header + filas. Un cambio acá y todo queda alineado.
-  //  Producto | Categoría | IMEI | GB | Color | Bat% | Cant | Valor unit. | Subtotal | ✕
-  // 2026-07-22: +col GB (60px) entre IMEI y Color.
-  const gridCols = 'minmax(160px, 1.4fr) 130px minmax(100px, 1fr) 60px 90px 60px 55px 90px 90px 28px';
-  const cellPad = '6px 8px';
-  const previewStyle = {
-    padding: '10px 12px',
-    background: saldoCierraEnCero
-      ? 'var(--pos-soft, rgba(74,222,128,0.12))'
-      : 'var(--warn-soft, rgba(251,191,36,0.14))',
-    border: `1px solid ${saldoCierraEnCero ? 'var(--pos, #4ade80)' : 'var(--warn, #fbbf24)'}`,
-    borderRadius: 6,
-    display: 'flex',
-    alignItems: 'center',
-    gap: 10,
-    fontSize: 12,
-    color: 'var(--text-2)',
-  };
+  // Sprint 88 CSP: los helper style objects bannerSaldoStyle, previewStyle,
+  // gridCols y cellPad ahora viven en styles.css como clases utility
+  // .u-merc-* — todo el modal queda sin styles inline.
+  //
+  // El "grid compartido" para header + filas se define en la clase
+  // .u-merc-grid-row que ambos aplican. Producto | Categoría | IMEI | GB |
+  // Color | Bat% | Cant | Valor unit. | Subtotal | ✕. (2026-07-22: +col GB
+  // entre IMEI y Color).
 
   const nombreCliente = [cliente.nombre, cliente.apellido].filter(Boolean).join(' ') || cliente.nombre;
   const primerNombre = (cliente.nombre || '').split(' ')[0] || 'Cliente';
@@ -301,15 +280,11 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
                 ⚠ No se pudieron cargar: <strong>{catalogosError.join(', ')}</strong>. Algunos selectores estarán vacíos.
               </div>
             )}
-            <div style={bannerSaldoStyle}>
+            <div className="u-merc-banner-saldo">
               <span className="u-color-text-2">
                 Saldo actual {Number(saldoActual || 0) > 0 ? '(cliente nos debe)' : Number(saldoActual || 0) < 0 ? '(a favor del cliente)' : ''}
               </span>
-              <span style={{
-                fontWeight: 600, fontSize: 14,
-                color: Number(saldoActual || 0) > 0 ? 'var(--neg)' : Number(saldoActual || 0) < 0 ? 'var(--pos)' : 'var(--text-muted)',
-                fontVariantNumeric: 'tabular-nums',
-              }}>
+              <span className={'u-merc-saldo-value ' + (Number(saldoActual || 0) > 0 ? 'u-color-neg' : Number(saldoActual || 0) < 0 ? 'u-color-pos' : 'u-color-text-muted')}>
                 {fmtUSD(Number(saldoActual || 0))}
               </span>
             </div>
@@ -332,10 +307,7 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
             </datalist>
 
             {/* Header sticky de la tabla */}
-            <div
-              className="u-table-header-uppercase"
-              style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 4 }}
-            >
+            <div className="u-table-header-uppercase u-merc-grid-row">
               <span>Producto</span>
               <span>Categoría</span>
               <span>IMEI / Serial</span>
@@ -353,12 +325,7 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
               {items.map((it, idx) => {
                 const st = subtotalDe(it);
                 return (
-                  <div key={it._id} style={{
-                    display: 'grid', gridTemplateColumns: gridCols, gap: 4,
-                    alignItems: 'center',
-                    padding: '4px 0',
-                    borderBottom: '1px solid var(--hairline)',
-                  }}>
+                  <div key={it._id} className="u-merc-grid-row u-merc-item-row">
                     <input
                       type="text"
                       className="input mercaderia-inp"
@@ -424,12 +391,7 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
                       onChange={e => updItem(idx, 'valor_unitario', e.target.value)}
                       placeholder="0.00"
                     />
-                    <span style={{
-                      textAlign: 'right', padding: cellPad,
-                      fontFamily: 'monospace', fontSize: 12,
-                      color: st > 0 ? 'var(--text)' : 'var(--text-dim)',
-                      fontVariantNumeric: 'tabular-nums',
-                    }}>
+                    <span className={'u-merc-subtotal ' + (st > 0 ? 'u-color-text' : 'u-color-text-dim')}>
                       {st > 0 ? fmtUSD(st) : '—'}
                     </span>
                     <button
@@ -438,14 +400,7 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
                       disabled={items.length === 1}
                       aria-label={`Eliminar producto ${idx + 1}`}
                       title={items.length === 1 ? 'Necesitás al menos un producto' : 'Eliminar producto'}
-                      style={{
-                        width: 24, height: 24, borderRadius: 4,
-                        background: 'transparent', border: 'none',
-                        color: items.length === 1 ? 'var(--text-dim)' : 'var(--text-muted)',
-                        cursor: items.length === 1 ? 'not-allowed' : 'pointer',
-                        display: 'grid', placeItems: 'center',
-                        opacity: items.length === 1 ? 0.4 : 1,
-                      }}
+                      className={'u-merc-remove-btn' + (items.length === 1 ? ' u-merc-remove-btn-disabled' : '')}
                     >
                       <Icons.X size={12} />
                     </button>
@@ -470,7 +425,7 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
 
             {/* Preview del saldo post-op */}
             {totalUsd > 0 && (
-              <div style={previewStyle}>
+              <div className={'u-merc-preview ' + (saldoCierraEnCero ? 'u-merc-preview-ok' : 'u-merc-preview-warn')}>
                 <span className="u-fs-16">{saldoCierraEnCero ? '✓' : '⚠'}</span>
                 <div className="u-flex-1">
                   {saldoCierraEnCero ? (
