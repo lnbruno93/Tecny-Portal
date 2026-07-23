@@ -2234,3 +2234,13 @@ a { color: inherit; text-decoration: none; }
 .u-nov-counter                { font-size: 11px; text-align: right; margin-top: 4px; }
 .u-nov-preview-box            { padding: 12px; background: var(--surface-2); border: 1px dashed var(--border); border-radius: 8px; }
 .u-nov-preview-header         { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); font-weight: 600; margin-bottom: 6px; }
+/* — Sanidad (Sprint 55) — */
+.u-sanidad-edit-btn           { background: transparent; border: none; cursor: pointer; padding: 2px 6px; border-radius: 4px; text-align: right; width: 100%; font: inherit; color: inherit; position: relative; }
+.u-sanidad-override-dot       { margin-left: 4px; font-size: 8px; vertical-align: super; color: var(--accent); font-weight: 700; }
+.u-sanidad-banner-error-sm    { background: var(--neg-soft); color: var(--neg); padding: 8px; border-radius: 6px; font-size: 12.5px; margin-bottom: 10px; }
+.u-sanidad-banner-error       { background: var(--neg-soft); color: var(--neg); padding: 10px; border-radius: 6px; font-size: 13px; margin-bottom: 12px; }
+.u-sanidad-toggle-btn         { background: transparent; border: none; cursor: pointer; padding: 0; font: inherit; color: inherit; display: inline-flex; align-items: center; gap: 4px; }
+.u-chevron-transition         { transition: transform 0.15s ease-out; }
+.u-rotate-0                   { transform: rotate(0deg); }
+.u-rotate-neg-90              { transform: rotate(-90deg); }
+.u-opacity-70                 { opacity: 0.7; }

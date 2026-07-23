@@ -176,13 +176,7 @@ function GastoProyectadoCell({ periodo, recurrente_id, value, isOverride, defaul
       title={isOverride
         ? `Override del default (USD ${fmt(defaultUsd, 0)}). Click para editar, dejá en el default para restaurar.`
         : 'Click para editar el monto de este mes (no afecta los demás meses)'}
-      className="sanidad-edit-cell"
-      style={{
-        background: 'transparent', border: 'none', cursor: 'pointer',
-        padding: '2px 6px', borderRadius: 4, textAlign: 'right', width: '100%',
-        font: 'inherit', color: 'inherit',
-        position: 'relative',
-      }}
+      className="sanidad-edit-cell u-sanidad-edit-btn"
     >
       <div className="u-flex-col-end-gap-2">
         <span className="sanidad-money u-fs-13">
@@ -191,10 +185,7 @@ function GastoProyectadoCell({ periodo, recurrente_id, value, isOverride, defaul
           {isOverride && (
             <span
               title="Este mes tiene un monto distinto al default del recurrente"
-              style={{
-                marginLeft: 4, fontSize: 8, verticalAlign: 'super',
-                color: 'var(--accent)', fontWeight: 700,
-              }}
+              className="u-sanidad-override-dot"
             >●</span>
           )}
         </span>
@@ -239,18 +230,8 @@ function BrutoProyectadoEditable({ periodo, value, onSave, variacion = null, isG
   }
   return (
     <button
-      type="button" onClick={startEdit} title="Click para editar" className="sanidad-edit-cell"
-      style={{
-        background:'transparent', border:'none', cursor:'pointer',
-        padding:'2px 6px', borderRadius:4, textAlign:'right', width:'100%',
-        // CRÍTICO: font:inherit — los <button> tienen estilos default del
-        // browser (weight, family, color) que rompen la consistencia con
-        // las cells normales. Heredamos TODO de la celda padre para que
-        // "USD 10.000" del Bruto editable se renderee exactamente igual
-        // a "USD 27.775" del Gastos no-editable.
-        font: 'inherit',
-        color: 'inherit',
-      }}
+      type="button" onClick={startEdit} title="Click para editar"
+      className="sanidad-edit-cell u-sanidad-edit-btn"
     >
       {value != null
         ? (() => {
@@ -462,10 +443,7 @@ function ProyeccionGastosPanel({ onChange }) {
   return (
     <div>
       {error && (
-        <div role="alert" className="banner" style={{
-          background: 'var(--neg-soft)', color: 'var(--neg)',
-          padding: 8, borderRadius: 6, fontSize: 12.5, marginBottom: 10,
-        }}>{error}</div>
+        <div role="alert" className="banner u-sanidad-banner-error-sm">{error}</div>
       )}
 
       {loading
@@ -507,20 +485,15 @@ function ProyeccionGastosPanel({ onChange }) {
                       {/* Header del grupo: click → expandir/colapsar. Cursor pointer
                           + chevron a la izquierda indica el estado. */}
                       <tr
-                        className="sanidad-group-header"
+                        className="sanidad-group-header u-cursor-pointer"
                         onClick={() => toggleGroup(g.key)}
-                        className="u-cursor-pointer"
                         aria-expanded={isOpen}
                       >
                         <td colSpan={2}>
                           <div className="u-flex-center-gap-10">
                             <Icons.ChevronDown
                               size={14}
-                              style={{
-                                transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)',
-                                transition: 'transform .15s ease-out',
-                                opacity: 0.7,
-                              }}
+                              className={`u-chevron-transition u-opacity-70 ${isOpen ? 'u-rotate-0' : 'u-rotate-neg-90'}`}
                             />
                             <span className="u-fs-13-fw-600">{g.nombre}</span>
                             <span className="muted tiny">{g.items.length} ítem{g.items.length === 1 ? '' : 's'}</span>
@@ -874,10 +847,7 @@ export default function Sanidad() {
           </div>
         </div>
         {error && (
-          <div role="alert" className="banner" style={{
-            background: 'var(--neg-soft)', color: 'var(--neg)',
-            padding: 10, borderRadius: 6, fontSize: 13, marginBottom: 12,
-          }}>
+          <div role="alert" className="banner u-sanidad-banner-error">
             {error}
             <button
               type="button"
@@ -912,10 +882,7 @@ export default function Sanidad() {
       </div>
 
       {error && (
-        <div role="alert" className="banner" style={{
-          background: 'var(--neg-soft)', color: 'var(--neg)',
-          padding: 10, borderRadius: 6, fontSize: 13, marginBottom: 12,
-        }}>{error}</div>
+        <div role="alert" className="banner u-sanidad-banner-error">{error}</div>
       )}
 
       {/* ─── Tabla resumen mensual ────────────────────────────────────────── */}
@@ -984,14 +951,10 @@ export default function Sanidad() {
                   onClick={() => setShowGastosDetail(o => !o)}
                   aria-expanded={showGastosDetail}
                   title={showGastosDetail ? 'Ocultar detalle por gasto' : 'Ver detalle por gasto · permite editar el monto de un mes específico'}
-                  style={{
-                    background: 'transparent', border: 'none', cursor: 'pointer',
-                    padding: 0, font: 'inherit', color: 'inherit',
-                    display: 'inline-flex', alignItems: 'center', gap: 4,
-                  }}
+                  className="u-sanidad-toggle-btn"
                 >
                   <Icons.ChevronDown size={12}
-                    style={{ transform: showGastosDetail ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform .15s' }} />
+                    className={`u-chevron-transition ${showGastosDetail ? 'u-rotate-0' : 'u-rotate-neg-90'}`} />
                   Gastos e inversiones
                 </button>
               </td>
@@ -1136,7 +1099,7 @@ export default function Sanidad() {
         >
           <span className="u-inline-flex-center-8">
             <Icons.ChevronDown size={14}
-              style={{ transform: panelOpen ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform .15s' }} />
+              className={`u-chevron-transition ${panelOpen ? 'u-rotate-0' : 'u-rotate-neg-90'}`} />
             <strong>Mis gastos proyectados</strong>
             <span className="muted tiny">— editá tu presupuesto de gastos fijos</span>
           </span>
