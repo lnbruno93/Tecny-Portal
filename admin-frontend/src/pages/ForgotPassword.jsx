@@ -69,50 +69,15 @@ export default function ForgotPassword() {
   };
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'grid',
-        placeItems: 'center',
-        background: 'var(--bg)',
-        padding: 24,
-      }}
-    >
-      <div
-        className="card"
-        style={{
-          width: '100%',
-          maxWidth: 400,
-          padding: 32,
-          boxShadow: 'var(--shadow-md)',
-        }}
-      >
-        <div
-          className="brand-mark"
-          aria-hidden="true"
-          style={{
-            width: 48,
-            height: 48,
-            borderRadius: 12,
-            fontSize: 18,
-            margin: '0 auto 16px',
-          }}
-        >
+    <div className="u-invite-page-wrap">
+      <div className="card u-login-card">
+        <div className="brand-mark u-invite-brand-mark" aria-hidden="true">
           T
         </div>
 
         {submitted ? (
           <>
-            <h1
-              style={{
-                fontSize: 22,
-                fontWeight: 600,
-                letterSpacing: '-0.02em',
-                textAlign: 'center',
-                margin: '0 0 4px',
-                color: 'var(--text)',
-              }}
-            >
+            <h1 className="u-invite-title">
               Revisá tu email
             </h1>
             <p
@@ -120,7 +85,7 @@ export default function ForgotPassword() {
               role="status"
               aria-live="polite"
             >
-              Si <strong style={{ wordBreak: 'break-all', color: 'var(--text)' }}>{submittedEmail}</strong>{' '}
+              Si <strong className="u-strong-email">{submittedEmail}</strong>{' '}
               tiene una cuenta de super-admin, te mandamos un link para resetear
               la contraseña. Revisá tu bandeja (y la carpeta de spam).
             </p>
@@ -144,15 +109,7 @@ export default function ForgotPassword() {
                   setEmail('');
                   setError('');
                 }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--muted)',
-                  textDecoration: 'underline',
-                  cursor: 'pointer',
-                  padding: 0,
-                  font: 'inherit',
-                }}
+                className="u-retry-link"
               >
                 Reintentar
               </button>
@@ -160,37 +117,15 @@ export default function ForgotPassword() {
           </>
         ) : (
           <>
-            <h1
-              style={{
-                fontSize: 22,
-                fontWeight: 600,
-                letterSpacing: '-0.02em',
-                textAlign: 'center',
-                margin: '0 0 4px',
-                color: 'var(--text)',
-              }}
-            >
+            <h1 className="u-invite-title">
               Recuperar contraseña
             </h1>
-            <p
-              className="muted u-fs-13-text-center-24"
-            >
+            <p className="muted u-fs-13-text-center-24">
               Pasanos tu email y te mandamos un link para elegir una nueva.
             </p>
 
             {error && (
-              <div
-                role="alert"
-                style={{
-                  background: 'var(--neg-soft)',
-                  color: 'var(--neg)',
-                  padding: '10px 12px',
-                  borderRadius: 8,
-                  fontSize: 13,
-                  marginBottom: 14,
-                  border: '1px solid transparent',
-                }}
-              >
+              <div role="alert" className="u-invite-alert-error">
                 {error}
               </div>
             )}
