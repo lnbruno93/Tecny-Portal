@@ -2349,6 +2349,13 @@ a { color: inherit; text-decoration: none; }
 .u-skel-h-16-w-80             { height: 16px; width: 80px; }
 .u-skel-h-16-w-70             { height: 16px; width: 70px; }
 .u-bg-warn                    { background: var(--warn); }
+/* — Tarjetas (Sprint 69) — */
+.u-tarj-master-detail         { --master-width: 300px; align-items: start; }
+.u-tarj-item                  { padding: 10px 13px; cursor: pointer; border-bottom: 1px solid var(--hairline); background: transparent; border-left: 3px solid transparent; }
+.u-tarj-item:last-child       { border-bottom: 0; }
+.u-tarj-item-active           { background: var(--surface-2); border-left-color: var(--accent); }
+.u-mt-neg-2                   { margin-top: -2px; }
+.u-fw-600                     { font-weight: 600; }
 /* — DiffModal (Sprint 59) — */
 .u-diff-modal-body            { padding: 32px 28px 18px; text-align: left; }
 .u-diff-icon-wrap             { text-align: center; margin-bottom: 18px; }

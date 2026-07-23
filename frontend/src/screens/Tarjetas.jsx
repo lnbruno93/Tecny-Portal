@@ -24,11 +24,13 @@ const sym = (m) => (m === 'ARS' ? '$' : 'u$s');
 // filtra por un período donde liquidó más de lo cobrado (movimiento neto
 // del período < 0). Sin este helper, los 4 puntos donde se muestra el saldo
 // pintaban negativo en azul-positivo, visualmente engañoso.
-const saldoColor = (v) => {
+// CSP hardening (Sprint 69): retorna la utility class equivalente al color
+// original. Los 4 callsites usan className en vez de inline color.
+const saldoClass = (v) => {
   const n = Number(v) || 0;
-  if (n > 0) return 'var(--accent)';
-  if (n < 0) return 'var(--neg)';
-  return 'var(--text-muted)';
+  if (n > 0) return 'u-tone-accent';
+  if (n < 0) return 'u-tone-neg';
+  return 'u-tone-text-muted';
 };
 
 // Sentinel para la "tarjeta virtual" Todas las tarjetas (junio 2026). Cuando
@@ -692,7 +694,7 @@ export default function Tarjetas() {
           <div className="row u-mb-14">
             <div className="card card-tight u-flex-1">
               <div className="kpi-label">Saldo a tu favor</div>
-              <div className="kpi-value mono" style={{ color: saldoColor(global.saldo) }}>$ {fmt(global.saldo)}</div>
+              <div className={`kpi-value mono ${saldoClass(global.saldo)}`}>$ {fmt(global.saldo)}</div>
             </div>
             <div className="card card-tight u-flex-1">
               <div className="kpi-label">Comisión financiera</div>
@@ -782,7 +784,7 @@ export default function Tarjetas() {
                       <td className="mono tiny u-text-right">
                         {m.tipo === 'cobro' ? `${sym(m.moneda)} ${fmt(m.monto_bruto)}` : '—'}
                       </td>
-                      <td className="mono u-text-right" style={{ color: m.tipo === 'cobro' ? 'var(--accent)' : 'var(--neg)' }}>
+                      <td className={`mono u-text-right ${m.tipo === 'cobro' ? 'u-tone-accent' : 'u-tone-neg'}`}>
                         {m.tipo === 'cobro' ? '+' : '−'} {sym(m.moneda)} {fmt(m.monto_neto)}
                       </td>
                       <td className="mono u-td-right-fw-700">$ {fmt(m.saldo_acum)}</td>
@@ -810,33 +812,30 @@ export default function Tarjetas() {
         // 2026-06-24 mobile lote D: usar .split-master-detail (de Lote A) que
         // colapsa a single col en <=720px. Sin esto, en 375px el master
         // 300px = 80% del ancho y el detail queda en 75px ilegible.
-        <div className="split-master-detail" style={{ '--master-width': '300px', alignItems: 'start' }}>
+        <div className="split-master-detail u-tarj-master-detail">
           {/* Lista de tarjetas (métodos de pago) + ítem virtual "Todas las
               tarjetas" al inicio para ver el resumen agregado y registrar
               la liquidación múltiple (un depósito que cubre N modalidades). */}
           <div className="card card-flush u-mh-78vh-o-auto">
-            <div onClick={() => setSelectedId(ALL_TARJETAS)} style={{
-              padding: '10px 13px', cursor: 'pointer',
-              borderBottom: '1px solid var(--hairline)',
-              background: selectedId === ALL_TARJETAS ? 'var(--surface-2)' : 'transparent',
-              borderLeft: selectedId === ALL_TARJETAS ? '3px solid var(--accent)' : '3px solid transparent',
-            }}>
+            <div
+              onClick={() => setSelectedId(ALL_TARJETAS)}
+              className={`u-tarj-item ${selectedId === ALL_TARJETAS ? 'u-tarj-item-active' : ''}`}
+            >
               <div className="u-fw-700-fs-13">Todas las tarjetas</div>
               <div className="muted tiny u-mt-2">{list.length} {list.length === 1 ? 'modalidad' : 'modalidades'} · resumen + liquidación múltiple</div>
-              <div className="mono tiny" style={{ marginTop: 2, color: saldoColor(global.saldo) }}>
+              <div className={`mono tiny u-mt-2 ${saldoClass(global.saldo)}`}>
                 Te deben: $ {fmt(global.saldo)}
               </div>
             </div>
-            {list.map((t, i) => (
-              <div key={t.id} onClick={() => setSelectedId(t.id)} style={{
-                padding: '10px 13px', cursor: 'pointer',
-                borderBottom: i < list.length - 1 ? '1px solid var(--hairline)' : 0,
-                background: selectedId === t.id ? 'var(--surface-2)' : 'transparent',
-                borderLeft: selectedId === t.id ? '3px solid var(--accent)' : '3px solid transparent',
-              }}>
+            {list.map((t) => (
+              <div
+                key={t.id}
+                onClick={() => setSelectedId(t.id)}
+                className={`u-tarj-item ${selectedId === t.id ? 'u-tarj-item-active' : ''}`}
+              >
                 <div className="u-fs-13-fw-600">{t.nombre}</div>
                 <div className="muted tiny u-mt-2">Comisión {Number(t.comision_pct || 0)}%</div>
-                <div className="mono tiny" style={{ marginTop: 2, color: saldoColor(t.saldo) }}>
+                <div className={`mono tiny u-mt-2 ${saldoClass(t.saldo)}`}>
                   Te deben: {sym(t.moneda)} {fmt(t.saldo)}
                 </div>
               </div>
@@ -982,9 +981,9 @@ export default function Tarjetas() {
                       const arsCalc = usd * tc;
                       const delta = ars - arsCalc;
                       if (Math.abs(delta) < 0.01) return null; // matchea exacto
-                      const color = Math.abs(delta) < 100 ? 'var(--text-muted)' : 'var(--warn, #d97706)';
+                      const deltaClass = Math.abs(delta) < 100 ? 'u-tone-text-muted' : 'u-tone-warn';
                       return (
-                        <div className="mono tiny" style={{ color, marginTop: -2 }} role="status">
+                        <div className={`mono tiny u-mt-neg-2 ${deltaClass}`} role="status">
                           USD × TC = $ {fmt(arsCalc)} (Δ {delta >= 0 ? '+' : ''}{fmt(delta)})
                           {Math.abs(delta) >= 100 && ' — revisá si es lo que dice la planilla.'}
                         </div>
@@ -1060,10 +1059,7 @@ export default function Tarjetas() {
                                 disabled={!(Number(multiLiq.monto) > 0)}>
                           Sugerir reparto (FIFO)
                         </button>
-                        <div className="mono tiny" style={{
-                          fontWeight: 600,
-                          color: totalMulti <= 0 ? 'var(--text-muted)' : (multiOk ? 'var(--pos)' : 'var(--neg)'),
-                        }}>
+                        <div className={`mono tiny u-fw-600 ${totalMulti <= 0 ? 'u-tone-text-muted' : (multiOk ? 'u-tone-pos' : 'u-tone-neg')}`}>
                           {totalMulti <= 0
                             ? 'Cargá el total recibido para empezar.'
                             : multiOk
@@ -1143,7 +1139,7 @@ export default function Tarjetas() {
               <div className="row">
                 <div className="card card-tight u-flex-1">
                   <div className="kpi-label">Te deben (falta cobrar)</div>
-                  <div className="kpi-value mono" style={{ color: saldoColor(r.saldo) }}>{sym(mon)} {fmt(r.saldo)}</div>
+                  <div className={`kpi-value mono ${saldoClass(r.saldo)}`}>{sym(mon)} {fmt(r.saldo)}</div>
                 </div>
                 <div className="card card-tight u-flex-1">
                   <div className="kpi-label">Comisión financiera</div>
