@@ -120,8 +120,9 @@ describe('Pantalla Envíos', () => {
     expect(pagos[1].value).toBe('111');
     expect(pagos[2].value).toBe('222');
     // Quitar el pago 0 — el botón X está como sibling en la grilla del pago.
-    // Buscamos el contenedor grid del pago 0 y su botón.
-    const row0 = pagos[0].closest('div[style*="grid"]');
+    // 2026-07-23 (CSP Sprint 73): el wrapper migró de inline `display:grid`
+    // a la clase `.u-envios-pago-grid`. El closest ahora matchea por clase.
+    const row0 = pagos[0].closest('.u-envios-pago-grid');
     const xBtn0 = row0.querySelector('button');
     fireEvent.click(xBtn0);
     // Tras quitar, quedan 2 pagos. El pago 0 (antes 1) debe mostrar '111'.
