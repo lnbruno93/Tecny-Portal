@@ -62,11 +62,11 @@ export default function AlertasModule() {
 
   return (
     <div>
-      <div className="flex-row" style={{ gap: 4, marginBottom: 12 }}>
+      <div className="flex-row u-alertas-tabs-row">
         <button className={'btn ' + (subtab === 'activas' ? 'btn-primary' : '')}
                 onClick={() => setSubtab('activas')}>
           Activas {activas?.total_alertas > 0 && (
-            <span className="badge" style={{ background: 'var(--neg)', color: '#fff', marginLeft: 6 }}>
+            <span className="badge u-badge-neg-white-ml6">
               {activas.total_alertas}
             </span>
           )}
@@ -93,9 +93,9 @@ export function TabActivas({ data }) {
   if (!data) return <div className="empty">Sin datos.</div>;
   if (data.total_alertas === 0) {
     return (
-      <div className="card card-tight" style={{ textAlign: 'center', padding: 32, color: 'var(--pos)' }}>
+      <div className="card card-tight u-alertas-ok-card">
         <Icons.Check size={32} />
-        <div style={{ fontSize: 18, fontWeight: 600, marginTop: 8 }}>Todo bajo control</div>
+        <div className="u-alertas-ok-title">Todo bajo control</div>
         <div className="muted tiny u-mt-4">No hay alertas activas en este momento.</div>
       </div>
     );
@@ -123,11 +123,11 @@ function GrupoAlerta({ grupo }) {
   const [expanded, setExpanded] = useState(true);
   const color = COLOR_SEVERIDAD[grupo.severidad] || 'var(--accent)';
   return (
-    <div className="card card-tight" style={{ marginBottom: 12, borderLeft: `4px solid ${color}` }}>
+    <div className="card card-tight u-grupo-alerta-card" style={{ borderLeftColor: color }}>
       <div className="flex-between u-cursor-pointer" onClick={() => setExpanded(e => !e)}>
         <div>
           <span className="u-fs-16-fw-600">{grupo.titulo}</span>
-          <span className="badge" style={{ marginLeft: 8, background: color, color: '#fff' }}>{grupo.count}</span>
+          <span className="badge u-badge-count-ml-8" style={{ background: color }}>{grupo.count}</span>
         </div>
         <button className="icon-btn">
           {expanded ? <Icons.ChevronUp size={16} /> : <Icons.ChevronDown size={16} />}
@@ -140,10 +140,7 @@ function GrupoAlerta({ grupo }) {
           ) : (
             <div className="u-border-top-only">
               {grupo.items.map(item => (
-                <div key={item.id} className="flex-between" style={{
-                  padding: '6px 0', borderBottom: '1px solid var(--border-light, rgba(0,0,0,0.05))',
-                  fontSize: 13,
-                }}>
+                <div key={item.id} className="flex-between u-alertas-item-row">
                   <div>{item.descripcion}</div>
                   {item.link && (
                     <Link to={item.link} className="btn btn-ghost btn-sm">
@@ -177,7 +174,7 @@ export function TabConfig({ config, onSaved }) {
           {settings.map(c => (
             <ConfigRow key={c.tipo} cfg={c} onSaved={onSaved} />
           ))}
-          <div style={{ height: 16 }} />
+          <div className="u-h-16-spacer" />
         </>
       )}
       <div className="u-fw-600-fs-13-mb-6-muted">
@@ -242,19 +239,19 @@ function ConfigRow({ cfg, onSaved }) {
 
   return (
     <div className="card card-tight u-mb-10">
-      <div className="flex-between" style={{ marginBottom: parametrosKeys.length > 0 ? 8 : 0 }}>
+      <div className={`flex-between ${parametrosKeys.length > 0 ? 'u-mb-8' : ''}`}>
         <div>
           <div className="u-fw-600">{TITULOS[cfg.tipo] || cfg.tipo}</div>
           <div className="muted tiny">{cfg.tipo}</div>
         </div>
-        <label className="flex-row" style={{ gap: 6, alignItems: 'center', cursor: 'pointer' }}>
+        <label className="flex-row u-label-checkbox-pointer">
           <input type="checkbox" checked={activa} onChange={toggleActiva} disabled={saving}
                  className="u-accent-color" />
           <span className="u-fs-13">{activa ? 'Activa' : 'Desactivada'}</span>
         </label>
       </div>
       {parametrosKeys.length > 0 && activa && (
-        <div className="flex-row" style={{ gap: 12, alignItems: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+        <div className="flex-row u-alertas-params-row">
           {parametrosKeys.map(k => {
             const meta = PARAMETROS_META[k] || { label: k, tipo: 'text' };
             return (

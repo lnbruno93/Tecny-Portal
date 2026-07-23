@@ -4112,3 +4112,14 @@ body.modal-open { overflow: hidden; }
 .u-hist-que-paso              { font-size: 15px; font-weight: 500; line-height: 1.4; }
 .u-hist-meta-grid             { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; padding: 14px 16px; background: var(--surface-2); border-radius: 8px; }
 .u-hist-detailfield-label     { text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; font-weight: 600; }
+/* — Alertas (Sprint 49) — */
+.u-alertas-tabs-row           { gap: 4px; margin-bottom: 12px; }
+.u-badge-neg-white-ml6        { background: var(--neg); color: #fff; margin-left: 6px; }
+.u-alertas-ok-card            { text-align: center; padding: 32px; color: var(--pos); }
+.u-alertas-ok-title           { font-size: 18px; font-weight: 600; margin-top: 8px; }
+.u-grupo-alerta-card          { margin-bottom: 12px; border-left: 4px solid var(--accent); }
+.u-badge-count-ml-8           { margin-left: 8px; color: #fff; }
+.u-alertas-item-row           { padding: 6px 0; border-bottom: 1px solid var(--border-light, rgba(0,0,0,0.05)); font-size: 13px; }
+.u-h-16-spacer                { height: 16px; }
+.u-label-checkbox-pointer     { gap: 6px; align-items: center; cursor: pointer; }
+.u-alertas-params-row         { gap: 12px; align-items: flex-end; border-top: 1px solid var(--border); padding-top: 8px; }
