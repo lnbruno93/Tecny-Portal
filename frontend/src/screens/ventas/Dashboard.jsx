@@ -61,9 +61,9 @@ export default function Dashboard({ d }) {
   const showGanancias = d.ganancia_neta_usd !== undefined;
   return (
     <div className="u-mb-18">
-      <div className="card" style={{ padding: 16, marginBottom: 12 }}>
+      <div className="card u-dashv-card-hero">
         <div className="kpi-label">Ingresos totales</div>
-        <div style={{ fontSize: 26, fontWeight: 700, margin: '4px 0' }}>
+        <div className="u-dashv-hero-value">
           <span className="mono">u$s{fmt(i.usd)}</span>{' '}
           <span className="muted u-fs-17">+ {localSymbol}{fmt(localAmt)} {monedaLocal}</span>
         </div>
@@ -108,19 +108,18 @@ export default function Dashboard({ d }) {
               const catsConVentas = filas.filter(r => (Number(r.n) || 0) > 0).length;
               return (
                 <>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 4 }}>
+                  <div className="u-dashv-total-row">
                     <span className="kpi-value mono u-fs-17">{fmt(total)}</span>
                     <span className="muted tiny">en {catsConVentas} {catsConVentas === 1 ? 'categoría' : 'categorías'}</span>
                   </div>
                   {top && (
                     <div className="muted tiny u-mt-4" title={`Top: ${top.nombre} (${top.n} unidades)`}>
-                      Top: {top.emoji ? `${top.emoji} ` : ''}{top.nombre} <strong style={{ color: 'var(--fg)' }}>{top.n}</strong>
+                      Top: {top.emoji ? `${top.emoji} ` : ''}{top.nombre} <strong className="u-color-text">{top.n}</strong>
                     </div>
                   )}
                   <button
                     type="button"
-                    className="btn btn-sm"
-                    style={{ marginTop: 8, fontSize: 12 }}
+                    className="btn btn-sm u-dashv-btn-detail"
                     onClick={() => setShowUnidadesModal(true)}
                     title="Ver detalle por categoría"
                   >
@@ -174,7 +173,7 @@ export default function Dashboard({ d }) {
         </div>
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">Inversión canjes</div>
-          <div className="kpi-value mono" style={{ fontSize: 17, color: 'var(--warn)' }}>
+          <div className="kpi-value mono u-fs-17 u-color-warn">
             u$s{fmt(d.inversion_canjes_usd)}
           </div>
         </div>
@@ -201,7 +200,7 @@ export default function Dashboard({ d }) {
               ))}
             </tbody>
           </table>
-          <div className="muted" style={{ fontSize: 11, marginTop: 8, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+          <div className="muted u-dashv-diff-footer">
             Diferencias — sobrepagos <span className="pos">u$s{fmt(dif.sobrepagos)}</span>
             {' · '}
             faltantes <span className="neg">u$s{fmt(dif.faltantes)}</span>
@@ -212,11 +211,11 @@ export default function Dashboard({ d }) {
         <div className="card card-tight u-flex-1">
           <div className="kpi-label u-mb-8">Ventas por horario</div>
           <HourChart data={d.por_horario} />
-          <div className="muted" style={{ fontSize: 11, marginTop: 10 }}>
+          <div className="muted u-dashv-etiquetas">
             Etiquetas:{' '}
             {d.por_etiqueta.length
               ? d.por_etiqueta.map((e, k) => (
-                  <span key={k} className="badge badge-default" style={{ marginRight: 6 }}>
+                  <span key={k} className="badge badge-default u-mr-6">
                     {e.etiqueta}: {e.n}
                   </span>
                 ))
