@@ -95,12 +95,7 @@ export default function TwoFaSetup({ onDone, onCancel }) {
   if (step === 'done') {
     return (
       <div className="card card-tight u-p-40-text-center">
-        <div style={{
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          width: 64, height: 64, borderRadius: '50%',
-          border: '3px solid var(--pos)', color: 'var(--pos)',
-          marginBottom: 16,
-        }}>
+        <div className="u-twofa-done-circle">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="20 6 9 17 4 12" />
           </svg>
@@ -122,10 +117,7 @@ export default function TwoFaSetup({ onDone, onCancel }) {
       {/* ── 1) QR + secret manual ── */}
       <div className="u-mb-24">
         <div className="field-label">Paso 1 — Escaneá el QR con tu app autenticadora</div>
-        <div style={{
-          display: 'flex', gap: 20, alignItems: 'flex-start',
-          padding: 16, background: 'var(--surface-2)', borderRadius: 8, marginTop: 8,
-        }}>
+        <div className="u-twofa-qr-container">
           {/* U6 auditoría 2026-06: aria-label + role para screen readers.
               El canvas es invisible para AT por default — sin el label, un user
               con discapacidad visual no sabe que tiene la opción de escanear. */}
@@ -143,11 +135,7 @@ export default function TwoFaSetup({ onDone, onCancel }) {
                 spec lo lee para generar el TOTP que verifica el setup. */}
             <div
               data-testid="twofa-secret"
-              className="mono"
-              style={{
-                fontSize: 13, wordBreak: 'break-all', padding: '8px 10px',
-                background: 'var(--surface)', borderRadius: 4, marginBottom: 6,
-              }}
+              className="mono u-twofa-secret-display"
             >
               {setupData.secret}
             </div>
@@ -168,23 +156,15 @@ export default function TwoFaSetup({ onDone, onCancel }) {
       {/* ── 2) Recovery codes ── */}
       <div className="u-mb-24">
         <div className="field-label">Paso 2 — Guardá estos recovery codes ⚠️</div>
-        <div style={{
-          padding: 14, background: 'rgba(234, 179, 8, 0.08)',
-          border: '1px solid rgba(234, 179, 8, 0.3)', borderRadius: 8, marginTop: 8,
-        }}>
-          <div className="tiny" style={{ marginBottom: 10, lineHeight: 1.5 }}>
+        <div className="u-twofa-recovery-box">
+          <div className="tiny u-twofa-recovery-hint">
             Si perdés tu cel, podés usar uno de estos códigos (una sola vez cada uno)
             para entrar al portal. <strong>Guardalos en un lugar seguro</strong> —
             password manager, papel impreso, etc. No se vuelven a mostrar.
           </div>
-          <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6,
-            fontFamily: 'monospace', fontSize: 13, marginBottom: 10,
-          }}>
+          <div className="u-twofa-codes-grid">
             {setupData.recovery_codes.map((c, i) => (
-              <div key={i} style={{
-                padding: '6px 10px', background: 'var(--surface)', borderRadius: 4,
-              }}>{c}</div>
+              <div key={i} className="u-twofa-code-cell">{c}</div>
             ))}
           </div>
           <button
@@ -206,7 +186,7 @@ export default function TwoFaSetup({ onDone, onCancel }) {
           </label>
           <input
             id="twofa-verify-code"
-            className="input mono"
+            className="input mono u-twofa-verify-input"
             type="text"
             inputMode="numeric"
             placeholder="123456"
@@ -214,14 +194,11 @@ export default function TwoFaSetup({ onDone, onCancel }) {
             maxLength={6}
             value={code}
             onChange={e => setCode(e.target.value.replace(/\D/g, ''))}
-            style={{ fontSize: 18, letterSpacing: 2, textAlign: 'center', maxWidth: 200 }}
             disabled={step === 'verifying'}
           />
         </div>
         {error && (
-          <div role="alert" style={{
-            color: 'var(--neg)', fontSize: 13, marginBottom: 10,
-          }}>{error}</div>
+          <div role="alert" className="u-twofa-error">{error}</div>
         )}
         <div className="flex-row u-gap-8-justify-end">
           <button
