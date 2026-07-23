@@ -228,7 +228,7 @@ function PendingRow({ p, acting, onConfirm, onMerge }) {
       <td className="u-text-right">{p.stock ?? 0}</td>
       <td>{formatDate(p.created_at)}</td>
       <td className="u-text-right">
-        <div style={{ display: 'inline-flex', gap: 6 }}>
+        <div className="u-inline-flex-gap-6">
           <button
             type="button"
             className="btn btn-primary btn-sm"
@@ -314,18 +314,17 @@ function MergeModal({ source, onClose, onSubmit }) {
   return (
     <div ref={overlayRef} className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="merge-modal-title">
       <div
-        className="modal"
+        className="modal u-mw-600"
         onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: 600 }}
       >
         <h2 id="merge-modal-title">Mergear con producto existente</h2>
-        <p className="muted" style={{ marginTop: -8, marginBottom: 12 }}>
+        <p className="muted u-merge-modal-desc">
           Vas a mergear <strong>{source.nombre}</strong> ({source.stock ?? 0}{' '}
           unidades) en un producto existente de tu catálogo. El stock se sumará
           al destino y el producto pendiente quedará archivado.
         </p>
         <form onSubmit={handleSubmit}>
-          <label htmlFor="merge-search" style={{ display: 'block', marginBottom: 4, fontWeight: 600 }}>
+          <label htmlFor="merge-search" className="u-merge-modal-label">
             Buscar producto destino
           </label>
           <input
@@ -336,17 +335,9 @@ function MergeModal({ source, onClose, onSubmit }) {
             placeholder="Escribí parte del nombre..."
             autoFocus
             disabled={submitting}
-            style={{ width: '100%', marginBottom: 12 }}
+            className="u-merge-modal-input"
           />
-          <div
-            style={{
-              maxHeight: 280,
-              overflowY: 'auto',
-              border: '1px solid var(--border, #ddd)',
-              borderRadius: 4,
-              marginBottom: 12,
-            }}
-          >
+          <div className="u-merge-modal-list">
             {loading ? (
               <div className="muted u-p-16-text-center">
                 Cargando catálogo...
@@ -359,13 +350,7 @@ function MergeModal({ source, onClose, onSubmit }) {
               filtered.map((p) => (
                 <label
                   key={p.id}
-                  style={{
-                    display: 'flex',
-                    padding: '8px 12px',
-                    borderBottom: '1px solid var(--border-light, #eee)',
-                    cursor: 'pointer',
-                    background: selectedId === p.id ? 'var(--accent-soft, #eef)' : 'transparent',
-                  }}
+                  className={'u-merge-modal-item' + (selectedId === p.id ? ' u-merge-modal-item-selected' : '')}
                 >
                   <input
                     type="radio"
@@ -374,7 +359,7 @@ function MergeModal({ source, onClose, onSubmit }) {
                     checked={selectedId === p.id}
                     onChange={() => setSelectedId(p.id)}
                     disabled={submitting}
-                    style={{ marginRight: 10 }}
+                    className="u-mr-10"
                   />
                   <div className="u-flex-1-minw-0">
                     <div className="u-fw-600">{p.nombre}</div>

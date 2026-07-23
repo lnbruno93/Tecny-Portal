@@ -4480,6 +4480,16 @@ body.modal-open { overflow: hidden; }
 .u-conc-linea-saving          { opacity: 0.55; }
 .u-conc-monto                 { text-align: right; font-weight: 600; }
 .u-conc-match-select          { height: 28px; font-size: 12px; min-width: 280px; }
+/* — RedB2BPendingReview (Sprint 85) — */
+.u-inline-flex-gap-6          { display: inline-flex; gap: 6px; }
+.u-mw-600                     { max-width: 600px; }
+.u-merge-modal-desc           { margin-top: -8px; margin-bottom: 12px; }
+.u-merge-modal-label          { display: block; margin-bottom: 4px; font-weight: 600; }
+.u-merge-modal-input          { width: 100%; margin-bottom: 12px; }
+.u-merge-modal-list           { max-height: 280px; overflow-y: auto; border: 1px solid var(--border, #ddd); border-radius: 4px; margin-bottom: 12px; }
+.u-merge-modal-item           { display: flex; padding: 8px 12px; border-bottom: 1px solid var(--border-light, #eee); cursor: pointer; background: transparent; }
+.u-merge-modal-item-selected  { background: var(--accent-soft, #eef); }
+.u-mr-10                      { margin-right: 10px; }
 /* — DiffModal (Sprint 59) — */
 .u-diff-modal-body            { padding: 32px 28px 18px; text-align: left; }
 .u-diff-icon-wrap             { text-align: center; margin-bottom: 18px; }
