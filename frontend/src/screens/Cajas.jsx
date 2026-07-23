@@ -662,15 +662,14 @@ export default function Cajas() {
                   <tbody>
                     {contactosDeuda.map(c => (
                       <tr key={c.contacto_id}
-                          className="tbl-row-click"
-                          onClick={() => setSelectedContactoId(c.contacto_id === selectedContactoId ? null : c.contacto_id)}
-                          style={{ background: c.contacto_id === selectedContactoId ? 'var(--surface-2)' : undefined }}>
+                          className={'tbl-row-click' + (c.contacto_id === selectedContactoId ? ' u-cajas-row-selected' : '')}
+                          onClick={() => setSelectedContactoId(c.contacto_id === selectedContactoId ? null : c.contacto_id)}>
                         <td className="u-fw-600">{c.nombre} {c.apellido || ''}</td>
                         <td><Badge tone={TIPO_TONE[c.contacto_tipo] || 'default'}>{TIPO_LABEL[c.contacto_tipo] || c.contacto_tipo}</Badge></td>
-                        <td className="num mono" style={{ color: c.saldo_ars > 0 ? 'var(--neg)' : c.saldo_ars < 0 ? 'var(--pos)' : 'var(--text-muted)', fontWeight: 600 }}>
+                        <td className={'num mono u-fw-600 ' + (c.saldo_ars > 0 ? 'u-color-neg' : c.saldo_ars < 0 ? 'u-color-pos' : 'u-color-text-muted')}>
                           {c.saldo_ars !== 0 ? fmt(c.saldo_ars) : <span className="dim">—</span>}
                         </td>
-                        <td className="num mono" style={{ color: c.saldo_usd > 0 ? 'var(--neg)' : c.saldo_usd < 0 ? 'var(--pos)' : 'var(--text-muted)' }}>
+                        <td className={'num mono ' + (c.saldo_usd > 0 ? 'u-color-neg' : c.saldo_usd < 0 ? 'u-color-pos' : 'u-color-text-muted')}>
                           {c.saldo_usd !== 0 ? fmt(c.saldo_usd) : <span className="dim">—</span>}
                         </td>
                         <td className="muted tiny">{fmtFecha(c.ultima)}</td>
@@ -752,7 +751,7 @@ export default function Cajas() {
                               {m.mov_tipo === 'debe' ? 'Debe' : 'Pago'}
                             </Status>
                           </td>
-                          <td className="num mono" style={{ fontWeight: 600, color: m.mov_tipo === 'debe' ? 'var(--neg)' : 'var(--pos)' }}>
+                          <td className={'num mono u-fw-600 ' + (m.mov_tipo === 'debe' ? 'u-color-neg' : 'u-color-pos')}>
                             {parseFloat(m.monto_ars) ? fmt(m.monto_ars) : <span className="dim">—</span>}
                           </td>
                           <td className="num mono">
@@ -845,7 +844,7 @@ export default function Cajas() {
                             (excepto el botón de borrar) toggle el expand. */}
                         <tr
                           onClick={() => g.items.length > 1 && toggleInversor(key)}
-                          style={{ cursor: g.items.length > 1 ? 'pointer' : 'default' }}
+                          className={g.items.length > 1 ? 'u-cursor-pointer' : 'u-cursor-default'}
                         >
                           <td className="u-td-center-muted">
                             {g.items.length > 1 && (
@@ -989,7 +988,7 @@ export default function Cajas() {
                 </thead>
                 <tbody>
                   {cajasList.map(c => (
-                    <tr key={c.id} style={{ opacity: c.activo ? 1 : 0.55 }}>
+                    <tr key={c.id} className={c.activo ? undefined : 'u-cajas-row-inactive'}>
                       <td className="u-fw-600">{c.nombre}</td>
                       <td><span className="ccy">{c.moneda}</span></td>
                       <td className="num">
@@ -1010,8 +1009,7 @@ export default function Cajas() {
                         </button>
                       </td>
                       <td>
-                        <button className={'badge ' + (c.es_financiera ? 'badge-accent' : '')}
-                                style={{ cursor: 'pointer', border: 'none', background: c.es_financiera ? undefined : 'transparent' }}
+                        <button className={'badge u-cajas-financiera-btn ' + (c.es_financiera ? 'badge-accent u-cajas-financiera-btn-on' : 'u-cajas-financiera-btn-off')}
                                 onClick={() => handleToggleFinanciera(c)}
                                 title="Marcar como la caja de la financiera (genera auto-comprobante al vender con ella)">
                           {c.es_financiera ? '★ Financiera' : <span className="dim">marcar</span>}
