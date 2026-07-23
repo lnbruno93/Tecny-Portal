@@ -133,35 +133,9 @@ export default function AcceptSuperAdminInvite() {
   };
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'grid',
-        placeItems: 'center',
-        background: 'var(--bg)',
-        padding: 24,
-      }}
-    >
-      <div
-        className="card"
-        style={{
-          width: '100%',
-          maxWidth: 440,
-          padding: 32,
-          boxShadow: 'var(--shadow-md)',
-        }}
-      >
-        <div
-          className="brand-mark"
-          aria-hidden="true"
-          style={{
-            width: 48,
-            height: 48,
-            borderRadius: 12,
-            fontSize: 18,
-            margin: '0 auto 16px',
-          }}
-        >
+    <div className="u-invite-page-wrap">
+      <div className="card u-invite-card">
+        <div className="brand-mark u-invite-brand-mark" aria-hidden="true">
           T
         </div>
 
@@ -170,7 +144,7 @@ export default function AcceptSuperAdminInvite() {
             <h1 className="u-text-center-fs-20-m-0-0-8">
               Verificando invitación…
             </h1>
-            <p className="muted" style={{ textAlign: 'center', fontSize: 13, margin: 0 }}>
+            <p className="muted u-invite-verify-msg">
               Un momento.
             </p>
           </>
@@ -178,13 +152,13 @@ export default function AcceptSuperAdminInvite() {
 
         {step === STEPS.INVALID && (
           <>
-            <h1 style={{ textAlign: 'center', fontSize: 22, margin: '0 0 8px' }}>
+            <h1 className="u-invite-invalid-title">
               Invitación no válida
             </h1>
-            <p className="muted" style={{ textAlign: 'center', fontSize: 14, margin: '0 0 20px' }}>
+            <p className="muted u-invite-invalid-text">
               El link expiró, fue revocado o ya fue usado.
             </p>
-            <p className="muted tiny" style={{ textAlign: 'center', margin: 0 }}>
+            <p className="muted tiny u-invite-hint-top">
               Pedile a la persona que te invitó una invitación nueva.
             </p>
           </>
@@ -200,16 +174,7 @@ export default function AcceptSuperAdminInvite() {
 
         {(step === STEPS.READY || step === STEPS.ACCEPTING) && info && (
           <>
-            <h1
-              style={{
-                fontSize: 22,
-                fontWeight: 600,
-                letterSpacing: '-0.02em',
-                textAlign: 'center',
-                margin: '0 0 4px',
-                color: 'var(--text)',
-              }}
-            >
+            <h1 className="u-invite-title">
               Aceptá tu invitación
             </h1>
             <p
@@ -228,17 +193,7 @@ export default function AcceptSuperAdminInvite() {
             </p>
 
             {error && (
-              <div
-                role="alert"
-                style={{
-                  background: 'var(--neg-soft)',
-                  color: 'var(--neg)',
-                  padding: '10px 12px',
-                  borderRadius: 8,
-                  fontSize: 13,
-                  marginBottom: 14,
-                }}
-              >
+              <div role="alert" className="u-invite-alert-error">
                 {error}
               </div>
             )}
@@ -291,7 +246,7 @@ export default function AcceptSuperAdminInvite() {
                 {/* hCaptcha invisible — misma config que /login del portal.
                     En dev/local o NODE_ENV=test el backend bypassa; en prod
                     verifica antes de crear el user. */}
-                <div style={{ display: 'flex', justifyContent: 'center', margin: '4px 0' }}>
+                <div className="u-invite-captcha-wrap">
                   <HCaptcha
                     ref={captchaRef}
                     sitekey={HCAPTCHA_SITE_KEY}
@@ -311,7 +266,7 @@ export default function AcceptSuperAdminInvite() {
                   {step === STEPS.ACCEPTING ? 'Creando cuenta…' : 'Crear cuenta y entrar'}
                 </Btn>
 
-                <p className="muted tiny" style={{ textAlign: 'center', margin: '8px 0 0' }}>
+                <p className="muted tiny u-invite-hint-top">
                   Al crear tu cuenta te vamos a pedir que actives 2FA — es
                   obligatorio para el back office.
                 </p>

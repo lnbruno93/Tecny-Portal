@@ -4199,3 +4199,14 @@ body.modal-open { overflow: hidden; }
 .u-rotate-0                   { transform: rotate(0deg); }
 .u-rotate-neg-90              { transform: rotate(-90deg); }
 .u-opacity-70                 { opacity: 0.7; }
+/* — AcceptSuperAdminInvite (Sprint 56) — */
+.u-invite-page-wrap           { min-height: 100vh; display: grid; place-items: center; background: var(--bg); padding: 24px; }
+.u-invite-card                { width: 100%; max-width: 440px; padding: 32px; box-shadow: var(--shadow-md); }
+.u-invite-brand-mark          { width: 48px; height: 48px; border-radius: 12px; font-size: 18px; margin: 0 auto 16px; }
+.u-invite-verify-msg          { text-align: center; font-size: 13px; margin: 0; }
+.u-invite-invalid-title       { text-align: center; font-size: 22px; margin: 0 0 8px; }
+.u-invite-invalid-text        { text-align: center; font-size: 14px; margin: 0 0 20px; }
+.u-invite-hint-top            { text-align: center; margin: 8px 0 0; }
+.u-invite-title               { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; text-align: center; margin: 0 0 4px; color: var(--text); }
+.u-invite-alert-error         { background: var(--neg-soft); color: var(--neg); padding: 10px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 14px; }
+.u-invite-captcha-wrap        { display: flex; justify-content: center; margin: 4px 0; }
