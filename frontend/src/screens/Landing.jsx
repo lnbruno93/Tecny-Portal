@@ -96,7 +96,7 @@ function SoonLink({ children, label }) {
       role="link"
       aria-disabled="true"
       title={`${label || children} — próximamente`}
-      style={{ opacity: 0.45, cursor: 'not-allowed' }}
+      className="u-landing-link-disabled"
     >
       {children}
     </span>
@@ -217,7 +217,7 @@ export default function Landing() {
             )}
             {/* Subheadline opcional — solo se muestra si Lucas lo cargó desde admin. */}
             {hero.subheadline && (
-              <p className="hero-sub" style={{ fontWeight: 600, marginBottom: 8 }}>{hero.subheadline}</p>
+              <p className="hero-sub u-landing-hero-sub">{hero.subheadline}</p>
             )}
             <p className="hero-sub">{hero.blurb}</p>
             <div className="hero-actions">
@@ -262,7 +262,7 @@ export default function Landing() {
                 <div className="shot-kpis">
                   <div className="shot-kpi"><div className="l">Comprobantes</div><div className="v">18</div><div className="t">↗ +6</div></div>
                   <div className="shot-kpi"><div className="l">Cobrado neto</div><div className="v">13,06M</div><div className="t">↗ +12.4%</div></div>
-                  <div className="shot-kpi"><div className="l">Saldo CC</div><div className="v">14,28M</div><div className="t" style={{ color: 'var(--muted)' }}>−3.1%</div></div>
+                  <div className="shot-kpi"><div className="l">Saldo CC</div><div className="v">14,28M</div><div className="t u-color-muted">−3.1%</div></div>
                   <div className="shot-kpi"><div className="l">Envíos</div><div className="v">7</div><div className="t">↗ +1</div></div>
                 </div>
                 <div className="shot-row">
@@ -467,12 +467,12 @@ export default function Landing() {
           </div>
           <div className="feat-visual">
             <div className="u-fw-600-fs-14-mb-4">iPhone 16 Pro · 256GB Natural</div>
-            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16 }} className="mono">USD 1.185 · TC $1.200</div>
+            <div className="mono u-landing-calc-meta">USD 1.185 · TC $1.200</div>
             <div className="calc-row"><span className="l">Contado</span><span className="v u-color-pos">$1.422.000</span></div>
             <div className="calc-row"><span className="l">Transferencia (+3%)</span><span className="v u-color-pos">$1.464.660</span></div>
             <div className="calc-row"><span className="l">💳 3 cuotas (+23.5%)</span><span className="v u-color-accent">$1.756.170</span></div>
             <div className="calc-row"><span className="l">💳 6 cuotas (+28%)</span><span className="v u-color-accent">$1.820.160</span></div>
-            <div className="calc-total"><span className="l" style={{ color: 'var(--muted)', fontSize: 13, alignSelf: 'flex-end' }}>6 × $303.360</span><span className="v">$1.820.160</span></div>
+            <div className="calc-total"><span className="l u-landing-calc-total-label">6 × $303.360</span><span className="v">$1.820.160</span></div>
           </div>
         </div>
       </section>
@@ -580,7 +580,7 @@ export default function Landing() {
             <div className="plan">
               <div className="pname">Enterprise</div>
               <div className="pdesc">Para cadenas con varias sucursales y administración central.</div>
-              <div className="price"><span className="num" style={{ fontSize: 30 }}>A medida</span></div>
+              <div className="price"><span className="num u-fs-30">A medida</span></div>
               <div className="pnote">Hablemos de tu operación</div>
               <ul>
                 <li><Check /> Usuarios ilimitados</li>

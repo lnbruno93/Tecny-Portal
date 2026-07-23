@@ -435,15 +435,11 @@ export default function NotificationsBell() {
                             type="button"
                             onClick={() => handleNovedadClick(nota)}
                             data-testid="notif-bell-novedad"
-                            className="u-notif-item-btn"
-                            style={{ background: isUnseen ? 'rgba(14,165,233,0.06)' : 'transparent' }}
+                            className={'u-notif-item-btn' + (isUnseen ? ' u-notif-item-btn-unseen' : '')}
                           >
                             <span className="u-notif-item-emoji">{emoji}</span>
                             <div className="u-flex-1-minw-0">
-                              <div
-                                className="u-notif-item-title"
-                                style={{ fontWeight: isUnseen ? 600 : 500 }}
-                              >
+                              <div className={'u-notif-item-title' + (isUnseen ? ' u-notif-item-title-unseen' : '')}>
                                 {nota.titulo}
                               </div>
                               <div className="u-notif-item-meta">
@@ -495,22 +491,15 @@ export default function NotificationsBell() {
                             type="button"
                             onClick={() => handleB2bClick(n)}
                             data-testid="notif-bell-b2b"
-                            className="u-notif-b2b-item-btn"
-                            style={{ background: unread ? 'rgba(14,165,233,0.06)' : 'transparent' }}
+                            className={'u-notif-b2b-item-btn' + (unread ? ' u-notif-item-btn-unseen' : '')}
                           >
-                            <div
-                              className="u-notif-b2b-title-row"
-                              style={{ fontWeight: unread ? 600 : 400 }}
-                            >
+                            <div className={'u-notif-b2b-title-row' + (unread ? ' u-fw-600' : ' u-fw-400')}>
                               {unread && (
                                 <span className="u-notif-item-dot-inline" />
                               )}
                               <span className="u-flex-1">{label}</span>
                             </div>
-                            <div
-                              className="u-notif-item-meta"
-                              style={{ paddingLeft: unread ? 16 : 0 }}
-                            >
+                            <div className={'u-notif-item-meta' + (unread ? ' u-pl-16' : '')}>
                               {fmtRelative(n.created_at)}
                             </div>
                           </button>
