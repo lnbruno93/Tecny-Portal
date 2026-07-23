@@ -27,20 +27,11 @@ import Badge from '../../components/Badge';
 import { fmt, fmtImei } from '../../lib/format';
 import { sym } from './utils';
 
-// Colores del "badge" de estado, replicados inline para que el <select>
-// nativo herede el look de Badge sin perder accesibilidad. Definidos a nivel
-// de módulo para no reconstruir el objeto por fila.
-const ESTADO_COLORS = {
-  pos:     { bg: 'rgba(34,197,94,0.12)',  fg: 'var(--pos)',           bd: 'rgba(34,197,94,0.45)' },
-  warn:    { bg: 'rgba(245,158,11,0.14)', fg: 'var(--warn, #f59e0b)', bd: 'rgba(245,158,11,0.45)' },
-  neg:     { bg: 'rgba(220,38,38,0.12)',  fg: 'var(--neg)',           bd: 'rgba(220,38,38,0.45)' },
-  default: { bg: 'var(--surface-2)',      fg: 'var(--text-muted)',    bd: 'var(--border)' },
-};
+// Sprint 87 CSP: el color del select de estado ahora se resuelve por clase
+// `.u-vlist-estado-select.u-vlist-estado-{tone}`. Bg / fg / border + la
+// flecha SVG del select viven en styles.css. Mantengo solo el mapping
+// estado → tone acá porque depende del valor del enum.
 const ESTADO_TONE_BY_ESTADO = { acreditado: 'pos', pendiente: 'warn', cancelado: 'neg' };
-
-// Flechita SVG del <select> — string estático para evitar reconstruirlo por fila.
-const SELECT_ARROW_BG =
-  'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'10\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'3\'><polyline points=\'6 9 12 15 18 9\'/></svg>")';
 
 // Fila individual — memoizada. Sólo re-renderea cuando cambian sus props.
 // Si el caller usa useCallback para los handlers, sólo la fila que cambió
@@ -63,7 +54,6 @@ const VentaRow = memo(function VentaRow({
   // B2B solo tiene 2 opciones (acreditado/pendiente); retail tiene 3.
   const esB2B = v.origen === 'b2b';
   const estadoTone = ESTADO_TONE_BY_ESTADO[v.estado] || 'default';
-  const estadoColors = ESTADO_COLORS[estadoTone];
   return (
     <tr>
       <td>
@@ -71,18 +61,7 @@ const VentaRow = memo(function VentaRow({
           value={v.estado}
           onChange={e => changeEstado(v, e.target.value)}
           title="Cambiar estado"
-          style={{
-            appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none',
-            background: estadoColors.bg, color: estadoColors.fg,
-            border: `1px solid ${estadoColors.bd}`,
-            borderRadius: 12, padding: '2px 22px 2px 9px',
-            fontSize: 11, fontWeight: 600, lineHeight: 1.4,
-            cursor: 'pointer', outline: 'none',
-            backgroundImage: SELECT_ARROW_BG,
-            backgroundRepeat: 'no-repeat',
-            backgroundPosition: 'right 6px center',
-            backgroundSize: '10px 10px',
-          }}
+          className={`u-vlist-estado-select u-vlist-estado-${estadoTone}`}
         >
           <option value="acreditado">Acreditado</option>
           <option value="pendiente">Pendiente</option>
@@ -116,11 +95,8 @@ const VentaRow = memo(function VentaRow({
           const mon    = i.moneda || 'USD';
           const sufMon = mon === 'USD' ? 'u$s' : (mon === 'ARS' ? '$' : mon + ' ');
           const devuelto = !!i.devuelto_at;
-          const itemStyle = devuelto
-            ? { marginBottom: 2, textDecoration: 'line-through', color: 'var(--text-muted)' }
-            : { marginBottom: 2 };
           return (
-            <div key={k} style={itemStyle}>
+            <div key={k} className={'u-vlist-item' + (devuelto ? ' u-vlist-item-devuelto' : '')}>
               <div>
                 {i.descripcion}{i.cantidad > 1 ? ' ×' + i.cantidad : ''}
                 {/* 2026-06-24: IMEI ahora se muestra también para retail
@@ -131,17 +107,13 @@ const VentaRow = memo(function VentaRow({
                     backend join con productos (queda como follow-up). */}
                 {i.imei && <span className="muted tiny mono u-ml-6">IMEI {fmtImei(i.imei)}</span>}
                 {devuelto && (
-                  <span style={{
-                    marginLeft: 6, padding: '0 5px', borderRadius: 3,
-                    background: 'var(--neg)', color: 'white', fontSize: 9,
-                    textDecoration: 'none', fontWeight: 600, verticalAlign: 'middle',
-                  }}>↺ Devuelto</span>
+                  <span className="u-vlist-devuelto-badge">↺ Devuelto</span>
                 )}
               </div>
               {(costo != null || precio != null) && (
-                <div className="muted tiny" style={{ marginTop: 1 }}>
+                <div className="muted tiny u-vlist-item-cost-row">
                   {costo  != null && <>costo {sufMon}{fmt(costo)}</>}
-                  {costo != null && precio != null && <span style={{ margin: '0 4px', opacity: 0.5 }}>·</span>}
+                  {costo != null && precio != null && <span className="u-vlist-item-sep">·</span>}
                   {precio != null && <>venta {sufMon}{fmt(precio)}</>}
                 </div>
               )}
@@ -157,7 +129,7 @@ const VentaRow = memo(function VentaRow({
           const cSufMon = cMon === 'USD' ? 'u$s' : (cMon === 'ARS' ? '$' : cMon + ' ');
           const valTom  = c.valor_toma != null ? Number(c.valor_toma) : 0;
           return (
-            <div key={'c' + k} style={{ color: 'var(--warn)', fontSize: 11, marginTop: 4 }}>
+            <div key={'c' + k} className="u-vlist-canje-row">
               <div>
                 ↺ {c.descripcion}
                 {c.imei && <span className="muted tiny mono u-ml-6-color-warn">IMEI {fmtImei(c.imei)}</span>}
@@ -166,7 +138,7 @@ const VentaRow = memo(function VentaRow({
                 )}
               </div>
               {valTom > 0 && (
-                <div className="tiny" style={{ marginTop: 1, fontWeight: 600 }}>
+                <div className="tiny u-vlist-canje-tomado">
                   Tomado: {cSufMon}{fmt(valTom)}
                 </div>
               )}
@@ -194,8 +166,7 @@ const VentaRow = memo(function VentaRow({
             neto del día). */}
         {confirmarEntrega && v.envio?.id && v.envio.estado !== 'Entregado' && v.envio.estado !== 'Cancelado' && (
           <button
-            className="btn btn-sm"
-            style={{ marginRight: 6, padding: '2px 8px', fontSize: 11, fontWeight: 600 }}
+            className="btn btn-sm u-vlist-btn-confirmar"
             title="Confirmar entrega del envío y acreditar la venta"
             onClick={() => confirmarEntrega(v)}
           >
