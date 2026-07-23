@@ -35,21 +35,16 @@ export default function ExitoModal({ state, onClose, onDescargar, pdfLoading, on
     <div ref={overlayRef} className="modal-overlay u-z-600" role="dialog" aria-modal="true" aria-labelledby="exito-modal-title"
          onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal u-mw-480" onClick={e => e.stopPropagation()}>
-        <div className="modal-body" style={{ padding: '36px 28px 18px', textAlign: 'center' }}>
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            width: 88, height: 88, borderRadius: '50%',
-            border: '3px solid var(--pos)', color: 'var(--pos)',
-            marginBottom: 24,
-          }}>
+        <div className="modal-body u-exito-body">
+          <div className="u-exito-circle">
             <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="20 6 9 17 4 12" />
             </svg>
           </div>
-          <h2 id="exito-modal-title" style={{ fontSize: 28, fontWeight: 700, margin: '0 0 10px', color: 'var(--text)' }}>
+          <h2 id="exito-modal-title" className="u-exito-title">
             ¡Éxito!
           </h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: 15, margin: 0 }}>
+          <p className="u-exito-subtitle">
             Venta guardada exitosamente.
           </p>
           {/* #475 — entry-point reenvío comprobante por mail. Solo aparece si
@@ -57,16 +52,15 @@ export default function ExitoModal({ state, onClose, onDescargar, pdfLoading, on
               comprobante (checkbox del modal de venta), el backend ya lo
               despachó via setImmediate; el botón acá es para reenviar. */}
           {ventaEmail && onReenviarEmail && (
-            <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: '14px 0 0' }}>
+            <p className="u-exito-email-hint">
               Comprobante por mail a <strong>{ventaEmail}</strong>
             </p>
           )}
         </div>
-        <div className="modal-ft" style={{ justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <button className="btn btn-primary" onClick={onClose}
-                  autoFocus style={{ minWidth: 110, background: 'var(--accent)' }}>OK</button>
-          <button className="btn"
-                  style={{ minWidth: 200, background: 'var(--neg)', color: '#fff', border: 0, opacity: pdfLoading ? 0.7 : 1 }}
+        <div className="modal-ft u-exito-footer">
+          <button className="btn btn-primary u-exito-btn-ok" onClick={onClose}
+                  autoFocus>OK</button>
+          <button className={'btn u-exito-btn-download' + (pdfLoading ? ' u-opacity-70' : '')}
                   disabled={pdfLoading}
                   onClick={() => onDescargar(state.venta)}>
             {pdfLoading ? 'Generando…' : 'Descargar comprobante'}

@@ -4490,6 +4490,15 @@ body.modal-open { overflow: hidden; }
 .u-merge-modal-item           { display: flex; padding: 8px 12px; border-bottom: 1px solid var(--border-light, #eee); cursor: pointer; background: transparent; }
 .u-merge-modal-item-selected  { background: var(--accent-soft, #eef); }
 .u-mr-10                      { margin-right: 10px; }
+/* — ExitoModal (Sprint 86) — */
+.u-exito-body                 { padding: 36px 28px 18px; text-align: center; }
+.u-exito-circle               { display: inline-flex; align-items: center; justify-content: center; width: 88px; height: 88px; border-radius: 50%; border: 3px solid var(--pos); color: var(--pos); margin-bottom: 24px; }
+.u-exito-title                { font-size: 28px; font-weight: 700; margin: 0 0 10px; color: var(--text); }
+.u-exito-subtitle             { color: var(--text-muted); font-size: 15px; margin: 0; }
+.u-exito-email-hint           { color: var(--text-muted); font-size: 13px; margin: 14px 0 0; }
+.u-exito-footer               { justify-content: center; gap: 12px; flex-wrap: wrap; }
+.u-exito-btn-ok               { min-width: 110px; background: var(--accent); }
+.u-exito-btn-download         { min-width: 200px; background: var(--neg); color: #fff; border: 0; }
 /* — DiffModal (Sprint 59) — */
 .u-diff-modal-body            { padding: 32px 28px 18px; text-align: left; }
 .u-diff-icon-wrap             { text-align: center; margin-bottom: 18px; }
