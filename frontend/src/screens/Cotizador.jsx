@@ -302,15 +302,8 @@ function TabTarjetas() {
           </button>
         </div>
 
-        {calculo.lines.map(({ p, contado, transf, c1, c3, c6 }, i) => (
-          <div
-            key={p.id}
-            style={{
-              paddingBottom: 14,
-              marginBottom: 14,
-              borderBottom: i < calculo.lines.length - 1 ? '1px solid var(--hairline)' : 0,
-            }}
-          >
+        {calculo.lines.map(({ p, contado, transf, c1, c3, c6 }) => (
+          <div key={p.id} className="u-quote-product-line">
             <div className="u-fw-600-fs-135-mb-8">
               {p.nom || 'Producto'}{' '}
               {p.vari && (
@@ -351,7 +344,7 @@ function TabTarjetas() {
         {calculo.lines.length > 1 && (
           <>
             <div className="quote-total">
-              <span className="lbl muted tiny" style={{ alignSelf: 'flex-end' }}>Total contado</span>
+              <span className="lbl muted tiny u-align-self-end">Total contado</span>
               <span className="val mono pos">{symLocal}{fmt(calculo.tots.contado)}</span>
             </div>
             <div className="quote-line">
@@ -374,10 +367,7 @@ function TabTarjetas() {
         )}
 
         {/* USD reference */}
-        <div
-          className="muted tiny mono"
-          style={{ marginTop: 14, paddingTop: 10, borderTop: '1px solid var(--hairline)' }}
-        >
+        <div className="muted tiny mono u-quote-tc-ref">
           TC referencia: {symLocal}{fmt(tc)} / USD
         </div>
       </div>
@@ -549,7 +539,7 @@ function TabUsd() {
         </div>
 
         {/* Product rows — mismo shape que TabTarjetas para consistencia visual. */}
-        <div className="stack" style={{ gap: 10, marginBottom: 16 }}>
+        <div className="stack u-stack-gap-10-mb-16">
           {prods.map((p, i) => (
             <div key={p.id} className="card card-tight">
               <div className="flex-between u-mb-10">
@@ -596,26 +586,16 @@ function TabUsd() {
             {opciones.map(o => (
               <label
                 key={o.key}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  padding: '12px 14px',
-                  background: o.val ? 'var(--accent-soft)' : 'var(--surface-2)',
-                  border: '1px solid ' + (o.val ? 'var(--accent)' : 'var(--border)'),
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                  transition: 'all .12s',
-                }}
+                className={`u-pay-opt ${o.val ? 'u-pay-opt-active' : ''}`}
               >
                 <input
                   type="checkbox"
                   checked={o.val}
                   onChange={e => o.set(e.target.checked)}
-                  style={{ accentColor: 'var(--accent)', width: 15, height: 15 }}
+                  className="u-checkbox-accent-15"
                 />
                 <div className="u-flex-1">
-                  <div style={{ fontWeight: 600, fontSize: 13.5 }}>{o.label}</div>
+                  <div className="u-fw-600-fs-135">{o.label}</div>
                   <div className="muted tiny u-mt-2">{o.sub}</div>
                 </div>
               </label>
@@ -641,21 +621,14 @@ function TabUsd() {
         </div>
 
         {!tieneMonto ? (
-          <div
-            className="muted tiny"
-            style={{ padding: '24px 0', textAlign: 'center' }}
-          >
+          <div className="muted tiny u-quote-empty">
             Ingresá un monto USD para ver el cálculo.
           </div>
         ) : (
           <>
             {/* Líneas por producto */}
-            {calculo.lines.filter(l => l.usdRaw > 0).map(({ p, ef, tars, tusd }, i, arr) => (
-              <div key={p.id} style={{
-                paddingBottom: 12,
-                marginBottom: 12,
-                borderBottom: i < arr.length - 1 ? '1px solid var(--hairline)' : 0,
-              }}>
+            {calculo.lines.filter(l => l.usdRaw > 0).map(({ p, ef, tars, tusd }) => (
+              <div key={p.id} className="u-quote-summary-line">
                 <div className="u-fw-600-fs-135-mb-8">
                   {p.nom || 'Producto'}{' '}
                   <span className="muted tiny mono u-fw-500">
@@ -716,14 +689,7 @@ function TabUsd() {
             <div className="muted tiny mono u-mb-8">
               Total USD {fmt(calculo.tots.usdRaw)} × TC {symLocal}{fmt(tc)}
             </div>
-            <div
-              className="muted tiny"
-              style={{
-                paddingTop: 8,
-                borderTop: '1px solid var(--hairline)',
-                lineHeight: 1.6,
-              }}
-            >
+            <div className="muted tiny u-quote-bottom-hint">
               El texto se copia con saludo + cotización + cierre comercial.
             </div>
           </>
