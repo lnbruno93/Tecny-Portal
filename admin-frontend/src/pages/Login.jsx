@@ -133,68 +133,20 @@ export default function Login() {
   };
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'grid',
-        placeItems: 'center',
-        background: 'var(--bg)',
-        padding: 24,
-      }}
-    >
-      <div
-        className="card"
-        style={{
-          width: '100%',
-          maxWidth: 400,
-          padding: 32,
-          boxShadow: 'var(--shadow-md)',
-        }}
-      >
-        <div
-          className="brand-mark"
-          aria-hidden="true"
-          style={{
-            width: 48,
-            height: 48,
-            borderRadius: 12,
-            fontSize: 18,
-            margin: '0 auto 16px',
-          }}
-        >
+    <div className="u-invite-page-wrap">
+      <div className="card u-login-card">
+        <div className="brand-mark u-invite-brand-mark" aria-hidden="true">
           T
         </div>
-        <h1
-          style={{
-            fontSize: 22,
-            fontWeight: 600,
-            letterSpacing: '-0.02em',
-            textAlign: 'center',
-            margin: '0 0 4px',
-            color: 'var(--text)',
-          }}
-        >
+        <h1 className="u-invite-title">
           Tecny Admin
         </h1>
-        <p
-          className="muted u-fs-13-text-center-24"
-        >
+        <p className="muted u-fs-13-text-center-24">
           {twofaRequired ? 'Verificación en dos pasos' : 'Back-office del SaaS'}
         </p>
 
         {error && (
-          <div
-            role="alert"
-            style={{
-              background: 'var(--neg-soft)',
-              color: 'var(--neg)',
-              padding: '10px 12px',
-              borderRadius: 8,
-              fontSize: 13,
-              marginBottom: 14,
-              border: '1px solid transparent',
-            }}
-          >
+          <div role="alert" className="u-invite-alert-error">
             {error}
           </div>
         )}
@@ -239,10 +191,7 @@ export default function Login() {
 
             {twofaRequired && (
               <>
-                <p
-                  className="muted"
-                  style={{ fontSize: 13, textAlign: 'center', margin: '0 0 4px' }}
-                >
+                <p className="muted u-login-2fa-hint">
                   Ingresá el código de 6 dígitos de tu app de autenticación
                   (Google Authenticator, Authy, etc).
                 </p>
@@ -251,7 +200,6 @@ export default function Login() {
                     <Icons.Lock size={14} />
                   </span>
                   <input
-                    className="input with-addon-l"
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]*"
@@ -265,11 +213,7 @@ export default function Login() {
                     autoFocus
                     required
                     aria-label="Código de 6 dígitos"
-                    style={{
-                      letterSpacing: '0.4em',
-                      textAlign: 'center',
-                      fontVariantNumeric: 'tabular-nums',
-                    }}
+                    className="input with-addon-l u-input-2fa-code"
                   />
                 </div>
               </>
@@ -281,7 +225,7 @@ export default function Login() {
                 rara vez muestra desafío para humanos legítimos, pero bloquea
                 bots automatizados. */}
             {!twofaRequired && (
-              <div style={{ margin: '4px 0', display: 'flex', justifyContent: 'center' }}>
+              <div className="u-invite-captcha-wrap">
                 <HCaptcha
                   ref={captchaRef}
                   sitekey={HCAPTCHA_SITE_KEY}
@@ -319,15 +263,7 @@ export default function Login() {
                   setCode('');
                   setError('');
                 }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--muted)',
-                  fontSize: 12,
-                  cursor: 'pointer',
-                  textDecoration: 'underline',
-                  padding: 4,
-                }}
+                className="u-login-alt-link"
               >
                 Usar otra cuenta
               </button>

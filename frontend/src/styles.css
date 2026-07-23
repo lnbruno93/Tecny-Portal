@@ -4210,6 +4210,11 @@ body.modal-open { overflow: hidden; }
 .u-invite-title               { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; text-align: center; margin: 0 0 4px; color: var(--text); }
 .u-invite-alert-error         { background: var(--neg-soft); color: var(--neg); padding: 10px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 14px; }
 .u-invite-captcha-wrap        { display: flex; justify-content: center; margin: 4px 0; }
+/* — Login admin (Sprint 58) — */
+.u-login-card                 { width: 100%; max-width: 400px; padding: 32px; box-shadow: var(--shadow-md); }
+.u-login-2fa-hint             { font-size: 13px; text-align: center; margin: 0 0 4px; }
+.u-input-2fa-code             { letter-spacing: 0.4em; text-align: center; font-variant-numeric: tabular-nums; }
+.u-login-alt-link             { background: none; border: none; color: var(--muted); font-size: 12px; cursor: pointer; text-decoration: underline; padding: 4px; }
 /* — RedB2BConciliacion (Sprint 57) — */
 .u-list-reset                 { list-style: none; padding: 0; margin: 0; }
 .u-partnership-row            { padding: 12px; border-bottom: 1px solid var(--border, #e5e7eb); display: flex; justify-content: space-between; align-items: center; }
