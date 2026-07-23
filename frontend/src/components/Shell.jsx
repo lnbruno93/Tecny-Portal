@@ -69,54 +69,23 @@ function UpdateBanner() {
   if (!needRefresh) return null;
 
   return (
-    <div style={{
-      position: 'sticky',
-      top: 0,
-      zIndex: 50,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: 12,
-      padding: '10px 16px',
-      background: 'var(--accent)',
-      color: 'var(--accent-ink)',
-      fontSize: 13,
-      fontWeight: 500,
-    }}>
+    <div className="u-shell-update-banner">
       <span>
         Nueva versión del portal disponible.
-        <span style={{ opacity: 0.75, fontWeight: 400, marginLeft: 6 }}>
+        <span className="u-shell-update-hint">
           Se aplicará automáticamente si estás inactivo.
         </span>
       </span>
       <div className="u-flex-gap-8">
         <button
           onClick={() => updateServiceWorker(true)}
-          style={{
-            background: 'var(--accent-ink)',
-            color: 'var(--accent)',
-            border: 'none',
-            borderRadius: 6,
-            padding: '4px 12px',
-            fontWeight: 700,
-            cursor: 'pointer',
-            fontSize: 12,
-          }}
+          className="u-shell-update-btn-primary"
         >
           Actualizar ahora
         </button>
         <button
           onClick={() => setNeedRefresh(false)}
-          style={{
-            background: 'transparent',
-            color: 'var(--accent-ink)',
-            border: '1px solid var(--accent-ink)',
-            borderRadius: 6,
-            padding: '4px 10px',
-            cursor: 'pointer',
-            fontSize: 12,
-            opacity: 0.75,
-          }}
+          className="u-shell-update-btn-dismiss"
         >
           Después
         </button>
@@ -291,7 +260,7 @@ function Sidebar({ badges = {}, open, onClose }) {
             spacer + UserPill — el user no sabía si era bug o si su rol
             no tenía nada. Empty state honesto. */}
         {visibleMain.length === 0 && visibleSys.length === 0 ? (
-          <div style={{ padding: '20px 16px', fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+          <div className="u-shell-nomodules-empty">
             Tu rol no tiene módulos asignados todavía. Pedile al admin que te habilite acceso.
           </div>
         ) : null}
@@ -338,7 +307,6 @@ function Sidebar({ badges = {}, open, onClose }) {
               // Diferenciar el color evita que un badge celeste se lea como
               // "alerta pendiente" y viceversa (task #142, 2026-07-16).
               const badgeIsPositive = n.id === 'novedades';
-              const badgeBg = badgeIsPositive ? 'var(--accent)' : 'var(--neg)';
               const ariaLabel = isConfigConBadge
                 ? `${n.label} — ${badges[n.id]} alertas pendientes`
                 : (badgeIsPositive && badges[n.id] != null
@@ -355,7 +323,7 @@ function Sidebar({ badges = {}, open, onClose }) {
                   <span className="ico">{I && <I size={16} />}</span>
                   <span>{n.label}</span>
                   {badges[n.id] != null && (
-                    <span className="badge" style={{ background: badgeBg, color: '#fff' }}>{badges[n.id]}</span>
+                    <span className={'badge ' + (badgeIsPositive ? 'u-shell-badge-info' : 'u-shell-badge-alert')}>{badges[n.id]}</span>
                   )}
                 </NavLink>
               );
@@ -386,7 +354,7 @@ function UserPill() {
 
   return (
     <>
-      <div className="user-pill" style={{ cursor: 'default' }}>
+      <div className="user-pill u-cursor-default">
         <div className="avatar">{initials}</div>
         <div className="u-flex-1-minw-0">
           <div className="name">{displayName}</div>
@@ -455,13 +423,13 @@ function Topbar({ onMenuClick, onSearchClick }) {
         <Icons.Menu size={17} />
       </button>
       {segment !== 'inicio' && (
-        <button className="icon-btn" title="Volver" onClick={() => navigate(-1)} style={{ fontSize: 18, lineHeight: 1 }}>←</button>
+        <button className="icon-btn u-shell-back-arrow" title="Volver" onClick={() => navigate(-1)}>←</button>
       )}
       <div className="crumbs">
         <span
           title={`Operando en ${paisLabel.nombre} · Moneda local: ${monedaLocal}`}
           aria-label={`País de operación: ${paisLabel.nombre}, moneda local ${monedaLocal}`}
-          style={{ marginRight: 6, cursor: 'help', fontSize: 14, lineHeight: 1 }}
+          className="u-shell-country-flag"
         >
           {paisLabel.flag}
         </span>
