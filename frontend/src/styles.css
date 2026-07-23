@@ -4405,6 +4405,14 @@ body.modal-open { overflow: hidden; }
 .u-cursor-default             { cursor: default; }
 .u-shell-back-arrow           { font-size: 18px; line-height: 1; }
 .u-shell-country-flag         { margin-right: 6px; cursor: help; font-size: 14px; line-height: 1; }
+/* — TwoFaSetup (Sprint 78) — */
+.u-twofa-done-circle          { display: inline-flex; align-items: center; justify-content: center; width: 64px; height: 64px; border-radius: 50%; border: 3px solid var(--pos); color: var(--pos); margin-bottom: 16px; }
+.u-twofa-qr-container         { display: flex; gap: 20px; align-items: flex-start; padding: 16px; background: var(--surface-2); border-radius: 8px; margin-top: 8px; }
+.u-twofa-secret-display       { font-size: 13px; word-break: break-all; padding: 8px 10px; background: var(--surface); border-radius: 4px; margin-bottom: 6px; }
+.u-twofa-recovery-box         { padding: 14px; background: rgba(234, 179, 8, 0.08); border: 1px solid rgba(234, 179, 8, 0.3); border-radius: 8px; margin-top: 8px; }
+.u-twofa-recovery-hint        { margin-bottom: 10px; line-height: 1.5; }
+.u-twofa-verify-input         { font-size: 18px; letter-spacing: 2px; text-align: center; max-width: 200px; }
+.u-twofa-error                { color: var(--neg); font-size: 13px; margin-bottom: 10px; }
 /* — DiffModal (Sprint 59) — */
 .u-diff-modal-body            { padding: 32px 28px 18px; text-align: left; }
 .u-diff-icon-wrap             { text-align: center; margin-bottom: 18px; }
