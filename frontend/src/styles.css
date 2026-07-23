@@ -4499,6 +4499,20 @@ body.modal-open { overflow: hidden; }
 .u-exito-footer               { justify-content: center; gap: 12px; flex-wrap: wrap; }
 .u-exito-btn-ok               { min-width: 110px; background: var(--accent); }
 .u-exito-btn-download         { min-width: 200px; background: var(--neg); color: #fff; border: 0; }
+/* — VentasList (Sprint 87) — */
+.u-vlist-estado-select        { appearance: none; -webkit-appearance: none; -moz-appearance: none; border-radius: 12px; padding: 2px 22px 2px 9px; font-size: 11px; font-weight: 600; line-height: 1.4; cursor: pointer; outline: none; background-repeat: no-repeat; background-position: right 6px center; background-size: 10px 10px; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3'><polyline points='6 9 12 15 18 9'/></svg>"); }
+.u-vlist-estado-pos           { background-color: rgba(34,197,94,0.12); color: var(--pos); border: 1px solid rgba(34,197,94,0.45); }
+.u-vlist-estado-warn          { background-color: rgba(245,158,11,0.14); color: var(--warn, #f59e0b); border: 1px solid rgba(245,158,11,0.45); }
+.u-vlist-estado-neg           { background-color: rgba(220,38,38,0.12); color: var(--neg); border: 1px solid rgba(220,38,38,0.45); }
+.u-vlist-estado-default       { background-color: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border); }
+.u-vlist-item                 { margin-bottom: 2px; }
+.u-vlist-item-devuelto        { text-decoration: line-through; color: var(--text-muted); }
+.u-vlist-devuelto-badge       { margin-left: 6px; padding: 0 5px; border-radius: 3px; background: var(--neg); color: white; font-size: 9px; text-decoration: none; font-weight: 600; vertical-align: middle; }
+.u-vlist-item-cost-row        { margin-top: 1px; }
+.u-vlist-item-sep             { margin: 0 4px; opacity: 0.5; }
+.u-vlist-canje-row            { color: var(--warn); font-size: 11px; margin-top: 4px; }
+.u-vlist-canje-tomado         { margin-top: 1px; font-weight: 600; }
+.u-vlist-btn-confirmar        { margin-right: 6px; padding: 2px 8px; font-size: 11px; font-weight: 600; }
 /* — DiffModal (Sprint 59) — */
 .u-diff-modal-body            { padding: 32px 28px 18px; text-align: left; }
 .u-diff-icon-wrap             { text-align: center; margin-bottom: 18px; }
