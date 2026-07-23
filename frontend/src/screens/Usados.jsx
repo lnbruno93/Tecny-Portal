@@ -132,10 +132,10 @@ export default function Usados() {
     }));
   }
 
-  function fieldStyle(id, field) {
-    return edits[id]?.[field] !== undefined
-      ? { background: 'var(--accent-soft)', color: 'var(--accent)' }
-      : {};
+  // Sprint 94 CSP: fieldStyle → fieldClass. Devuelve la clase que resalta
+  // el campo cuando tiene un edit pendiente sin persistir.
+  function fieldClass(id, field) {
+    return edits[id]?.[field] !== undefined ? 'u-usados-field-dirty' : '';
   }
 
   return (
@@ -189,7 +189,7 @@ export default function Usados() {
         </div>
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">Último registro</div>
-          <div style={{ fontSize: 14, fontWeight: 600, marginTop: 6 }}>
+          <div className="u-usados-last-update">
             {lastUpdated ? relDate(lastUpdated.toISOString()) : '—'}
           </div>
         </div>
@@ -251,8 +251,7 @@ export default function Usados() {
                   <td>
                     <input
                       type="text"
-                      className="input"
-                      style={fieldStyle(r.id, 'pct_bateria')}
+                      className={'input ' + fieldClass(r.id, 'pct_bateria')}
                       value={edits[r.id]?.pct_bateria ?? r.pct_bateria ?? ''}
                       onChange={e => setField(r.id, 'pct_bateria', e.target.value)}
                     />
@@ -260,24 +259,18 @@ export default function Usados() {
                   <td>
                     <input
                       type="text"
-                      className="input"
-                      style={fieldStyle(r.id, 'comentarios')}
+                      className={'input ' + fieldClass(r.id, 'comentarios')}
                       value={edits[r.id]?.comentarios ?? r.comentarios ?? ''}
                       onChange={e => setField(r.id, 'comentarios', e.target.value)}
                       placeholder="—"
                     />
                   </td>
                   <td className="num u-w-150px">
-                    <div className="input-group" style={{ width: 130, marginLeft: 'auto' }}>
+                    <div className="input-group u-usados-price-group">
                       <span className="addon addon-l muted tiny u-p-0-8">USD</span>
                       <input
                         type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
-                        className="input mono"
-                        style={{
-                          textAlign: 'right',
-                          fontWeight: 600,
-                          ...fieldStyle(r.id, 'precio_usd'),
-                        }}
+                        className={'input mono u-usados-price-input ' + fieldClass(r.id, 'precio_usd')}
                         value={edits[r.id]?.precio_usd ?? r.precio_usd ?? ''}
                         onChange={e => setField(r.id, 'precio_usd', e.target.value)}
                       />
