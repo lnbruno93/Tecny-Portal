@@ -393,11 +393,7 @@ export default function Usuarios() {
                     <td>
                       <div className="flex-row u-gap-10">
                         <div
-                          className="u-avatar-32"
-                          style={{
-                            background: bypass ? 'var(--accent-soft)' : 'var(--surface-3)',
-                            color: bypass ? 'var(--accent)' : 'var(--text)',
-                          }}
+                          className={'u-avatar-32 ' + (bypass ? 'u-avatar-bypass' : 'u-avatar-normal')}
                         >
                           {initials(u.nombre)}
                         </div>
@@ -718,19 +714,19 @@ function EditorPermisos({ usuario, pantallas, onClose, onSaved }) {
             return (
               <div
                 key={pantalla.id}
-                className="u-pantalla-card"
-                style={{
-                  background: capsOn === 0 ? 'transparent' : 'var(--surface)',
-                  opacity: bypass ? 0.6 : 1,
-                }}
+                className={
+                  'u-pantalla-card' +
+                  (capsOn === 0 ? ' u-pantalla-card-empty' : ' u-pantalla-card-filled') +
+                  (bypass ? ' u-pantalla-card-bypass' : '')
+                }
               >
                 <div
-                  className="u-pantalla-header-flex"
-                  style={{
-                    background: capsOn === total ? 'color-mix(in oklab, var(--pos) 8%, var(--surface))'
-                              : capsOn > 0     ? 'var(--surface)'
-                              :                  'transparent',
-                  }}
+                  className={
+                    'u-pantalla-header-flex ' +
+                    (capsOn === total ? 'u-pantalla-header-full'
+                     : capsOn > 0 ? 'u-pantalla-header-partial'
+                     : 'u-pantalla-header-empty')
+                  }
                 >
                   <div className="u-fs-13-fw-600">{pantalla.label}</div>
                   <div className="muted tiny">
@@ -745,27 +741,19 @@ function EditorPermisos({ usuario, pantallas, onClose, onSaved }) {
                     return (
                       <label
                         key={cap.slug}
-                        className="u-label-permiso-row"
-                        style={{ cursor: bypass || saving ? 'default' : 'pointer' }}
+                        className={'u-label-permiso-row ' + (bypass || saving ? 'u-cursor-default' : 'u-cursor-pointer')}
                       >
                         <input
                           type="checkbox"
                           checked={isOn}
                           disabled={bypass || saving}
                           onChange={() => toggle(cap.slug)}
-                          className="u-checkbox-16"
-                          style={{ cursor: bypass ? 'default' : 'pointer' }}
+                          className={'u-checkbox-16 ' + (bypass ? 'u-cursor-default' : 'u-cursor-pointer')}
                         />
                         <span className="u-flex-1">{cap.label}</span>
                         {esOverride && (
                           <span
-                            className="u-badge-override"
-                            style={{
-                              background: isOn
-                                ? 'color-mix(in oklab, var(--pos) 18%, transparent)'
-                                : 'color-mix(in oklab, var(--neg) 18%, transparent)',
-                              color: isOn ? 'var(--pos)' : 'var(--neg)',
-                            }}
+                            className={'u-badge-override ' + (isOn ? 'u-badge-override-on' : 'u-badge-override-off')}
                           >
                             {isOn ? '+ override' : '− revocado'}
                           </span>
@@ -796,7 +784,7 @@ function EditorPermisos({ usuario, pantallas, onClose, onSaved }) {
                   return (
                     <li key={i}>
                       <strong>{pantallaLabel}</strong>{capLabel && ` → ${capLabel}`} ·{' '}
-                      <span style={{ color: o.enabled ? 'var(--pos)' : 'var(--neg)' }}>
+                      <span className={o.enabled ? 'u-color-pos' : 'u-color-neg'}>
                         {o.enabled ? 'agregado' : 'revocado'}
                       </span>
                     </li>
