@@ -232,10 +232,10 @@ export default function Inicio() {
             Antes era solo "Error al cargar datos: X" plano — el user veía la
             pantalla rota sin acción posible salvo refrescar el browser entero.
             Ahora ofrecemos retry inline (bumpea reloadKey → useEffect re-corre). */}
-        <div className="card card-tight" style={{ borderColor: 'var(--neg)', marginTop: 16 }}>
-          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+        <div className="card card-tight u-inicio-error-card">
+          <div className="u-inicio-error-row">
             <div className="u-flex-1">
-              <div style={{ color: 'var(--neg)', fontWeight: 600, fontSize: 14 }}>
+              <div className="u-inicio-error-title">
                 No pudimos cargar el inicio
               </div>
               <div className="muted tiny u-mt-4">
@@ -286,7 +286,7 @@ export default function Inicio() {
         <div className="col">
           <div className="flex-between">
             {/* 2026-06-24 lote F: clamp para que en mobile no domine sobre el subtítulo. */}
-            <h2 style={{ margin: 0, fontSize: 'clamp(14px, 4vw, 16px)', fontWeight: 600, letterSpacing: '-0.01em' }}>
+            <h2 className="u-inicio-h2-clamp">
               Herramientas
             </h2>
             <div className="muted tiny">Acceso a los módulos del portal</div>
@@ -296,7 +296,7 @@ export default function Inicio() {
               // Edge case: user con un rol que NO tiene ninguna cap de tools
               // (ej. custom recién creado sin overrides, o rol experimental).
               // Honesto > misterio: explicamos por qué no hay nada visible.
-              <div className="empty" style={{ gridColumn: '1 / -1', padding: '24px 12px' }}>
+              <div className="empty u-inicio-empty-full">
                 Tu rol no tiene módulos asignados todavía — pedile al admin que te habilite acceso.
               </div>
             )}
@@ -347,7 +347,7 @@ export default function Inicio() {
                       <span className="who">{a.who}</span>
                       <span className="what">{a.what}</span>
                       {a.ref && (
-                        <span style={{ color: 'var(--text-muted)', fontWeight: 500, fontSize: 12 }}>
+                        <span className="u-inicio-activity-ref">
                           {a.ref}
                         </span>
                       )}

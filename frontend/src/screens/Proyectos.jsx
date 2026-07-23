@@ -282,7 +282,7 @@ export default function Proyectos() {
       // 2026-06-24 mobile lote D: usar .split-master-detail (de Lote A) que
       // colapsa a single col en <=720px. Sin esto, en 375px el master
       // 320px = 85% del ancho y el detail queda con ~30px ilegible.
-      <div className="split-master-detail" style={{ '--master-width': '320px', alignItems: 'start' }}>
+      <div className="split-master-detail u-proy-master-detail">
         {/* ── Lista ── */}
         <div className="card card-flush u-card-78vh-col">
           <div className="u-p-10">
@@ -291,13 +291,12 @@ export default function Proyectos() {
           <div className="u-flex-1-o-auto">
             {loadingList ? <div className="empty">Cargando…</div>
               : list.length === 0 ? <div className="empty">Sin proyectos. Creá el primero arriba.</div>
-              : list.map((p, i) => (
-                <div key={p.id} onClick={() => setSelectedId(p.id)} style={{
-                  padding: '10px 13px', cursor: 'pointer',
-                  borderBottom: i < list.length - 1 ? '1px solid var(--hairline)' : 0,
-                  background: selectedId === p.id ? 'var(--surface-2)' : 'transparent',
-                  borderLeft: selectedId === p.id ? '3px solid var(--accent)' : '3px solid transparent',
-                }}>
+              : list.map((p) => (
+                <div
+                  key={p.id}
+                  onClick={() => setSelectedId(p.id)}
+                  className={'u-proy-list-item' + (selectedId === p.id ? ' u-proy-list-item-active' : '')}
+                >
                   <div className="u-fs-13-fw-600">{p.nombre}</div>
                   <div className="muted tiny u-mt-2">
                     {fmtFecha(p.fecha_creacion)} · {p.cant_movimientos} mov.
@@ -382,7 +381,7 @@ export default function Proyectos() {
                         <td className="tiny">
                           {m.caja_nombre ? (
                             <span title={`${m.tipo} en ${m.caja_nombre} (${m.caja_moneda})`}>
-                              <span style={{ color: m.tipo === 'ingreso' ? 'var(--pos)' : 'var(--neg)' }}>
+                              <span className={m.tipo === 'ingreso' ? 'u-color-pos' : 'u-color-neg'}>
                                 {m.tipo === 'ingreso' ? '↑' : '↓'}
                               </span>{' '}{m.caja_nombre}
                             </span>
@@ -405,7 +404,9 @@ export default function Proyectos() {
                         <TcWarning tc={mov.tc} />
                       </td>
                       <td>
-                        <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right', background: movUsdPreview > 0 && (parseFloat(mov.monto) > 0) ? 'rgba(99,102,241,0.08)' : 'var(--surface)' }}
+                        <input
+                          type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0"
+                          className={'input mono u-proy-input-usd' + (movUsdPreview > 0 && parseFloat(mov.monto) > 0 ? ' u-proy-input-usd-derived' : '')}
                           placeholder="USD" value={(parseFloat(mov.monto) > 0 && parseFloat(mov.tc) > 0) ? movUsdPreview : mov.monto_usd}
                           readOnly={parseFloat(mov.monto) > 0 && parseFloat(mov.tc) > 0}
                           onChange={e => setMov(m => ({ ...m, monto_usd: e.target.value }))} />
@@ -423,12 +424,11 @@ export default function Proyectos() {
                             <CajaSelectHint />
                           </select>
                           {mov.caja_id && (
-                            <select className="input mono"
-                                    style={{ height: 30, fontSize: 11, width: 65,
-                                             color: mov.tipo === 'ingreso' ? 'var(--pos)' : 'var(--neg)',
-                                             fontWeight: 600 }}
-                                    value={mov.tipo}
-                                    onChange={e => setMov(m => ({ ...m, tipo: e.target.value }))}>
+                            <select
+                              className={'input mono u-proy-tipo-select ' + (mov.tipo === 'ingreso' ? 'u-color-pos' : 'u-color-neg')}
+                              value={mov.tipo}
+                              onChange={e => setMov(m => ({ ...m, tipo: e.target.value }))}
+                            >
                               <option value="egreso">↓ Egr</option>
                               <option value="ingreso">↑ Ing</option>
                             </select>
@@ -499,7 +499,7 @@ export default function Proyectos() {
                       {contactos.map(c => {
                         const on = form.participantes.includes(c.id);
                         return (
-                          <label key={c.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 10px', border: `1px solid ${on ? 'var(--border-strong)' : 'var(--border)'}`, borderRadius: 8, cursor: 'pointer', background: on ? 'var(--surface-2)' : 'var(--surface)' }}>
+                          <label key={c.id} className={'u-proy-contacto-chip' + (on ? ' u-proy-contacto-chip-on' : '')}>
                             <input type="checkbox" checked={on} onChange={e => setForm(f => ({ ...f, participantes: e.target.checked ? [...f.participantes, c.id] : f.participantes.filter(x => x !== c.id) }))} className="u-accent-color" />
                             <span className="u-fs-12">{nombreContacto(c)}</span>
                           </label>
