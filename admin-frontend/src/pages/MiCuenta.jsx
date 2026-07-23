@@ -77,31 +77,14 @@ export default function MiCuenta() {
         <div
           role={message.type === 'error' ? 'alert' : 'status'}
           aria-live="polite"
-          style={{
-            marginBottom: 'var(--gap)',
-            padding: '10px 14px',
-            borderRadius: 8,
-            fontSize: 13,
-            background: message.type === 'error'
-              ? 'rgba(239, 68, 68, 0.1)'
-              : 'rgba(34, 197, 94, 0.1)',
-            border: `1px solid ${message.type === 'error'
-              ? 'rgba(239, 68, 68, 0.3)'
-              : 'rgba(34, 197, 94, 0.3)'}`,
-            color: `var(--${message.type === 'error' ? 'neg' : 'pos'})`,
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            gap: 12,
-          }}
+          className={`u-mc-msg ${message.type === 'error' ? 'u-mc-msg-error' : 'u-mc-msg-success'}`}
         >
           <span>{message.text}</span>
           <button
             type="button"
             onClick={() => setMessage(null)}
             aria-label="Cerrar mensaje"
-            style={{
-              background: 'transparent', border: 'none', cursor: 'pointer',
-              color: 'inherit', fontSize: 18, lineHeight: 1, padding: 0,
-            }}
+            className="u-mc-msg-close"
           >
             ×
           </button>
@@ -109,14 +92,14 @@ export default function MiCuenta() {
       )}
 
       {tab === 'seguridad' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--gap)' }}>
+        <div className="u-flex-col-gap-var">
           <TwoFaSection onMessage={setMessage} />
 
           <Card
             title="Contraseña"
             subtitle="Cambiala periódicamente. Vamos a cerrar tu sesión después del cambio."
           >
-            <div className="muted" style={{ fontSize: 12, lineHeight: 1.5, marginBottom: 12 }}>
+            <div className="muted u-mc-policy">
               La política requiere mínimo 8 caracteres con letra y número.
               Si tenés 2FA activo te vamos a pedir el código al cambiar.
             </div>
@@ -132,7 +115,7 @@ export default function MiCuenta() {
           title="Datos personales"
           subtitle="Read-only por ahora — ver nota abajo."
         >
-          <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr', rowGap: 10, columnGap: 16, fontSize: 13 }}>
+          <div className="u-mc-datos-grid">
             <div className="muted">Usuario</div>
             <div className="u-fw-600">{displayName}</div>
 
@@ -151,13 +134,7 @@ export default function MiCuenta() {
             </div>
           </div>
 
-          <div
-            className="muted"
-            style={{
-              marginTop: 16, fontSize: 12, lineHeight: 1.5,
-              padding: 10, background: 'var(--surface)', borderRadius: 6,
-            }}
-          >
+          <div className="muted u-mc-info-box">
             Para cambiar tu email o username, contactá al equipo técnico —
             el back office no expone esas mutations al super-admin porque
             impactan en JWT/tokens ya emitidos. Password y 2FA sí los
