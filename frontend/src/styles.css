@@ -4538,6 +4538,17 @@ body.modal-open { overflow: hidden; }
 .u-resumen-month-input        { width: 160px; margin-left: 6px; }
 .u-resumen-top-row            { gap: 12px; margin-top: 18px; flex-wrap: wrap; }
 .u-mt-18                      { margin-top: 18px; }
+/* — Usuarios (Sprint 91) — */
+.u-avatar-bypass              { background: var(--accent-soft); color: var(--accent); }
+.u-avatar-normal              { background: var(--surface-3); color: var(--text); }
+.u-pantalla-card-empty        { background: transparent; }
+.u-pantalla-card-filled       { background: var(--surface); }
+.u-pantalla-card-bypass       { opacity: 0.6; }
+.u-pantalla-header-full       { background: color-mix(in oklab, var(--pos) 8%, var(--surface)); }
+.u-pantalla-header-partial    { background: var(--surface); }
+.u-pantalla-header-empty      { background: transparent; }
+.u-badge-override-on          { background: color-mix(in oklab, var(--pos) 18%, transparent); color: var(--pos); }
+.u-badge-override-off         { background: color-mix(in oklab, var(--neg) 18%, transparent); color: var(--neg); }
 /* — DiffModal (Sprint 59) — */
 .u-diff-modal-body            { padding: 32px 28px 18px; text-align: left; }
 .u-diff-icon-wrap             { text-align: center; margin-bottom: 18px; }
