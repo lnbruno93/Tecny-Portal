@@ -86,19 +86,15 @@ export function ConfirmModal({
       aria-modal="true"
       aria-labelledby="confirm-modal-title"
     >
-      <div
-        className="modal"
-        style={{ maxWidth: 400 }}
-        onClick={e => e.stopPropagation()}
-      >
+      <div className="modal u-confirm-modal" onClick={e => e.stopPropagation()}>
         <div className="modal-hd">
-          <h3 id="confirm-modal-title" style={{ color: danger ? 'var(--neg)' : 'var(--text)' }}>{title}</h3>
+          <h3 id="confirm-modal-title" className={danger ? 'u-color-neg' : 'u-color-text'}>{title}</h3>
         </div>
         {message && (
           <div className="modal-body">
             {/* whiteSpace: pre-line respeta `\n` en el message — útil cuando el
                 caller pasa varias líneas (ej. desglose de diferencia en venta). */}
-            <p style={{ color: 'var(--text-muted)', fontSize: 14, margin: 0, lineHeight: 1.6, whiteSpace: 'pre-line' }}>
+            <p className="u-confirm-msg">
               {message}
             </p>
           </div>
@@ -108,8 +104,7 @@ export function ConfirmModal({
             {cancelLabel}
           </button>
           <button
-            className="btn btn-primary"
-            style={danger ? { background: 'var(--neg)', boxShadow: 'none' } : {}}
+            className={'btn ' + (danger ? 'btn-danger' : 'btn-primary')}
             onClick={onConfirm}
             data-autofocus
           >

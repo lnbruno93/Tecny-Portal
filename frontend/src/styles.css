@@ -4654,3 +4654,30 @@ body.modal-open { overflow: hidden; }
 .u-color-orange-fg            { color: var(--orange-fg, #c2410c); }
 .u-kpi-value                  { font-size: 18px; font-weight: 600; }
 .u-fs-12-mt-2                 { font-size: 12px; margin-top: 2px; }
+
+/* — Sprint 95 batch (ConfirmModal + CommandPalette + Cobranza + ChangePw + Barrio) — */
+/* ConfirmModal: reemplaza inline maxWidth, dynamic color header, msg body,
+   y overrides al primary button en modo danger (delete/cancel destructivo). */
+.u-confirm-modal              { max-width: 460px; }
+.u-confirm-msg                { margin: 0; white-space: pre-line; color: var(--text-2); line-height: 1.5; font-size: 14px; }
+/* CommandPalette: item-active consolida bg+color+opacity+subtitle color+amount color
+   en un solo class aplicado al parent — sus descendants heredan/override según variant.
+   Se define despues de los class base para ganar cascade sin !important. */
+.u-cmd-palette-item-active                             { background: var(--accent-soft); color: var(--accent); }
+.u-cmd-palette-item .u-cmd-palette-item-icon           { opacity: 0.6; }
+.u-cmd-palette-item-active .u-cmd-palette-item-icon    { opacity: 1; }
+.u-cmd-palette-item-active .u-cmd-palette-item-subtitle{ color: var(--accent); }
+.u-cmd-palette-item-active .u-cmd-palette-item-amount  { color: var(--accent); }
+/* CobranzaMasivaModal: input con warning border cuando sobrepago detectado. */
+.u-inp-border-warn            { border-color: var(--warn, #d97706); }
+/* ChangePasswordModal: banner de error + eye toggle button + 2FA input. */
+.u-cpw-error                  { padding: 10px 12px; background: var(--neg-soft); color: var(--neg); border-radius: 6px; font-size: 13px; }
+.u-cpw-eye-btn                { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: transparent; border: 0; cursor: pointer; padding: 4px 6px; font-size: 16px; }
+.u-cpw-2fa-input              { width: 100%; text-align: center; font-family: monospace; font-size: 18px; letter-spacing: 4px; }
+/* BarrioCombobox: dropdown de autocomplete agrupado por zona (CABA/GBA). */
+.u-barrio-dropdown             { position: absolute; top: 100%; left: 0; right: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; z-index: 60; max-height: 280px; overflow-y: auto; box-shadow: 0 8px 24px rgba(0,0,0,0.45); margin-top: 2px; }
+.u-barrio-empty                { padding: 8px 10px; font-size: 12px; color: var(--text-muted); }
+.u-barrio-zona-header          { padding: 4px 10px; font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; background: var(--surface-2); }
+.u-barrio-zona-header-with-top { border-top: 1px solid var(--hairline); }
+.u-barrio-option               { padding: 6px 10px; font-size: 13px; cursor: pointer; background: transparent; }
+.u-barrio-option-highlight     { background: var(--surface-2); }

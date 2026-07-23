@@ -112,15 +112,10 @@ export default function BarrioCombobox({
       {open && (
         <div
           role="listbox"
-          style={{
-            position: 'absolute', top: '100%', left: 0, right: 0,
-            background: 'var(--surface)', border: '1px solid var(--border)',
-            borderRadius: 6, zIndex: 60, maxHeight: 280, overflowY: 'auto',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.45)', marginTop: 2,
-          }}
+          className="u-barrio-dropdown"
         >
           {filtered.length === 0 && (
-            <div style={{ padding: '8px 10px', fontSize: 12, color: 'var(--text-muted)' }}>
+            <div className="u-barrio-empty">
               Sin coincidencias — podés escribir el barrio libremente
             </div>
           )}
@@ -133,12 +128,9 @@ export default function BarrioCombobox({
             return (
               <div key={`${opt.zona}-${opt.barrio}`}>
                 {showZonaHeader && (
-                  <div style={{
-                    padding: '4px 10px', fontSize: 10, fontWeight: 700,
-                    color: 'var(--text-muted)', textTransform: 'uppercase',
-                    letterSpacing: 0.5, background: 'var(--surface-2)',
-                    borderTop: i > 0 ? '1px solid var(--hairline)' : 'none',
-                  }}>
+                  // La primera zona no lleva borderTop — a partir de la segunda
+                  // se agrega para separar visualmente los grupos.
+                  <div className={'u-barrio-zona-header' + (i > 0 ? ' u-barrio-zona-header-with-top' : '')}>
                     {opt.zona}
                   </div>
                 )}
@@ -149,10 +141,7 @@ export default function BarrioCombobox({
                   // onMouseDown en vez de onClick para que se dispare antes
                   // del blur que cerraría el dropdown.
                   onMouseDown={(e) => { e.preventDefault(); pick(opt.barrio); }}
-                  style={{
-                    padding: '6px 10px', fontSize: 13, cursor: 'pointer',
-                    background: i === highlight ? 'var(--surface-2)' : 'transparent',
-                  }}
+                  className={'u-barrio-option' + (i === highlight ? ' u-barrio-option-highlight' : '')}
                 >
                   {opt.barrio}
                 </div>
