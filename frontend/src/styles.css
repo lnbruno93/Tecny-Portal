@@ -4614,6 +4614,22 @@ body.modal-open { overflow: hidden; }
 .u-toast-icon                 { flex-shrink: 0; opacity: 0.9; }
 .u-toast-msg                  { flex: 1; line-height: 1.4; }
 .u-toast-close-btn            { flex-shrink: 0; background: none; border: none; color: currentColor; opacity: 0.7; cursor: pointer; padding: 0; display: flex; align-items: center; }
+/* — Sprint 94 batch (EquiposUsadosContent, RedB2BConfig, Usados) — */
+.u-tnum                       { font-variant-numeric: tabular-nums; }
+.u-usados-kpi-ccy             { font-size: 13px; color: var(--text-muted); }
+.u-usados-search-input        { min-width: 300px; flex: 0 1 340px; }
+.u-mw-170                     { min-width: 170px; }
+.u-usados-order-badge         { text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+.u-redb2b-config-row          { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+.u-redb2b-config-field        { flex: 1 1 240px; margin-bottom: 0; }
+.u-redb2b-email-section       { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border, #e5e7eb); }
+.u-redb2b-email-label         { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.u-redb2b-email-check         { width: 16px; height: 16px; }
+.u-cursor-wait                { cursor: wait; }
+.u-usados-last-update         { font-size: 14px; font-weight: 600; margin-top: 6px; }
+.u-usados-field-dirty         { background: var(--accent-soft); color: var(--accent); }
+.u-usados-price-group         { width: 130px; margin-left: auto; }
+.u-usados-price-input         { text-align: right; font-weight: 600; }
 /* — DiffModal (Sprint 59) — */
 .u-diff-modal-body            { padding: 32px 28px 18px; text-align: left; }
 .u-diff-icon-wrap             { text-align: center; margin-bottom: 18px; }

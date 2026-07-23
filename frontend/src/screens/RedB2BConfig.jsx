@@ -145,8 +145,8 @@ export function RedB2BConfigContent() {
         compatible (ARS para pagos ARS, USD para pagos USD/USDT).
       </p>
 
-      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-        <div className="field" style={{ flex: '1 1 240px', marginBottom: 0 }}>
+      <div className="u-redb2b-config-row">
+        <div className="field u-redb2b-config-field">
           <label className="field-label" htmlFor="caja-default-select">
             Caja a usar por defecto
           </label>
@@ -184,7 +184,7 @@ export function RedB2BConfigContent() {
 
       {/* ── PR-X1 #465: Avisos por email ────────────────────────────────── */}
       {emailPrefs && (
-        <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--border, #e5e7eb)' }}>
+        <div className="u-redb2b-email-section">
           <h2 className="u-mt-0-fs-16">Avisos por email</h2>
           <p className="u-mb-12-fs-14">
             Decidí qué notificaciones de Red B2B querés recibir por mail.
@@ -198,13 +198,7 @@ export function RedB2BConfigContent() {
                 <label
                   key={key}
                   htmlFor={inputId}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    fontSize: 14,
-                    cursor: isThisSaving ? 'wait' : 'pointer',
-                  }}
+                  className={'u-redb2b-email-label ' + (isThisSaving ? 'u-cursor-wait' : 'u-cursor-pointer')}
                 >
                   <input
                     id={inputId}
@@ -212,7 +206,7 @@ export function RedB2BConfigContent() {
                     checked={checked}
                     disabled={isThisSaving}
                     onChange={() => toggleEmailPref(key)}
-                    style={{ width: 16, height: 16, cursor: isThisSaving ? 'wait' : 'pointer' }}
+                    className={'u-redb2b-email-check ' + (isThisSaving ? 'u-cursor-wait' : 'u-cursor-pointer')}
                   />
                   {label}
                 </label>

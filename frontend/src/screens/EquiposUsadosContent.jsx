@@ -58,7 +58,7 @@ function BateriaBadge({ valor }) {
   if (!Number.isFinite(v)) return <span className="muted">—</span>;
   const tono = v >= 85 ? 'pos' : v >= 75 ? 'warn' : 'neg';
   return (
-    <span className={`badge badge-${tono}`} style={{ fontVariantNumeric: 'tabular-nums' }}>
+    <span className={`badge badge-${tono} u-tnum`}>
       {v}%
     </span>
   );
@@ -207,7 +207,7 @@ export default function EquiposUsadosContent({ onCountChange }) {
         <div className="card card-tight">
           <div className="kpi-label">Inversión (página)</div>
           <div className="kpi-value">
-            <span className="ccy" style={{ fontSize: 13, color: 'var(--text-muted)' }}>USD </span>
+            <span className="ccy u-usados-kpi-ccy">USD </span>
             {fmtN(kpis.invUsd)}
           </div>
           <div className="muted tiny">Suma de costos USD de esta página</div>
@@ -217,11 +217,10 @@ export default function EquiposUsadosContent({ onCountChange }) {
       {/* ── Filtros ───────────────────────────────────────────── */}
       <div className="flex-row u-gap-10-mb-12-wrap-center">
         <input
-          className="input"
+          className="input u-usados-search-input"
           placeholder="Buscar nombre, IMEI, cliente…"
           value={buscar}
           onChange={e => setBuscar(e.target.value)}
-          style={{ minWidth: 300, flex: '0 1 340px' }}
         />
         {/* 2026-07-11: Seg reemplaza el toggle "Solo canjes" (bool). Los
             tenants necesitan diferenciar los canjes (parte de pago) de las
@@ -284,7 +283,7 @@ export default function EquiposUsadosContent({ onCountChange }) {
                 <th className="u-w-100-td-right">Costo</th>
                 <th className="u-w-100-td-right">Precio venta</th>
                 <th className="u-w-130px">Origen</th>
-                <th style={{ minWidth: 170 }}>Cliente que lo entregó</th>
+                <th className="u-mw-170">Cliente que lo entregó</th>
                 <th className="u-w-96">Ingresó</th>
                 <th className="u-w-100px">Estado</th>
               </tr>
@@ -374,9 +373,8 @@ function UsadoRow({ p }) {
           // Preserva el contexto del operador (puede volver con back del browser).
           <Link
             to={`/ventas?buscar=${encodeURIComponent(orderId)}`}
-            className="badge badge-info"
+            className="badge badge-info u-usados-order-badge"
             title={`Abrir venta ${orderId}`}
-            style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}
           >
             {orderId}
             <Icons.ArrowUpRight size={11} />
