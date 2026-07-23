@@ -4134,3 +4134,14 @@ body.modal-open { overflow: hidden; }
 .u-diag-form                  { padding: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
 .u-diag-input                 { flex: 1; min-width: 200px; }
 .u-diag-results-body          { padding: 0 16px 16px; }
+/* — MovimientosCajaPanel (Sprint 51) — */
+.u-movcaja-toolbar            { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+.u-movcaja-desc               { margin: 0; font-size: 13px; max-width: 620px; }
+.u-movcaja-empty              { padding: 32px; text-align: center; border: 1px dashed var(--hairline); border-radius: 8px; }
+.u-fs-12-mt-6                 { font-size: 12px; margin-top: 6px; }
+.u-arrow-sep                  { font-weight: 400; margin: 0 4px; }
+.u-movcaja-cross-label        { font-size: 11px; margin-left: 8px; color: var(--accent); font-weight: 600; }
+.u-fs-11-mt-neg-6             { font-size: 11px; margin-top: -6px; }
+.u-movcaja-cross-box          { padding: 12px; border-radius: 6px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.28); display: grid; gap: 10px; }
+.u-fs-10-ml-6                 { font-size: 10px; margin-left: 6px; }
+.u-movcaja-resumen-box        { padding: 10px; border-radius: 6px; font-size: 12px; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.28); }

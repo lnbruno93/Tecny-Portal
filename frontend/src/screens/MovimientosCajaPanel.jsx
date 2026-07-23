@@ -226,8 +226,8 @@ export default function MovimientosCajaPanel() {
   return (
     <div>
       {/* Toolbar del tab */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
-        <p className="muted" style={{ margin: 0, fontSize: 13, maxWidth: 620 }}>
+      <div className="u-movcaja-toolbar">
+        <p className="muted u-movcaja-desc">
           Traslados internos entre <strong>2 cajas propias</strong>. Si son de la misma
           moneda, un solo monto. Si son de distinta moneda (ej. Banco Pesos → Banco Dólar),
           agregás el TC y el monto que efectivamente entra en la caja destino.
@@ -241,9 +241,9 @@ export default function MovimientosCajaPanel() {
       {loading ? (
         <div className="muted u-p-20-text-center">Cargando…</div>
       ) : transferencias.length === 0 ? (
-        <div className="empty-state" style={{ padding: 32, textAlign: 'center', border: '1px dashed var(--hairline)', borderRadius: 8 }}>
+        <div className="empty-state u-movcaja-empty">
           <div className="muted u-fs-14">Todavía no hay transferencias.</div>
-          <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+          <div className="muted u-fs-12-mt-6">
             Cuando muevas plata entre 2 cajas propias, van a quedar registradas acá.
           </div>
         </div>
@@ -275,7 +275,7 @@ export default function MovimientosCajaPanel() {
                       {isCross ? (
                         <span>
                           {fmtMoney(t.monto, t.moneda)}
-                          <span className="muted" style={{ fontWeight: 400, margin: '0 4px' }}>→</span>
+                          <span className="muted u-arrow-sep">→</span>
                           {fmtMoney(t.monto_destino, t.moneda_destino)}
                         </span>
                       ) : (
@@ -285,7 +285,7 @@ export default function MovimientosCajaPanel() {
                         <div className="muted u-fs-10-fw-400">TC {fmt(t.tc)}</div>
                       )}
                     </td>
-                    <td className="mono" style={{ textAlign: 'right', color: Number(t.costo) > 0 ? 'var(--neg)' : 'var(--text-muted)' }}>
+                    <td className={`mono u-text-right ${Number(t.costo) > 0 ? 'u-color-neg' : 'u-color-muted'}`}>
                       {Number(t.costo) > 0 ? fmtMoney(t.costo, t.moneda) : '—'}
                     </td>
                     <td className="muted u-fs-12">{t.descripcion || '—'}</td>
@@ -350,7 +350,7 @@ export default function MovimientosCajaPanel() {
                 <label className="field-label">
                   Caja de destino
                   {isCross && (
-                    <span style={{ fontSize: 11, marginLeft: 8, color: 'var(--accent)', fontWeight: 600 }}>
+                    <span className="u-movcaja-cross-label">
                       · Cambio de moneda {monedaOrigen} → {monedaDestino}
                     </span>
                   )}
@@ -390,7 +390,7 @@ export default function MovimientosCajaPanel() {
                   />
                 </div>
               </div>
-              <div className="muted" style={{ fontSize: 11, marginTop: -6 }}>
+              <div className="muted u-fs-11-mt-neg-6">
                 El costo (ej. comisión bancaria) sale de la caja de origen además del monto.
                 El destino recibe solo el monto.
               </div>
@@ -400,12 +400,7 @@ export default function MovimientosCajaPanel() {
                   distintos. El monto_destino se auto-calcula del TC pero el
                   operador puede sobrescribirlo (por redondeo del banco). */}
               {isCross && (
-                <div style={{
-                  padding: 12, borderRadius: 6,
-                  background: 'rgba(59, 130, 246, 0.08)',
-                  border: '1px solid rgba(59, 130, 246, 0.28)',
-                  display: 'grid', gap: 10,
-                }}>
+                <div className="u-movcaja-cross-box">
                   <div className="u-fw-600-fs-12">
                     Cambio de moneda · {monedaOrigen} → {monedaDestino}
                   </div>
@@ -422,7 +417,7 @@ export default function MovimientosCajaPanel() {
                       <label className="field-label">
                         Monto destino ({monedaDestino})
                         {form.montoDestinoManual && (
-                          <span className="muted" style={{ fontSize: 10, marginLeft: 6 }}>· editado</span>
+                          <span className="muted u-fs-10-ml-6">· editado</span>
                         )}
                       </label>
                       <input
@@ -454,11 +449,7 @@ export default function MovimientosCajaPanel() {
                   Same-currency: monto entra en misma moneda. Cross-currency:
                   ambos lados en su moneda propia con TC. */}
               {form.caja_origen_id && form.caja_destino_id && form.monto && (
-                <div style={{
-                  padding: 10, borderRadius: 6, fontSize: 12,
-                  background: 'rgba(16, 185, 129, 0.08)',
-                  border: '1px solid rgba(16, 185, 129, 0.28)',
-                }}>
+                <div className="u-movcaja-resumen-box">
                   <div><strong>Sale de origen:</strong> {fmt(Number(form.monto) + Number(form.costo || 0))} {monedaOrigen}</div>
                   <div>
                     <strong>Entra al destino:</strong>{' '}
