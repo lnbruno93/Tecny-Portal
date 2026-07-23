@@ -4231,6 +4231,16 @@ body.modal-open { overflow: hidden; }
 .u-combo-item                 { padding: 5px 8px; font-size: 13px; cursor: pointer; color: var(--text); background: transparent; }
 .u-combo-item-active          { background: var(--surface-2); }
 .u-combo-empty                { position: absolute; top: 100%; left: 0; right: 0; z-index: 50; padding: 6px 8px; font-size: 12px; background: var(--surface); border: 1px solid var(--hairline); border-radius: 4px; color: var(--text-muted); }
+/* — ErrorBoundary (Sprint 62) — */
+.u-error-boundary-wrap        { min-height: 100vh; display: grid; place-items: center; background: var(--bg, #0d1117); color: var(--text, #e6edf3); padding: 24px; text-align: center; }
+.u-error-boundary-title       { font-size: 32px; margin: 0 0 12px; font-weight: 700; }
+.u-error-boundary-desc        { color: var(--text-muted, #5a6781); font-size: 14px; margin-bottom: 24px; }
+.u-error-boundary-btn-row     { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.u-error-boundary-btn-primary { padding: 10px 18px; font-size: 14px; background: var(--accent, #2f6df4); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; }
+.u-error-boundary-btn-ghost   { padding: 10px 18px; font-size: 14px; background: transparent; color: var(--text, #e6edf3); border: 1px solid var(--hairline, #2a3142); border-radius: 8px; cursor: pointer; }
+.u-error-boundary-details     { margin-top: 32px; text-align: left; font-size: 12px; }
+.u-error-boundary-summary     { cursor: pointer; color: var(--text-muted, #5a6781); }
+.u-error-boundary-pre         { margin-top: 8px; padding: 12px; background: var(--bg-soft, #161b22); border: 1px solid var(--hairline, #2a3142); border-radius: 6px; overflow: auto; max-height: 200px; font-size: 11px; font-family: 'JetBrains Mono', monospace; }
 /* — DiffModal (Sprint 59) — */
 .u-diff-modal-body            { padding: 32px 28px 18px; text-align: left; }
 .u-diff-icon-wrap             { text-align: center; margin-bottom: 18px; }

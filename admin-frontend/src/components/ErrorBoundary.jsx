@@ -73,58 +73,28 @@ export default class ErrorBoundary extends Component {
 
     const { error, info } = this.state;
     return (
-      <div
-        role="alert"
-        style={{
-          minHeight: '100vh',
-          display: 'grid',
-          placeItems: 'center',
-          background: 'var(--bg, #0d1117)',
-          color: 'var(--text, #e6edf3)',
-          padding: 24,
-          textAlign: 'center',
-        }}
-      >
+      <div role="alert" className="u-error-boundary-wrap">
         <div className="u-mw-520">
-          <h1 style={{ fontSize: 32, margin: '0 0 12px', fontWeight: 700 }}>
+          <h1 className="u-error-boundary-title">
             Algo salió mal
           </h1>
-          <p style={{ color: 'var(--text-muted, #5a6781)', fontSize: 14, marginBottom: 24 }}>
+          <p className="u-error-boundary-desc">
             El admin encontró un error inesperado. Probá recargar la página.
             Si el problema persiste, abrí la consola del browser para ver detalles.
           </p>
 
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <div className="u-error-boundary-btn-row">
             <button
               type="button"
               onClick={this.handleReload}
-              className="btn btn-primary"
-              style={{
-                padding: '10px 18px',
-                fontSize: 14,
-                background: 'var(--accent, #2f6df4)',
-                color: 'white',
-                border: 'none',
-                borderRadius: 8,
-                cursor: 'pointer',
-                fontWeight: 600,
-              }}
+              className="btn btn-primary u-error-boundary-btn-primary"
             >
               Recargar página
             </button>
             <button
               type="button"
               onClick={this.handleHome}
-              className="btn"
-              style={{
-                padding: '10px 18px',
-                fontSize: 14,
-                background: 'transparent',
-                color: 'var(--text, #e6edf3)',
-                border: '1px solid var(--hairline, #2a3142)',
-                borderRadius: 8,
-                cursor: 'pointer',
-              }}
+              className="btn u-error-boundary-btn-ghost"
             >
               Ir al Resumen
             </button>
@@ -133,23 +103,11 @@ export default class ErrorBoundary extends Component {
           {/* Detalles técnicos colapsables — para que el operador pueda copiar
               el error y compartirlo con el dev si hace falta. */}
           {error && (
-            <details style={{ marginTop: 32, textAlign: 'left', fontSize: 12 }}>
-              <summary style={{ cursor: 'pointer', color: 'var(--text-muted, #5a6781)' }}>
+            <details className="u-error-boundary-details">
+              <summary className="u-error-boundary-summary">
                 Detalles técnicos
               </summary>
-              <pre
-                style={{
-                  marginTop: 8,
-                  padding: 12,
-                  background: 'var(--bg-soft, #161b22)',
-                  border: '1px solid var(--hairline, #2a3142)',
-                  borderRadius: 6,
-                  overflow: 'auto',
-                  maxHeight: 200,
-                  fontSize: 11,
-                  fontFamily: 'JetBrains Mono, monospace',
-                }}
-              >
+              <pre className="u-error-boundary-pre">
                 {error.toString()}
                 {info?.componentStack && '\n\n' + info.componentStack}
               </pre>
