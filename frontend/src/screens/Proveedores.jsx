@@ -362,18 +362,14 @@ export default function Proveedores() {
           divisoria vertical (borderRight del sidebar) llegue hasta el piso
           del contenedor cuando el sidebar tiene poco contenido. Ver
           comentario en styles.css. */}
-      <div className="split-master-detail fill-height" style={{
-        '--master-width': '240px',
-        background: 'var(--surface)', border: '1px solid var(--border)',
-        borderRadius: 12, overflow: 'hidden', flex: 1, minHeight: 580,
-      }}>
+      <div className="split-master-detail fill-height u-provs-master-detail">
 
         {/* ── Sidebar ── */}
         {/* minHeight: 0 = clásico fix para que un flex column con un hijo
             scrolleable respete los bounds del parent en vez de crecer. Sin
             esto, el listado de proveedores empuja el grid hacia abajo y no
             aparece scrollbar interno (bug 2026-06-15 reportado por Lucas). */}
-        <div style={{ borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <div className="u-provs-sidebar">
           <div className="u-p-12-border-bottom">
             <div className="input-group">
               <span className="addon addon-l"><Icons.Search size={13} /></span>
@@ -386,15 +382,13 @@ export default function Proveedores() {
               <div className="empty">Cargando…</div>
             ) : filtered.length === 0 ? (
               <div className="empty">Sin proveedores</div>
-            ) : filtered.map((p, i) => (
-              <div key={p.id} onClick={() => setSelectedId(p.id)} style={{
-                padding: '10px 13px',
-                borderBottom: i < filtered.length - 1 ? '1px solid var(--hairline)' : 0,
-                cursor: 'pointer',
-                background: selectedId === p.id ? 'var(--surface-2)' : 'transparent',
-                borderLeft: selectedId === p.id ? '3px solid var(--accent)' : '3px solid transparent',
-              }}>
-                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 3 }}>{p.nombre}</div>
+            ) : filtered.map((p) => (
+              <div
+                key={p.id}
+                onClick={() => setSelectedId(p.id)}
+                className={`u-provs-item ${selectedId === p.id ? 'u-provs-item-active' : ''}`}
+              >
+                <div className="u-provs-item-name">{p.nombre}</div>
                 {(p.ubicacion || p.contacto_nombre) && (
                   <div className="muted tiny u-mb-3">
                     {[
@@ -403,10 +397,7 @@ export default function Proveedores() {
                     ].filter(Boolean).join(' · ')}
                   </div>
                 )}
-                <div className="mono" style={{
-                  fontSize: 13, fontWeight: 700,
-                  color: Number(p.saldo_usd) > 0 ? 'var(--neg)' : Number(p.saldo_usd) < 0 ? 'var(--pos)' : 'var(--text-muted)',
-                }}>
+                <div className={`mono u-provs-saldo ${Number(p.saldo_usd) > 0 ? 'u-color-neg' : Number(p.saldo_usd) < 0 ? 'u-color-pos' : 'u-color-muted'}`}>
                   {Number(p.saldo_usd) !== 0 ? fmtUSD(p.saldo_usd) : 'Sin saldo'}
                 </div>
               </div>
@@ -468,7 +459,7 @@ export default function Proveedores() {
                   </button>
                 </div>
               </div>
-              <div className="flex-row" style={{ gap: 8, marginTop: 10, justifyContent: 'flex-end' }}>
+              <div className="flex-row u-flex-gap-8-mt-10-end">
                 <button className="btn btn-sm" onClick={openPago}>
                   <Icons.Dollar size={13} /> Registrar pago
                 </button>
@@ -483,11 +474,7 @@ export default function Proveedores() {
                 Hint visible solo en <=640px para indicar scroll horizontal. */}
             <div className="bulk-spreadsheet-hint">↔ Desliza horizontalmente para ver todas las columnas</div>
             <div className="u-flex-1-overflow-mh-0">
-              <table style={{
-                width: '100%', borderCollapse: 'collapse',
-                tableLayout: 'fixed', minWidth: 860,
-                fontSize: 13,
-              }}>
+              <table className="u-provs-table">
                 <colgroup>
                   <col className="u-w-88" />{/* Fecha        */}
                   <col className="u-w-108" />{/* Tipo         */}
@@ -504,12 +491,7 @@ export default function Proveedores() {
                 <thead>
                   <tr className="u-sticky-header-bar">
                     {['Fecha', 'Tipo', 'Producto', 'Modelo', 'Cap.', 'Color', 'IMEI / Serial', 'Caja', 'Monto USD', '✓', ''].map((h, i) => (
-                      <th key={i} style={{
-                        padding: '7px 8px', fontSize: 11, fontWeight: 700,
-                        letterSpacing: '0.06em', textTransform: 'uppercase',
-                        color: 'var(--text-muted)', textAlign: i === 8 ? 'right' : 'left',
-                        borderBottom: '1px solid var(--border)',
-                      }}>{h}</th>
+                      <th key={i} className={`u-provs-th ${i === 8 ? 'u-text-right' : 'u-text-left'}`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -528,7 +510,7 @@ export default function Proveedores() {
                     const item = m.items?.[0];
                     const extra = m.items?.length > 1 ? ` +${m.items.length - 1}` : '';
                     return (
-                      <tr key={m.id} style={{ borderBottom: '1px solid var(--hairline)', opacity: m._pending ? 0.55 : 1 }}>
+                      <tr key={m.id} className={`u-provs-row ${m._pending ? 'u-opacity-55' : ''}`}>
                         <td className="cell muted mono">{fmtFecha(m.fecha)}</td>
                         <td className="cell"><Status tone={t.tone}>{t.label}</Status></td>
                         <td className="cell">
@@ -589,7 +571,7 @@ export default function Proveedores() {
                        "Cargar compra" y "Pagar". Mantenemos un placeholder
                        discreto al pie para guiar al usuario.                */}
                   <tr>
-                    <td colSpan={11} style={{ padding: '12px 16px', textAlign: 'center', borderTop: '1px dashed var(--border)' }}>
+                    <td colSpan={11} className="u-provs-footer-td">
                       <span className="muted tiny">
                         Para sumar una compra (con stock) o registrar un pago, usá los botones de arriba.
                       </span>
