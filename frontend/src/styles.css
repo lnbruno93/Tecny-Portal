@@ -4513,6 +4513,17 @@ body.modal-open { overflow: hidden; }
 .u-vlist-canje-row            { color: var(--warn); font-size: 11px; margin-top: 4px; }
 .u-vlist-canje-tomado         { margin-top: 1px; font-weight: 600; }
 .u-vlist-btn-confirmar        { margin-right: 6px; padding: 2px 8px; font-size: 11px; font-weight: 600; }
+/* — MercaderiaRecibidaModal (Sprint 88) — */
+.u-merc-banner-saldo          { background: var(--warn-soft, rgba(251,191,36,0.14)); border: 1px solid var(--warn, #fbbf24); border-radius: 6px; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between; font-size: 12px; }
+.u-merc-saldo-value           { font-weight: 600; font-size: 14px; font-variant-numeric: tabular-nums; }
+.u-merc-grid-row              { display: grid; grid-template-columns: minmax(160px, 1.4fr) 130px minmax(100px, 1fr) 60px 90px 60px 55px 90px 90px 28px; gap: 4px; }
+.u-merc-item-row              { align-items: center; padding: 4px 0; border-bottom: 1px solid var(--hairline); }
+.u-merc-subtotal              { text-align: right; padding: 6px 8px; font-family: monospace; font-size: 12px; font-variant-numeric: tabular-nums; }
+.u-merc-remove-btn            { width: 24px; height: 24px; border-radius: 4px; background: transparent; border: none; color: var(--text-muted); cursor: pointer; display: grid; place-items: center; opacity: 1; }
+.u-merc-remove-btn-disabled   { color: var(--text-dim); cursor: not-allowed; opacity: 0.4; }
+.u-merc-preview               { padding: 10px 12px; border-radius: 6px; display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-2); }
+.u-merc-preview-ok            { background: var(--pos-soft, rgba(74,222,128,0.12)); border: 1px solid var(--pos, #4ade80); }
+.u-merc-preview-warn          { background: var(--warn-soft, rgba(251,191,36,0.14)); border: 1px solid var(--warn, #fbbf24); }
 /* — DiffModal (Sprint 59) — */
 .u-diff-modal-body            { padding: 32px 28px 18px; text-align: left; }
 .u-diff-icon-wrap             { text-align: center; margin-bottom: 18px; }
