@@ -4438,6 +4438,14 @@ body.modal-open { overflow: hidden; }
 .u-dashv-etiquetas            { font-size: 11px; margin-top: 10px; }
 .u-color-text                 { color: var(--text); }
 .u-mr-6                       { margin-right: 6px; }
+/* — VentaB2BModal (Sprint 81) — mirror of spreadsheetStyles.js exports */
+.u-b2b-th                     { padding: 6px 6px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-muted); text-align: left; border-bottom: 1px solid var(--border); border-right: 1px solid var(--hairline); background: var(--surface-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.u-catalogos-error-banner     { padding: 8px 12px; margin-bottom: 12px; border-radius: 6px; background: rgba(217,119,6,0.10); color: var(--warn, #d97706); border: 1px solid rgba(217,119,6,0.30); font-size: 12px; }
+.u-b2b-row-dup                { background: rgba(220, 38, 38, 0.08); }
+.u-b2b-row-used               { background: rgba(99,102,241,0.04); }
+.u-opacity-70                 { opacity: 0.7; }
+.u-inp-border-neg             { border-color: var(--neg); }
+.u-b2b-input-perdida          { border-color: var(--neg); background: rgba(220, 38, 38, 0.08); }
 /* — DiffModal (Sprint 59) — */
 .u-diff-modal-body            { padding: 32px 28px 18px; text-align: left; }
 .u-diff-icon-wrap             { text-align: center; margin-bottom: 18px; }

@@ -25,7 +25,10 @@ import { cuentas as cuentasApi, inventario as invApi, cajas as cajasApi, redB2b 
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from './ConfirmModal';
 import AutocompletePicker from './AutocompletePicker';
-import { headerTh as th, catalogosErrorBanner } from '../lib/spreadsheetStyles';
+// spreadsheetStyles removido de este archivo (Sprint 81 CSP).
+// headerTh + catalogosErrorBanner ahora viven como clases CSS:
+// .u-b2b-th + .u-catalogos-error-banner. Los otros consumers (Compra,
+// Cobranza) seguirán importándolos por ahora hasta las próximas sprints.
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #M-11
 import useSpreadsheetRows from '../lib/useSpreadsheetRows'; // #F-5
 import TcWarning from './TcWarning';
@@ -387,7 +390,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
           )}
           {/* #H-12: banner si catálogos fallaron */}
           {catalogosError && (
-            <div style={catalogosErrorBanner}>
+            <div className="u-catalogos-error-banner">
               ⚠ No se pudieron cargar: <strong>{catalogosError.join(', ')}</strong>.
               Cerrá/abrí el modal después de revisar tu conexión.
             </div>
@@ -452,7 +455,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
                   {/* "Costo" agregado 2026-06-09 — informativo, no editable. Permite
                       ver de un vistazo cuánto se gana antes de cargar el precio. */}
                   {['#','Producto *','IMEI','GB','Color','Stock','Costo','Cant. *','Precio *','M.','Subtotal',''].map((h, i) =>
-                    <th key={i} style={{ ...th, textAlign: i === 0 ? 'center' : 'left' }}>{h}</th>
+                    <th key={i} className={'u-b2b-th' + (i === 0 ? ' u-ta-center' : '')}>{h}</th>
                   )}
                 </tr>
               </thead>
@@ -470,11 +473,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
                       // aleatorio) y no tienen un wrapping accesible único.
                       // Sin testid, scopear inputs por fila requiere CSS frágil.
                       data-testid="b2b-item-row"
-                      className="u-tr-b2b-row"
-                      style={{
-                        background: dup ? 'rgba(220, 38, 38, 0.08)'
-                                        : used ? 'rgba(99,102,241,0.04)' : 'transparent',
-                      }}
+                      className={'u-tr-b2b-row' + (dup ? ' u-b2b-row-dup' : used ? ' u-b2b-row-used' : '')}
                       title={dup ? 'IMEI duplicado en otra fila — eliminá una' : undefined}>
                       <td className="u-badge-mini-muted">{idx + 1}</td>
                       <td className="u-p-3-4">
@@ -487,15 +486,15 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
                         />
                       </td>
                       <td className="u-p-3-4">
-                        <input className="cell-inp u-mono" style={{ opacity: r.producto_id ? 0.7 : 1 }}
+                        <input className={'cell-inp u-mono' + (r.producto_id ? ' u-opacity-70' : '')}
                           value={r.imei} readOnly={!!r.producto_id} placeholder="—" />
                       </td>
                       <td className="u-p-3-4">
-                        <input className="cell-inp u-text-right" style={{ opacity: r.producto_id ? 0.7 : 1 }}
+                        <input className={'cell-inp u-text-right' + (r.producto_id ? ' u-opacity-70' : '')}
                           value={r.gb} readOnly={!!r.producto_id} placeholder="—" />
                       </td>
                       <td className="u-p-3-4">
-                        <input className="cell-inp" style={{ opacity: r.producto_id ? 0.7 : 1 }}
+                        <input className={'cell-inp' + (r.producto_id ? ' u-opacity-70' : '')}
                           value={r.color} readOnly={!!r.producto_id} placeholder="—" />
                       </td>
                       <td className="u-td-3-4-right-fs-12-muted">
@@ -511,8 +510,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
                       </td>
                       <td className="u-p-3-4">
                         <input type="number" onKeyDown={blockInvalidNumberKeys} min="1"
-                          className="cell-inp u-text-right"
-                          style={{ borderColor: exceeds ? 'var(--neg)' : 'var(--border)' }}
+                          className={'cell-inp u-text-right' + (exceeds ? ' u-inp-border-neg' : '')}
                           value={r.cantidad}
                           onChange={e => updCell(idx, 'cantidad', e.target.value)} />
                       </td>
@@ -526,11 +524,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
                           const aPerdida = mismaMoneda && precioN > 0 && precioN < Number(r.costo);
                           return (
                             <input type="number" onKeyDown={blockInvalidNumberKeys} min="0"
-                              className="cell-inp u-td-right-fw-700"
-                              style={{
-                                borderColor: aPerdida ? 'var(--neg)' : 'var(--border)',
-                                background:  aPerdida ? 'rgba(220, 38, 38, 0.08)' : 'var(--surface)',
-                              }}
+                              className={'cell-inp u-td-right-fw-700' + (aPerdida ? ' u-b2b-input-perdida' : '')}
                               title={aPerdida ? `Precio menor al costo (${r.costo_moneda || 'USD'} ${r.costo}) — vendés a pérdida` : undefined}
                               value={r.precio_unit} placeholder="0"
                               onChange={e => updCell(idx, 'precio_unit', e.target.value)} />
