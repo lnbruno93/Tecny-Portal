@@ -269,25 +269,15 @@ export default function CommandPalette({ open, onClose }) {
                       key={`${item._type}-${item.id ?? item.path}`}
                       onClick={() => handleSelect(item)}
                       onMouseEnter={() => setActiveIndex(globalIdx)}
-                      className="u-cmd-palette-item"
-                      style={{
-                        background: isActive ? 'var(--accent-soft)' : 'transparent',
-                        color: isActive ? 'var(--accent)' : 'var(--text)',
-                      }}
+                      className={'u-cmd-palette-item' + (isActive ? ' u-cmd-palette-item-active' : '')}
                     >
-                      <span
-                        className="u-cmd-palette-item-icon"
-                        style={{ opacity: isActive ? 1 : 0.6 }}
-                      >
+                      <span className="u-cmd-palette-item-icon">
                         {Icon && <Icon size={16} />}
                       </span>
                       <span className="u-cmd-palette-item-title">
                         {item._type === 'nav' ? item.label : item.label}
                       </span>
-                      <span
-                        className="u-cmd-palette-item-subtitle"
-                        style={{ color: isActive ? 'var(--accent)' : 'var(--text-muted)' }}
-                      >
+                      <span className="u-cmd-palette-item-subtitle">
                         {item._type === 'nav' ? item.desc : item.sublabel}
                       </span>
                       {/* Badge + amount opcionales para items API (estado + total) */}
@@ -295,10 +285,7 @@ export default function CommandPalette({ open, onClose }) {
                         <span className="u-cmd-palette-item-badge">{item.badge}</span>
                       )}
                       {item._type === 'api' && item.amount && (
-                        <span
-                          className="u-cmd-palette-item-amount"
-                          style={{ color: isActive ? 'var(--accent)' : 'var(--text)' }}
-                        >
+                        <span className="u-cmd-palette-item-amount">
                           {item.amount}
                         </span>
                       )}

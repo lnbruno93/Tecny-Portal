@@ -195,17 +195,7 @@ export default function ChangePasswordModal({ open, onClose }) {
 
         <div className="modal-body u-flex-col-gap-14">
           {error && (
-            <div
-              role="alert"
-              style={{
-                padding: '10px 12px',
-                borderRadius: 8,
-                background: 'rgba(239, 68, 68, 0.1)',
-                border: '1px solid rgba(239, 68, 68, 0.3)',
-                color: 'var(--neg)',
-                fontSize: 13,
-              }}
-            >
+            <div role="alert" className="u-cpw-error">
               {error}
             </div>
           )}
@@ -231,11 +221,7 @@ export default function ChangePasswordModal({ open, onClose }) {
                 type="button"
                 onClick={() => setShowCurrent(v => !v)}
                 aria-label={showCurrent ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                style={{
-                  position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
-                  background: 'transparent', border: 'none', cursor: 'pointer',
-                  color: 'var(--text-muted)', fontSize: 12, padding: 4,
-                }}
+                className="u-cpw-eye-btn"
                 tabIndex={-1}
               >
                 {showCurrent ? '🙈' : '👁'}
@@ -268,11 +254,7 @@ export default function ChangePasswordModal({ open, onClose }) {
                 type="button"
                 onClick={() => setShowNew(v => !v)}
                 aria-label={showNew ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                style={{
-                  position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
-                  background: 'transparent', border: 'none', cursor: 'pointer',
-                  color: 'var(--text-muted)', fontSize: 12, padding: 4,
-                }}
+                className="u-cpw-eye-btn"
                 tabIndex={-1}
               >
                 {showNew ? '🙈' : '👁'}
@@ -329,7 +311,7 @@ export default function ChangePasswordModal({ open, onClose }) {
                 disabled={loading}
                 placeholder="6 dígitos o recovery code"
                 aria-invalid={!!fieldErrors.twofaCode}
-                style={{ width: '100%', fontFamily: 'var(--font-mono, monospace)', letterSpacing: '0.1em' }}
+                className="u-cpw-2fa-input"
               />
               {fieldErrors.twofaCode ? (
                 <div className="u-color-neg-fs-12-mt-4">

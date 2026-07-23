@@ -20,7 +20,10 @@ import { cuentas as cuentasApi, cajas as cajasApi } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from './ConfirmModal';
 import AutocompletePicker from './AutocompletePicker';
-import { headerTh as th, catalogosErrorBanner } from '../lib/spreadsheetStyles';
+// Sprint 95 CSP: headerTh + catalogosErrorBanner ahora viven como clases
+// CSS (.u-b2b-th + .u-catalogos-error-banner). Sprint 81 los migró en
+// VentaB2BModal, y ahora también en Cobranza. spreadsheetStyles.js queda
+// para CompraProveedorModal (último consumer).
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #M-11
 import useSpreadsheetRows from '../lib/useSpreadsheetRows'; // #F-5
 import TcWarning from './TcWarning';
@@ -205,7 +208,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
         <div className="modal-body u-modal-body-82vh">
           {/* #H-12: banner si catálogos fallaron */}
           {catalogosError && (
-            <div style={catalogosErrorBanner}>
+            <div className="u-catalogos-error-banner">
               ⚠ No se pudieron cargar: <strong>{catalogosError.join(', ')}</strong>.
               Cerrá/abrí el modal después de revisar tu conexión.
             </div>
@@ -274,7 +277,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
               <thead>
                 <tr>
                   {['#','Cliente *','Saldo','Monto *','Caja *','TC','Subtotal USD','Tipo',''].map((h, i) =>
-                    <th key={i} style={{ ...th, textAlign: i === 0 ? 'center' : 'left' }}>{h}</th>
+                    <th key={i} className={'u-b2b-th' + (i === 0 ? ' u-ta-center' : '')}>{h}</th>
                   )}
                 </tr>
               </thead>
@@ -294,8 +297,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
                     // la planilla arranca con 8 filas vacías; el spec scopea cada
                     // fila por índice (nth(0), nth(1)) para no acoplarse al
                     // texto del cliente o al placeholder.
-                    <tr key={r._id} data-testid="cobranza-row" className="u-tr-b2b-row"
-                      style={{ background: used ? 'rgba(99,102,241,0.04)' : 'transparent' }}>
+                    <tr key={r._id} data-testid="cobranza-row" className={'u-tr-b2b-row' + (used ? ' u-b2b-row-used' : '')}>
                       <td className="u-badge-mini-muted">{idx + 1}</td>
                       <td className="u-p-3-4">
                         <ClientePicker
@@ -316,8 +318,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
                       </td>
                       <td className="u-p-3-4">
                         <input type="number" onKeyDown={blockInvalidNumberKeys} min="0"
-                          className="cell-inp u-td-right-fw-700"
-                          style={{ borderColor: sobrepago ? 'var(--warn, #d97706)' : 'var(--border)' }}
+                          className={'cell-inp u-td-right-fw-700' + (sobrepago ? ' u-inp-border-warn' : '')}
                           value={r.monto} placeholder="0"
                           onChange={e => updCell(idx, 'monto', e.target.value)} />
                       </td>
