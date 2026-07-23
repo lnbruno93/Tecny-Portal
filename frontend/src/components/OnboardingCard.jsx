@@ -137,23 +137,13 @@ export default function OnboardingCard() {
   if (allDone) return null;
 
   return (
-    <div
-      role="region"
-      aria-label="Primeros pasos"
-      style={{
-        background: 'rgba(14, 165, 233, 0.06)',
-        border: '1px solid rgba(14, 165, 233, 0.18)',
-        borderRadius: 12,
-        padding: '20px 24px',
-        marginBottom: 16,
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
+    <div role="region" aria-label="Primeros pasos" className="u-onboard-region">
+      <div className="u-onboard-header">
         <div>
-          <h3 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 700, color: 'var(--text)' }}>
+          <h3 className="u-onboard-title">
             ¡Bienvenido a Tecny!
           </h3>
-          <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
+          <p className="u-onboard-subtitle">
             Configuremos lo básico para que empieces a operar. 3 pasos rápidos:
           </p>
         </div>
@@ -162,16 +152,7 @@ export default function OnboardingCard() {
           onClick={handleDismiss}
           aria-label="Saltar tour"
           title="Saltar tour"
-          style={{
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            color: 'var(--text-muted)',
-            padding: 6,
-            borderRadius: 6,
-            display: 'flex',
-            alignItems: 'center',
-          }}
+          className="u-onboard-dismiss"
         >
           <IconX />
         </button>
@@ -182,15 +163,7 @@ export default function OnboardingCard() {
             user todavía no verificó. NO es un Link (no hay pantalla destino),
             sino una row con CTA inline "Reenviar". */}
         {!emailVerified && (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              padding: '10px 12px',
-              borderRadius: 8,
-            }}
-          >
+          <div className="u-onboard-step-row">
             <IconCheckCircle done={false} />
             <div className="u-flex-1">
               <div className="u-fs-14-fw-600">
@@ -218,27 +191,11 @@ export default function OnboardingCard() {
             <Link
               key={item.key}
               to={item.href}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                padding: '10px 12px',
-                borderRadius: 8,
-                textDecoration: 'none',
-                color: 'var(--text)',
-                opacity: done ? 0.5 : 1,
-                transition: 'background 0.15s',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(14, 165, 233, 0.08)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+              className={'u-onboard-step-link' + (done ? ' u-onboard-step-done' : '')}
             >
               <IconCheckCircle done={done} />
               <div className="u-flex-1">
-                <div style={{
-                  fontWeight: 600,
-                  fontSize: 14,
-                  textDecoration: done ? 'line-through' : 'none',
-                }}>
+                <div className={'u-onboard-item-label' + (done ? ' u-onboard-item-label-done' : '')}>
                   {item.label}
                 </div>
                 <div className="u-fs-125-muted-mt-2">

@@ -67,11 +67,14 @@ describe('OnboardingCard', () => {
     });
     renderCard();
     const productoLabel = await screen.findByText(/agregá tu primer producto/i);
-    // line-through aplicado.
-    expect(productoLabel).toHaveStyle({ textDecoration: 'line-through' });
-    // Pendiente NO tiene line-through.
+    // 2026-07-23 (CSP Sprint 83): la mecánica del line-through pasó de inline
+    // `style={{ textDecoration }}` a una clase `.u-onboard-item-label-done`.
+    // Los tests ya no pueden usar toHaveStyle (mide computed style + inline).
+    // toHaveClass es la verificación semántica correcta ahora.
+    expect(productoLabel).toHaveClass('u-onboard-item-label-done');
+    // Pendiente NO tiene esa clase.
     expect(screen.getByText(/creá tu primer contacto/i))
-      .toHaveStyle({ textDecoration: 'none' });
+      .not.toHaveClass('u-onboard-item-label-done');
   });
 
   it('los 3 completos → card NO se renderiza', async () => {
