@@ -1784,12 +1784,7 @@ export default function Inventario() {
                       (rowIndex + 2 porque rows[0] es header y rowIndex es
                       0-based; mostramos números humanos = línea en Excel). */}
                   {importDupImeis.length > 0 && (
-                    <div style={{
-                      marginBottom: 10, padding: '8px 12px',
-                      background: 'rgba(239, 68, 68, 0.12)',
-                      border: '1px solid rgba(239, 68, 68, 0.45)',
-                      borderRadius: 6, color: 'var(--neg)', fontSize: 12,
-                    }} role="alert">
+                    <div className="u-inv-import-block-alert" role="alert">
                       <div className="u-fw-700-mb-4">
                         ⚠ {importDupImeis.length} IMEI{importDupImeis.length === 1 ? '' : 's'} duplicado{importDupImeis.length === 1 ? '' : 's'} en este archivo
                       </div>
@@ -1811,13 +1806,7 @@ export default function Inventario() {
                       con error simplemente no entran a ningún grupo (el agrupador
                       las ignora). El usuario decide si seguir o corregir la planilla. */}
                   {importErrores.length > 0 && (
-                    <div style={{
-                      fontSize: 11, color: 'var(--neg)', maxHeight: 80, overflowY: 'auto',
-                      marginBottom: 10, padding: '6px 10px',
-                      background: 'rgba(239, 68, 68, 0.06)',
-                      border: '1px solid rgba(239, 68, 68, 0.18)',
-                      borderRadius: 6,
-                    }}>
+                    <div className="u-inv-import-error-list">
                       <strong>Filas con error (se omiten):</strong>
                       {importErrores.slice(0, 20).map((r, i) => (
                         <div key={i}>· {r.body.nombre || 'sin nombre'}: {r.error}</div>
@@ -1831,14 +1820,7 @@ export default function Inventario() {
                       de recibir mercadería). Color ámbar para distinguir de error
                       rojo — el usuario ve que puede seguir sin corregir. */}
                   {importWarnings.length > 0 && (
-                    <div style={{
-                      fontSize: 11, color: 'var(--warn, #92400e)',
-                      maxHeight: 80, overflowY: 'auto',
-                      marginBottom: 10, padding: '6px 10px',
-                      background: 'rgba(217, 119, 6, 0.08)',
-                      border: '1px solid rgba(217, 119, 6, 0.28)',
-                      borderRadius: 6,
-                    }}>
+                    <div className="u-inv-import-warning-list">
                       <strong>Filas con aviso (se importan igual):</strong>
                       {importWarnings.slice(0, 20).map((r, i) => (
                         <div key={i}>· {r.body.nombre || 'sin nombre'}: {r.warning}</div>
@@ -1850,26 +1832,15 @@ export default function Inventario() {
                   {/* ── Cards de compras a generar (una por proveedor) ── */}
                   {importGroups.length > 0 && (
                     <div className="u-mt-4">
-                      <div style={{
-                        fontSize: 11, fontWeight: 700, letterSpacing: '0.04em',
-                        color: 'var(--text-muted)', marginBottom: 8,
-                      }}>
+                      <div className="u-inv-import-section-label">
                         COMPRAS A GENERAR ({importGroups.length})
                       </div>
                       {importGroups.map(g => {
                         const monedaSel = g.moneda;
                         const provExistente = !!g.proveedor_id;
                         return (
-                          <div key={g.key} style={{
-                            border: '1px solid var(--border)', borderRadius: 8,
-                            padding: 12, marginBottom: 10,
-                            background: 'var(--surface-2, rgba(255,255,255,0.02))',
-                          }}>
-                            <div style={{
-                              fontSize: 12, fontWeight: 700,
-                              color: 'var(--accent)', marginBottom: 6,
-                              display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-                            }}>
+                          <div key={g.key} className="u-inv-import-provider-card">
+                            <div className="u-inv-import-provider-header">
                               <span>📦 {g.proveedor_label}</span>
                               <span className="muted tiny u-fw-500">
                                 {g.rows.length} producto{g.rows.length === 1 ? '' : 's'}
@@ -2171,14 +2142,8 @@ function HistorialModalContent({ producto, data, loading, error, categorias, dep
           {!loading && !error && data && (
             <>
               {/* ── Compra de origen ── */}
-              <div style={{
-                border: '1px solid var(--border)', borderRadius: 8,
-                padding: 14, marginBottom: 12,
-              }}>
-                <div style={{
-                  fontSize: 11, fontWeight: 700, letterSpacing: '0.05em',
-                  color: 'var(--text-muted)', marginBottom: 10,
-                }}>
+              <div className="u-inv-historial-box u-mb-12">
+                <div className="u-inv-historial-section-label">
                   📦 COMPRA DE ORIGEN
                 </div>
                 {data.compra ? (
@@ -2203,13 +2168,8 @@ function HistorialModalContent({ producto, data, loading, error, categorias, dep
               </div>
 
               {/* ── Venta ── */}
-              <div style={{
-                border: '1px solid var(--border)', borderRadius: 8, padding: 14,
-              }}>
-                <div style={{
-                  fontSize: 11, fontWeight: 700, letterSpacing: '0.05em',
-                  color: 'var(--text-muted)', marginBottom: 10,
-                }}>
+              <div className="u-inv-historial-box">
+                <div className="u-inv-historial-section-label">
                   🏷 VENTA
                 </div>
                 {data.venta ? (
@@ -2304,7 +2264,7 @@ const InventarioRow = memo(function InventarioRow({
   const handleDeleteRow = useCallback(() => handleDelete(p), [handleDelete, p]);
 
   return (
-    <tr style={p.oculto ? { opacity: 0.55 } : undefined}>
+    <tr className={p.oculto ? 'u-tr-oculto' : undefined}>
       {/* Botón Historial — ÚNICA forma de abrir el modal (decisión
           UX 2026-06-15): toda la grilla son EditableCells, así que
           click en fila chocaría con edit-inline. Una columna
