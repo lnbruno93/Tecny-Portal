@@ -4382,6 +4382,18 @@ body.modal-open { overflow: hidden; }
 .u-inv-historial-box          { border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
 .u-inv-historial-section-label { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 10px; }
 .u-tr-oculto                  { opacity: 0.55; }
+/* — Ventas retail (Sprint 76) — */
+.u-ventas-item-grid           { --cols: 1fr 60px 90px 78px auto; gap: 6px; align-items: center; }
+.u-ventas-canje-card          { padding: 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; }
+.u-ventas-canje-check         { gap: 6px; font-size: 12px; cursor: pointer; }
+.u-cursor-not-allowed         { cursor: not-allowed; }
+.u-ventas-cc-pago-grid        { display: grid; grid-template-columns: 1fr 90px 78px 78px auto; gap: 6px; align-items: center; }
+.u-ventas-vuelto-tc-grid      { margin-top: 8px; display: grid; grid-template-columns: 1fr 2fr; gap: 8px; align-items: center; }
+.u-ventas-info-box            { background: var(--accent-soft); border: 1px solid var(--accent-ring); border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; font-size: 12.5px; line-height: 1.5; }
+/* Nota: pago-grid, desglose-grid, manual-chip y vuelto-header REUSAN las
+   clases .u-envios-* — la estructura HTML del modal Nueva Venta y del
+   modal de Envíos es idéntica en esas 4 secciones (mismo template
+   compartido conceptualmente). Si algún día divergen, split. */
 /* — DiffModal (Sprint 59) — */
 .u-diff-modal-body            { padding: 32px 28px 18px; text-align: left; }
 .u-diff-icon-wrap             { text-align: center; margin-bottom: 18px; }
