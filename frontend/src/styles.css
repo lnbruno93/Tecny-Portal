@@ -4467,6 +4467,19 @@ body.modal-open { overflow: hidden; }
 .u-onboard-step-done          { opacity: 0.5; }
 .u-onboard-item-label         { font-weight: 600; font-size: 14px; }
 .u-onboard-item-label-done    { text-decoration: line-through; }
+/* — Conciliacion (Sprint 84) — */
+.u-conc-row-form              { gap: 12px; margin-bottom: 12px; }
+.u-conc-row-mapping           { gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+.u-conc-actions               { gap: 8px; margin-top: 12px; }
+.u-conc-header-metadata       { gap: 24px; flex-wrap: wrap; }
+.u-conc-progress              { margin-left: auto; text-align: right; }
+.u-conc-linea-row             { transition: opacity 120ms; }
+.u-conc-linea-matched         { background: rgba(34,197,94,0.05); }
+.u-conc-linea-ignorada        { background: rgba(0,0,0,0.03); }
+.u-conc-linea-pendiente       { background: rgba(234,179,8,0.05); }
+.u-conc-linea-saving          { opacity: 0.55; }
+.u-conc-monto                 { text-align: right; font-weight: 600; }
+.u-conc-match-select          { height: 28px; font-size: 12px; min-width: 280px; }
 /* — DiffModal (Sprint 59) — */
 .u-diff-modal-body            { padding: 32px 28px 18px; text-align: left; }
 .u-diff-icon-wrap             { text-align: center; margin-bottom: 18px; }
