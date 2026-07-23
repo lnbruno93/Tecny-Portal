@@ -116,14 +116,11 @@ export function RedB2BConciliacionContent({
           </div>
         ) : (
           <section className="card u-p-16">
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+            <ul className="u-list-reset">
               {partnerships.map((p) => {
                 const partner = p.partner || p.tenant_a || p.tenant_b;
                 return (
-                  <li key={p.id} style={{
-                    padding: 12, borderBottom: '1px solid var(--border, #e5e7eb)',
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  }}>
+                  <li key={p.id} className="u-partnership-row">
                     <div>
                       <strong>{partner?.nombre || `Partnership #${p.id}`}</strong>
                       <div className="muted u-fs-13">
@@ -161,17 +158,16 @@ export function RedB2BConciliacionContent({
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
+      <div className="u-flex-between-start-wrap-mb-12">
         <div>
           <button
             type="button"
-            className="btn-link"
-            style={{ fontSize: 14, background: 'transparent', border: 0, padding: 0, cursor: 'pointer' }}
+            className="btn-link u-btn-link-inline"
             onClick={handleClearPartnership}
           >
             ← Conciliación
           </button>
-          <h2 style={{ marginBottom: 4, marginTop: 6 }}>Conciliación con {partner?.nombre || '—'}</h2>
+          <h2 className="u-mb-4-mt-6">Conciliación con {partner?.nombre || '—'}</h2>
           <div className="muted u-fs-13">
             Partnership #{partnership.id} · Datos en vivo
           </div>
@@ -202,8 +198,8 @@ export function RedB2BConciliacionContent({
       <section className="card u-p-16-mb-16">
         <h3 className="u-mt-0-fs-16">Conciliación bilateral</h3>
         {saldos_bilaterales.difieren ? (
-          <div style={{ background: 'var(--red-bg, #fef2f2)', padding: 12, borderRadius: 4, marginBottom: 12 }}>
-            <strong style={{ color: 'var(--red-fg, #991b1b)' }}>
+          <div className="u-alert-red-box">
+            <strong className="u-color-red-fg">
               ⚠ Saldos divergentes
             </strong>
             <p className="u-m-8-0-0-0-fs-14">
@@ -212,8 +208,8 @@ export function RedB2BConciliacionContent({
             </p>
           </div>
         ) : (
-          <div style={{ background: 'var(--green-bg, #f0fdf4)', padding: 12, borderRadius: 4, marginBottom: 12 }}>
-            <strong style={{ color: 'var(--green-fg, #166534)' }}>
+          <div className="u-alert-green-box">
+            <strong className="u-color-green-fg">
               ✓ Saldos coincidentes
             </strong>
             <p className="u-m-8-0-0-0-fs-14">
@@ -292,16 +288,16 @@ export default function RedB2BConciliacion() {
 }
 
 function KpiBox({ label, value, sub, color }) {
-  const colorStyle = color === 'green'
-    ? { color: 'var(--green-fg, #166534)' }
+  const colorClass = color === 'green'
+    ? 'u-color-green-fg'
     : color === 'orange'
-      ? { color: 'var(--orange-fg, #c2410c)' }
-      : {};
+      ? 'u-color-orange-fg'
+      : '';
   return (
     <div className="u-p-12-bg-subtle-r-4">
       <div className="muted u-fs-12-mb-4">{label}</div>
-      <div style={{ fontSize: 18, fontWeight: 600, ...colorStyle }}>{value}</div>
-      {sub && <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>{sub}</div>}
+      <div className={`u-kpi-value ${colorClass}`}>{value}</div>
+      {sub && <div className="muted u-fs-12-mt-2">{sub}</div>}
     </div>
   );
 }
