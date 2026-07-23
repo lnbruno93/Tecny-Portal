@@ -157,13 +157,16 @@ export default function EditableCell({
     cancel();
   }
 
+  // Clase de alineación derivada del prop `align` — evita el inline
+  // textAlign (CSP hardening). Solo 3 valores válidos: left/right/center.
+  const alignClass = align === 'right' ? 'u-ta-right' : align === 'center' ? 'u-ta-center' : 'u-ta-left';
+
   // ── Render: modo LECTURA ──
   if (!editing) {
     const shown = display != null ? display : (value == null || value === '' ? placeholder : String(value));
     return (
       <td
-        className={`editable-cell ${className}`}
-        style={{ textAlign: align, cursor: disabled ? 'default' : 'text', position: 'relative' }}
+        className={`editable-cell u-pos-relative ${alignClass} ${disabled ? 'u-cur-default' : 'u-cur-text'} ${className}`}
         onClick={startEdit}
         title={title || (disabled ? '' : 'Click para editar')}
         data-testid="editable-cell"
@@ -174,26 +177,15 @@ export default function EditableCell({
   }
 
   // ── Render: modo EDICIÓN ──
-  const commonInputStyle = {
-    width: '100%',
-    padding: '4px 6px',
-    fontSize: 13,
-    border: '1px solid var(--accent)',
-    borderRadius: 4,
-    background: 'var(--surface)',
-    color: 'var(--text)',
-    boxSizing: 'border-box',
-    outline: 'none',
-    textAlign: align,
-  };
+  const inputClass = `editable-cell-input ${alignClass}`;
 
   // ── select (enums fijos) ──
   if (type === 'select') {
     return (
-      <td className={`editable-cell editing ${className}`} style={{ textAlign: align, padding: 2 }}>
+      <td className={`editable-cell editing editable-cell-td ${alignClass} ${className}`}>
         <select
           ref={inputRef}
-          style={commonInputStyle}
+          className={inputClass}
           value={draft}
           disabled={saving}
           onChange={e => setDraft(e.target.value)}
@@ -214,11 +206,11 @@ export default function EditableCell({
   // ── combo (FK con búsqueda) ──
   if (type === 'combo') {
     return (
-      <td className={`editable-cell editing ${className}`} style={{ textAlign: align, padding: 2, position: 'relative' }} ref={wrapRef}>
+      <td className={`editable-cell editing editable-cell-td u-pos-relative ${alignClass} ${className}`} ref={wrapRef}>
         <input
           ref={inputRef}
           type="text"
-          style={commonInputStyle}
+          className={inputClass}
           value={comboQuery}
           disabled={saving}
           placeholder="Buscar…"
@@ -244,23 +236,13 @@ export default function EditableCell({
           {...inputProps}
         />
         {comboOpen && filteredOptions.length > 0 && (
-          <div className="combo-dropdown" style={{
-            position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
-            maxHeight: 180, overflowY: 'auto',
-            background: 'var(--surface)', border: '1px solid var(--hairline)',
-            borderRadius: 4, boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
-            marginTop: 2,
-          }}>
+          <div className="combo-dropdown u-combo-dropdown">
             {filteredOptions.map((o, i) => (
               <div
                 key={o.value}
                 onMouseDown={e => { e.preventDefault(); commit(o.value); }}
                 onMouseEnter={() => setComboFocus(i)}
-                style={{
-                  padding: '5px 8px', fontSize: 13, cursor: 'pointer',
-                  background: i === comboFocus ? 'var(--surface-2)' : 'transparent',
-                  color: 'var(--text)',
-                }}
+                className={`u-combo-item ${i === comboFocus ? 'u-combo-item-active' : ''}`}
               >
                 {o.label}
               </div>
@@ -268,12 +250,7 @@ export default function EditableCell({
           </div>
         )}
         {comboOpen && filteredOptions.length === 0 && comboQuery.trim() && (
-          <div style={{
-            position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
-            padding: '6px 8px', fontSize: 12,
-            background: 'var(--surface)', border: '1px solid var(--hairline)',
-            borderRadius: 4, color: 'var(--text-muted)',
-          }}>
+          <div className="u-combo-empty">
             Sin coincidencias
           </div>
         )}
@@ -283,11 +260,11 @@ export default function EditableCell({
 
   // ── text / number ──
   return (
-    <td className={`editable-cell editing ${className}`} style={{ textAlign: align, padding: 2 }}>
+    <td className={`editable-cell editing editable-cell-td ${alignClass} ${className}`}>
       <input
         ref={inputRef}
         type={type === 'number' ? 'number' : 'text'}
-        style={commonInputStyle}
+        className={inputClass}
         value={draft}
         disabled={saving}
         onChange={e => setDraft(e.target.value)}
