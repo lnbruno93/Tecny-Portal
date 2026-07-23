@@ -4394,6 +4394,17 @@ body.modal-open { overflow: hidden; }
    clases .u-envios-* — la estructura HTML del modal Nueva Venta y del
    modal de Envíos es idéntica en esas 4 secciones (mismo template
    compartido conceptualmente). Si algún día divergen, split. */
+/* — Shell (Sprint 77) — */
+.u-shell-update-banner        { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; background: var(--accent); color: var(--accent-ink); font-size: 13px; font-weight: 500; }
+.u-shell-update-hint          { opacity: 0.75; font-weight: 400; margin-left: 6px; }
+.u-shell-update-btn-primary   { background: var(--accent-ink); color: var(--accent); border: none; border-radius: 6px; padding: 4px 12px; font-weight: 700; cursor: pointer; font-size: 12px; }
+.u-shell-update-btn-dismiss   { background: transparent; color: var(--accent-ink); border: 1px solid var(--accent-ink); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 12px; opacity: 0.75; }
+.u-shell-nomodules-empty      { padding: 20px 16px; font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+.u-shell-badge-info           { background: var(--accent); color: #fff; }
+.u-shell-badge-alert          { background: var(--neg); color: #fff; }
+.u-cursor-default             { cursor: default; }
+.u-shell-back-arrow           { font-size: 18px; line-height: 1; }
+.u-shell-country-flag         { margin-right: 6px; cursor: help; font-size: 14px; line-height: 1; }
 /* — DiffModal (Sprint 59) — */
 .u-diff-modal-body            { padding: 32px 28px 18px; text-align: left; }
 .u-diff-icon-wrap             { text-align: center; margin-bottom: 18px; }
