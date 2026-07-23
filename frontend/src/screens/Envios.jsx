@@ -929,8 +929,7 @@ export default function Envios() {
             <Icons.ChevronRight size={14} />
           </button>
           <button
-            className="btn btn-sm"
-            style={dateFilter === todayStr() ? { background: 'var(--accent-soft)', color: 'var(--accent)' } : {}}
+            className={'btn btn-sm' + (dateFilter === todayStr() ? ' u-envios-today-active' : '')}
             onClick={() => setDateFilter(todayStr())}
           >
             Hoy
@@ -1001,27 +1000,15 @@ export default function Envios() {
           el grid inline `340px 1fr` dejaba ~10px de detalle en S20/SE
           —inusable. */}
       {!loading && (
-        <div
-          className="split-master-detail"
-          style={{ '--master-width': '340px', gap: 12 }}
-        >
+        <div className="split-master-detail u-envios-master-detail">
           {/* ── Left: envío list ── */}
-          <div
-            className="stack"
-            style={{
-              gap: 8,
-              // svh (small viewport height) en lugar de vh: en iOS Safari
-              // el URL bar dinámico recorta vh cuando aparece y vuelve a
-              // expandirse al hacer scroll → la lista pegaba saltos.
-              // svh refleja el viewport mínimo (sin URL bar) y es estable.
-              // Browser support: Safari 15.4+, Chrome 108+, Firefox 101+
-              // (~98% global). El portal ya usa svh en otros lugares
-              // (styles.css:1788, 2047).
-              maxHeight: 'calc(100svh - 340px)',
-              overflowY: 'auto',
-              paddingRight: 2,
-            }}
-          >
+          {/* svh (small viewport height) en lugar de vh: en iOS Safari
+              el URL bar dinámico recorta vh cuando aparece y vuelve a
+              expandirse al hacer scroll → la lista pegaba saltos.
+              svh refleja el viewport mínimo (sin URL bar) y es estable.
+              Browser support: Safari 15.4+, Chrome 108+, Firefox 101+
+              (~98% global). El portal ya usa svh en otros lugares. */}
+          <div className="stack u-envios-list-stack">
             {filtered.length === 0 && (
               // 2026-06-25 UX-2 (audit pre-live): empty state con CTA + distinción
               // entre "sin envíos cargados" y "sin resultados para los filtros".
@@ -1063,21 +1050,12 @@ export default function Envios() {
               return (
                 <div
                   key={e.id}
-                  className="card card-tight"
+                  className={'card card-tight u-envios-card' + (isSelected ? ' u-envios-card-active' : '')}
                   onClick={() => setSelectedId(e.id)}
-                  style={{
-                    cursor: 'pointer',
-                    borderColor: isSelected ? 'var(--accent)' : undefined,
-                    background: isSelected ? 'var(--surface-2)' : undefined,
-                    borderLeft: isSelected ? '3px solid var(--accent)' : '3px solid transparent',
-                  }}
                 >
                   <div className="flex-between u-mb-8">
                     <div className="flex-row u-gap-8">
-                      <span
-                        className="mono tiny"
-                        className="u-fw-700-accent-ls-04"
-                      >
+                      <span className="mono tiny u-fw-700-accent-ls-04">
                         #{e.id}
                       </span>
                       {prioridadBadge(e.prioridad)}
@@ -1127,10 +1105,7 @@ export default function Envios() {
               <div className="card-hd">
                 <div>
                   <div className="u-flex-center-gap-8">
-                    <span
-                      className="mono"
-                      className="u-fw-700-accent-fs-13"
-                    >
+                    <span className="mono u-fw-700-accent-fs-13">
                       Envío #{selected.id}
                     </span>
                     {estadoBadge(selected.estado)}
@@ -1148,26 +1123,8 @@ export default function Envios() {
                     ['Dirección', selected.direccion + (selected.barrio ? ' · ' + selected.barrio : '')],
                     selected.operador && ['Operador', selected.operador],
                   ].filter(Boolean).map(([label, value]) => (
-                    <div
-                      key={label}
-                      style={{
-                        display: 'flex',
-                        gap: 12,
-                        alignItems: 'flex-start',
-                        fontSize: 13,
-                      }}
-                    >
-                      <span
-                        className="muted"
-                        style={{
-                          minWidth: 72,
-                          fontWeight: 600,
-                          fontSize: 11,
-                          letterSpacing: '0.06em',
-                          textTransform: 'uppercase',
-                          paddingTop: 1,
-                        }}
-                      >
+                    <div key={label} className="u-envios-data-row">
+                      <span className="muted u-envios-data-label">
                         {label}
                       </span>
                       <span className="u-fw-500">{value}</span>
@@ -1176,34 +1133,14 @@ export default function Envios() {
                 </div>
 
                 {selected.notas && (
-                  <div
-                    style={{
-                      marginTop: 12,
-                      padding: '10px 12px',
-                      background: 'var(--warn-soft, rgba(234,179,8,0.08))',
-                      borderLeft: '3px solid var(--warn)',
-                      borderRadius: 6,
-                      fontSize: 12.5,
-                    }}
-                  >
+                  <div className="u-envios-note">
                     <strong>Nota:</strong> {selected.notas}
                   </div>
                 )}
               </div>
 
               {/* Items section label */}
-              <div
-                style={{
-                  padding: '10px 18px',
-                  background: 'var(--bg-elev)',
-                  borderBottom: '1px solid var(--border)',
-                  fontSize: 11,
-                  fontWeight: 700,
-                  letterSpacing: '0.10em',
-                  textTransform: 'uppercase',
-                  color: 'var(--text-muted)',
-                }}
-              >
+              <div className="u-envios-section-label">
                 Items del envío ({(selected.items || []).length})
               </div>
 
@@ -1212,14 +1149,10 @@ export default function Envios() {
                 {(selected.items || []).length === 0 && (
                   <div className="empty">Sin items</div>
                 )}
-                {(selected.items || []).map((it, i, a) => (
-                  <div
-                    key={i}
-                    style={{
-                      padding: '12px 18px',
-                      borderBottom: i < a.length - 1 ? '1px solid var(--hairline)' : 0,
-                    }}
-                  >
+                {(selected.items || []).map((it, i) => (
+                  <div key={i} className="u-envios-item-row">
+                    {/* borderBottom quitado en :last-child vía CSS — evita
+                        depender de `i < a.length - 1` inline. */}
                     <div className="flex-between">
                       <div className="flex-row u-gap-10">
                         {it.tipo === 'producto' ? (
@@ -1278,8 +1211,7 @@ export default function Envios() {
                   <Icons.Edit size={13} /> Editar
                 </button>
                 <button
-                  className="btn btn-sm"
-                  className="u-ml-auto-color-neg"
+                  className="btn btn-sm u-ml-auto-color-neg"
                   disabled={deletingId === selected.id}
                   onClick={() => handleDelete(selected.id)}
                 >
@@ -1289,18 +1221,7 @@ export default function Envios() {
               </div>
             </div>
           ) : (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                height: 200,
-                color: 'var(--text-muted)',
-                fontSize: 13,
-                border: '1px dashed var(--border)',
-                borderRadius: 12,
-              }}
-            >
+            <div className="u-envios-empty-detail">
               Seleccioná un envío
             </div>
           )}
@@ -1455,7 +1376,7 @@ export default function Envios() {
                                   → fila de controles (precio venta + moneda + ✕). */}
                           {!it.producto_id ? (
                             // 2026-06-24 mobile lote C: .item-grid responsive
-                            <div className="item-grid" style={{ '--cols': '1fr 140px 90px auto', gap: 8, alignItems: 'end' }}>
+                            <div className="item-grid u-envios-item-grid">
                               <div className="field u-mb-0-relative">
                                 <label className="field-label muted tiny">Buscar producto del inventario <span>(nombre, IMEI, color, GB…)</span></label>
                                 <input className="input" placeholder="Empezá a tipear…"
@@ -1517,10 +1438,7 @@ export default function Envios() {
                                   derecha. Los chips quedan baseline-alineados con los inputs
                                   gracias al paddingBottom que compensa la altura del label.
                                   2026-06-24 mobile lote C: .item-grid responsive en <=520px. */}
-                              <div className="item-grid" style={{
-                                '--cols': '1fr 140px 90px auto',
-                                gap: 10, alignItems: 'end',
-                              }}>
+                              <div className="item-grid u-envios-item-grid-picked">
                                 <div className="u-flex-wrap-gap-8-center-pb-7">
                                   {it._gb && <span className="badge">{gbLabel(it._gb)}</span>}
                                   {it._color && <span className="badge">{it._color}</span>}
@@ -1594,11 +1512,7 @@ export default function Envios() {
                         }
                         return (
                           <div key={it._id}>
-                            <div style={{
-                              display: 'grid',
-                              gridTemplateColumns: showTc ? '1fr 110px 90px auto' : '1fr 110px auto',
-                              gap: 6, alignItems: 'center',
-                            }}>
+                            <div className={'u-envios-pago-grid' + (showTc ? ' u-envios-pago-grid-tc' : '')}>
                               <select className="input" value={it.es_cuenta_corriente ? '__CC__' : it.metodo_pago_id}
                                       onChange={e => pickCajaPago(idx, e.target.value)}>
                                 <option value="">Método…</option>
@@ -1618,19 +1532,17 @@ export default function Envios() {
                                   <input
                                     type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                                     data-testid="envio-pago-monto"
-                                    className="input mono" placeholder="730.000"
+                                    className="input mono u-pl-22" placeholder="730.000"
                                     value={it.monto}
                                     onChange={e => setPagoArsAmount(idx, e.target.value)}
-                                    className="u-pl-22"
                                   />
                                 ) : (
                                   <input
                                     type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                                     data-testid="envio-pago-monto"
-                                    className="input mono" placeholder="500"
+                                    className="input mono u-pl-36" placeholder="500"
                                     value={derivedUsd}
                                     onChange={e => setPagoUsd(idx, e.target.value)}
-                                    className="u-pl-36"
                                   />
                                 )}
                               </div>
@@ -1639,10 +1551,9 @@ export default function Envios() {
                                   <span className="u-input-icon-abs">TC</span>
                                   <input
                                     type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
-                                    className="input mono" placeholder="1460"
+                                    className="input mono u-pl-30" placeholder="1460"
                                     value={it.tc}
                                     onChange={e => setPagoTc(idx, e.target.value)}
-                                    className="u-pl-30"
                                   />
                                 </div>
                               )}
@@ -1651,25 +1562,14 @@ export default function Envios() {
                               </button>
                             </div>
                             {showDesglose && (
-                              <div style={{
-                                marginTop: 8, display: 'grid',
-                                gridTemplateColumns: '1fr 1fr 1fr',
-                                gap: 10, fontSize: 12, alignItems: 'start',
-                                paddingLeft: 2,
-                              }}>
+                              <div className="u-envios-desglose-grid">
                                 <div>
                                   <div className="muted tiny u-mb-2-flex-center-6">
                                     <span>Le cobrás al cliente <span className="u-color-text-muted">(editable)</span></span>
                                     {it.bruto_manual && (
                                       <span
                                         title="Estás editando el monto manualmente. Al cambiar USD/TC/método el cálculo vuelve a la fórmula."
-                                        style={{
-                                          fontSize: 9, fontWeight: 700, letterSpacing: '0.04em',
-                                          padding: '1px 5px', borderRadius: 3,
-                                          background: 'rgba(217, 119, 6, 0.15)',
-                                          color: '#d97706',
-                                          border: '1px solid rgba(217, 119, 6, 0.35)',
-                                        }}
+                                        className="u-envios-manual-chip"
                                       >MANUAL</span>
                                     )}
                                   </div>
@@ -1677,10 +1577,9 @@ export default function Envios() {
                                     <span className="mono u-fs-13-fw-600">{sym(it.moneda)}</span>
                                     <input
                                       type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
-                                      className="input mono"
+                                      className="input mono u-p-26-fs-13-fw-600-w-110"
                                       value={it.bruto_manual ? (it.monto ?? '') : Math.round(det.brutoOrig * 100) / 100}
                                       onChange={e => setPagoBruto(idx, e.target.value)}
-                                      className="u-p-26-fs-13-fw-600-w-110"
                                     />
                                   </div>
                                 </div>
@@ -1693,10 +1592,9 @@ export default function Envios() {
                                   <div className="u-flex-center-gap-4-wrap">
                                     <input
                                       type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
-                                      className="input mono"
+                                      className="input mono u-p-26-fs-13-fw-600-w-110"
                                       value={it.neto_input || Math.round(det.netoOrig * 100) / 100}
                                       onChange={e => setPagoNeto(idx, e.target.value)}
-                                      className="u-p-26-fs-13-fw-600-w-110"
                                     />
                                     <span className="mono pos u-fw-600-fs-12">= u$s{fmt(det.netoUsd)}</span>
                                   </div>
@@ -1719,7 +1617,7 @@ export default function Envios() {
                       venta que crea el envío. Al cancelar el envío, la venta
                       se cancela y el egreso del vuelto se revierte auto. */}
                   <div className="u-card-hint-row">
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: form.vuelto_monto ? 8 : 0 }}>
+                    <div className={'u-envios-vuelto-header' + (form.vuelto_monto ? ' u-mb-8' : '')}>
                       <div className="u-fs-13-fw-600">
                         Vuelto/Cambio
                         <span className="muted tiny u-ml-8-fw-400">
@@ -1737,20 +1635,18 @@ export default function Envios() {
                         <div className="muted tiny u-mb-2">Monto</div>
                         <input
                           type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
-                          className="input mono"
+                          className="input mono u-w-100"
                           value={form.vuelto_monto}
                           onChange={e => setForm(f => ({ ...f, vuelto_monto: e.target.value }))}
                           placeholder="0"
-                          className="u-w-100"
                         />
                       </div>
                       <div>
                         <div className="muted tiny u-mb-2">Moneda</div>
                         <select
-                          className="input"
+                          className="input u-w-100"
                           value={form.vuelto_moneda}
                           onChange={e => setForm(f => ({ ...f, vuelto_moneda: e.target.value }))}
-                          className="u-w-100"
                         >
                           <option value="ARS">ARS</option>
                           <option value="UYU">UYU</option>
@@ -1766,10 +1662,9 @@ export default function Envios() {
                           )}
                         </div>
                         <select
-                          className="input"
+                          className="input u-w-100"
                           value={form.vuelto_caja_id}
                           onChange={e => setForm(f => ({ ...f, vuelto_caja_id: e.target.value }))}
-                          className="u-w-100"
                         >
                           <option value="">— Elegí caja —</option>
                           {cajasPago.filter(c => !c.deleted_at).map(c => (
@@ -1820,7 +1715,7 @@ export default function Envios() {
                     </div>
                     <div className="u-flex-between-fs-13">
                       <span className="muted">Diferencia</span>
-                      <span className="mono" style={{ color: cubierto ? 'var(--pos)' : 'var(--neg)' }}>
+                      <span className={'mono ' + (cubierto ? 'u-color-pos' : 'u-color-neg')}>
                         {cubierto ? 'Cubierto ✓' : `u$s ${summary.diferenciaUsd.toFixed(2)}`}
                       </span>
                     </div>

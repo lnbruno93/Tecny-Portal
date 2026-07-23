@@ -4340,6 +4340,26 @@ body.modal-open { overflow: hidden; }
 .u-eb-desc                    { color: var(--text-muted); font-size: 14px; max-width: 420px; }
 .u-eb-code                    { font-size: 11px; color: var(--text-dim); background: var(--surface-2); padding: 8px 14px; border-radius: 8px; max-width: 480px; overflow: auto; display: block; }
 .u-eb-btn-row                 { display: flex; gap: 10px; margin-top: 8px; }
+/* — Envios master/detail + modal (Sprint 73) — */
+.u-envios-master-detail       { --master-width: 340px; gap: 12px; }
+.u-envios-list-stack          { gap: 8px; max-height: calc(100svh - 340px); overflow-y: auto; padding-right: 2px; }
+.u-envios-card                { cursor: pointer; border-left: 3px solid transparent; }
+.u-envios-card-active         { border-color: var(--accent); background: var(--surface-2); border-left-color: var(--accent); }
+.u-envios-data-row            { display: flex; gap: 12px; align-items: flex-start; font-size: 13px; }
+.u-envios-data-label          { min-width: 72px; font-weight: 600; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; padding-top: 1px; }
+.u-envios-note                { margin-top: 12px; padding: 10px 12px; background: var(--warn-soft, rgba(234,179,8,0.08)); border-left: 3px solid var(--warn); border-radius: 6px; font-size: 12.5px; }
+.u-envios-section-label       { padding: 10px 18px; background: var(--bg-elev); border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 700; letter-spacing: 0.10em; text-transform: uppercase; color: var(--text-muted); }
+.u-envios-item-row            { padding: 12px 18px; border-bottom: 1px solid var(--hairline); }
+.u-envios-item-row:last-child { border-bottom: 0; }
+.u-envios-empty-detail        { display: flex; align-items: center; justify-content: center; height: 200px; color: var(--text-muted); font-size: 13px; border: 1px dashed var(--border); border-radius: 12px; }
+.u-envios-today-active        { background: var(--accent-soft); color: var(--accent); }
+.u-envios-item-grid           { --cols: 1fr 140px 90px auto; gap: 8px; align-items: end; }
+.u-envios-item-grid-picked    { --cols: 1fr 140px 90px auto; gap: 10px; align-items: end; }
+.u-envios-pago-grid           { display: grid; grid-template-columns: 1fr 110px auto; gap: 6px; align-items: center; }
+.u-envios-pago-grid-tc        { grid-template-columns: 1fr 110px 90px auto; }
+.u-envios-desglose-grid       { margin-top: 8px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; font-size: 12px; align-items: start; padding-left: 2px; }
+.u-envios-manual-chip         { font-size: 9px; font-weight: 700; letter-spacing: 0.04em; padding: 1px 5px; border-radius: 3px; background: rgba(217, 119, 6, 0.15); color: #d97706; border: 1px solid rgba(217, 119, 6, 0.35); }
+.u-envios-vuelto-header       { display: flex; align-items: center; justify-content: space-between; }
 /* — DiffModal (Sprint 59) — */
 .u-diff-modal-body            { padding: 32px 28px 18px; text-align: left; }
 .u-diff-icon-wrap             { text-align: center; margin-bottom: 18px; }
