@@ -2365,6 +2365,16 @@ a { color: inherit; text-decoration: none; }
 .u-mc-policy                  { font-size: 12px; line-height: 1.5; margin-bottom: 12px; }
 .u-mc-datos-grid              { display: grid; grid-template-columns: 160px 1fr; row-gap: 10px; column-gap: 16px; font-size: 13px; }
 .u-mc-info-box                { margin-top: 16px; font-size: 12px; line-height: 1.5; padding: 10px; background: var(--surface); border-radius: 6px; }
+/* — BarcodeScanner (Sprint 71) — */
+.u-scanner-overlay            { background: rgba(0,0,0,0.92); padding: 0; }
+.u-scanner-wrap               { position: relative; width: 100%; height: 100dvh; display: flex; flex-direction: column; }
+.u-scanner-header             { position: absolute; top: 0; left: 0; right: 0; z-index: 2; display: flex; justify-content: space-between; align-items: center; padding: env(safe-area-inset-top, 12px) 16px 12px; background: linear-gradient(180deg, rgba(0,0,0,0.6), transparent); color: white; }
+.u-scanner-close-btn          { background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.3); }
+.u-scanner-video              { flex: 1; width: 100%; height: 100%; object-fit: cover; background: black; }
+.u-scanner-mira-wrap          { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.u-scanner-mira               { width: min(80vw, 320px); height: min(35vw, 140px); border: 3px solid rgba(255,255,255,0.85); border-radius: 12px; box-shadow: 0 0 0 9999px rgba(0,0,0,0.35); }
+.u-scanner-footer             { position: absolute; bottom: 0; left: 0; right: 0; z-index: 2; padding: 16px 20px env(safe-area-inset-bottom, 16px); background: linear-gradient(0deg, rgba(0,0,0,0.7), transparent); color: white; text-align: center; font-size: 13px; }
+.u-scanner-error              { color: #ffb4b4; font-weight: 600; }
 /* — DiffModal (Sprint 59) — */
 .u-diff-modal-body            { padding: 32px 28px 18px; text-align: left; }
 .u-diff-icon-wrap             { text-align: center; margin-bottom: 18px; }
