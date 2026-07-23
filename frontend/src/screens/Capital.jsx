@@ -214,15 +214,15 @@ export default function Capital() {
       <div className="row u-mb-14">
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">Patrimonio · {monedaLocal}</div>
-          <div className="kpi-value mono" style={{ color: patrimonio.totalLocal >= 0 ? 'var(--pos)' : 'var(--neg)' }}>{fmtMoney(patrimonio.totalLocal, monedaLocal)}</div>
+          <div className={'kpi-value mono ' + (patrimonio.totalLocal >= 0 ? 'u-color-pos' : 'u-color-neg')}>{fmtMoney(patrimonio.totalLocal, monedaLocal)}</div>
         </div>
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">Patrimonio · USD</div>
-          <div className="kpi-value mono" style={{ color: patrimonio.totalUsd >= 0 ? 'var(--pos)' : 'var(--neg)' }}>{fmtMoney(patrimonio.totalUsd, 'USD')}</div>
+          <div className={'kpi-value mono ' + (patrimonio.totalUsd >= 0 ? 'u-color-pos' : 'u-color-neg')}>{fmtMoney(patrimonio.totalUsd, 'USD')}</div>
         </div>
         <div className="card card-tight u-flex-1">
           <div className="kpi-label">Patrimonio · USDT</div>
-          <div className="kpi-value mono" style={{ color: patrimonio.totalUsdt >= 0 ? 'var(--pos)' : 'var(--neg)' }}>{fmtMoney(patrimonio.totalUsdt, 'USDT')}</div>
+          <div className={'kpi-value mono ' + (patrimonio.totalUsdt >= 0 ? 'u-color-pos' : 'u-color-neg')}>{fmtMoney(patrimonio.totalUsdt, 'USDT')}</div>
         </div>
       </div>
 
@@ -233,24 +233,21 @@ export default function Capital() {
           <div className="muted tiny">Verde suma, rojo resta · cada moneda por separado (sin TC)</div>
         </div>
         {[{ titulo: 'Suman', tone: 'pos' }, { titulo: 'Restan', tone: 'neg' }].map(g => {
-          const color = g.tone === 'neg' ? 'var(--neg)' : 'var(--pos)';
+          const dotClass = g.tone === 'neg' ? 'u-bg-neg' : 'u-bg-pos';
           return (
             <div key={g.tone}>
               <div className="kpi-label u-p-12-16-2">{g.titulo}</div>
               {patrimonio.cards.filter(c => c.tone === g.tone).map((c, idx) => (
                 <div key={c.label + idx} className="flex-row u-flex-between-center-p-10-16-border-top">
                   <span className="u-inline-flex-center-gap-9">
-                    <span
-                      className="u-capital-dot"
-                      style={{ background: color }}
-                    />
+                    <span className={'u-capital-dot ' + dotClass} />
                     <span className="u-fw-600">{c.label}</span>
                     {c.moneda && <span className="ccy u-ml-2">{c.moneda}</span>}
                   </span>
                   <span className="mono u-inline-flex-gap-18-fw-700">
                     {c.montos.map(([pre, v], i) => {
                       const resta = g.tone === 'neg' || Number(v) < 0;
-                      return <span key={i} style={{ color: resta ? 'var(--neg)' : 'var(--pos)' }}>{(resta ? '− ' : '') + pre + ' ' + fmt(v)}</span>;
+                      return <span key={i} className={resta ? 'u-color-neg' : 'u-color-pos'}>{(resta ? '− ' : '') + pre + ' ' + fmt(v)}</span>;
                     })}
                   </span>
                 </div>

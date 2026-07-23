@@ -148,7 +148,7 @@ export default function VendedoresCatalogModal({ open, onClose, onChange }) {
 
         <div className="modal-body u-flex-col-gap-14">
           {/* Agregar vendedor */}
-          <div className="input-group" style={{ maxWidth: '100%' }}>
+          <div className="input-group u-mw-100">
             <input
               className="input"
               placeholder="Nombre del nuevo vendedor"
@@ -161,16 +161,7 @@ export default function VendedoresCatalogModal({ open, onClose, onChange }) {
             />
             <button
               type="button"
-              className="addon"
-              style={{
-                background: 'var(--accent)',
-                color: 'var(--accent-ink)',
-                cursor: savingVend || !newVend.trim() ? 'not-allowed' : 'pointer',
-                fontWeight: 700,
-                padding: '0 14px',
-                border: 'none',
-                opacity: savingVend || !newVend.trim() ? 0.6 : 1,
-              }}
+              className={'addon u-vend-add-btn' + (savingVend || !newVend.trim() ? ' u-vend-add-btn-disabled' : '')}
               onClick={handleAdd}
               disabled={savingVend || !newVend.trim()}
             >
@@ -186,27 +177,9 @@ export default function VendedoresCatalogModal({ open, onClose, onChange }) {
           ) : (
             <div className="u-flex-col-gap-8">
               {vendedores.map(v => (
-                <div
-                  key={v.id}
-                  className="flex-between"
-                  style={{
-                    padding: '12px 14px',
-                    background: 'var(--surface-2)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 8,
-                  }}
-                >
-                  <div className="flex-row" style={{ gap: 12, alignItems: 'center' }}>
-                    <div style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 8,
-                      background: 'var(--surface-3)',
-                      display: 'grid',
-                      placeItems: 'center',
-                      fontWeight: 700,
-                      fontSize: 11,
-                    }}>
+                <div key={v.id} className="flex-between u-vend-row">
+                  <div className="flex-row u-vend-row-inner">
+                    <div className="u-vend-avatar">
                       {v.nombre.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase()}
                     </div>
                     <div className="u-fw-600">{v.nombre}</div>

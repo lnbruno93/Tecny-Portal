@@ -109,11 +109,13 @@ const ICONS = {
   ),
 };
 
-const COLORS = {
-  success: { bg: 'var(--pos)',    text: '#fff' },
-  error:   { bg: 'var(--neg)',    text: '#fff' },
-  warn:    { bg: '#d97706',       text: '#fff' },
-  info:    { bg: 'var(--accent)', text: '#fff' },
+// Sprint 93 CSP: los colores del toast pasaron a CSS clases
+// .u-toast-{success|error|warn|info}. El JS solo mapea el tipo → suffix.
+const TYPE_TO_CLASS = {
+  success: 'u-toast-success',
+  error:   'u-toast-error',
+  warn:    'u-toast-warn',
+  info:    'u-toast-info',
 };
 
 function ToastContainer({ toasts, onDismiss }) {
@@ -124,20 +126,10 @@ function ToastContainer({ toasts, onDismiss }) {
   // (Mantenemos polite global; los errores ya rompen contexto visualmente).
   return (
     <div
-      className="toast-container"
+      className="toast-container u-toast-container"
       role="status"
       aria-live="polite"
       aria-atomic="false"
-      style={{
-        position: 'fixed',
-        bottom: 24,
-        right: 24,
-        zIndex: 9999,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 10,
-        pointerEvents: 'none',
-      }}
     >
       {toasts.map(t => (
         <ToastItem key={t.id} toast={t} onDismiss={onDismiss} />
@@ -147,45 +139,15 @@ function ToastContainer({ toasts, onDismiss }) {
 }
 
 function ToastItem({ toast: t, onDismiss }) {
-  const colors = COLORS[t.type] || COLORS.info;
+  const typeClass = TYPE_TO_CLASS[t.type] || TYPE_TO_CLASS.info;
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-        padding: '12px 16px',
-        borderRadius: 10,
-        background: colors.bg,
-        color: colors.text,
-        boxShadow: '0 4px 24px rgba(0,0,0,0.35)',
-        fontSize: 14,
-        fontWeight: 500,
-        minWidth: 240,
-        maxWidth: 380,
-        pointerEvents: 'all',
-        opacity: t.leaving ? 0 : 1,
-        transform: t.leaving ? 'translateY(8px)' : 'translateY(0)',
-        transition: 'opacity 0.25s ease, transform 0.25s ease',
-        cursor: 'default',
-      }}
-    >
-      <span style={{ flexShrink: 0, opacity: 0.9 }}>{ICONS[t.type]}</span>
-      <span style={{ flex: 1, lineHeight: 1.4 }}>{t.message}</span>
+    <div className={'u-toast-item ' + typeClass + (t.leaving ? ' u-toast-item-leaving' : '')}>
+      <span className="u-toast-icon">{ICONS[t.type]}</span>
+      <span className="u-toast-msg">{t.message}</span>
       <button
         onClick={() => onDismiss(t.id)}
         aria-label="Cerrar notificación"
-        style={{
-          flexShrink: 0,
-          background: 'none',
-          border: 'none',
-          color: colors.text,
-          opacity: 0.7,
-          cursor: 'pointer',
-          padding: 0,
-          display: 'flex',
-          alignItems: 'center',
-        }}
+        className="u-toast-close-btn"
       >
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
           <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
