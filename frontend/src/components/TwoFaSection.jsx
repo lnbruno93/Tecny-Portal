@@ -37,15 +37,14 @@ function TwoFaCodeModal({ open, title, description, onSubmit, onCancel, loading 
   return (
     <div
       ref={overlayRef}
-      className="modal-overlay"
+      className="modal-overlay u-twofa-code-overlay"
       role="dialog" aria-modal="true" aria-labelledby="twofa-code-modal-title"
       onClick={(e) => { if (e.target === e.currentTarget && !loading) onCancel(); }}
-      style={{ zIndex: 700 }}
     >
       <div className="modal u-mw-460" onClick={(e) => e.stopPropagation()}>
         <form onSubmit={(e) => { e.preventDefault(); if (valid && !loading) onSubmit(trimmed); }}>
-          <div className="modal-body" style={{ padding: '24px 22px 14px' }}>
-            <h3 id="twofa-code-modal-title" style={{ marginTop: 0, fontSize: 17, fontWeight: 700 }}>
+          <div className="modal-body u-twofa-code-body">
+            <h3 id="twofa-code-modal-title" className="u-twofa-code-title">
               {title}
             </h3>
             <div className="muted tiny u-lh-15-mb-14" id="twofa-code-modal-desc">
@@ -53,7 +52,7 @@ function TwoFaCodeModal({ open, title, description, onSubmit, onCancel, loading 
             </div>
             <input
               ref={inputRef}
-              className="input mono"
+              className="input mono u-twofa-code-input"
               type="text"
               inputMode="numeric"
               placeholder="6 dígitos o recovery code"
@@ -66,7 +65,6 @@ function TwoFaCodeModal({ open, title, description, onSubmit, onCancel, loading 
               onChange={(e) => setCode(e.target.value)}
               aria-describedby="twofa-code-modal-desc"
               disabled={loading}
-              style={{ fontSize: 17, letterSpacing: 1, textAlign: 'center' }}
             />
           </div>
           <div className="modal-ft u-gap-8-justify-end">
@@ -172,7 +170,7 @@ export default function TwoFaSection() {
                 <span className="badge badge-pos">Activo</span>
                 <strong>Autenticación de dos factores</strong>
               </div>
-              <div className="muted tiny" style={{ lineHeight: 1.5 }}>
+              <div className="muted tiny u-lh-15">
                 Activado el {fmtFecha(status.enabled_at)}.
                 {status.last_used_at && <> Último uso: {fmtFecha(status.last_used_at)}.</>}
                 <br />
@@ -194,24 +192,16 @@ export default function TwoFaSection() {
         </div>
 
         {newRecoveryCodes && (
-          <div className="card card-tight" role="alert" aria-live="assertive" style={{
-            padding: 14, background: 'rgba(234, 179, 8, 0.08)',
-            border: '1px solid rgba(234, 179, 8, 0.3)',
-          }}>
+          <div className="card card-tight u-twofa-recovery-alert" role="alert" aria-live="assertive">
             <div className="field-label u-mb-8">
               ⚠️ Nuevos recovery codes — guardalos AHORA
             </div>
-            <div className="tiny" style={{ marginBottom: 10, lineHeight: 1.4 }}>
+            <div className="tiny u-twofa-recovery-warning">
               Los anteriores ya no funcionan. Si cerrás esta pantalla sin copiarlos, no se vuelven a mostrar.
             </div>
-            <div style={{
-              display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6,
-              fontFamily: 'monospace', fontSize: 13, marginBottom: 10,
-            }}>
+            <div className="u-twofa-codes-grid">
               {newRecoveryCodes.map((c, i) => (
-                <div key={i} style={{
-                  padding: '6px 10px', background: 'var(--surface)', borderRadius: 4,
-                }}>{c}</div>
+                <div key={i} className="u-twofa-code-cell">{c}</div>
               ))}
             </div>
             <div className="flex-row u-gap-8">
@@ -256,13 +246,9 @@ export default function TwoFaSection() {
   if (status?.configured && !status?.enabled) {
     return (
       <div>
-        <div className="card card-tight" style={{
-          padding: 18,
-          background: 'rgba(234, 179, 8, 0.08)',
-          border: '1px solid rgba(234, 179, 8, 0.3)',
-        }}>
+        <div className="card card-tight u-twofa-setup-pending">
           <div className="flex-row u-gap-8-center-mb-6">
-            <span className="badge" style={{ background: 'var(--warn)', color: '#000' }}>Setup pendiente</span>
+            <span className="badge u-twofa-badge-warn">Setup pendiente</span>
             <strong>Autenticación de dos factores</strong>
           </div>
           <div className="muted tiny u-lh-15-mb-14">
