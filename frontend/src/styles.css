@@ -4273,6 +4273,15 @@ body.modal-open { overflow: hidden; }
 .u-desglose-error-card        { background: rgba(255, 80, 80, 0.08); border: 1px solid var(--neg); color: var(--text); }
 .u-flex-center-gap-10-mb-6    { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
 .u-desglose-loading           { color: var(--text-muted); font-size: 13px; padding: 12px 0; }
+/* — Resumen admin (Sprint 66) — */
+.u-alert-2fa-warn             { margin-bottom: var(--gap); background: rgba(234, 179, 8, 0.08); border: 1px solid rgba(234, 179, 8, 0.3); font-size: 13px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.u-bg-neg                     { background: var(--neg); }
+.u-h-8                        { height: 8px; }
+.u-tone-pos                   { color: var(--pos); }
+.u-tone-neg                   { color: var(--neg); }
+.u-tone-accent                { color: var(--accent); }
+.u-tone-warn                  { color: var(--warn); }
+.u-tone-text-muted            { color: var(--text-muted); }
 /* — DiffModal (Sprint 59) — */
 .u-diff-modal-body            { padding: 32px 28px 18px; text-align: left; }
 .u-diff-icon-wrap             { text-align: center; margin-bottom: 18px; }
