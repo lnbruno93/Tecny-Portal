@@ -353,13 +353,6 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
     else focusCell((i + 1) % ROW_COUNT, 'first');
   }
 
-  const inp = {
-    padding: '4px 7px', fontSize: 13, height: 30,
-    border: '1px solid var(--border)', background: 'var(--surface)',
-    color: 'var(--text)', borderRadius: 5, width: '100%',
-    outline: 'none', boxSizing: 'border-box',
-  };
-
   return (
     <>
       {rows.map((row, i) => {
@@ -370,7 +363,7 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
 
             {/* Fecha */}
             <td className="u-p-4-5">
-              <input type="date" style={inp}
+              <input type="date" className="u-cuentas-inp-base"
                 value={row.fecha}
                 onChange={e => upd(i, 'fecha', e.target.value)} />
             </td>
@@ -436,17 +429,18 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
                   )}
                   <input
                     ref={esGrupoDolar ? setRef(i, 'first') : setRef(i, 'monto')}
-                    type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0"
-                    style={{
-                      ...inp, flex: '1.6 1 0', textAlign: 'right', fontWeight: 700,
-                      color:      autoUSD && !esGrupoDolar ? 'var(--pos)' : 'inherit',
-                      background: autoUSD && !esGrupoDolar ? 'rgba(34,197,94,0.08)' : 'var(--surface)',
-                    }}
+                    type="number" inputMode="decimal" min="0"
+                    className={'u-cuentas-inp-monto' + (autoUSD && !esGrupoDolar ? ' u-cuentas-inp-monto-auto' : '')}
                     placeholder="0"
                     value={row.monto}
                     readOnly={autoUSD && !esGrupoDolar}
                     onChange={e => { if (esGrupoDolar || !autoUSD) upd(i, 'monto', e.target.value); }}
                     onKeyDown={e => {
+                      // Bloqueo de teclas inválidas primero — antes había un
+                      // `onKeyDown={blockInvalidNumberKeys}` duplicado sobre este
+                      // mismo input (React solo aplica el último). Consolidado.
+                      blockInvalidNumberKeys(e);
+                      if (e.defaultPrevented) return;
                       if (e.key === 'Enter') { e.preventDefault(); saveRow(i); }
                       else handleLastKey(e, i);
                     }}
@@ -1132,14 +1126,12 @@ export default function CuentasCC() {
               <div className="empty">Cargando…</div>
             ) : filtered.length === 0 ? (
               <div className="empty">Sin resultados</div>
-            ) : filtered.map((c, i) => (
-              <div key={c.id} onClick={() => setSelectedId(c.id)} style={{
-                padding: '10px 13px',
-                borderBottom: i < filtered.length - 1 ? '1px solid var(--hairline)' : 0,
-                cursor: 'pointer',
-                background: selectedId === c.id ? 'var(--surface-2)' : 'transparent',
-                borderLeft: selectedId === c.id ? '3px solid var(--accent)' : '3px solid transparent',
-              }}>
+            ) : filtered.map((c) => (
+              <div
+                key={c.id}
+                onClick={() => setSelectedId(c.id)}
+                className={'u-cuentas-client-row' + (selectedId === c.id ? ' u-cuentas-client-row-active' : '')}
+              >
                 <div className="flex-between u-mb-3">
                   <div className="u-fs-13-fw-600">{c.nombre} {c.apellido || ''}</div>
                   {catBadge(c.categoria)}
@@ -1149,10 +1141,7 @@ export default function CuentasCC() {
                     {c.localidad}{c.provincia ? ', ' + c.provincia : ''}
                   </div>
                 )}
-                <div className="mono" style={{
-                  fontSize: 13, fontWeight: 700,
-                  color: Number(c.saldo) > 0 ? 'var(--neg)' : Number(c.saldo) < 0 ? 'var(--pos)' : 'var(--text-muted)',
-                }}>
+                <div className={'mono u-cuentas-saldo ' + (Number(c.saldo) > 0 ? 'u-color-neg' : Number(c.saldo) < 0 ? 'u-color-pos' : 'u-color-text-muted')}>
                   {Number(c.saldo) !== 0 ? fmtUSD(c.saldo) : 'Sin saldo'}
                 </div>
               </div>
@@ -1272,12 +1261,7 @@ export default function CuentasCC() {
                 <thead>
                   <tr className="u-sticky-header-bar">
                     {['Fecha', 'Tipo', 'Detalle', 'Modelo', 'Cap.', 'Color', 'IMEI / Serial', 'Monto USD', '✓', 'Comentarios', ''].map((h, i) => (
-                      <th key={i} style={{
-                        padding: '7px 8px', fontSize: 11, fontWeight: 700,
-                        letterSpacing: '0.06em', textTransform: 'uppercase',
-                        color: 'var(--text-muted)', textAlign: i === 7 ? 'right' : 'left',
-                        borderBottom: '1px solid var(--border)',
-                      }}>{h}</th>
+                      <th key={i} className={'u-cuentas-th' + (i === 7 ? ' u-ta-right' : '')}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -1322,11 +1306,12 @@ export default function CuentasCC() {
                         key={m.id}
                         onClick={handleRowClick}
                         data-testid={isCrossTenant ? `mov-row-cross-tenant-${m.id}` : undefined}
-                        style={{
-                          borderBottom: isExpanded ? 'none' : '1px solid var(--hairline)',
-                          opacity: m._pending ? 0.55 : 1,
-                          cursor: isCrossTenant ? 'pointer' : undefined,
-                        }}
+                        className={
+                          'u-cuentas-mov-row' +
+                          (isExpanded ? ' u-cuentas-mov-row-expanded' : '') +
+                          (m._pending ? ' u-cuentas-mov-row-pending' : '') +
+                          (isCrossTenant ? ' u-cursor-pointer' : '')
+                        }
                       >
                         <td className="cell muted mono">{fmtFecha(m.fecha)}</td>
                         <td className="cell">
@@ -1344,8 +1329,7 @@ export default function CuentasCC() {
                               className="u-btn-expand-inline"
                             >
                               <Icons.ChevronRight size={12}
-                                style={{ transform: isExpanded ? 'rotate(90deg)' : 'none',
-                                         transition: 'transform .15s' }} />
+                                className={'u-chevron-rotate' + (isExpanded ? ' u-chevron-rotate-90' : '')} />
                             </button>
                           )}
                           {item?.producto
@@ -1659,16 +1643,8 @@ function MovimientoDesglose({ mov, onDevolverItem }) {
             const puedeDevolver = movEsCompra && !devuelto && it.producto_id;
             // Items devueltos: tachado + fondo rojo tenue. La fila SIGUE en el
             // DOM para que el operador vea qué se devolvió de esta venta.
-            const rowStyle = {
-              borderBottom: '1px solid var(--hairline)',
-              ...(devuelto && {
-                textDecoration: 'line-through',
-                color: 'var(--text-muted)',
-                background: 'rgba(255, 107, 107, 0.06)',
-              }),
-            };
             return (
-              <tr key={it.id} style={rowStyle}>
+              <tr key={it.id} className={'u-cuentas-item-row' + (devuelto ? ' u-cuentas-item-row-devuelto' : '')}>
                 <td className="u-p-6-8-only">
                   {it.producto || <span className="dim">—</span>}
                   {devuelto && (

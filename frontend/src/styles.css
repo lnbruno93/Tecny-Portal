@@ -4413,6 +4413,22 @@ body.modal-open { overflow: hidden; }
 .u-twofa-recovery-hint        { margin-bottom: 10px; line-height: 1.5; }
 .u-twofa-verify-input         { font-size: 18px; letter-spacing: 2px; text-align: center; max-width: 200px; }
 .u-twofa-error                { color: var(--neg); font-size: 13px; margin-bottom: 10px; }
+/* — CuentasCC (Sprint 79) — */
+.u-cuentas-inp-base           { padding: 4px 7px; font-size: 13px; height: 30px; border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 5px; width: 100%; outline: none; box-sizing: border-box; }
+.u-cuentas-inp-monto          { padding: 4px 7px; font-size: 13px; height: 30px; border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 5px; width: 100%; outline: none; box-sizing: border-box; flex: 1.6 1 0; text-align: right; font-weight: 700; }
+.u-cuentas-inp-monto-auto     { color: var(--pos); background: rgba(34,197,94,0.08); }
+.u-cuentas-client-row         { padding: 10px 13px; cursor: pointer; border-bottom: 1px solid var(--hairline); border-left: 3px solid transparent; }
+.u-cuentas-client-row:last-child { border-bottom: 0; }
+.u-cuentas-client-row-active  { background: var(--surface-2); border-left-color: var(--accent); }
+.u-cuentas-saldo              { font-size: 13px; font-weight: 700; }
+.u-cuentas-th                 { padding: 7px 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); text-align: left; border-bottom: 1px solid var(--border); }
+.u-cuentas-mov-row            { border-bottom: 1px solid var(--hairline); }
+.u-cuentas-mov-row-expanded   { border-bottom: none; }
+.u-cuentas-mov-row-pending    { opacity: 0.55; }
+.u-chevron-rotate             { transition: transform .15s; }
+.u-chevron-rotate-90          { transform: rotate(90deg); }
+.u-cuentas-item-row           { border-bottom: 1px solid var(--hairline); }
+.u-cuentas-item-row-devuelto  { text-decoration: line-through; color: var(--text-muted); background: rgba(255, 107, 107, 0.06); }
 /* — DiffModal (Sprint 59) — */
 .u-diff-modal-body            { padding: 32px 28px 18px; text-align: left; }
 .u-diff-icon-wrap             { text-align: center; margin-bottom: 18px; }
