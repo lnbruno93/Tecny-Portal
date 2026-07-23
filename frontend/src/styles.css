@@ -4241,6 +4241,20 @@ body.modal-open { overflow: hidden; }
 .u-error-boundary-details     { margin-top: 32px; text-align: left; font-size: 12px; }
 .u-error-boundary-summary     { cursor: pointer; color: var(--text-muted, #5a6781); }
 .u-error-boundary-pre         { margin-top: 8px; padding: 12px; background: var(--bg-soft, #161b22); border: 1px solid var(--hairline, #2a3142); border-radius: 6px; overflow: auto; max-height: 200px; font-size: 11px; font-family: 'JetBrains Mono', monospace; }
+/* — Cotizador (Sprint 63) — */
+.u-quote-product-line         { padding-bottom: 14px; margin-bottom: 14px; }
+.u-quote-product-line:not(:last-child) { border-bottom: 1px solid var(--hairline); }
+.u-align-self-end             { align-self: flex-end; }
+.u-quote-tc-ref               { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--hairline); }
+.u-stack-gap-10-mb-16         { gap: 10px; margin-bottom: 16px; }
+.u-pay-opt                    { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: all 0.12s; }
+.u-pay-opt-active             { background: var(--accent-soft); border-color: var(--accent); }
+.u-checkbox-accent-15         { accent-color: var(--accent); width: 15px; height: 15px; }
+.u-fw-600-fs-135              { font-weight: 600; font-size: 13.5px; }
+.u-quote-empty                { padding: 24px 0; text-align: center; }
+.u-quote-summary-line         { padding-bottom: 12px; margin-bottom: 12px; }
+.u-quote-summary-line:not(:last-child) { border-bottom: 1px solid var(--hairline); }
+.u-quote-bottom-hint          { padding-top: 8px; border-top: 1px solid var(--hairline); line-height: 1.6; }
 /* — DiffModal (Sprint 59) — */
 .u-diff-modal-body            { padding: 32px 28px 18px; text-align: left; }
 .u-diff-icon-wrap             { text-align: center; margin-bottom: 18px; }
