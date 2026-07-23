@@ -2260,6 +2260,9 @@ a { color: inherit; text-decoration: none; }
 .u-login-2fa-hint             { font-size: 13px; text-align: center; margin: 0 0 4px; }
 .u-input-2fa-code             { letter-spacing: 0.4em; text-align: center; font-variant-numeric: tabular-nums; }
 .u-login-alt-link             { background: none; border: none; color: var(--muted); font-size: 12px; cursor: pointer; text-decoration: underline; padding: 4px; }
+/* — ForgotPassword (Sprint 60) — */
+.u-strong-email               { word-break: break-all; color: var(--text); }
+.u-retry-link                 { background: none; border: none; color: var(--muted); text-decoration: underline; cursor: pointer; padding: 0; font: inherit; }
 /* — DiffModal (Sprint 59) — */
 .u-diff-modal-body            { padding: 32px 28px 18px; text-align: left; }
 .u-diff-icon-wrap             { text-align: center; margin-bottom: 18px; }
