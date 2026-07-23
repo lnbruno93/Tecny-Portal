@@ -89,7 +89,7 @@ function KpiCard({ label, valor, unidad = '', comparado, formatter = fmt, invert
     const tone = positivo ? 'pos' : 'neg';
     const arrow = d > 0 ? '↑' : '↓';
     badge = (
-      <span style={{ color: `var(--${tone})`, fontSize: 12, fontWeight: 600 }}>
+      <span className={'u-resumen-kpi-badge ' + (tone === 'pos' ? 'u-color-pos' : 'u-color-neg')}>
         {arrow} {Math.abs(d).toFixed(1)}%
       </span>
     );
@@ -97,11 +97,11 @@ function KpiCard({ label, valor, unidad = '', comparado, formatter = fmt, invert
   return (
     <div className="card card-tight u-mw-min-0" role="figure" aria-label={`KPI: ${label}`}>
       <div className="muted tiny u-mb-4">{label}</div>
-      <div className="mono" style={{ fontSize: 22, fontWeight: 700 }}>
-        {unidad && !valorIndefinido && <span style={{ fontSize: 14, color: 'var(--text-muted)', marginRight: 4 }}>{unidad}</span>}
+      <div className="mono u-resumen-kpi-value">
+        {unidad && !valorIndefinido && <span className="u-resumen-kpi-unidad">{unidad}</span>}
         {valorIndefinido ? '—' : formatter(valor)}
       </div>
-      <div style={{ marginTop: 4, minHeight: 16 }}>{badge}</div>
+      <div className="u-resumen-kpi-badge-wrap">{badge}</div>
     </div>
   );
 }
@@ -206,8 +206,7 @@ export default function Resumen() {
           })}
           {presetParaMes(periodoActual) === 'custom' && (
             <input
-              type="month" className="input mono"
-              style={{ width: 160, marginLeft: 6 }}
+              type="month" className="input mono u-resumen-month-input"
               value={periodoActual}
               onChange={e => handleCambioPeriodo(e.target.value)}
               max={mesActualISO()}
@@ -302,7 +301,7 @@ export default function Resumen() {
           </div>
 
           {/* ── Bloque 4: Top 5 productos / vendedores ── */}
-          <div className="row" style={{ gap: 12, marginTop: 18, flexWrap: 'wrap' }}>
+          <div className="row u-resumen-top-row">
             <div className="u-flex-11-380">
               <div className="card card-flush">
                 <div className="card-hd"><h3>Top productos</h3></div>
@@ -346,7 +345,7 @@ export default function Resumen() {
           </div>
 
           {/* ── Bloque 5: Pagos por método ── */}
-          <div className="card card-flush" style={{ marginTop: 18 }}>
+          <div className="card card-flush u-mt-18">
             <div className="card-hd"><h3>Pagos por método</h3></div>
             <table className="tbl">
               <thead><tr><th>Método</th><th>Moneda</th><th className="u-text-right">USD</th></tr></thead>
