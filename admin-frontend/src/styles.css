@@ -2168,3 +2168,14 @@ a { color: inherit; text-decoration: none; }
 .u-h-16-spacer                { height: 16px; }
 .u-label-checkbox-pointer     { gap: 6px; align-items: center; cursor: pointer; }
 .u-alertas-params-row         { gap: 12px; align-items: flex-end; border-top: 1px solid var(--border); padding-top: 8px; }
+/* — DiagnoseStockPanel (Sprint 50) — */
+.u-diag-info-box              { padding: 10px; background: var(--surface-2); border-radius: 6px; font-size: 13px; }
+.u-diag-producto-card         { border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 12px; background: var(--surface-1); }
+.u-flex-between-start-gap-12  { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.u-mt-4-muted                 { margin-top: 4px; color: var(--text-muted); }
+.u-diag-trail-label           { font-weight: 600; margin-bottom: 6px; color: var(--text-muted); }
+.u-diag-header                { padding: 16px; border-bottom: 1px solid var(--border); }
+.u-diag-header-desc           { margin: 6px 0 0; color: var(--text-muted); font-size: 13.5px; }
+.u-diag-form                  { padding: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+.u-diag-input                 { flex: 1; min-width: 200px; }
+.u-diag-results-body          { padding: 0 16px 16px; }

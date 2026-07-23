@@ -90,7 +90,7 @@ function RestoreModal({ producto, onClose, onDone }) {
           <h3 id="restore-modal-title" className="u-m-0">Restaurar producto al stock</h3>
         </div>
         <div className="modal-body u-grid-gap-12-nocol">
-          <div style={{ padding: 10, background: 'var(--surface-2)', borderRadius: 6, fontSize: 13 }}>
+          <div className="u-diag-info-box">
             <div><b>{producto.nombre}</b></div>
             <div className="tiny muted">IMEI: <span className="mono">{producto.imei || '—'}</span></div>
             <div className="tiny muted">
@@ -148,13 +148,8 @@ function ProductoCard({ producto, trail, onRestore }) {
   const esVendido = producto.estado === 'vendido';
   const puedeRestaurar = esVivo && esVendido;
   return (
-    <div
-      style={{
-        border: '1px solid var(--border)', borderRadius: 8, padding: 14,
-        marginBottom: 12, background: 'var(--surface-1)',
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+    <div className="u-diag-producto-card">
+      <div className="u-flex-between-start-gap-12">
         <div>
           <div className="u-fw-700-fs-15">
             {producto.nombre}
@@ -168,14 +163,14 @@ function ProductoCard({ producto, trail, onRestore }) {
           </div>
           <div className="tiny u-mt-6">
             Estado:{' '}
-            <b style={{ color: esVendido ? 'var(--neg)' : 'var(--pos)' }}>
+            <b className={esVendido ? 'u-color-neg' : 'u-color-pos'}>
               {producto.estado}
             </b>
             {' · '}cantidad <b>{producto.cantidad}</b>
             {' · '}costo {fmtMoney(producto.costo, producto.costo_moneda)}
           </div>
           {producto.deleted_at && (
-            <div className="tiny" style={{ marginTop: 4, color: 'var(--text-muted)' }}>
+            <div className="tiny u-mt-4-muted">
               <Icons.Trash size={11} aria-hidden="true"/> Soft-deleted el {fmtDateTime(producto.deleted_at)}
             </div>
           )}
@@ -189,7 +184,7 @@ function ProductoCard({ producto, trail, onRestore }) {
 
       {/* Trail de movimientos B2B que tocaron este producto */}
       <div className="u-mt-12">
-        <div className="tiny" style={{ fontWeight: 600, marginBottom: 6, color: 'var(--text-muted)' }}>
+        <div className="tiny u-diag-trail-label">
           Historial de movimientos B2B que tocaron este producto ({trail.length})
         </div>
         {trail.length === 0 ? (
@@ -284,22 +279,22 @@ export default function DiagnoseStockPanel() {
 
   return (
     <div className="card u-mb-16">
-      <div style={{ padding: 16, borderBottom: '1px solid var(--border)' }}>
+      <div className="u-diag-header">
         <h3 className="u-m-0-fs-16">Diagnóstico de stock</h3>
-        <p style={{ margin: '6px 0 0', color: 'var(--text-muted)', fontSize: 13.5 }}>
+        <p className="u-diag-header-desc">
           Inspeccioná el historial completo de un producto por IMEI/serial: estado actual + todos
           los movimientos B2B que lo tocaron (incluso los borrados). Si un producto vivo quedó
           incorrectamente en <code>vendido</code>, podés restaurarlo al stock con auditoría.
         </p>
       </div>
 
-      <form onSubmit={handleDiagnose} style={{ padding: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <form onSubmit={handleDiagnose} className="u-diag-form">
         <input
           type="text"
           placeholder="IMEI o serial (ej: 350900000000123)"
           value={imei}
           onChange={(e) => setImei(e.target.value)}
-          style={{ flex: 1, minWidth: 200 }}
+          className="u-diag-input"
           disabled={loading}
         />
         <button className="btn btn-primary" type="submit" disabled={loading || !imei.trim()}>
@@ -308,7 +303,7 @@ export default function DiagnoseStockPanel() {
       </form>
 
       {data && (
-        <div style={{ padding: '0 16px 16px' }}>
+        <div className="u-diag-results-body">
           {data.productos.length === 0 ? (
             <div className="tiny muted u-p-12">
               Sin productos con IMEI/serial <span className="mono">{data.query}</span>.
