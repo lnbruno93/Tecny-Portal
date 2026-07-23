@@ -105,11 +105,7 @@ export default function AutocompletePicker({
     <div ref={boxRef} className="u-pos-rel">
       <div className="u-flex-gap-4 u-align-items-center">
         <input
-          className="cell-inp"
-          style={{
-            background: locked ? 'rgba(99,102,241,0.10)' : 'var(--surface)',
-            fontWeight: locked ? 600 : 400,
-          }}
+          className={'cell-inp ' + (locked ? 'u-autocomp-input-locked' : 'u-autocomp-input-open')}
           value={value}
           placeholder={placeholder}
           readOnly={locked}
@@ -118,19 +114,14 @@ export default function AutocompletePicker({
           onKeyDown={onKey}
         />
         {locked && (
-          <button className="icon-btn" style={{ padding: 2, color: 'var(--text-muted)' }}
+          <button className="icon-btn u-autocomp-clear-btn"
             onClick={onClear} title="Cambiar selección">
             <Icons.X size={12} />
           </button>
         )}
       </div>
       {open && !locked && (
-        <div style={{
-          position: 'absolute', top: '100%', left: 0, right: 0,
-          background: 'var(--surface)', border: '1px solid var(--border)',
-          borderRadius: 4, zIndex: 50, maxHeight: 260, overflowY: 'auto',
-          boxShadow: '0 6px 20px rgba(0,0,0,0.4)',
-        }}>
+        <div className="u-autocomp-dropdown">
           {loading && <div className="u-p-8-fs-12-color-muted">Buscando…</div>}
           {!loading && items.length === 0 && (
             <div className="u-p-8-fs-12-color-muted">{emptyText}</div>
@@ -139,20 +130,12 @@ export default function AutocompletePicker({
             <div key={getOptionKey(opt)}
               onMouseEnter={() => setHighlight(i)}
               onMouseDown={(e) => { e.preventDefault(); onPick(opt); setOpen(false); }}
-              style={{
-                padding: '6px 10px', fontSize: 12, cursor: 'pointer',
-                background: i === highlight ? 'var(--surface-2)' : 'transparent',
-                borderBottom: i < items.length - 1 ? '1px solid var(--hairline)' : 'none',
-              }}>
+              className={'u-autocomp-item' + (i === highlight ? ' u-autocomp-item-hl' : '')}>
               {renderOption(opt, { highlighted: i === highlight, index: i })}
             </div>
           ))}
           {hasMore && limit !== null && (
-            <div style={{
-              padding: '6px 10px', fontSize: 11, color: 'var(--text-muted)',
-              background: 'var(--surface-2)', borderTop: '1px solid var(--hairline)',
-              textAlign: 'center',
-            }}>
+            <div className="u-autocomp-more-hint">
               Mostrando los primeros {limit} — refiná la búsqueda para ver más
             </div>
           )}

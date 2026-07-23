@@ -4579,6 +4579,41 @@ body.modal-open { overflow: hidden; }
 .u-proy-tipo-select           { height: 30px; font-size: 11px; width: 65px; font-weight: 600; }
 .u-proy-contacto-chip         { display: flex; gap: 8px; align-items: center; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; background: var(--surface); }
 .u-proy-contacto-chip-on      { border-color: var(--border-strong); background: var(--surface-2); }
+/* — Sprint 93 batch (Capital, RedB2B, Autocomplete, Vendedores, Toast) — */
+/* RedB2B */
+.u-redb2b-header-desc         { margin-top: -8px; margin-bottom: 16px; }
+.u-redb2b-actions-row         { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+.u-redb2b-partner-card        { margin-bottom: 12px; padding: 16px; }
+.u-redb2b-partner-name        { font-weight: 600; font-size: 1.05em; }
+.u-redb2b-partner-slug        { font-weight: 400; font-size: 0.85em; }
+.u-redb2b-btn-row             { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+/* AutocompletePicker */
+.u-autocomp-input-locked      { background: rgba(99,102,241,0.10); font-weight: 600; }
+.u-autocomp-input-open        { background: var(--surface); font-weight: 400; }
+.u-autocomp-clear-btn         { padding: 2px; color: var(--text-muted); }
+.u-autocomp-dropdown          { position: absolute; top: 100%; left: 0; right: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; z-index: 50; max-height: 260px; overflow-y: auto; box-shadow: 0 6px 20px rgba(0,0,0,0.4); }
+.u-autocomp-item              { padding: 6px 10px; font-size: 12px; cursor: pointer; background: transparent; border-bottom: 1px solid var(--hairline); }
+.u-autocomp-item:last-child   { border-bottom: none; }
+.u-autocomp-item-hl           { background: var(--surface-2); }
+.u-autocomp-more-hint         { padding: 6px 10px; font-size: 11px; color: var(--text-muted); background: var(--surface-2); border-top: 1px solid var(--hairline); text-align: center; }
+/* VendedoresCatalogModal */
+.u-mw-100                     { max-width: 100%; }
+.u-vend-add-btn               { background: var(--accent); color: var(--accent-ink); cursor: pointer; font-weight: 700; padding: 0 14px; border: none; opacity: 1; }
+.u-vend-add-btn-disabled      { cursor: not-allowed; opacity: 0.6; }
+.u-vend-row                   { padding: 12px 14px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; }
+.u-vend-row-inner             { gap: 12px; align-items: center; }
+.u-vend-avatar                { width: 32px; height: 32px; border-radius: 8px; background: var(--surface-3); display: grid; place-items: center; font-weight: 700; font-size: 11px; }
+/* ToastContext */
+.u-toast-container            { position: fixed; bottom: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+.u-toast-item                 { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 10px; box-shadow: 0 4px 24px rgba(0,0,0,0.35); font-size: 14px; font-weight: 500; min-width: 240px; max-width: 380px; pointer-events: all; cursor: default; opacity: 1; transform: translateY(0); transition: opacity 0.25s ease, transform 0.25s ease; color: #fff; }
+.u-toast-item-leaving         { opacity: 0; transform: translateY(8px); }
+.u-toast-success              { background: var(--pos); }
+.u-toast-error                { background: var(--neg); }
+.u-toast-warn                 { background: #d97706; }
+.u-toast-info                 { background: var(--accent); }
+.u-toast-icon                 { flex-shrink: 0; opacity: 0.9; }
+.u-toast-msg                  { flex: 1; line-height: 1.4; }
+.u-toast-close-btn            { flex-shrink: 0; background: none; border: none; color: currentColor; opacity: 0.7; cursor: pointer; padding: 0; display: flex; align-items: center; }
 /* — DiffModal (Sprint 59) — */
 .u-diff-modal-body            { padding: 32px 28px 18px; text-align: left; }
 .u-diff-icon-wrap             { text-align: center; margin-bottom: 18px; }

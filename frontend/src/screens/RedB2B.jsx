@@ -81,7 +81,7 @@ export default function RedB2B() {
       <div className="page-head u-mb-16">
         <h1>Red B2B</h1>
       </div>
-      <p className="muted" style={{ marginTop: -8, marginBottom: 16 }}>
+      <p className="muted u-redb2b-header-desc">
         Conectá tu cuenta con otros tenants Tecny para operar B2B con sincronización
         automática de inventario, cuentas corrientes y pagos.
       </p>
@@ -220,7 +220,7 @@ function PartnersTab() {
     <div>
       {/* Botón "Invitar partner": contextual al tab Partners. En Configuración
           no tiene sentido. */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+      <div className="u-redb2b-actions-row">
         <button
           type="button"
           className="btn btn-primary"
@@ -332,13 +332,13 @@ function PartnershipRow({ p, acting, onAccept, onReject, onRevoke }) {
   }
 
   return (
-    <div className="card" style={{ marginBottom: 12, padding: 16 }}>
+    <div className="card u-redb2b-partner-card">
       <div className="u-flex-between-start-16-wrap">
         <div className="u-flex-1-minw-0">
-          <div style={{ fontWeight: 600, fontSize: '1.05em' }}>
+          <div className="u-redb2b-partner-name">
             {partner.nombre || '— sin nombre —'}
             {' '}
-            <span className="muted" style={{ fontWeight: 400, fontSize: '0.85em' }}>
+            <span className="muted u-redb2b-partner-slug">
               ({partner.slug || '?'})
             </span>
           </div>
@@ -356,7 +356,7 @@ function PartnershipRow({ p, acting, onAccept, onReject, onRevoke }) {
             </div>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        <div className="u-redb2b-btn-row">
           {p.status === 'pending' && isReceived && (
             <>
               <button type="button" className="btn btn-primary" disabled={acting} onClick={onAccept}>
