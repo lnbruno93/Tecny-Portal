@@ -228,7 +228,7 @@ function Wizard({ cajas, onCancel, onCreated }) {
 
       {paso === 1 && (
         <>
-          <div className="row" style={{ gap: 12, marginBottom: 12 }}>
+          <div className="row u-conc-row-form">
             <div className="field u-flex-0-0-240">
               <label className="field-label">Caja a conciliar <span className="u-color-neg">*</span></label>
               <select className="input" value={cajaId} onChange={e => setCajaId(e.target.value)}>
@@ -269,7 +269,7 @@ function Wizard({ cajas, onCancel, onCreated }) {
           <div className="u-mb-10">
             <div className="muted tiny">Archivo: <strong>{archivoNombre}</strong> · {rows.length} filas detectadas</div>
           </div>
-          <div className="row" style={{ gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
+          <div className="row u-conc-row-mapping">
             <div className="field u-flex-00-200">
               <label className="field-label">Columna Fecha <span className="u-color-neg">*</span></label>
               <select className="input" value={map.fecha} onChange={e => setMap(m => ({ ...m, fecha: e.target.value }))}>
@@ -305,7 +305,7 @@ function Wizard({ cajas, onCancel, onCreated }) {
           <div className="muted tiny u-mt-8">
             Vista previa: primeras 5 filas. <strong>{lineasValidas.length}</strong> líneas válidas se importarán.
           </div>
-          <div className="flex-row" style={{ gap: 8, marginTop: 12 }}>
+          <div className="flex-row u-conc-actions">
             <button className="btn" onClick={() => setPaso(1)}>← Atrás</button>
             <button className="btn btn-primary" disabled={!map.fecha || !map.monto || lineasValidas.length === 0 || saving} onClick={handleCrear}>
               {saving ? 'Creando…' : `Crear conciliación (${lineasValidas.length} líneas)`}
@@ -413,7 +413,7 @@ function Detalle({ id, onVolver }) {
       </div>
 
       <div className="card card-tight u-mb-12">
-        <div className="flex-row" style={{ gap: 24, flexWrap: 'wrap' }}>
+        <div className="flex-row u-conc-header-metadata">
           <div>
             <div className="muted tiny">Caja</div>
             <div className="u-fw-600">{data.caja_nombre} <span className="muted tiny">({data.caja_moneda})</span></div>
@@ -432,7 +432,7 @@ function Detalle({ id, onVolver }) {
               ? <span className="badge badge-info">Cerrada {fmtFecha(data.cerrado_en.slice(0, 10))}</span>
               : <span className="badge">Abierta</span>}
           </div>
-          <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+          <div className="u-conc-progress">
             <div className="muted tiny">Progreso</div>
             <div className="mono">
               <span className="u-color-pos">{matched}</span> matched ·{' '}
@@ -460,20 +460,17 @@ function Detalle({ id, onVolver }) {
               {data.lineas.map(l => {
                 const isSaving = savingLineas.has(l.id);
                 return (
-                <tr key={l.id} style={{
-                  background: l.matched_caja_mov_id ? 'rgba(34,197,94,0.05)'
-                            : l.ignorada            ? 'rgba(0,0,0,0.03)'
-                            : 'rgba(234,179,8,0.05)',
-                  opacity: isSaving ? 0.55 : 1,
-                  transition: 'opacity 120ms',
-                }} aria-busy={isSaving}>
+                <tr key={l.id} aria-busy={isSaving}
+                  className={
+                    'u-conc-linea-row ' +
+                    (l.matched_caja_mov_id ? 'u-conc-linea-matched'
+                     : l.ignorada ? 'u-conc-linea-ignorada'
+                     : 'u-conc-linea-pendiente') +
+                    (isSaving ? ' u-conc-linea-saving' : '')
+                  }>
                   <td className="mono tiny">{fmtFecha(l.fecha)}</td>
                   <td className="tiny">{l.descripcion || '—'}</td>
-                  <td className="mono" style={{
-                    textAlign: 'right',
-                    fontWeight: 600,
-                    color: Number(l.monto) > 0 ? 'var(--pos)' : 'var(--neg)',
-                  }}>
+                  <td className={'mono u-conc-monto ' + (Number(l.monto) > 0 ? 'u-color-pos' : 'u-color-neg')}>
                     {Number(l.monto) > 0 ? '+ ' : '- '}{fmt(Math.abs(Number(l.monto)))}
                   </td>
                   <td>
@@ -481,8 +478,7 @@ function Detalle({ id, onVolver }) {
                       <span className="muted tiny">— Ignorada —</span>
                     ) : (
                       <select
-                        className="input"
-                        style={{ height: 28, fontSize: 12, minWidth: 280 }}
+                        className="input u-conc-match-select"
                         disabled={cerrada || isSaving}
                         value={l.matched_caja_mov_id || ''}
                         onChange={e => setMatch(l.id, e.target.value ? Number(e.target.value) : null)}
