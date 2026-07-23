@@ -2255,3 +2255,16 @@ a { color: inherit; text-decoration: none; }
 .u-invite-title               { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; text-align: center; margin: 0 0 4px; color: var(--text); }
 .u-invite-alert-error         { background: var(--neg-soft); color: var(--neg); padding: 10px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 14px; }
 .u-invite-captcha-wrap        { display: flex; justify-content: center; margin: 4px 0; }
+/* — RedB2BConciliacion (Sprint 57) — */
+.u-list-reset                 { list-style: none; padding: 0; margin: 0; }
+.u-partnership-row            { padding: 12px; border-bottom: 1px solid var(--border, #e5e7eb); display: flex; justify-content: space-between; align-items: center; }
+.u-flex-between-start-wrap-mb-12 { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+.u-btn-link-inline            { font-size: 14px; background: transparent; border: 0; padding: 0; cursor: pointer; }
+.u-mb-4-mt-6                  { margin-bottom: 4px; margin-top: 6px; }
+.u-alert-red-box              { background: var(--red-bg, #fef2f2); padding: 12px; border-radius: 4px; margin-bottom: 12px; }
+.u-alert-green-box            { background: var(--green-bg, #f0fdf4); padding: 12px; border-radius: 4px; margin-bottom: 12px; }
+.u-color-red-fg               { color: var(--red-fg, #991b1b); }
+.u-color-green-fg             { color: var(--green-fg, #166534); }
+.u-color-orange-fg            { color: var(--orange-fg, #c2410c); }
+.u-kpi-value                  { font-size: 18px; font-weight: 600; }
+.u-fs-12-mt-2                 { font-size: 12px; margin-top: 2px; }
