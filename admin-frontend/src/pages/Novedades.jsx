@@ -200,19 +200,8 @@ export default function Novedades() {
           que Lucas escriba una nota pensando "esto es para X cliente" — no
           hay per-tenant en release notes por diseño. */}
       <div
-        className="callout"
+        className="callout u-nov-callout"
         role="note"
-        style={{
-          padding: '10px 14px',
-          background: 'var(--accent-soft)',
-          border: '1px solid rgba(14,165,233,0.28)',
-          borderRadius: 8,
-          fontSize: 13,
-          color: 'var(--text-2)',
-          marginBottom: 16,
-          display: 'flex',
-          gap: 10,
-        }}
       >
         <span aria-hidden="true">ℹ️</span>
         <span>
@@ -221,15 +210,7 @@ export default function Novedades() {
         </span>
       </div>
 
-      <div
-        className="grid-2col"
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1fr) 400px',
-          gap: 20,
-          alignItems: 'start',
-        }}
-      >
+      <div className="grid-2col u-nov-grid-2col">
         {/* ── LISTADO ─────────────────────────────────────────────── */}
         <Card
           flush
@@ -277,9 +258,7 @@ export default function Novedades() {
                   {notas.map((n) => (
                     <tr
                       key={n.id}
-                      style={{
-                        background: editingId === n.id ? 'var(--accent-soft)' : undefined,
-                      }}
+                      className={editingId === n.id ? 'u-bg-accent-soft' : ''}
                     >
                       <td>
                         <TipoPill tipo={n.tipo} />
@@ -288,17 +267,7 @@ export default function Novedades() {
                         <div className="u-fw-500-color-text-mb-2">
                           {n.titulo}
                         </div>
-                        <div
-                          style={{
-                            color: 'var(--text-muted)',
-                            fontSize: 12,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            display: '-webkit-box',
-                            WebkitLineClamp: 1,
-                            WebkitBoxOrient: 'vertical',
-                          }}
-                        >
+                        <div className="u-nov-truncate-1">
                           {n.descripcion}
                         </div>
                       </td>
@@ -339,13 +308,7 @@ export default function Novedades() {
           <Card
             title={
               <span className="u-flex-center-gap-8">
-                <span
-                  aria-hidden="true"
-                  style={{
-                    width: 6, height: 6, borderRadius: '50%',
-                    background: 'var(--accent)', display: 'inline-block',
-                  }}
-                />
+                <span aria-hidden="true" className="u-nov-accent-dot" />
                 {editingId ? 'Editar nota' : 'Nueva nota'}
               </span>
             }
@@ -397,28 +360,12 @@ export default function Novedades() {
               <Preview form={form} />
 
               {formError && (
-                <div
-                  role="alert"
-                  style={{
-                    padding: '8px 10px',
-                    background: 'var(--neg-soft)',
-                    color: 'var(--neg)',
-                    borderRadius: 6,
-                    fontSize: 12,
-                  }}
-                >
+                <div role="alert" className="u-nov-form-error">
                   {formError}
                 </div>
               )}
 
-              <div
-                style={{
-                  display: 'flex',
-                  gap: 8,
-                  paddingTop: 12,
-                  borderTop: '1px solid var(--border)',
-                }}
-              >
+              <div className="u-nov-form-footer">
                 {editingId && (
                   <Btn kind="ghost" onClick={startNew} disabled={saving}>
                     Cancelar
@@ -446,22 +393,8 @@ export default function Novedades() {
 function TipoPill({ tipo }) {
   const meta = TIPO_META[tipo] || TIPO_META.feature;
   const tone = meta.tone; // 'info' | 'pos' | 'warn'
-  const bg = `var(--${tone}-soft)`;
-  const fg = `var(--${tone})`;
   return (
-    <span
-      style={{
-        display: 'inline-block',
-        padding: '2px 8px',
-        borderRadius: 4,
-        fontSize: 10,
-        fontWeight: 700,
-        textTransform: 'uppercase',
-        letterSpacing: '0.05em',
-        background: bg,
-        color: fg,
-      }}
-    >
+    <span className={`u-nov-pill u-nov-pill-${tone}`}>
       {meta.label}
     </span>
   );
@@ -470,17 +403,7 @@ function TipoPill({ tipo }) {
 function Field({ label, error, counter, hint, children }) {
   return (
     <div>
-      <label
-        style={{
-          display: 'block',
-          fontSize: 11,
-          fontWeight: 600,
-          color: 'var(--text-muted)',
-          textTransform: 'uppercase',
-          letterSpacing: '0.04em',
-          marginBottom: 6,
-        }}
-      >
+      <label className="u-nov-field-label">
         {label}
       </label>
       {children}
@@ -501,14 +424,7 @@ function Field({ label, error, counter, hint, children }) {
 
 function Counter({ n, max, warn }) {
   return (
-    <div
-      style={{
-        fontSize: 11,
-        color: warn ? 'var(--neg)' : 'var(--text-dim)',
-        textAlign: 'right',
-        marginTop: 4,
-      }}
-    >
+    <div className={`u-nov-counter ${warn ? 'u-color-neg' : 'u-color-text-dim'}`}>
       {n} / {max}
     </div>
   );
@@ -519,24 +435,8 @@ function Preview({ form }) {
   const titulo = form.titulo.trim() || <span className="u-color-text-dim">(sin título)</span>;
   const desc = form.descripcion.trim() || <span className="u-color-text-dim">(sin descripción)</span>;
   return (
-    <div
-      style={{
-        padding: 12,
-        background: 'var(--surface-2)',
-        border: '1px dashed var(--border)',
-        borderRadius: 8,
-      }}
-    >
-      <div
-        style={{
-          fontSize: 10,
-          textTransform: 'uppercase',
-          letterSpacing: '0.05em',
-          color: 'var(--text-dim)',
-          fontWeight: 600,
-          marginBottom: 6,
-        }}
-      >
+    <div className="u-nov-preview-box">
+      <div className="u-nov-preview-header">
         Vista previa en el portal cliente
       </div>
       <div className="u-fw-600-fs-13-mb-4">
