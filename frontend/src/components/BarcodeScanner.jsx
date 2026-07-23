@@ -148,79 +148,40 @@ export default function BarcodeScanner({ open, onScan, onClose, ignoreCodes }) {
   return (
     <div
       ref={overlayRef}
-      className="modal-overlay"
-      style={{ background: 'rgba(0,0,0,0.92)', padding: 0 }}
+      className="modal-overlay u-scanner-overlay"
       role="dialog"
       aria-modal="true"
       aria-label="Escanear código de barras"
     >
-      <div style={{
-        position: 'relative',
-        width: '100%',
-        height: '100dvh',
-        display: 'flex',
-        flexDirection: 'column',
-      }}>
+      <div className="u-scanner-wrap">
         {/* Header con botón cerrar */}
-        <div style={{
-          position: 'absolute', top: 0, left: 0, right: 0, zIndex: 2,
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          padding: 'env(safe-area-inset-top, 12px) 16px 12px',
-          background: 'linear-gradient(180deg, rgba(0,0,0,0.6), transparent)',
-          color: 'white',
-        }}>
+        <div className="u-scanner-header">
           <div className="u-fs-14-fw-600">
             {ready ? 'Apuntá al código de barras' : 'Iniciando cámara…'}
           </div>
           <button
-            className="btn"
+            className="btn u-scanner-close-btn"
             onClick={onClose}
             aria-label="Cerrar scanner"
-            style={{ background: 'rgba(255,255,255,0.15)', color: 'white', border: '1px solid rgba(255,255,255,0.3)' }}
           >
             <Icons.X size={16} /> Cerrar
           </button>
         </div>
 
         {/* Video */}
-        <video
-          ref={videoRef}
-          style={{
-            flex: 1, width: '100%', height: '100%',
-            objectFit: 'cover', background: 'black',
-          }}
-          playsInline
-          muted
-        />
+        <video ref={videoRef} className="u-scanner-video" playsInline muted />
 
         {/* Marco de mira (visual guide) */}
         {ready && !error && (
-          <div style={{
-            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            pointerEvents: 'none',
-          }}>
-            <div style={{
-              width: 'min(80vw, 320px)',
-              height: 'min(35vw, 140px)',
-              border: '3px solid rgba(255,255,255,0.85)',
-              borderRadius: 12,
-              boxShadow: '0 0 0 9999px rgba(0,0,0,0.35)',
-            }} />
+          <div className="u-scanner-mira-wrap">
+            <div className="u-scanner-mira" />
           </div>
         )}
 
         {/* Footer con instrucciones / error */}
-        <div style={{
-          position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 2,
-          padding: '16px 20px env(safe-area-inset-bottom, 16px)',
-          background: 'linear-gradient(0deg, rgba(0,0,0,0.7), transparent)',
-          color: 'white',
-          textAlign: 'center',
-          fontSize: 13,
-        }}>
+        <div className="u-scanner-footer">
           {error
-            ? <div style={{ color: '#ffb4b4', fontWeight: 600 }}>{error}</div>
+            ? <div className="u-scanner-error">{error}</div>
             : ready
               ? <div>Mantené el código dentro del marco. Cada scan suma un IMEI.</div>
               : <div>Permitiendo acceso a la cámara…</div>
