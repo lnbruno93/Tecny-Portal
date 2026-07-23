@@ -501,19 +501,13 @@ export default function SitioPublico() {
               </div>
 
               {faq.length === 0 ? (
-                <div className="muted" style={{ padding: 16, textAlign: 'center',
-                     border: '1px dashed var(--hairline)', borderRadius: 8, fontSize: 13 }}>
+                <div className="muted u-cms-empty-16">
                   Todavía no cargaste ninguna pregunta. La landing muestra su set default hardcodeado.
                 </div>
               ) : (
                 <div className="u-grid-gap-12-nocol">
                   {faq.map((q, idx) => (
-                    <div key={q.id || q._tempId} style={{
-                      padding: 14, borderRadius: 8,
-                      border: '1px solid var(--border)',
-                      background: 'rgba(255,255,255,0.02)',
-                      display: 'grid', gap: 10,
-                    }}>
+                    <div key={q.id || q._tempId} className="u-cms-item-card">
                       <div className="u-flex-between-center-nogap">
                         <div className="muted u-fs-12">
                           #{idx + 1} — {q.question ? q.question.slice(0, 60) : 'Sin pregunta'}
@@ -573,26 +567,15 @@ export default function SitioPublico() {
                   </p>
                 </div>
                 {/* Status chip */}
-                <div style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                  padding: '6px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600,
-                  background: googleEnabled ? 'rgba(16, 185, 129, 0.1)' : 'rgba(148, 163, 184, 0.1)',
-                  border: `1px solid ${googleEnabled ? 'rgba(16, 185, 129, 0.3)' : 'rgba(148, 163, 184, 0.3)'}`,
-                  color: googleEnabled ? 'var(--pos)' : 'var(--muted)',
-                }}>
-                  <span style={{
-                    width: 8, height: 8, borderRadius: '50%',
-                    background: googleEnabled ? 'var(--pos)' : 'var(--muted)',
-                  }} />
+                <div className={`u-cms-status-chip ${googleEnabled ? 'u-cms-status-active' : 'u-cms-status-paused'}`}>
+                  <span className={`u-cms-status-dot ${googleEnabled ? 'u-bg-pos' : 'u-bg-muted'}`} />
                   {googleEnabled ? 'Conectado' : 'Pausado'}
                 </div>
               </div>
 
               {/* Info de la integración (place_id, count, cached_at) */}
               {googleStatus?.configured ? (
-                <div style={{ display: 'grid', gap: 8, padding: 12,
-                              borderRadius: 6, background: 'rgba(255,255,255,0.02)',
-                              border: '1px solid var(--hairline)' }}>
+                <div className="u-cms-info-box">
                   <div className="u-grid-autofit-140-12">
                     <div>
                       <div className="muted tiny u-mb-2">Reseñas en Google</div>
@@ -614,16 +597,13 @@ export default function SitioPublico() {
                     </div>
                   </div>
                   {googleStatus.place_id && (
-                    <div style={{ paddingTop: 8, borderTop: '1px solid var(--hairline)',
-                                  display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                    <div className="u-cms-links-row">
                       <a href={`https://www.google.com/maps/place/?q=place_id:${googleStatus.place_id}`}
                          target="_blank" rel="noopener noreferrer"
                          className="u-fs-12-color-accent">
                         Ver listing en Google Maps →
                       </a>
-                      <button type="button" onClick={copyReviewLink}
-                              style={{ background: 'none', border: 'none', padding: 0,
-                                       fontSize: 12, color: 'var(--accent)', cursor: 'pointer' }}>
+                      <button type="button" onClick={copyReviewLink} className="u-link-btn">
                         📋 Copiar link para pedir reseñas
                       </button>
                     </div>
@@ -635,8 +615,7 @@ export default function SitioPublico() {
                   )}
                 </div>
               ) : (
-                <div className="muted" style={{ padding: 12, textAlign: 'center', fontSize: 12,
-                     border: '1px dashed var(--hairline)', borderRadius: 6 }}>
+                <div className="muted u-cms-empty-12">
                   {googleStatus === null
                     ? 'Cargando estado…'
                     : 'Integración no configurada (faltan env vars GOOGLE_PLACES_API_KEY / PLACE_ID en Railway).'}
@@ -644,10 +623,7 @@ export default function SitioPublico() {
               )}
 
               {/* Toggle */}
-              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer',
-                              padding: 12, borderRadius: 6,
-                              background: 'rgba(255,255,255,0.02)',
-                              border: '1px solid var(--hairline)' }}>
+              <label className="u-cms-checkbox-box">
                 <input type="checkbox" checked={googleEnabled} disabled={saving}
                        onChange={e => setGoogleEnabled(e.target.checked)}
                        className="u-mt-2" />
@@ -695,28 +671,17 @@ export default function SitioPublico() {
               </div>
 
               {testimonials.length === 0 ? (
-                <div className="muted" style={{ padding: 16, textAlign: 'center',
-                     border: '1px dashed var(--hairline)', borderRadius: 8, fontSize: 13 }}>
+                <div className="muted u-cms-empty-16">
                   Todavía no cargaste ninguna reseña. La landing muestra su set default hardcodeado.
                 </div>
               ) : (
                 <div className="u-grid-gap-12-nocol">
                   {testimonials.map((t, idx) => (
-                    <div key={t.id || t._tempId} style={{
-                      padding: 14, borderRadius: 8,
-                      border: '1px solid var(--border)',
-                      background: 'rgba(255,255,255,0.02)',
-                      display: 'grid', gap: 10,
-                    }}>
+                    <div key={t.id || t._tempId} className="u-cms-item-card">
                       {/* Header: avatar preview + acciones */}
                       <div className="u-flex-between-center-nogap">
                         <div className="u-flex-center-gap-10">
-                          <div style={{
-                            width: 32, height: 32, borderRadius: '50%',
-                            background: t.color || '#4285F4', color: '#fff',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontWeight: 700, fontSize: 14,
-                          }}>
+                          <div className="u-cms-avatar" style={{ background: t.color || '#4285F4' }}>
                             {(t.initial || '?').toUpperCase()}
                           </div>
                           <div className="muted u-fs-12">
@@ -787,22 +752,12 @@ export default function SitioPublico() {
 
           {/* Mensajes de estado (compartidos entre Contacto + Reseñas) */}
           {error && (
-            <div role="alert" style={{
-              padding: 10, borderRadius: 6, fontSize: 13,
-              background: 'rgba(220, 38, 38, 0.08)',
-              border: '1px solid rgba(220, 38, 38, 0.3)',
-              color: 'var(--neg)',
-            }}>
+            <div role="alert" className="u-alert-error">
               {error}
             </div>
           )}
           {savedMsg && (
-            <div role="status" style={{
-              padding: 10, borderRadius: 6, fontSize: 13,
-              background: 'rgba(16, 185, 129, 0.08)',
-              border: '1px solid rgba(16, 185, 129, 0.3)',
-              color: 'var(--pos)',
-            }}>
+            <div role="status" className="u-alert-success">
               {savedMsg}
             </div>
           )}
