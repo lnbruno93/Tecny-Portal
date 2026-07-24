@@ -148,4 +148,60 @@ describe('assertRlsCoverage (integration)', () => {
     expect(rows.length).toBe(1); // audit_queue tiene tenant_id
     // Y aún así assertRlsCoverage pasa (verificado en el primer test).
   });
+
+  // ─── Chequeo 4 (CONTENT) — nuevo 2026-07-24 ────────────────────────────
+  //
+  // Regressión guard del bug Sentry TECNY-PORTAL-BACKEND-16: la migration
+  // `20260619000001_audit_logs_rls_tighten` reescribió la policy de
+  // audit_logs SIN NULLIF, y el startup assertion pasaba porque la policy
+  // SÍ existía — pero el predicate quedaba bugueado (cast '' → int throwea).
+  //
+  // Con el chequeo de CONTENT del predicate, cualquier migration que
+  // reintroduzca el pattern bugueado hace fallar el boot.
+
+  it('falla si una policy tenant_isolation pierde el NULLIF (regresión Sentry #16)', async () => {
+    // Simulamos exactamente el bug del 2026-06-19: reescribir la policy
+    // de una tabla canónica con el pattern bugueado (sin NULLIF).
+    const TABLA_TEST = 'productos';
+    const PREDICATE_BUGGED = `tenant_id = current_setting('app.current_tenant', true)::int`;
+
+    await pool.query(`DROP POLICY IF EXISTS tenant_isolation ON ${TABLA_TEST}`);
+    await pool.query(`
+      CREATE POLICY tenant_isolation ON ${TABLA_TEST}
+        FOR ALL TO PUBLIC
+        USING (${PREDICATE_BUGGED})
+        WITH CHECK (${PREDICATE_BUGGED})
+    `);
+
+    try {
+      // El chequeo 4 debe cazar esto — mencionar tabla + explicar el pattern.
+      await expect(assertRlsCoverage(pool)).rejects.toThrow(/productos.*SIN NULLIF/s);
+      try {
+        await assertRlsCoverage(pool);
+      } catch (err) {
+        expect(err.code).toBe('RLS_COVERAGE_DRIFT');
+        // El mensaje debe hacer referencia al bug Sentry #16 para dar
+        // trazabilidad al futuro dev que vea el fallo del boot.
+        expect(err.message).toMatch(/Sentry #16/);
+      }
+    } finally {
+      // Restaurar policy correcta.
+      await pool.query(`DROP POLICY IF EXISTS tenant_isolation ON ${TABLA_TEST}`);
+      await pool.query(`
+        CREATE POLICY tenant_isolation ON ${TABLA_TEST}
+          FOR ALL TO PUBLIC
+          USING (${PREDICATE_CLOSED})
+          WITH CHECK (${PREDICATE_CLOSED})
+      `);
+    }
+  });
+
+  it('el chequeo de contenido inspecciona TODAS las policies (result.contentChecked > 0)', async () => {
+    // Sanity: el nuevo campo `contentChecked` en el resultado debe reflejar
+    // que se validó qual + with_check de cada policy tenant_isolation.
+    // Approx: 2 predicates por policy * (~50 tablas canónicas + audit_logs).
+    const result = await assertRlsCoverage(pool);
+    expect(result.ok).toBe(true);
+    expect(result.contentChecked).toBeGreaterThan(50);
+  });
 });

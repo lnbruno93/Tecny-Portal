@@ -59,6 +59,29 @@ jobs:
       - name: Check inline style count vs baseline
         run: node scripts/csp-inline-styles-check.mjs check
 
+  # 2026-07-24 (P0 combo post-Sentry #16/#17): anti-regression para patterns
+  # peligrosos en backend/src/. Escanea buscando `SET LOCAL ... = ${...}` con
+  # interpolación NO validada (bug que disparó Sentry #17 en redB2bEmail.js),
+  # `eval()` / `new Function()` en el backend, y `current_setting(...)::int`
+  # sin NULLIF (bug Sentry #16). Compara contra baseline JSON — falla si un
+  # archivo introduce nuevos matches.
+  #
+  # Sin services + sin npm ci — script usa solo Node built-in fs. ~1s de run.
+  backend-anti-regression:
+    name: Backend anti-regression (SQL injection / eval / RLS)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check backend patterns vs baseline
+        run: npm run check:backend-anti-regression
+
   test:
     name: Integration Tests
     runs-on: ubuntu-latest

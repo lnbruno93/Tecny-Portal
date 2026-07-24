@@ -1,0 +1,15 @@
+{
+  "_meta": {
+    "generated_at": "2026-07-24",
+    "generated_by": "scripts/security/backend-anti-regression-check.mjs baseline",
+    "purpose": "Baseline de patterns SET_LOCAL_UNSAFE_INTERPOLATION legacy en el backend. El check falla si el count por archivo SUBE — así previene la introducción de nuevos casos mientras permite reducir/migrar los existentes gradualmente. Cuando un archivo llegue a 0, borrar la entrada.",
+    "sentry_context": "Sentry TECNY-PORTAL-BACKEND-17 (2026-07-24): `lib/redB2bEmail.js` tenía `SET LOCAL app.current_tenant = ${Number(tenantId)}` con interpolación en SQL. Cuando `tenantId` era garbage, generaba SQL syntax error y envenenaba la conexión. Fix: migrado a `set_config('app.current_tenant', $1::text, true)` con bind param. Los 29 usages restantes están en routes con guards implícitos (JWT middleware, partnership FK constraints), pero deberían migrarse por consistencia + defense-in-depth."
+  },
+  "SET_LOCAL_UNSAFE_INTERPOLATION": {
+    "backend/src/routes/redB2b/operations.js": 11,
+    "backend/src/routes/redB2b/pagos.js": 13,
+    "backend/src/routes/redB2b/partnerships.js": 2,
+    "backend/src/routes/signup.js": 2,
+    "backend/src/routes/superAdmin.js": 1
+  }
+}
