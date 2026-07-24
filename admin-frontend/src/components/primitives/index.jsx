@@ -63,16 +63,7 @@ export function Badge({ tone = 'default', dot = false, children, className = '' 
   return (
     <span className={classes.join(' ')}>
       {dot && (
-        <span
-          aria-hidden="true"
-          style={{
-            width: 6,
-            height: 6,
-            borderRadius: '50%',
-            background: 'currentColor',
-            display: 'inline-block',
-          }}
-        />
+        <span aria-hidden="true" className="u-badge-dot" />
       )}
       {children}
     </span>
@@ -102,7 +93,6 @@ export function Card({
   children,
   flush = false,
   tight = false,
-  style,
   className = '',
 }) {
   const classes = ['card'];
@@ -113,10 +103,14 @@ export function Card({
   // En flush, el header con border-bottom (.card-hd) hace de separador
   // visual. En default, si hay title lo renderizamos arriba del body con
   // margen pero sin border.
+  //
+  // Sprint 102 CSP: removida la prop `style` — passthrough dead API, sin
+  // callers reales en el codebase. Si en el futuro se necesita override,
+  // usar className.
   const hasHeader = title || subtitle || actions;
 
   return (
-    <section className={classes.join(' ')} style={style}>
+    <section className={classes.join(' ')}>
       {hasHeader && flush && (
         <header className="card-hd">
           <div>

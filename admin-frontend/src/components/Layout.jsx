@@ -148,10 +148,9 @@ export default function Layout({ children }) {
             qué pasa al click, útil para screen readers. */}
         <Link
           to="/mi-cuenta"
-          className="user-pill"
+          className="user-pill u-user-pill-link"
           title={displayName}
           aria-label={`Mi cuenta — ${displayName}`}
-          style={{ textDecoration: 'none', color: 'inherit' }}
         >
           <div className="avatar" aria-hidden="true">{initialsFromUser(user)}</div>
           <div className="user-meta">
@@ -205,7 +204,7 @@ export default function Layout({ children }) {
               placeholder="Próximamente"
               disabled
               aria-disabled="true"
-              style={{ cursor: 'not-allowed' }}
+              className="u-cursor-not-allowed"
             />
             <kbd aria-hidden="true">⌘K</kbd>
           </div>
@@ -240,10 +239,9 @@ export default function Layout({ children }) {
             contenido). El outline:none evita el ring feo al recibir el
             focus desde un skip. */}
         <div
-          className="content"
+          className="content u-outline-none"
           id="main-content"
           tabIndex={-1}
-          style={{ outline: 'none' }}
         >
           <div className="content-narrow">{children}</div>
         </div>

@@ -37,14 +37,14 @@ function firstName(user) {
 // El mapeo action→{icon,tone,texto} vive en lib/actionDescriptors.js para
 // reuso desde Ficha. Importamos describeAction + actionLongText arriba.
 
-// Plan canónico → CSS var para color de barra en "Distribución por plan".
-// Usamos PLAN_TONES vía planTone() para el badge, pero la barra necesita
-// el color resuelto (no la clase). Tablita chica acá.
-const PLAN_BAR_COLOR = {
-  trial:      'var(--text-dim)',
-  starter:    'var(--accent)',
-  pro:        'var(--info)',
-  enterprise: 'var(--warn)',
+// Plan canónico → utility class para color de barra en "Distribución por plan".
+// Sprint 102 CSP: migrado de CSS var strings a class names para evitar
+// inline. Cada plan mapea a `.u-bg-*` del design system.
+const PLAN_BAR_CLASS = {
+  trial:      'u-bg-text-dim',
+  starter:    'u-bg-accent',
+  pro:        'u-bg-info',
+  enterprise: 'u-bg-warn',
 };
 
 export default function Resumen() {
@@ -509,12 +509,10 @@ export default function Resumen() {
                       </span>
                     </div>
                     <div className="bar-track u-h-8">
+                      {/* width % es data-driven residual; el color viene de la clase. */}
                       <div
-                        className="bar-fill"
-                        style={{
-                          width: widthPct + '%',
-                          background: PLAN_BAR_COLOR[p.plan] || 'var(--accent)',
-                        }}
+                        className={`bar-fill ${PLAN_BAR_CLASS[p.plan] || 'u-bg-accent'}`}
+                        style={{ width: widthPct + '%' }}
                       />
                     </div>
                   </div>
