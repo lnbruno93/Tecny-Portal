@@ -71,11 +71,21 @@ const WORKSPACES = [
 // funcionando.
 const JSX_EXTS = ['.jsx', '.tsx'];
 
-// Regex: matchea `style={` con opcional whitespace. Capta el inicio del
-// attribute; no cuenta cuántos statements hay adentro (una expresión
-// `style={x || y}` es 1 match, no 2). El objetivo es "cuántos sitios usan
-// inline styles", no "cuántos properties se pasan".
-const STYLE_ATTR_RE = /\bstyle\s*=\s*\{/g;
+// Regexes: matcheamos DOS patterns que ambos violan `style-src 'unsafe-inline'`:
+//   1. `style={...}` attribute JSX — inline style attr en un DOM element.
+//   2. `<style>` tag JSX — inline stylesheet block.
+//
+// Sprint 104 (2026-07-24) agregó el 2do — hasta entonces solo trackeábamos
+// attributes. Los `<style>` blocks son igual de graves para CSP: cualquier
+// contenido dinámico (template literal con variables) es un XSS injection
+// vector si esas variables incluyen user input sin sanitizar. Migrados los
+// 4 blocks que existían (PublicoUsados x3 + PorCategoriaBreakdownModal x1)
+// a stylesheets externos o clases utility con variants.
+//
+// Ambos regexes cuentan hacia el mismo total — el anti-regression check
+// cubre las 2 categorías con una sola métrica.
+const STYLE_ATTR_RE  = /\bstyle\s*=\s*\{/g;
+const STYLE_BLOCK_RE = /<style[\s>]/g;
 
 function walkDir(dir, out = []) {
   for (const entry of readdirSync(dir)) {
@@ -98,8 +108,9 @@ function walkDir(dir, out = []) {
 
 function countInFile(path) {
   const content = readFileSync(path, 'utf8');
-  const matches = content.match(STYLE_ATTR_RE);
-  return matches ? matches.length : 0;
+  const attrMatches  = content.match(STYLE_ATTR_RE)  || [];
+  const blockMatches = content.match(STYLE_BLOCK_RE) || [];
+  return attrMatches.length + blockMatches.length;
 }
 
 function countWorkspace(workspace) {

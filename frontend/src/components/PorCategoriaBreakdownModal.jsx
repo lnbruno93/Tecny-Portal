@@ -148,6 +148,11 @@ export default function PorCategoriaBreakdownModal({
           {filasOrdenadas.length === 0 ? (
             <p className="muted">{emptyMessage}</p>
           ) : (
+            // Sprint 104 CSP: los estilos de .cat-* vivían en un elemento
+            // style con contenido dinámico (grid-template-columns dependía
+            // de showPercentage + moneyKey). Movidos a styles.css con 4
+            // variantes de grid como classes explícitas + 2 variantes de
+            // cat-count. Cero contenido dinámico.
             <div className="cat-breakdown">
               {filasOrdenadas.map((r, i) => {
                 const pct = showPercentage && totalCount > 0
@@ -155,8 +160,12 @@ export default function PorCategoriaBreakdownModal({
                   : null;
                 const count = Number(r[countKey]) || 0;
                 const money = moneyKey ? r[moneyKey] : null;
+                // Grid variant depende de las 2 opciones — 4 combinaciones.
+                const rowVariant = moneyKey
+                  ? (showPercentage ? 'cat-row-with-both' : 'cat-row-with-money')
+                  : (showPercentage ? 'cat-row-with-pct'  : 'cat-row-basic');
                 return (
-                  <div key={r.clase_id || `null-${i}`} className="cat-row">
+                  <div key={r.clase_id || `null-${i}`} className={`cat-row ${rowVariant}`}>
                     <span className="cat-em" aria-hidden="true">
                       {r.emoji || (r.es_sin_categoria ? '📦' : '·')}
                     </span>
@@ -169,7 +178,7 @@ export default function PorCategoriaBreakdownModal({
                     {pct != null && (
                       <span className="cat-pct mono">{pct.toFixed(1)}%</span>
                     )}
-                    <span className="cat-count mono">
+                    <span className={`cat-count mono ${moneyKey ? 'cat-count-money' : 'cat-count-only'}`}>
                       {moneyKey ? (
                         <>{fmtN(count)} {countLabel}</>
                       ) : (
@@ -226,35 +235,6 @@ export default function PorCategoriaBreakdownModal({
         </div>
       </div>
 
-      <style>{`
-        .cat-breakdown {
-          display: flex;
-          flex-direction: column;
-        }
-        .cat-row {
-          display: grid;
-          grid-template-columns: auto 1fr ${showPercentage ? 'auto ' : ''}auto${moneyKey ? ' auto' : ''};
-          align-items: center;
-          gap: 12px;
-          padding: 10px 0;
-          border-bottom: 1px solid var(--border);
-          font-size: 13.5px;
-        }
-        .cat-row:last-child { border-bottom: none; }
-        .cat-em { font-size: 16px; line-height: 1; }
-        .cat-name { font-weight: 500; }
-        .cat-pct { color: var(--text-muted); font-size: 12px; min-width: 44px; text-align: right; }
-        .cat-count {
-          ${moneyKey ? 'color: var(--text-muted); font-size: 12.5px;' : 'font-variant-numeric: tabular-nums; min-width: 64px; text-align: right;'}
-        }
-        .cat-value { font-weight: 500; font-variant-numeric: tabular-nums; }
-        .cat-value .ccy {
-          font-size: 11.5px;
-          color: var(--text-muted);
-          font-weight: 500;
-          margin-right: 4px;
-        }
-      `}</style>
     </div>
   );
 }
