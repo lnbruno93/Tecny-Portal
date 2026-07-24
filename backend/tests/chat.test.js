@@ -1175,11 +1175,17 @@ describe('TANDA 0 regression — loadHistory carga los MÁS NUEVOS', () => {
     //   msg-7..msg-25 (19) + "pregunta nueva" (1) = 20.
     // Pre-fix (ORDER ASC LIMIT 20): cargaba msg-1..msg-20, dejando AFUERA
     // tanto la pregunta nueva como los msgs recientes 21-25.
-    expect(texts).toContain('pregunta nueva');
-    expect(texts).toContain('msg-25');                  // más nuevo del histórico
-    expect(texts).toContain('msg-7');                   // boundary últimos 20
-    expect(texts).not.toContain('msg-6');               // primero fuera del cap
-    expect(texts).not.toContain('msg-1');               // mucho más viejo
+    //
+    // 2026-07-24 chat P1 prompt injection hardening: los text blocks de
+    // mensajes user ahora se envuelven con <user_message>...</user_message>
+    // antes de enviar al modelo. Comparamos strippeando los tags.
+    const strip = (s) => s.replace(/^<user_message>|<\/user_message>$/g, '');
+    const bare = texts.map(strip);
+    expect(bare).toContain('pregunta nueva');
+    expect(bare).toContain('msg-25');                   // más nuevo del histórico
+    expect(bare).toContain('msg-7');                    // boundary últimos 20
+    expect(bare).not.toContain('msg-6');                // primero fuera del cap
+    expect(bare).not.toContain('msg-1');                // mucho más viejo
   });
 });
 

@@ -58,6 +58,21 @@ const ALLOWLIST = [
     addedAt: '2026-07-24',
     expiresAt: '2026-10-24', // forzar re-evaluación en 3 meses
   },
+  {
+    advisoryId: 'GHSA-mh99-v99m-4gvg',
+    title: 'brace-expansion: DoS via unbounded expansion length causing an out-of-memory process crash',
+    reason:
+      'Backend: transitivo de archiver → archiver-utils → glob → minimatch → brace-expansion. ' +
+      'Único caller de archiver es `routes/comprobantes.js:520` (export ZIP de comprobantes), ' +
+      'que usa archive.append(stream, { name }) — NO invoca glob con patterns arbitrarios ' +
+      'ni acepta user input directo en brace patterns. El attack vector (brace pattern con ' +
+      'miles de comas causing OOM) no llega al glob interno. Fix upstream requiere ' +
+      'archiver@8.0.0 (breaking change) — no vale la pena bump mayor para vuln no ' +
+      'explotable en nuestro uso. Re-evaluar cuando archiver@8 esté testeado y se pueda ' +
+      'hacer bump seguro.',
+    addedAt: '2026-07-24',
+    expiresAt: '2026-10-24', // forzar re-evaluación en 3 meses
+  },
 ];
 
 // ── Main ─────────────────────────────────────────────────────────────────
