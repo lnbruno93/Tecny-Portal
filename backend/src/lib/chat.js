@@ -217,6 +217,43 @@ function extractPlainText(contentBlocks) {
  *   tool_calls: number,
  * }>}
  */
+// 2026-07-24 (chat P1 prompt injection hardening):
+// Envuelve TODOS los text blocks de mensajes con role='user' en tags
+// `<user_message>...</user_message>`. El system prompt le dice al modelo
+// que trate estos delimitadores como data (no como instructions), lo cual
+// reduce la superficie de "el user intenta re-programar al bot con `IGNORA
+// TUS INSTRUCCIONES...`". Aplicado a TODA la history (no solo al último
+// user msg) para que el modelo trate consistentemente TODO input del user
+// como data delimitada.
+//
+// No wrappea tool_result blocks — esos ya son bloques estructurales que
+// el modelo entiende como output de tools. El system prompt tiene clause
+// separada para el trust boundary de tool_result data.
+//
+// Non-destructivo: solo transforma para la llamada al API, no toca DB.
+// La UI sigue mostrando el texto original (frontend usa `m.text` del
+// state local, y `GET /conversations/:id` devuelve el content unwrapped).
+function wrapUserContentForModel(messages) {
+  return messages.map((msg) => {
+    if (msg.role !== 'user' || !Array.isArray(msg.content)) return msg;
+    return {
+      ...msg,
+      content: msg.content.map((block) => {
+        if (block.type !== 'text' || typeof block.text !== 'string') return block;
+        // Idempotente: si ya está envuelto (paranoia — no debería pasar),
+        // no re-wrappear. Chequea si el texto arranca con el tag exacto.
+        if (block.text.startsWith('<user_message>') && block.text.endsWith('</user_message>')) {
+          return block;
+        }
+        return {
+          ...block,
+          text: `<user_message>${block.text}</user_message>`,
+        };
+      }),
+    };
+  });
+}
+
 async function runChatTurn({ conversationId, userText, ctx }) {
   if (!Number.isInteger(conversationId) || conversationId <= 0) {
     throw new Error('runChatTurn: conversationId inválido');
@@ -282,7 +319,12 @@ async function runChatTurn({ conversationId, userText, ctx }) {
             ? { ...t, cache_control: { type: 'ephemeral' } }
             : t
         ),
-        messages,
+        // 2026-07-24 (chat P1 prompt injection hardening): envolver user
+        // text con `<user_message>` tags para que el modelo trate ese
+        // contenido como DATA delimitada, no como instructions. Ver comment
+        // en wrapUserContentForModel y clause "TRUST BOUNDARIES" del
+        // SYSTEM_PROMPT.
+        messages: wrapUserContentForModel(messages),
       });
     } catch (err) {
       // Error de Anthropic (timeout, 429, 5xx, contenido inválido, etc.).
@@ -490,6 +532,8 @@ module.exports = {
   createConversation,
   listConversations,
   loadConversation,
+  // Exportado para tests unitarios del hardening prompt injection.
+  wrapUserContentForModel,
   // exportado para tests
   _internal: { MODEL, MAX_TOOL_ITERATIONS, HISTORY_LIMIT },
 };
