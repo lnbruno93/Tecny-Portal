@@ -983,6 +983,21 @@ router.patch('/tenants/:id', validate(patchTenantSchema), async (req, res, next)
       '[super-admin] PATCH /tenants/:id'
     );
 
+    // 2026-07-24 (cache audit P1): invalidar tenantStatus cross-instance.
+    // El cache de `getTenantStatus` (TTL 5min Redis + local) incluye
+    // `nombre`, `plan`, `paid_until`, `suspended_at`, `pais` — cualquier
+    // PATCH sobre estos campos deja el cache stale hasta el próximo TTL,
+    // causando que /me + comprobantes PDF + middleware billing vean valores
+    // viejos durante minutos post-cambio. Los otros endpoints admin sensibles
+    // (suspend/reactivate/extend-trial/PATCH paid-until/migrate-country) ya
+    // llaman invalidateTenantStatus — este PATCH genérico se había quedado
+    // atrás. Fire-and-forget con catch para no bloquear la response.
+    if (!result.noop) {
+      invalidateTenantStatus(id).catch(err =>
+        logger.warn({ err: err.message, tenantId: id }, 'PATCH /tenants: invalidate cache falló')
+      );
+    }
+
     res.json({
       ...result.tenant,
       mrr_usd: getTenantMrr(result.tenant.plan, result.tenant.custom_mrr_usd),

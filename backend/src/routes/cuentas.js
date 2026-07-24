@@ -31,6 +31,10 @@ const { toUsd, round2, assertMonedaValidaParaPais } = require('../lib/money');
 // "USD" y una cobranza UYU contra caja USDT pasara validación con montos
 // corruptos × 40.
 const { grupoMoneda } = require('../lib/cajaLedger');
+// 2026-07-24 (cache audit P1): invalidateCajas post-cobranza masiva. Ver
+// comment en el endpoint POST /cobranzas-masivas más abajo.
+const { invalidateCajas } = require('../lib/cajasCache');
+const logger = require('../lib/logger');
 
 // Rate-limit específico para cobranza masiva: 10 req / 15 min por user.
 // Cada lote puede ser de hasta 100 cobranzas → write-heavy y mantiene
@@ -1361,6 +1365,19 @@ router.post('/cobranzas-masivas', requireCapability('b2b.cobranza_masiva'), cobr
     });
 
     await client.query('COMMIT');
+
+    // 2026-07-24 (cache audit P1): invalidar CAJAS_LIST post-COMMIT. Los
+    // otros callers de caja_movimientos (cajas.js movimientos, ventaCore,
+    // cancelarVenta, admin.js backfill) ya invalidan — este endpoint bulk
+    // se había quedado atrás. Sin este call, el dashboard "Cajas → saldos"
+    // queda stale hasta 15s post-cobranza masiva, y con N cobranzas del
+    // orden de cientos (Tek Haus hace 100+ en un lote) el impacto se nota.
+    // Fire-and-forget con catch para no bloquear la response.
+    invalidateCajas(req.tenantId).catch(err =>
+      logger.warn({ err: err.message, tenantId: req.tenantId, count: creados.length },
+        'cobranza-masiva: invalidateCajas falló')
+    );
+
     res.status(201).json({ ok: true, creados: creados.length, movimientos: creados });
   } catch (err) {
     await client.query('ROLLBACK');
