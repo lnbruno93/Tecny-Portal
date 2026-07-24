@@ -85,7 +85,7 @@ export default function RedB2BOperaciones() {
       </header>
 
       <section className="card u-p-16-mb-16">
-        <div className="filters-row" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <div className="filters-row u-b2b-filters">
           <label className="u-flex-col-gap-4">
             <span className="muted u-fs-12">Partner</span>
             <select
@@ -187,43 +187,26 @@ export default function RedB2BOperaciones() {
 
 function OperationRow({ op }) {
   const statusInfo = STATUS_LABELS[op.status] || { label: op.status, color: 'gray' };
-  const sideBadge = op.my_side === 'seller'
-    ? { label: 'Vendedor', color: '#2563eb' }
-    : { label: 'Comprador', color: '#10b981' };
+  const isSeller = op.my_side === 'seller';
+  const sideBadgeLabel = isSeller ? 'Vendedor' : 'Comprador';
+  const sideClass = isSeller ? 'u-b2b-side-seller' : 'u-b2b-side-buyer';
 
   return (
     <tr>
       <td>{fmtFecha(op.created_at)}</td>
       <td>{op.partner?.nombre || '—'}</td>
       <td>
-        <span
-          className="badge"
-          style={{
-            background: sideBadge.color,
-            color: 'white',
-            padding: '2px 8px',
-            borderRadius: 4,
-            fontSize: 12,
-            fontWeight: 500,
-          }}
-        >
-          {sideBadge.label}
+        <span className={'badge u-b2b-side-badge ' + sideClass}>
+          {sideBadgeLabel}
         </span>
       </td>
       <td>{op.items_count || 0}</td>
       <td className="u-text-right">{fmtMoney(op.total_usd, 'USD')}</td>
       <td className="u-text-right">{fmtMoney(op.total_ars, 'ARS')}</td>
       <td>
-        <span
-          className={`status-badge status-${statusInfo.color}`}
-          style={{
-            padding: '2px 8px',
-            borderRadius: 4,
-            fontSize: 12,
-            background: `var(--${statusInfo.color}-bg, #f3f4f6)`,
-            color: `var(--${statusInfo.color}-fg, #374151)`,
-          }}
-        >
+        {/* Colores del status (green/red/orange/gray) heredados de la clase
+            `.u-b2b-status-<color>` — evita construir CSS var strings inline. */}
+        <span className={`status-badge status-${statusInfo.color} u-b2b-status-badge u-b2b-status-${statusInfo.color}`}>
           {statusInfo.label}
         </span>
       </td>

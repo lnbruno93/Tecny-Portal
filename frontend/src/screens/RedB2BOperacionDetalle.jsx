@@ -152,9 +152,8 @@ export default function RedB2BOperacionDetalle() {
   const isSeller = op.my_side === 'seller';
   const canEdit = isSeller && op.status === 'active';
   const canCancel = isSeller && op.status === 'active';
-  const sideBadge = isSeller
-    ? { label: 'Vendedor', color: '#2563eb' }
-    : { label: 'Comprador', color: '#10b981' };
+  const sideBadgeLabel = isSeller ? 'Vendedor' : 'Comprador';
+  const sideClass = isSeller ? 'u-b2b-side-seller' : 'u-b2b-side-buyer';
 
   return (
     <div className="screen-wrap">
@@ -167,19 +166,10 @@ export default function RedB2BOperacionDetalle() {
           </div>
           <h1 className="u-mb-4">Operación #{op.id}</h1>
           <div className="u-flex-gap-8-wrap">
-            <span
-              className="badge u-side-badge"
-              style={{ background: sideBadge.color }}
-            >
-              {sideBadge.label}
+            <span className={'badge u-side-badge u-b2b-side-badge ' + sideClass}>
+              {sideBadgeLabel}
             </span>
-            <span
-              className={`status-badge status-${statusInfo.color} u-status-badge`}
-              style={{
-                background: `var(--${statusInfo.color}-bg, #f3f4f6)`,
-                color: `var(--${statusInfo.color}-fg, #374151)`,
-              }}
-            >
+            <span className={`status-badge status-${statusInfo.color} u-status-badge u-b2b-status-badge u-b2b-status-${statusInfo.color}`}>
               {statusInfo.label}
             </span>
             <span className="muted u-fs-13">
@@ -328,13 +318,12 @@ export default function RedB2BOperacionDetalle() {
                     <td className="u-text-right">{fmtMoney(p.monto_usd, 'USD')}</td>
                     <td>{p.moneda_pago}</td>
                     <td className="u-text-right">{p.tc_pago ? Number(p.tc_pago).toFixed(2) : '—'}</td>
-                    <td
-                      className="u-text-right"
-                      style={{
-                        color: p.diferencia_cambiaria_ars > 0 ? 'var(--green-fg, #166534)' :
-                               p.diferencia_cambiaria_ars < 0 ? 'var(--red-fg, #991b1b)' : 'inherit',
-                      }}
-                    >
+                    {/* Color depende del signo: verde ganancia, rojo pérdida,
+                        inherit si es 0. Cascada por conditional class. */}
+                    <td className={'u-text-right ' + (
+                      p.diferencia_cambiaria_ars > 0 ? 'u-color-green-fg' :
+                      p.diferencia_cambiaria_ars < 0 ? 'u-color-red-fg' : ''
+                    )}>
                       {p.diferencia_cambiaria_ars !== 0 ? fmtMoney(p.diferencia_cambiaria_ars, 'ARS') : '—'}
                     </td>
                     <td>{p.registered_by_username || '—'}</td>

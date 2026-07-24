@@ -133,7 +133,7 @@ export default function EgresosPanel() {
           <option value="">Todas las categorías</option>
           {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
         </select>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        <div className="u-egresos-toolbar-actions">
           <button className="btn btn-ghost btn-sm" onClick={() => setShowCats(true)}><Icons.Tag size={13} /> Categorías</button>
           <button className="btn btn-ghost btn-sm" onClick={() => setShowRec(true)}><Icons.Refresh size={13} /> Recurrentes</button>
           <button className="btn btn-ghost btn-sm" onClick={generarPeriodo}><Icons.Calendar size={13} /> Generar del mes</button>
@@ -325,7 +325,7 @@ function RecurrentesModal({ recurrentes, categorias, cajas, onClose, onChange, t
       <div className="modal u-mw-620-max" onClick={e => e.stopPropagation()}>
         <div className="modal-hd"><h3>Egresos recurrentes (mensuales)</h3><button className="icon-btn" onClick={onClose}><Icons.X size={16} /></button></div>
         <div className="modal-body">
-          <div className="row" style={{ gap: 8, marginBottom: 6, alignItems: 'flex-end' }}>
+          <div className="row u-egresos-rec-row-top">
             <div className="field u-flex-2"><label className="field-label tiny">Concepto</label><input className="input" placeholder="Alquiler…" value={form.concepto} onChange={e => setForm(f => ({ ...f, concepto: e.target.value }))} /></div>
             <div className="field u-flex-1"><label className="field-label tiny">Monto</label><div className="flex-row u-gap-4"><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="0" value={form.monto} onChange={e => setForm(f => ({ ...f, monto: e.target.value }))} className="u-flex-1" /><select className="input u-w-70px" value={form.moneda} onChange={e => setForm(f => ({ ...f, moneda: e.target.value }))}>{Array.from(new Set([...monedas, form.moneda].filter(Boolean))).map(m => <option key={m} value={m}>{m}</option>)}</select></div></div>
             {form.moneda === 'ARS' && (
@@ -333,7 +333,7 @@ function RecurrentesModal({ recurrentes, categorias, cajas, onClose, onChange, t
             )}
             <div className="field u-w-70px"><label className="field-label tiny">Día</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="1" max="31" className="input mono" value={form.dia_del_mes} onChange={e => setForm(f => ({ ...f, dia_del_mes: e.target.value }))} /></div>
           </div>
-          <div className="row" style={{ gap: 8, marginBottom: 10, alignItems: 'flex-end' }}>
+          <div className="row u-egresos-rec-row-bot">
             <div className="field u-flex-1"><label className="field-label tiny">Categoría</label><select className="input" value={form.categoria_id} onChange={e => setForm(f => ({ ...f, categoria_id: e.target.value }))}><option value="">—</option>{categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></div>
             <div className="field u-flex-1"><label className="field-label tiny">Caja</label><select className="input" value={form.metodo_pago_id} onChange={e => setForm(f => ({ ...f, metodo_pago_id: e.target.value }))}><option value="">—</option>{cajas.map(c => <option key={c.id} value={c.id}>{c.nombre}{c.moneda ? ' · ' + c.moneda : ''}</option>)}<CajaSelectHint /></select></div>
             <button className="btn btn-primary btn-sm" onClick={add} disabled={!form.concepto.trim()}>+ Agregar</button>
