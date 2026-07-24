@@ -57,7 +57,10 @@ const redB2bEmail = require('../../lib/redB2bEmail');
 // obligatorio en audit por bug histórico F3).
 // ──────────────────────────────────────────────────────────────────────────
 async function notify(client, tenantId, type, payload, opts = {}) {
-  await client.query(`SET LOCAL app.current_tenant = ${Number(tenantId)}`);
+  await client.query(
+    `SELECT set_config('app.current_tenant', $1::text, true)`,
+    [String(tenantId)]
+  );
   await client.query(
     `INSERT INTO cross_tenant_notifications
        (tenant_id, partnership_id, cross_tenant_operation_id, type, payload)
@@ -391,7 +394,10 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
         if (callerIsSeller) {
           // Caller es seller → su caja_id va al lado seller.
           sellerCajaPersistId = body.caja_id;
-          await client.query(`SET LOCAL app.current_tenant = ${Number(buyerTenantId)}`);
+          await client.query(
+            `SELECT set_config('app.current_tenant', $1::text, true)`,
+            [String(buyerTenantId)]
+          );
           buyerCajaPersistId = await resolveCajaParaTenant(
             client, buyerTenantId, body.moneda_pago, buyerTenant.red_b2b_caja_default_id
           );
@@ -405,7 +411,10 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
         } else {
           // Caller es buyer → su caja_id va al lado buyer.
           buyerCajaPersistId = body.caja_id;
-          await client.query(`SET LOCAL app.current_tenant = ${Number(sellerTenantId)}`);
+          await client.query(
+            `SELECT set_config('app.current_tenant', $1::text, true)`,
+            [String(sellerTenantId)]
+          );
           sellerCajaPersistId = await resolveCajaParaTenant(
             client, sellerTenantId, body.moneda_pago, sellerTenant.red_b2b_caja_default_id
           );
@@ -422,7 +431,10 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
         let sellerResult, buyerResult;
         if (callerIsSeller) {
           // El caller es el seller — registra cobro propio + diferencia cambiaria.
-          await client.query(`SET LOCAL app.current_tenant = ${Number(sellerTenantId)}`);
+          await client.query(
+            `SELECT set_config('app.current_tenant', $1::text, true)`,
+            [String(sellerTenantId)]
+          );
           sellerResult = await registerSellerCobro(client, sellerTenantId, {
             opId,
             buyerTenant,
@@ -439,7 +451,10 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
           });
         } else {
           // El caller es el buyer — registra pago propio (sin diff cambiaria).
-          await client.query(`SET LOCAL app.current_tenant = ${Number(buyerTenantId)}`);
+          await client.query(
+            `SELECT set_config('app.current_tenant', $1::text, true)`,
+            [String(buyerTenantId)]
+          );
           buyerResult = await registerBuyerPago(client, buyerTenantId, {
             opId,
             sellerTenant,
@@ -467,7 +482,10 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
         // lo que le anoté?"). Ahora ambos lados registran la misma nota.
         if (callerIsSeller) {
           // Propagar al BUYER.
-          await client.query(`SET LOCAL app.current_tenant = ${Number(buyerTenantId)}`);
+          await client.query(
+            `SELECT set_config('app.current_tenant', $1::text, true)`,
+            [String(buyerTenantId)]
+          );
           buyerResult = await registerBuyerPago(client, buyerTenantId, {
             opId,
             sellerTenant,
@@ -482,7 +500,10 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
           });
         } else {
           // Propagar al SELLER: necesita caja + diferencia cambiaria.
-          await client.query(`SET LOCAL app.current_tenant = ${Number(sellerTenantId)}`);
+          await client.query(
+            `SELECT set_config('app.current_tenant', $1::text, true)`,
+            [String(sellerTenantId)]
+          );
           sellerResult = await registerSellerCobro(client, sellerTenantId, {
             opId,
             buyerTenant,
@@ -612,7 +633,10 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
         // puede agregar un campo derivado `is_fully_paid` o vista compuesta.
 
         // ── AUDIT del lado que registra ───────────────────────────────────
-        await client.query(`SET LOCAL app.current_tenant = ${Number(myTenantId)}`);
+        await client.query(
+          `SELECT set_config('app.current_tenant', $1::text, true)`,
+          [String(myTenantId)]
+        );
         await audit(client, {
           tenantId: myTenantId,
           userId,
@@ -1102,7 +1126,10 @@ router.post('/:id/devolucion', validate(devolucionSchema), async (req, res, next
         const buyerTenant  = tenantsById.get(buyerTenantId);
 
         // C. SET LOCAL seller: stock += cantidad + INSERT mov_cc devolución.
-        await client.query(`SET LOCAL app.current_tenant = ${Number(sellerTenantId)}`);
+        await client.query(
+          `SELECT set_config('app.current_tenant', $1::text, true)`,
+          [String(sellerTenantId)]
+        );
         await client.query(
           `UPDATE productos p SET
               cantidad = p.cantidad + u.cant,
@@ -1151,7 +1178,10 @@ router.post('/:id/devolucion', validate(devolucionSchema), async (req, res, next
         // migration 20260706000002 extendió el CHECK y backfilleó las filas
         // históricas — ahora usamos el tipo correcto para no inflar los KPIs
         // de "pagos al proveedor" y que los filtros por tipo funcionen bien.
-        await client.query(`SET LOCAL app.current_tenant = ${Number(buyerTenantId)}`);
+        await client.query(
+          `SELECT set_config('app.current_tenant', $1::text, true)`,
+          [String(buyerTenantId)]
+        );
         await client.query(
           `UPDATE productos p SET
               cantidad = p.cantidad - u.cant,
@@ -1264,13 +1294,19 @@ router.post('/:id/devolucion', validate(devolucionSchema), async (req, res, next
         );
 
         // Link mov_cc + proveedor_mov a la nueva op.
-        await client.query(`SET LOCAL app.current_tenant = ${Number(sellerTenantId)}`);
+        await client.query(
+          `SELECT set_config('app.current_tenant', $1::text, true)`,
+          [String(sellerTenantId)]
+        );
         await client.query(
           `UPDATE movimientos_cc SET cross_tenant_operation_id = $1
              WHERE id = $2 AND tenant_id = $3`,
           [devOpId, sellerDevMovId, sellerTenantId]
         );
-        await client.query(`SET LOCAL app.current_tenant = ${Number(buyerTenantId)}`);
+        await client.query(
+          `SELECT set_config('app.current_tenant', $1::text, true)`,
+          [String(buyerTenantId)]
+        );
         await client.query(
           `UPDATE proveedor_movimientos SET cross_tenant_operation_id = $1
              WHERE id = $2 AND tenant_id = $3`,
@@ -1294,7 +1330,10 @@ router.post('/:id/devolucion', validate(devolucionSchema), async (req, res, next
         }, { partnershipId: op.partnership_id, operationId: opId });
 
         // G. Audit del buyer (originador de la devolución).
-        await client.query(`SET LOCAL app.current_tenant = ${Number(myTenantId)}`);
+        await client.query(
+          `SELECT set_config('app.current_tenant', $1::text, true)`,
+          [String(myTenantId)]
+        );
         await audit(client, {
           tenantId: myTenantId,
           userId,

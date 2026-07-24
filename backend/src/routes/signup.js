@@ -276,7 +276,17 @@ router.post('/signup', validate(signupSchema), async (req, res, next) => {
     // SET LOCAL primero, el INSERT falla con "new row violates row-level
     // security policy". También tenemos que pasar `tenant_id` explícito
     // en cada row (la columna tiene DEFAULT 1, que no matchea el tenant nuevo).
-    await client.query(`SET LOCAL app.current_tenant = ${tenant.id}`);
+    // 2026-07-24 (cache audit follow-up): migrado de string interpolation
+    // (`SET LOCAL app.current_tenant = ${tenant.id}`) a set_config con bind
+    // param, mismo pattern que redB2bEmail.js:87 (fixeado post-Sentry #17).
+    // `tenant.id` viene del INSERT INTO tenants RETURNING id — es integer
+    // válido garantizado. La migration es defense-in-depth: uniformar el
+    // pattern en todos los callsites reduce la clase de bug "connection
+    // envenenada por SQL syntax error".
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(tenant.id)]
+    );
 
     // 2. User — explícitamente email_verified_at = NULL para activar el bloqueo
     // blando. La columna tiene DEFAULT NOW() (ver migration 20260616000004),
@@ -596,7 +606,12 @@ router.post('/verify-email', verifyEmailLimiter, validate(verifyEmailSchema), as
       });
     }
     const tenantId = tuRows[0].tenant_id;
-    await client.query(`SET LOCAL app.current_tenant = ${tenantId}`);
+    // 2026-07-24: bind param en vez de interpolación (ver comment arriba
+    // en el otro callsite de este mismo archivo, línea ~279).
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(tenantId)]
+    );
 
     // Marcar token usado.
     await client.query(

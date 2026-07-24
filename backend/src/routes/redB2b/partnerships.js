@@ -106,7 +106,10 @@ const inviteLimiter = rateLimit({
 // chequean el setting). Lo hacemos con SET LOCAL dentro de la tx.
 // ──────────────────────────────────────────────────────────────────────────
 async function notify(client, tenantId, type, payload, opts = {}) {
-  await client.query(`SET LOCAL app.current_tenant = ${Number(tenantId)}`);
+  await client.query(
+    `SELECT set_config('app.current_tenant', $1::text, true)`,
+    [String(tenantId)]
+  );
   await client.query(
     `INSERT INTO cross_tenant_notifications
        (tenant_id, partnership_id, cross_tenant_operation_id, type, payload)
@@ -512,7 +515,10 @@ router.post('/:id/accept', async (req, res, next) => {
 // partner en el tenant `ownerTenantId`. SET LOCAL antes para satisfacer
 // el RLS estándar de contactos.
 async function upsertLinkedContacto(client, { ownerTenantId, linkedTenant }) {
-  await client.query(`SET LOCAL app.current_tenant = ${Number(ownerTenantId)}`);
+  await client.query(
+    `SELECT set_config('app.current_tenant', $1::text, true)`,
+    [String(ownerTenantId)]
+  );
 
   // Buscar contacto pre-existente con el mismo nombre que no esté ya linkeado.
   // Si hay uno, lo linkeamos (preservando datos preexistentes). Sino, INSERT.
