@@ -144,17 +144,7 @@ export default function ChangePaisTenantModal({ tenant, open, onClose, onSaved }
             return (
               <label
                 key={p.value}
-                className={`pais-radio ${esActual ? 'is-disabled' : ''}`}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '8px 12px',
-                  border: '1px solid var(--border)',
-                  borderRadius: 6,
-                  cursor: esActual ? 'not-allowed' : 'pointer',
-                  opacity: esActual ? 0.5 : 1,
-                }}
+                className={`pais-radio u-pais-radio ${esActual ? 'is-disabled u-pais-radio-disabled' : ''}`}
               >
                 <input
                   type="radio"

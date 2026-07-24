@@ -163,7 +163,7 @@ export default function SetPaidUntilModal({ tenant, open, onClose, onSaved }) {
           </div>
         </div>
 
-        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 4 }}>
+        <div className="u-grandfather-section">
           <Btn kind="ghost" onClick={handleGrandfather} disabled={submitting} size="sm">
             Grandfather (sin enforcement)
           </Btn>
