@@ -2435,3 +2435,23 @@ a { color: inherit; text-decoration: none; }
 .u-admin-cpw-error             { padding: 10px 12px; border-radius: 8px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: var(--neg); font-size: 13px; }
 .u-admin-cpw-eye               { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: transparent; border: none; cursor: pointer; font-size: 12px; padding: 4px; }
 .u-admin-cpw-2fa-input         { width: 100%; font-family: monospace; letter-spacing: 0.1em; }
+
+/* — Sprint 101 batch admin (App + ColChart + MergeClasesModal + Ficha) — */
+/* App: Suspense fallback + NotFound 404 page. */
+.u-admin-suspense              { display: grid; place-items: center; min-height: 200px; }
+.u-admin-notfound              { display: grid; place-items: center; height: 100vh; text-align: center; padding: 32px; background: var(--bg); }
+.u-admin-notfound-code         { font-size: 48px; margin: 0; color: var(--text); }
+.u-admin-notfound-btn          { margin-top: 16px; display: inline-flex; }
+/* ColChart: empty state cuando series=[]. */
+.u-colchart-empty              { padding: 20px 0; text-align: center; }
+/* MergeClasesModal: split de 2 columnas (mantiene vs elimina). */
+.u-merge-split                 { gap: 12px; margin-bottom: 14px; }
+.u-merge-box                   { border-radius: 8px; padding: 12px; }
+.u-merge-box-keep              { border: 2px solid var(--pos); background: color-mix(in srgb, var(--pos) 8%, transparent); }
+.u-merge-box-drop              { border: 2px solid var(--neg); background: color-mix(in srgb, var(--neg) 8%, transparent); }
+.u-merge-drop-name             { font-weight: 600; font-size: 16px; text-decoration: line-through; opacity: 0.85; }
+/* Tone helpers extra que faltaban para HealthBar en Ficha. Alinean con
+   `.u-tone-*` (color) y `.u-bg-*` (background). */
+.u-tone-info                   { color: var(--info); }
+.u-bg-accent                   { background: var(--accent); }
+.u-bg-info                     { background: var(--info); }

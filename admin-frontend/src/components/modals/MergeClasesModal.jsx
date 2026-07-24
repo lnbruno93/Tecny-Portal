@@ -147,15 +147,8 @@ export default function MergeClasesModal({
         </div>
       </div>
 
-      <div className="split-2" style={{ gap: 12, marginBottom: 14 }}>
-        <div
-          style={{
-            border: '2px solid var(--pos)',
-            borderRadius: 8,
-            padding: 12,
-            background: 'color-mix(in srgb, var(--pos) 8%, transparent)',
-          }}
-        >
+      <div className="split-2 u-merge-split">
+        <div className="u-merge-box u-merge-box-keep">
           <div className="muted tiny u-mb-4">
             SE QUEDA (canónica)
           </div>
@@ -169,18 +162,11 @@ export default function MergeClasesModal({
           </div>
         </div>
 
-        <div
-          style={{
-            border: '2px solid var(--neg)',
-            borderRadius: 8,
-            padding: 12,
-            background: 'color-mix(in srgb, var(--neg) 8%, transparent)',
-          }}
-        >
+        <div className="u-merge-box u-merge-box-drop">
           <div className="muted tiny u-mb-4">
             SE BORRA (duplicada)
           </div>
-          <div style={{ fontWeight: 600, fontSize: 16, textDecoration: 'line-through', opacity: 0.85 }}>
+          <div className="u-merge-drop-name">
             {duplicada?.nombre}
           </div>
           <div className="muted tiny u-mt-4">
