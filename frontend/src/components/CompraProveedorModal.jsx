@@ -24,7 +24,11 @@ import { Icons } from './Icons';
 import { proveedores as provApi, inventario as invApi, cajas as cajasApi } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from './ConfirmModal';
-import { headerTh as th, catalogosErrorBanner } from '../lib/spreadsheetStyles';
+// Sprint 98 CSP: headerTh + catalogosErrorBanner viven como CSS classes
+// (`.u-b2b-th` + `.u-catalogos-error-banner`) — mismo pattern que
+// VentaB2BModal (Sprint 81) y CobranzaMasivaModal (Sprint 95). Con esto,
+// `lib/spreadsheetStyles.js` ya no tiene consumers y se puede borrar
+// en un cleanup posterior.
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #M-11
 import useSpreadsheetRows from '../lib/useSpreadsheetRows'; // #F-5
 import TcWarning from './TcWarning';
@@ -390,7 +394,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
         <div className="modal-body u-mh-85vh-oy-auto">
           {/* #H-12: banner si catálogos fallaron al cargar */}
           {catalogosError && (
-            <div style={catalogosErrorBanner}>
+            <div className="u-catalogos-error-banner">
               ⚠ No se pudieron cargar: <strong>{catalogosError.join(', ')}</strong>.
               Algunos selectores aparecerán vacíos. Revisá tu conexión y cerrá/abrí el modal.
             </div>
@@ -513,7 +517,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
               <thead>
                 <tr>
                   {['#','✓','Nombre *','IMEI/Serial','GB','Color','Bat %','Tipo','Categoría *','Depósito','Cond.','Tipo carga','Cant.','Costo *','M.','Precio venta','M.',''].map((h, i) =>
-                    <th key={i} style={{ ...th, textAlign: (i === 0 || i === 1) ? 'center' : 'left' }}>{h}</th>
+                    <th key={i} className={'u-b2b-th' + ((i === 0 || i === 1) ? ' u-ta-center' : '')}>{h}</th>
                   )}
                 </tr>
               </thead>

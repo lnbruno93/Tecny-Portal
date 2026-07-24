@@ -4760,3 +4760,23 @@ body.modal-open { overflow: hidden; }
 .u-biz-banner                  { padding: 10px; border-radius: 6px; font-size: 13px; }
 .u-biz-banner-neg              { background: var(--neg-soft); color: var(--neg); }
 .u-biz-banner-pos              { background: var(--pos-soft); color: var(--pos); }
+
+/* — Sprint 98 batch (App PageLoader/AuthGuard + Alertas + SortableTable + CompraProveedorModal) — */
+/* App loaders: mismo layout que .empty-state pero centrado full-viewport
+   (PageLoader lo usa a 100%, AuthGuard antes del layout a 100vh). */
+.u-app-loader                  { display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 14px; }
+.u-app-loader-100              { height: 100%; }
+.u-app-loader-100vh            { height: 100vh; }
+/* Alertas severidad: pattern var-on-parent + descendant selectors. Cada
+   `.u-sev-<critica|alta|media|baja>` setea `--sev-color`; el card y el badge
+   consumen esa var (borderLeftColor + background). Sin esto habría 4×2 = 8
+   clases (border-critica, border-alta, ..., bg-critica, bg-alta, ...). */
+.u-sev-critica                 { --sev-color: var(--neg); }
+.u-sev-alta                    { --sev-color: var(--warn); }
+.u-sev-media                   { --sev-color: var(--accent); }
+.u-sev-baja                    { --sev-color: var(--text-muted); }
+.u-grupo-alerta-card           { border-left-color: var(--sev-color); }
+.u-grupo-alerta-count          { background: var(--sev-color); }
+/* SortableTable: header con cursor pointer (solo si sortable) + pager nav. */
+.u-sortable-th                 { cursor: pointer; user-select: none; }
+.u-sortable-pager              { display: flex; align-items: center; gap: 12px; padding: 8px 4px; justify-content: flex-end; }

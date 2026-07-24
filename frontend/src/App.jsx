@@ -89,14 +89,7 @@ const Tarjetas   = lazy(() => import('./screens/Tarjetas'));
 
 function PageLoader() {
   return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      height: '100%',
-      color: 'var(--text-muted)',
-      fontSize: 14,
-    }}>
+    <div className="u-app-loader u-app-loader-100">
       Cargando…
     </div>
   );
@@ -111,14 +104,7 @@ function PageLoader() {
 function AuthGuard() {
   const { user, loading } = useAuth();
   if (loading) return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      height: '100vh',
-      color: 'var(--text-muted)',
-      fontSize: 14,
-    }}>
+    <div className="u-app-loader u-app-loader-100vh">
       Verificando sesión…
     </div>
   );
