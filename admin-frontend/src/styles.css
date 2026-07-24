@@ -2455,3 +2455,17 @@ a { color: inherit; text-decoration: none; }
 .u-tone-info                   { color: var(--info); }
 .u-bg-accent                   { background: var(--accent); }
 .u-bg-info                     { background: var(--info); }
+
+/* — Sprint 102 batch admin (Layout + PaymentMethodsModal + primitives + Resumen) — */
+/* Layout: user-pill (Link sin underline) + input search disabled + main content
+   outline-none después de skip-link focus. */
+.u-user-pill-link              { text-decoration: none; color: inherit; }
+.u-cursor-not-allowed          { cursor: not-allowed; }
+.u-outline-none                { outline: none; }
+/* PaymentMethodsModal: help + add-row layout. */
+.u-pm-help                     { font-size: 13px; margin-bottom: 12px; }
+.u-pm-add-row                  { gap: 8px; margin-bottom: 14px; }
+/* primitives Badge dot: 6x6 currentColor. */
+.u-badge-dot                   { width: 6px; height: 6px; border-radius: 50%; background: currentColor; display: inline-block; }
+/* Resumen bar plan classes — `.u-bg-text-dim` faltaba (trial usa text-dim). */
+.u-bg-text-dim                 { background: var(--text-dim); }

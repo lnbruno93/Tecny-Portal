@@ -144,14 +144,14 @@ export default function PaymentMethodsModal({ open, onClose, onSaved }) {
         </Btn>
       }
     >
-      <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
+      <div className="muted u-pm-help">
         Lista global editable. Los métodos <strong>activos</strong> aparecen en el dropdown
         de cada cliente. Los <strong>inactivos</strong> se ocultan pero se mantienen
         visibles en los clientes que ya los tenían asignados.
       </div>
 
       {/* Formulario para agregar */}
-      <div className="flex-row" style={{ gap: 8, marginBottom: 14 }}>
+      <div className="flex-row u-pm-add-row">
         <input
           className="input"
           type="text"
@@ -260,16 +260,18 @@ export default function PaymentMethodsModal({ open, onClose, onSaved }) {
                       >
                         <Icons.Refresh size={14} />
                       </button>
+                      {/* Sprint 102 CSP: color dinámico → conditional class.
+                          Fix incidental: había 2 `className` props (React silencia
+                          el primero) — consolidado. */}
                       <button
                         type="button"
-                        className="btn btn-ghost btn-icon btn-sm"
+                        className={'btn btn-ghost btn-icon btn-sm ' + (item.en_uso === 0 ? 'u-tone-neg' : '')}
                         onClick={() => handleDelete(item)}
                         disabled={isSaving || item.en_uso > 0}
                         title={item.en_uso > 0
                           ? `En uso por ${item.en_uso} cliente(s)`
                           : 'Eliminar definitivamente'}
                         aria-label="Eliminar método"
-                        style={{ color: item.en_uso === 0 ? 'var(--neg)' : undefined }}
                       >
                         <Icons.Trash size={14} />
                       </button>
