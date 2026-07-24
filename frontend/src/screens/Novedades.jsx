@@ -172,21 +172,7 @@ export default function Novedades() {
               role="tab"
               aria-selected={active}
               onClick={() => setTipoFilter(t.value)}
-              style={{
-                padding: '8px 14px',
-                background: 'transparent',
-                border: 'none',
-                color: active ? 'var(--text)' : 'var(--text-muted)',
-                fontSize: 13,
-                fontWeight: active ? 600 : 500,
-                cursor: 'pointer',
-                borderBottom: `2px solid ${active ? 'var(--accent)' : 'transparent'}`,
-                marginBottom: -1,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                fontFamily: 'inherit',
-              }}
+              className={'u-novedades-tab' + (active ? ' u-novedades-tab-active' : '')}
             >
               {t.emoji && <span aria-hidden="true">{t.emoji}</span>}
               {t.label}
@@ -240,55 +226,22 @@ export default function Novedades() {
 function Nota({ nota, unseen, groupLabel }) {
   const meta = TIPO_META[nota.tipo] || TIPO_META.feature;
   const tone = meta.tone; // 'info' | 'pos' | 'warn'
-  const bg = `var(--${tone}-soft)`;
-  const fg = `var(--${tone})`;
+  // toneClass es 'u-tone-info' | 'u-tone-pos' | 'u-tone-warn' — set static
+  // desde TIPO_META, no computed a partir de string interpolado (evita
+  // template literals en className que hacen brittle el static analysis).
+  const toneClass = `u-nov-tone-${tone}`;
   const showHora = groupLabel === 'Hoy' || groupLabel === 'Ayer';
 
   return (
-    <article
-      style={{
-        display: 'grid',
-        gridTemplateColumns: '40px 1fr auto',
-        gap: 12,
-        padding: '14px 16px',
-        borderRadius: 10,
-        border: unseen ? '1px solid var(--accent)' : '1px solid var(--border)',
-        background: unseen
-          ? 'linear-gradient(180deg, var(--accent-soft), transparent 40%), var(--surface)'
-          : 'var(--surface)',
-        alignItems: 'flex-start',
-      }}
-    >
+    <article className={'u-novedades-note' + (unseen ? ' u-novedades-note-unseen' : '')}>
       <div
         aria-hidden="true"
-        style={{
-          width: 36,
-          height: 36,
-          borderRadius: 8,
-          background: bg,
-          color: fg,
-          display: 'grid',
-          placeItems: 'center',
-          fontSize: 18,
-        }}
+        className={'u-novedades-icon ' + toneClass}
       >
         {meta.emoji}
       </div>
       <div className="u-mw-min-0">
-        <span
-          style={{
-            display: 'inline-block',
-            padding: '2px 7px',
-            borderRadius: 4,
-            fontSize: 10,
-            fontWeight: 700,
-            textTransform: 'uppercase',
-            letterSpacing: '0.03em',
-            background: bg,
-            color: fg,
-            marginBottom: 4,
-          }}
-        >
+        <span className={'u-novedades-badge ' + toneClass}>
           {meta.label}
         </span>
         <h3 className="u-novedades-title">
