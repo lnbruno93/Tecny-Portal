@@ -540,16 +540,20 @@ async function insertarDetalle(client, venta, b, ctx = {}) {
 // los mismos filtros, AHORA reusan el mismo resultado cacheado en Redis.
 // La key Redis usa el mismo formato `cache:ventas:dashboard:{desde}|{hasta}`.
 //
-// Trade-off de invalidación (sin cambios respecto a la versión local): NO
-// invalidamos manualmente desde POST/PUT/DELETE. Razones:
-//   (a) 30s es staleness aceptable para KPIs de dashboard (Lucas no monitorea
-//       al seg, mira para reporting).
-//   (b) El cableado cross-route sería invasivo (8+ call sites) por un gain
-//       marginal sobre los 30s de TTL.
-// Si en el futuro se quiere "ver dashboard actualizado YA después de cerrar
-// venta", agregar invalidación post-COMMIT en los 8 callsites (POST/PUT/
-// DELETE ventas + egresos + movimientos). Con Redis ya migrado, la
-// invalidación cross-instance es 1 línea.
+// 2026-07-24 (cache audit P2): invalidación post-COMMIT en las 4 mutations
+// de ventas.js — POST, PUT, PATCH vendedor-nombre, DELETE. Sin esto el
+// dashboard mostraba KPIs viejos hasta 30s post-cambio. Ahora refresca
+// dentro de la misma request-response en el ~90% de casos (single-instance
+// local Map; ver `invalidatePrefix` en cacheTtl.js para la limitación
+// cross-instance).
+//
+// Los otros callsites que también deberían invalidar (por completitud) están
+// en OTROS módulos y no se atacan en este PR:
+//   · POST/PUT/DELETE `egresos.js` — afectan KPI "egresos", "ganancia neta".
+//   · POST/DELETE `cuentas.js/movimientos` para tipo 'compra' — afectan KPI
+//     "B2B ventas count/ingresos".
+// La comment original decía "8+ callsites" y por eso se había postergado.
+// Follow-up: cablear los otros 4 desde egresos.js + cuentas.js.
 //
 // LRU cap: el operador puede mover los filtros de fecha libremente; cada par
 // distinto retiene una closure con cache state. Acotamos a 100 entradas
@@ -566,6 +570,28 @@ const dashboardCache = createTenantScopedCache({
     return computeDashboard(Number(tenantStr), desde, hasta);
   },
 });
+
+// invalidateDashboardVentas — helper para invalidar TODAS las entries
+// cacheadas del dashboard para un tenant (todas las date ranges).
+// Fire-and-forget con catch — no bloquea la response HTTP si Redis falla.
+//
+// Uso desde este módulo (POST/PUT/PATCH/DELETE de ventas). Idealmente
+// también desde egresos.js + cuentas.js (movimientos B2B) — no cableado
+// en este PR (ver comment arriba en la definición del cache).
+function invalidateDashboardVentas(tenantId) {
+  const t = Number(tenantId);
+  if (!Number.isInteger(t) || t <= 0) {
+    // No-op sin logger.warn: el flow lo ignora en background y no queremos
+    // ruido en Sentry si un test o cron llama sin tenant.
+    return;
+  }
+  // El keyPrefix del cache es `cache:ventas:dashboard:` y el scopeKey es
+  // `{tenantId}|{desde}|{hasta}`. Invalidamos todos los sufijos que
+  // empiezan con `{tenantId}|`.
+  dashboardCache.invalidatePrefix(`${t}|`).catch(() => {
+    // Errores internos ya se loguean en el propio invalidate().
+  });
+}
 
 async function computeDashboard(tenantId, desde, hasta) {
     const p = [desde, hasta];
@@ -1374,6 +1400,7 @@ router.post('/', validate(createVentaSchema), async (req, res, next) => {
     await audit(client, 'ventas', 'INSERT', venta.id, { despues: venta, user_id: req.user.id });
     await client.query('COMMIT');
     invalidateMetricas(req.tenantId);  // venta retail descontó stock
+    invalidateDashboardVentas(req.tenantId);  // KPIs dashboard cambiaron
 
     // #475 — fire-and-forget envío del comprobante por email POST-COMMIT.
     // Reusamos el pattern de signup.js / redB2bEmail.js: setImmediate hace
@@ -1545,6 +1572,7 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
       await audit(client, 'ventas', 'UPDATE', id, { antes: before, despues: vrows[0], user_id: req.user.id });
       await client.query('COMMIT');
       invalidateMetricas(req.tenantId);  // edición completa pudo tocar stock
+      invalidateDashboardVentas(req.tenantId);  // edición pudo cambiar total/ganancia
       // BLOCKER 2026-07-05 P1: redactar ganancia/comisión si el user no puede
       // verlas. El audit trail se registra con la fila completa (arriba); el
       // response al cliente sí se recorta.
@@ -1607,6 +1635,7 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
     await audit(client, 'ventas', 'UPDATE', id, { antes: before, despues: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
     invalidateMetricas(req.tenantId);
+    invalidateDashboardVentas(req.tenantId);  // edición dashboard-relevant
     // BLOCKER 2026-07-05 P1: redactar ganancia/comisión si el user no puede
     // verlas (mismo criterio que fullEdit + POST alta).
     res.json(await redactVentaGananciaIfNeeded(req.user, rows[0]));
@@ -1673,6 +1702,7 @@ router.patch('/:id/vendedor-nombre', validate(updateVendedorNombreSchema), async
       req,
     });
     await client.query('COMMIT');
+    invalidateDashboardVentas(req.tenantId);  // KPI "top vendedores" cambió
     res.json(after[0]);
   } catch (err) {
     try { await client.query('ROLLBACK'); } catch (_) { /* swallow */ }
@@ -1709,6 +1739,7 @@ router.delete('/:id', requireCapability('ventas.eliminar'), async (req, res, nex
     await audit(client, 'ventas', 'DELETE', id, { antes: before[0], user_id: req.user.id });
     await client.query('COMMIT');
     invalidateMetricas(req.tenantId);  // DELETE repuso stock
+    invalidateDashboardVentas(req.tenantId);  // cancelar venta afecta ventas_count + ingresos + ganancia
     res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK');

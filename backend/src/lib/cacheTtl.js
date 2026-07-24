@@ -293,6 +293,38 @@ function createTenantScopedCache({ keyPrefix, ttlMs, maxFetchers = 256, fetcher 
       }
     },
 
+    // Invalida TODOS los scopeKeys que comienzan con `prefix`.
+    // Útil para caches con compound key (ej. `{tenantId}|{desde}|{hasta}`)
+    // donde no conocés los sufijos exactos al hacer una mutation. Pasás
+    // el prefix `{tenantId}|` y se invalidan todas las date ranges cacheadas
+    // para ese tenant.
+    //
+    // 2026-07-24 (cache audit P2 — DASHBOARD_VENTAS): agregado para poder
+    // invalidar el dashboard de ventas de un tenant sin conocer el rango
+    // de fechas específico que tenía cacheado.
+    //
+    // Limitación de cross-instance: solo invalida keys que este proceso ya
+    // vio (están en el local Map). Keys cacheadas por OTRA réplica que este
+    // proceso nunca tocó no se invalidan — quedan stale hasta el TTL natural.
+    // En la práctica los operadores usan pocas date ranges (día actual + mes
+    // actual), por lo que el hit-rate del local Map es alto y la ventana
+    // cross-instance es acotada por el TTL corto (30s para dashboard).
+    // Fix "real" cross-instance requiere generation counter en Redis — no
+    // vale la pena para el 90% de casos que resuelve este approach simple.
+    async invalidatePrefix(prefix) {
+      if (typeof prefix !== 'string' || !prefix) {
+        logger.warn({ keyPrefix }, 'createTenantScopedCache.invalidatePrefix() sin prefix — no-op.');
+        return;
+      }
+      const toInvalidate = [];
+      for (const sk of fetchers.keys()) {
+        if (sk.startsWith(prefix)) toInvalidate.push(sk);
+      }
+      // Fire-and-forget en paralelo — cada invalidate() ya cataloga sus
+      // propios errores internamente vía el catch del método invalidate().
+      await Promise.all(toInvalidate.map((sk) => this.invalidate(sk)));
+    },
+
     // Solo para tests: limpia el Map. Las entries del wrapper interno y de
     // Redis (si hay client real) no se tocan — necesario porque Jest comparte
     // módulos entre describes.
