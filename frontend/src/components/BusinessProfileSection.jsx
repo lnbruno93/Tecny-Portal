@@ -147,7 +147,7 @@ export default function BusinessProfileSection({ isAdmin }) {
 
       <div className="stack u-gap-14">
         {/* Toggle: ¿tenés ficha de Google? */}
-        <label className="flex-row" style={{ gap: 10, alignItems: 'center', cursor: 'pointer' }}>
+        <label className="flex-row u-biz-toggle-label">
           <input
             type="checkbox"
             checked={enabled}
@@ -183,8 +183,10 @@ export default function BusinessProfileSection({ isAdmin }) {
 
         <div className="field">
           <div className="field-label">Cantidad aproximada de reseñas (opcional)</div>
+          {/* Fix incidental: había 2 className props (React silencia el primero).
+              Consolidado en un solo string. */}
           <input
-            className="input mono"
+            className="input mono u-mw-200-max"
             type="number"
             onKeyDown={blockInvalidNumberKeys}
             placeholder="ej: 320"
@@ -193,7 +195,6 @@ export default function BusinessProfileSection({ isAdmin }) {
             disabled={!enabled || saving}
             min="0"
             step="1"
-            className="u-mw-200-max"
           />
           <div className="muted tiny u-mt-4">
             Actualizá este número cuando tu ficha crezca. Si lo dejás vacío, el
@@ -202,12 +203,12 @@ export default function BusinessProfileSection({ isAdmin }) {
         </div>
 
         {error && (
-          <div role="alert" className="banner" style={{ background: 'var(--neg-soft)', color: 'var(--neg)', padding: 10, borderRadius: 6, fontSize: 13 }}>
+          <div role="alert" className="banner u-biz-banner u-biz-banner-neg">
             {error}
           </div>
         )}
         {saved && (
-          <div role="status" className="banner" style={{ background: 'var(--pos-soft)', color: 'var(--pos)', padding: 10, borderRadius: 6, fontSize: 13 }}>
+          <div role="status" className="banner u-biz-banner u-biz-banner-pos">
             <Icons.Check size={14} /> Cambios guardados.
           </div>
         )}

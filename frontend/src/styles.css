@@ -4724,3 +4724,39 @@ body.modal-open { overflow: hidden; }
 .u-backfill-btnrow             { gap: 8px; padding: 14px 18px; flex-wrap: wrap; }
 .u-backfill-report             { padding: 14px 18px; border-top: 1px solid var(--hairline); background: var(--surface-2); }
 .u-backfill-report-meta        { font-size: 11px; color: var(--text-muted); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+
+/* — Sprint 97 batch (RedB2BOperaciones + Detalle + EgresosPanel + RegistrarPago + PorCategoria + BusinessProfile) — */
+/* RedB2B badges: side (seller/buyer) y status (green/red/orange/gray).
+   Los side colors son literales fijos (#2563eb, #10b981) — sistema no tiene
+   accent-blue vs accent-green como vars, y matchean el color del cross-tenant. */
+.u-b2b-filters                 { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+.u-b2b-side-badge              { color: #ffffff; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; }
+.u-b2b-side-seller             { background: #2563eb; }
+.u-b2b-side-buyer              { background: #10b981; }
+/* Status badges: base padding/radius/fs + tone-driven bg/color. Los -bg/-fg
+   vars están declarados en :root (línea 48-49 + tema light) para green/red/orange.
+   `gray` no tiene vars — hardcodeamos con fallback muted del design system. */
+.u-b2b-status-badge            { padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+.u-b2b-status-green            { background: var(--green-bg, #f3f4f6); color: var(--green-fg, #374151); }
+.u-b2b-status-red              { background: var(--red-bg, #f3f4f6); color: var(--red-fg, #374151); }
+.u-b2b-status-orange           { background: var(--orange-bg, #f3f4f6); color: var(--orange-fg, #374151); }
+.u-b2b-status-gray             { background: #f3f4f6; color: #374151; }
+/* EgresosPanel: toolbar actions y filas de form del sub-modal recurrentes. */
+.u-egresos-toolbar-actions     { margin-left: auto; display: flex; gap: 8px; }
+.u-egresos-rec-row-top         { gap: 8px; margin-bottom: 6px; align-items: flex-end; }
+.u-egresos-rec-row-bot         { gap: 8px; margin-bottom: 10px; align-items: flex-end; }
+/* RedB2BRegistrarPagoModal: radio group + subtle bg input + fx preview (pos/neg). */
+.u-radio-group-16              { display: flex; gap: 16px; margin-top: 4px; }
+.u-bg-subtle                   { background: var(--bg-subtle, var(--surface-2)); }
+.u-fx-preview                  { padding: 10px; border-radius: 6px; margin-bottom: 12px; font-size: 13px; }
+.u-fx-preview-pos              { background: var(--green-bg, rgba(34, 197, 94, 0.08)); color: var(--pos, #16a34a); }
+.u-fx-preview-neg              { background: var(--red-bg, rgba(239, 68, 68, 0.08)); color: var(--neg, #dc2626); }
+/* PorCategoriaBreakdownModal: totales footer + ccy prefix + moneda alt line. */
+.u-cat-totales                 { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); display: grid; grid-template-columns: auto 1fr auto auto; gap: 12px; align-items: center; font-size: 13px; font-weight: 600; }
+.u-cat-totales-ccy             { margin-right: 4px; font-size: 12px; color: var(--text-muted); font-weight: 500; }
+.u-cat-totales-alt             { margin-top: 4px; text-align: right; font-variant-numeric: tabular-nums; }
+/* BusinessProfileSection: toggle label + banner base + tone variants. */
+.u-biz-toggle-label            { gap: 10px; align-items: center; cursor: pointer; }
+.u-biz-banner                  { padding: 10px; border-radius: 6px; font-size: 13px; }
+.u-biz-banner-neg              { background: var(--neg-soft); color: var(--neg); }
+.u-biz-banner-pos              { background: var(--pos-soft); color: var(--pos); }

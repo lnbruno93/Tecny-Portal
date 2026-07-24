@@ -188,31 +188,17 @@ export default function PorCategoriaBreakdownModal({
           )}
 
           {filasOrdenadas.length > 0 && !redacted && (
-            <div
-              className="cat-totales"
-              style={{
-                marginTop: 14,
-                paddingTop: 12,
-                borderTop: '1px solid var(--border)',
-                display: 'grid',
-                gridTemplateColumns: moneyKey
-                  ? 'auto 1fr auto auto'
-                  : (showPercentage
-                      ? 'auto 1fr auto auto'
-                      : 'auto 1fr auto auto'),
-                gap: 12,
-                alignItems: 'center',
-                fontSize: 13,
-                fontWeight: 600,
-              }}
-            >
+            // NOTA: `gridTemplateColumns` era una expresión ternaria pero las
+            // 3 ramas resolvían a `'auto 1fr auto auto'` — misma cadena literal.
+            // Consolidado en la clase `.u-cat-totales` (siempre 4 columnas).
+            <div className="cat-totales u-cat-totales">
               <span aria-hidden="true">∑</span>
               <span>{totalLabel}</span>
               {moneyKey ? (
                 <>
                   <span className="mono muted">{fmtN(totalCount)} {countLabel}</span>
                   <span className="mono">
-                    <span className="ccy" style={{ marginRight: 4, fontSize: 12, color: 'var(--text-muted)', fontWeight: 500 }}>{moneyLabel}</span>
+                    <span className="ccy u-cat-totales-ccy">{moneyLabel}</span>
                     {fmtN(totalMoney)}
                   </span>
                 </>
@@ -229,10 +215,7 @@ export default function PorCategoriaBreakdownModal({
           )}
 
           {moneyKeyAlt && totalMoneyAlt > 0 && !redacted && (
-            <div
-              className="muted tiny"
-              style={{ marginTop: 4, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-            >
+            <div className="muted tiny u-cat-totales-alt">
               + {moneyLabelAlt} {fmtN(totalMoneyAlt)} en costos locales
             </div>
           )}

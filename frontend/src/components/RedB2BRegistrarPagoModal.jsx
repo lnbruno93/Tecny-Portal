@@ -168,7 +168,7 @@ export default function RedB2BRegistrarPagoModal({ operation, restanteUsd, onClo
 
             <div className="field u-mb-12">
               <span className="field-label">Moneda del pago</span>
-              <div style={{ display: 'flex', gap: 16, marginTop: 4 }}>
+              <div className="u-radio-group-16">
                 <label className="u-flex-center-6-fs-13">
                   <input
                     type="radio"
@@ -214,29 +214,15 @@ export default function RedB2BRegistrarPagoModal({ operation, restanteUsd, onClo
                 Monto a cobrar/pagar ({monedaPago})
               </label>
               <input
-                className="input mono"
+                className="input mono u-bg-subtle"
                 type="text"
                 value={fmtMoney(montoPagoCalc, monedaPago)}
                 readOnly
-                style={{ background: 'var(--bg-subtle, var(--surface-2))' }}
               />
             </div>
 
             {monedaPago === 'ARS' && Math.abs(diferenciaPreview) >= 0.01 && (
-              <div
-                style={{
-                  padding: 10,
-                  background: diferenciaPreview > 0
-                    ? 'var(--green-bg, rgba(34, 197, 94, 0.08))'
-                    : 'var(--red-bg, rgba(239, 68, 68, 0.08))',
-                  color: diferenciaPreview > 0
-                    ? 'var(--pos, #16a34a)'
-                    : 'var(--neg, #dc2626)',
-                  borderRadius: 6,
-                  marginBottom: 12,
-                  fontSize: 13,
-                }}
-              >
+              <div className={'u-fx-preview ' + (diferenciaPreview > 0 ? 'u-fx-preview-pos' : 'u-fx-preview-neg')}>
                 <strong>{diferenciaPreview > 0 ? 'Ganancia cambiaria' : 'Pérdida cambiaria'}: </strong>
                 {fmtMoney(Math.abs(diferenciaPreview), 'ARS')}
                 <div className="u-fs-12-mt-4">
