@@ -173,7 +173,7 @@ export default function ResetPassword() {
     <div className="auth-screen auth-screen--center">
       <div className="auth-card u-mw-440">
         <h1 className="u-m-0-0-8">Elegí tu nueva contraseña</h1>
-        <p style={{ margin: '0 0 20px', color: 'var(--text-muted)', fontSize: 14 }}>
+        <p className="u-reset-lead">
           Una vez confirmada, vas a poder iniciar sesión con la nueva.
         </p>
 

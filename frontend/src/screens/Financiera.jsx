@@ -1409,11 +1409,14 @@ export default function Financiera() {
                     const arsCalc = usd * tc;
                     const delta = ars - arsCalc;
                     if (Math.abs(delta) < 0.01) return null;
-                    const color = Math.abs(delta) < 100 ? 'var(--text-muted)' : 'var(--warn, #d97706)';
+                    // El color depende de la magnitud del delta: <100 = muted
+                    // (informativo), >=100 = warn (revisar planilla). Migrado a
+                    // conditional class para evitar CSS var inline.
+                    const isWarn = Math.abs(delta) >= 100;
                     return (
-                      <div className="mono tiny" style={{ color, marginTop: -8, marginBottom: 8 }} role="status">
+                      <div className={'mono tiny u-fin-delta ' + (isWarn ? 'u-fin-delta-warn' : 'u-fin-delta-muted')} role="status">
                         USD × TC = $ {fmt(arsCalc)} (Δ {delta >= 0 ? '+' : ''}{fmt(delta)})
-                        {Math.abs(delta) >= 100 && ' — revisá si es lo que dice la planilla.'}
+                        {isWarn && ' — revisá si es lo que dice la planilla.'}
                       </div>
                     );
                   })()}

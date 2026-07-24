@@ -17,11 +17,14 @@
 //
 // El componente crea el wrapper externo (position:relative) y el inner
 // scrollable (overflow-x:auto). Si tu contenido ya tiene padding/margin que
-// querés conservar, pasalo via `style` o `className`.
+// querés conservar, pasalo via `className`.
+//
+// Sprint 99 (CSP): removida la prop `style` — solo el test la usaba en el
+// codebase real. Si hace falta override puntual, usar className.
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 
-export default function ScrollFadeX({ children, className = '', style }) {
+export default function ScrollFadeX({ children, className = '' }) {
   const scrollerRef = useRef(null);
   const [hasOverflowRight, setHasOverflowRight] = useState(false);
   const [hasOverflowLeft,  setHasOverflowLeft]  = useState(false);
@@ -65,7 +68,6 @@ export default function ScrollFadeX({ children, className = '', style }) {
         (hasOverflowRight ? 'has-overflow-right ' : '') +
         className
       }
-      style={style}
     >
       <div ref={scrollerRef} className="scroll-fade-rx__inner">
         {children}

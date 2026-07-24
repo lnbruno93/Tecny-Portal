@@ -4780,3 +4780,26 @@ body.modal-open { overflow: hidden; }
 /* SortableTable: header con cursor pointer (solo si sortable) + pager nav. */
 .u-sortable-th                 { cursor: pointer; user-select: none; }
 .u-sortable-pager              { display: flex; align-items: center; gap: 12px; padding: 8px 4px; justify-content: flex-end; }
+
+/* — Sprint 99 batch (auth screens + 1-hit components) — */
+/* Signup: seg (radiogroup) full-width — override del `.seg` compacto por
+   defecto del design system (que es para filtros pequeños). */
+.u-seg-full                    { display: flex; width: 100%; }
+/* ResetPassword: párrafo lead debajo del h1. */
+.u-reset-lead                  { margin: 0 0 20px; color: var(--text-muted); font-size: 14px; }
+/* Login: fila "¿No tenés cuenta?" arriba del footer. */
+.u-login-signup-row            { margin-top: 18px; text-align: center; font-size: 13px; }
+/* Financiera: preview de delta USD/ARS. Base + variants muted/warn. */
+.u-fin-delta                   { margin-top: -8px; margin-bottom: 8px; }
+.u-fin-delta-muted             { color: var(--text-muted); }
+.u-fin-delta-warn              { color: var(--warn, #d97706); }
+/* Contactos: dropdown de exportar mails, absolute posicionado al lado del btn. */
+.u-export-dropdown             { position: absolute; top: calc(100% + 4px); right: 0; min-width: 260px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35); padding: 6px; z-index: 50; }
+/* UnverifiedBanner: botón cerrar (secondary vs. el CTA "Reenviar email"). */
+.u-unverified-close            { background: transparent; color: var(--text-muted); font-weight: 500; }
+/* TcWarning: banner inline debajo de inputs de TC. */
+.u-tc-warning                  { font-size: 11px; color: var(--warn, #d97706); background: rgba(234, 179, 8, 0.08); border: 1px solid rgba(234, 179, 8, 0.3); border-radius: 4px; padding: 4px 8px; margin-top: 4px; line-height: 1.3; }
+/* ContactoPickerEmbedded: seg de modo (existente/nuevo). */
+.u-contacto-picker-seg         { gap: 4px; margin-bottom: 8px; background: var(--surface-2); padding: 3px; border-radius: 6px; width: fit-content; }
+/* Utility: italic simple (usa CajaSelectHint). */
+.u-fst-italic                  { font-style: italic; }

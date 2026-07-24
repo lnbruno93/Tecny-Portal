@@ -72,10 +72,9 @@ export default function UnverifiedBanner() {
           {loading ? 'Enviando…' : 'Reenviar email'}
         </button>
         <button
-          className="unverified-banner-btn"
+          className="unverified-banner-btn u-unverified-close"
           onClick={() => setDismissed(true)}
           aria-label="Ocultar banner (vuelve a aparecer al refrescar la página)"
-          style={{ background: 'transparent', color: 'var(--text-muted)', fontWeight: 500 }}
         >
           Cerrar
         </button>

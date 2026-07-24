@@ -24,7 +24,7 @@ export default function ContactoPickerEmbedded({ form, setForm, allContacts }) {
   return (
     <div className="field">
       <label className="field-label">Contacto <span className="u-color-neg">*</span></label>
-      <div className="flex-row" style={{ gap: 4, marginBottom: 8, background: 'var(--surface-2)', padding: 3, borderRadius: 6, width: 'fit-content' }}>
+      <div className="flex-row u-contacto-picker-seg">
         <button type="button"
                 className={'btn btn-sm ' + (form.contactoMode === 'existente' ? 'btn-primary' : 'btn-ghost')}
                 className="u-p-4-12"
