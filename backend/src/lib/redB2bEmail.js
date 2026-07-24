@@ -71,7 +71,23 @@ async function resolveOwnerEmail(tenantId) {
     };
 
     // tenant_users tiene FORCE RLS — necesitamos SET LOCAL.
-    await client.query(`SET LOCAL app.current_tenant = ${Number(tenantId)}`);
+    //
+    // 2026-07-24 (Sentry TECNY-PORTAL-BACKEND-17 investigación): migrado
+    // de `SET LOCAL app.current_tenant = ${Number(tenantId)}` (interpolación
+    // string) a `set_config(..., $1::text, true)` (bind param). Mismo patrón
+    // que withTenant() usa en config/database.js:258-260 (fixeado en
+    // auditoría TOTAL Plataforma P0-1, 2026-07-12). Este file quedó atrás.
+    //
+    // Impacto: si tenantId era garbage (undefined, "abc", null), `Number()`
+    // retornaba NaN → SQL literal `SET LOCAL app.current_tenant = NaN` →
+    // syntax error a nivel statement. El conector no queda del todo limpio
+    // — el pool eventualmente lo cierra y devuelve "Connection terminated"
+    // al próximo consumer. Con bind param, un valor inválido falla temprano
+    // en el driver sin envenenar la conexión.
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(tenantId)]
+    );
 
     // Lookup user owner/admin del tenant. Orden:
     //   1. Verificado + rol=owner (más reciente created_at — tie break)
