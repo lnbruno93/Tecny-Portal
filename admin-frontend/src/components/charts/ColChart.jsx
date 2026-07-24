@@ -61,7 +61,7 @@ export default function ColChart({ series = [], height = 140, xLabels }) {
   // un placeholder muted en lugar del esqueleto.
   if (!series.length) {
     return (
-      <div className="muted tiny" style={{ padding: '20px 0', textAlign: 'center' }}>
+      <div className="muted tiny u-colchart-empty">
         Sin datos en el período.
       </div>
     );

@@ -62,6 +62,19 @@ export const healthColor = (h, category) => {
   return 'var(--neg)';
 };
 
+// Companion helper para CSP: devuelve la utility class `.u-tone-*` en vez
+// del literal `var(--*)`. Necesario para migrar `style={{ color: hColor }}`
+// → `className={hClass}` sin duplicar la lógica del score→color. Mismo
+// mapping que healthColor(), matcheado 1:1. Ver Ficha.jsx y Clientes.jsx.
+export const healthColorClass = (h, category) => {
+  if (category === 'onboarding') return 'u-tone-accent';
+  if (category === 'suspended')  return 'u-tone-text-muted';
+  if (h >= 80) return 'u-tone-pos';
+  if (h >= 55) return 'u-tone-accent';
+  if (h >= 40) return 'u-tone-warn';
+  return 'u-tone-neg';
+};
+
 // Categoría → etiqueta humana (esp). Backend devuelve las claves canónicas
 // y acá decidimos cómo se muestran al super-admin en el badge.
 export const HEALTH_CATEGORY_LABEL = {

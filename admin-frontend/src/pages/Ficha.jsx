@@ -28,7 +28,7 @@ import {
   getTenantStatus,
   TENANT_STATUS,
   healthProxy,
-  healthColor,
+  healthColorClass,
   healthCategoryLabel,
 } from '../lib/uiHelpers.js';
 import { describeAction, actionShortText } from '../lib/actionDescriptors.js';
@@ -253,7 +253,9 @@ export default function Ficha() {
   // proxy legacy via healthProxy(tenant).
   const health = healthProxy(tenant);
   const hCategory = tenant?.health_category;
-  const hColor = healthColor(health, hCategory);
+  // Sprint 101 CSP: healthColor → healthColorClass devuelve `.u-tone-*`
+  // (mismo mapping) para evitar inline color como CSS var.
+  const hClass = healthColorClass(health, hCategory);
   const hDesc = healthDescriptor(health, hCategory);
   // Breakdown del backend para las 4 barras del tab Resumen. Si falta,
   // usamos defaults visualmente útiles (no cero — sería confuso).
@@ -420,7 +422,7 @@ export default function Ficha() {
 
         <Card tight>
           <div className="kpi-label">Salud (proxy)</div>
-          <div className="kpi-value" style={{ color: hColor }}>
+          <div className={`kpi-value ${hClass}`}>
             {health}
             <span className="muted u-fs-12-fw-500-ml-4-b">/100</span>
           </div>
@@ -457,22 +459,22 @@ export default function Ficha() {
             <HealthBar
               label="Actividad (30%) — ventas + bot últimos 30d"
               value={breakdown.actividad}
-              color="var(--info)"
+              toneKey="info"
             />
             <HealthBar
               label="Cobros al día (30%) — días hasta vencer pago"
               value={breakdown.cobros}
-              color={breakdown.cobros >= 60 ? 'var(--pos)' : breakdown.cobros >= 30 ? 'var(--warn)' : 'var(--neg)'}
+              toneKey={breakdown.cobros >= 60 ? 'pos' : breakdown.cobros >= 30 ? 'warn' : 'neg'}
             />
             <HealthBar
               label="Adopción (20%) — features que usa el tenant"
               value={breakdown.adopcion}
-              color="var(--accent)"
+              toneKey="accent"
             />
             <HealthBar
               label="Asientos (20%) — users vs capacity del plan"
               value={breakdown.asientos}
-              color="var(--accent)"
+              toneKey="accent"
             />
             <div className="muted tiny u-mt-12">
               {hCategory === 'onboarding' && (
@@ -514,9 +516,10 @@ export default function Ficha() {
                   const d = describeAction(a);
                   return (
                     <div key={a.id} className="activity-item">
+                      {/* d.tone es 'pos'|'neg'|'warn'|'accent'|'muted'. Mapea 1:1 a
+                          `.u-tone-*` (excepto 'muted' → 'text-muted' por naming). */}
                       <div
-                        className="dot-ico"
-                        style={{ color: `var(--${d.tone === 'muted' ? 'text-muted' : d.tone})` }}
+                        className={`dot-ico u-tone-${d.tone === 'muted' ? 'text-muted' : d.tone}`}
                       >
                         <d.IconCmp size={14} />
                       </div>
@@ -657,16 +660,22 @@ export default function Ficha() {
 }
 
 // ── Sub-componente: barra horizontal para "Salud de la cuenta" ─────
-function HealthBar({ label, value, color }) {
+//
+// Sprint 101 CSP: `color` (CSS var string) reemplazado por `toneKey` — el
+// componente ahora resuelve las clases `.u-tone-*` (text) y `.u-bg-*`
+// (fill) internamente. Los callers pasan `toneKey="pos"|"neg"|...` en
+// vez de `color="var(--pos)"`. Width sigue inline (data-driven).
+function HealthBar({ label, value, toneKey = 'accent' }) {
   const safe = Math.max(0, Math.min(100, Number(value) || 0));
   return (
     <div className="bar-row">
       <span className="bar-row-label">{label}</span>
-      <span className="bar-row-value" style={{ color }}>{safe}</span>
+      <span className={`bar-row-value u-tone-${toneKey === 'muted' ? 'text-muted' : toneKey}`}>{safe}</span>
       <div className="bar-row-track bar-track u-h-6">
+        {/* width % es data-driven — único residual del componente. */}
         <div
-          className="bar-fill"
-          style={{ width: safe + '%', background: color }}
+          className={`bar-fill u-bg-${toneKey}`}
+          style={{ width: safe + '%' }}
         />
       </div>
     </div>

@@ -78,7 +78,7 @@ function ProtectedRoute({ children }) {
       <Suspense
         fallback={
           <div
-            style={{ display: 'grid', placeItems: 'center', minHeight: 200 }}
+            className="u-admin-suspense"
             role="status"
             aria-live="polite"
             aria-busy="true"
@@ -95,23 +95,13 @@ function ProtectedRoute({ children }) {
 
 function NotFound() {
   return (
-    <div
-      style={{
-        display: 'grid',
-        placeItems: 'center',
-        height: '100vh',
-        textAlign: 'center',
-        padding: 32,
-        background: 'var(--bg)',
-      }}
-    >
+    <div className="u-admin-notfound">
       <div>
-        <h1 style={{ fontSize: 48, margin: 0, color: 'var(--text)' }}>404</h1>
+        <h1 className="u-admin-notfound-code">404</h1>
         <p className="muted">Esta ruta no existe.</p>
         <a
           href="/"
-          className="btn btn-primary"
-          style={{ marginTop: 16, display: 'inline-flex' }}
+          className="btn btn-primary u-admin-notfound-btn"
         >
           Ir a Resumen
         </a>
