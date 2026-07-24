@@ -182,30 +182,13 @@ export default function ChangePasswordModal({ open, onClose, onSuccess }) {
     >
       <form onSubmit={handleSubmit} noValidate className="u-flex-col-gap-14">
         {success && (
-          <div
-            role="status"
-            aria-live="polite"
-            style={{
-              padding: '10px 12px', borderRadius: 8,
-              background: 'rgba(34, 197, 94, 0.1)',
-              border: '1px solid rgba(34, 197, 94, 0.3)',
-              color: 'var(--pos)', fontSize: 13,
-            }}
-          >
+          <div role="status" aria-live="polite" className="u-admin-cpw-success">
             {success}
           </div>
         )}
 
         {error && !success && (
-          <div
-            role="alert"
-            style={{
-              padding: '10px 12px', borderRadius: 8,
-              background: 'rgba(239, 68, 68, 0.1)',
-              border: '1px solid rgba(239, 68, 68, 0.3)',
-              color: 'var(--neg)', fontSize: 13,
-            }}
-          >
+          <div role="alert" className="u-admin-cpw-error">
             {error}
           </div>
         )}
@@ -234,11 +217,7 @@ export default function ChangePasswordModal({ open, onClose, onSuccess }) {
               onClick={() => setShowCurrent((v) => !v)}
               aria-label={showCurrent ? 'Ocultar contraseña' : 'Mostrar contraseña'}
               tabIndex={-1}
-              style={{
-                position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
-                background: 'transparent', border: 'none', cursor: 'pointer',
-                fontSize: 12, padding: 4,
-              }}
+              className="u-admin-cpw-eye"
             >
               {showCurrent ? '🙈' : '👁'}
             </button>
@@ -274,11 +253,7 @@ export default function ChangePasswordModal({ open, onClose, onSuccess }) {
               onClick={() => setShowNew((v) => !v)}
               aria-label={showNew ? 'Ocultar contraseña' : 'Mostrar contraseña'}
               tabIndex={-1}
-              style={{
-                position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
-                background: 'transparent', border: 'none', cursor: 'pointer',
-                fontSize: 12, padding: 4,
-              }}
+              className="u-admin-cpw-eye"
             >
               {showNew ? '🙈' : '👁'}
             </button>
@@ -340,10 +315,7 @@ export default function ChangePasswordModal({ open, onClose, onSuccess }) {
               disabled={loading || !!success}
               placeholder="6 dígitos o recovery code"
               aria-invalid={!!fieldErrors.twofaCode}
-              style={{
-                width: '100%',
-                fontFamily: 'monospace', letterSpacing: '0.1em',
-              }}
+              className="u-admin-cpw-2fa-input"
             />
             {fieldErrors.twofaCode ? (
               <div className="u-color-neg-fs-12-mt-4">

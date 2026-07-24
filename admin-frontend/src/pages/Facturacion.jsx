@@ -145,29 +145,19 @@ export default function Facturacion() {
       {error && (
         <div
           role="alert"
-          className="card"
-          style={{
-            marginBottom: 'var(--gap)',
-            background: 'var(--neg-soft)',
-            border: '1px solid transparent',
-            color: 'var(--neg)',
-            fontSize: 13,
-          }}
+          className="card u-fact-error"
         >
           {error}
         </div>
       )}
 
       {/* KPI grid — 4 columnas responsive (colapsan a 2 en mobile por minmax). */}
-      <div
-        className="kpi-grid"
-        style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}
-      >
+      <div className="kpi-grid u-fact-kpi-grid">
         <div className="kpi">
           <div className="kpi-label">MRR</div>
           <div className="kpi-value">
             {loading ? (
-              <span className="skeleton" style={{ display: 'inline-block', width: 80, height: 22 }} />
+              <span className="skeleton u-fact-skel-kpi" />
             ) : (
               fmtMoney(kpis.mrr_usd ?? 0)
             )}
@@ -181,10 +171,8 @@ export default function Facturacion() {
 
         <div className="kpi">
           <div className="kpi-label">Al día</div>
-          <div
-            className="kpi-value"
-            style={{ color: (kpis.al_dia_count ?? 0) > 0 ? 'var(--pos)' : undefined }}
-          >
+          {/* Color condicional: pos si >0, default si no. */}
+          <div className={'kpi-value ' + ((kpis.al_dia_count ?? 0) > 0 ? 'u-color-pos' : '')}>
             {loading ? (
               <span className="skeleton u-inline-block-w-60-h-22" />
             ) : (
@@ -200,10 +188,7 @@ export default function Facturacion() {
 
         <div className="kpi">
           <div className="kpi-label">Vencidos</div>
-          <div
-            className="kpi-value"
-            style={{ color: (kpis.vencidos_count ?? 0) > 0 ? 'var(--neg)' : undefined }}
-          >
+          <div className={'kpi-value ' + ((kpis.vencidos_count ?? 0) > 0 ? 'u-color-neg' : '')}>
             {loading ? (
               <span className="skeleton u-inline-block-w-60-h-22" />
             ) : (
@@ -345,12 +330,11 @@ export default function Facturacion() {
                           desde acá porque quitamos onClick global de la fila
                           — la columna Método NO debe drill-downear). */}
                       <select
-                        className="input"
+                        className="input u-fact-metodo-select"
                         value={c.metodo_pago_id || ''}
                         onChange={(e) => handleAssignMetodo(c.tenant_id, e.target.value)}
                         onClick={(e) => e.stopPropagation()}
                         disabled={isAssigning}
-                        style={{ minWidth: 140, padding: '4px 8px', fontSize: 13 }}
                         aria-label={`Método de pago de ${c.tenant_nombre}`}
                       >
                         <option value="">— Sin asignar —</option>
