@@ -130,7 +130,7 @@ export default function DeleteTenantModal({ tenant, open, onClose, onDeleted }) 
           onChange={(e) => setReason(e.target.value)}
           placeholder="Ej: cuenta de prueba creada durante onboarding, sin actividad real"
           disabled={submitting}
-          style={{ resize: 'vertical', minHeight: 64 }}
+          className="u-textarea-resize-v-64"
           maxLength={500}
         />
       </div>

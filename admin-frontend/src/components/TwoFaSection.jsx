@@ -195,11 +195,7 @@ export default function TwoFaSection({ onMessage }) {
   const localBanner = localMessage && !onMessage ? (
     <div
       role={localMessage.type === 'error' ? 'alert' : 'status'}
-      className="u-notice-banner"
-      style={{
-        background: localMessage.type === 'error' ? 'rgba(239,68,68,0.1)' : 'rgba(34,197,94,0.1)',
-        color: `var(--${localMessage.type === 'error' ? 'neg' : 'pos'})`,
-      }}
+      className={'u-notice-banner ' + (localMessage.type === 'error' ? 'u-notice-banner-neg' : 'u-notice-banner-pos')}
     >
       {localMessage.text}
     </div>

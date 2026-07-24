@@ -224,7 +224,7 @@ export default function EditTenantModal({ tenant, open, onClose, onSaved }) {
             </div>
           )}
           {slugChanged && slugIsValid && (
-            <div className="banner banner-warn" style={{ marginTop: 6, padding: 8 }}>
+            <div className="banner banner-warn u-slug-warn">
               <span className="tiny">
                 <strong>Cambiar slug es delicado.</strong> El slug actual queda
                 guardado en el audit trail histórico, pero links externos o

@@ -153,7 +153,7 @@ export default function ExtendTrialModal({ tenant, open, onClose, onSaved }) {
             Cuántos días extender el trial actual ({MIN_DAYS}–{MAX_DAYS}).
           </div>
           {previewDate && (
-            <div style={{ marginTop: 6, fontWeight: 600 }}>
+            <div className="u-trial-preview">
               Nuevo trial hasta: {fmtDate(previewDate.toISOString())}
             </div>
           )}
