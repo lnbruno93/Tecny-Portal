@@ -37,11 +37,14 @@ const PARAMETROS_META = {
   tolerancia_pct:       { label: '% de tolerancia por debajo', tipo: 'number', min: 0, max: 50 },
 };
 
-const COLOR_SEVERIDAD = {
-  critica: 'var(--neg)',
-  alta:    'var(--warn)',
-  media:   'var(--accent)',
-  baja:    'var(--text-muted)',
+// CSS classes por severidad — evita construir var(--*) inline (CSP).
+// Cada clase setea `--sev-color` (custom prop) que .u-grupo-alerta-* consume
+// para el borderLeft del card + el bg del badge. Ver styles.css Sprint 98.
+const SEVERIDAD_CLASS = {
+  critica: 'u-sev-critica',
+  alta:    'u-sev-alta',
+  media:   'u-sev-media',
+  baja:    'u-sev-baja',
 };
 
 export default function AlertasModule() {
@@ -121,13 +124,16 @@ export function TabActivas({ data }) {
 
 function GrupoAlerta({ grupo }) {
   const [expanded, setExpanded] = useState(true);
-  const color = COLOR_SEVERIDAD[grupo.severidad] || 'var(--accent)';
+  // `sevClass` setea --sev-color en el card container; el borderLeftColor y el
+  // badge bg consumen esa var via clases descendant en styles.css. Fallback a
+  // 'u-sev-media' (var(--accent)) si el backend manda una severidad no mapeada.
+  const sevClass = SEVERIDAD_CLASS[grupo.severidad] || 'u-sev-media';
   return (
-    <div className="card card-tight u-grupo-alerta-card" style={{ borderLeftColor: color }}>
+    <div className={`card card-tight u-grupo-alerta-card ${sevClass}`}>
       <div className="flex-between u-cursor-pointer" onClick={() => setExpanded(e => !e)}>
         <div>
           <span className="u-fs-16-fw-600">{grupo.titulo}</span>
-          <span className="badge u-badge-count-ml-8" style={{ background: color }}>{grupo.count}</span>
+          <span className="badge u-badge-count-ml-8 u-grupo-alerta-count">{grupo.count}</span>
         </div>
         <button className="icon-btn">
           {expanded ? <Icons.ChevronUp size={16} /> : <Icons.ChevronDown size={16} />}

@@ -158,7 +158,7 @@ export default function SortableTable({
                   key={col.key}
                   aria-sort={col.sortable ? ariaSort : undefined}
                   onClick={col.sortable ? () => onHeaderClick(col) : undefined}
-                  style={col.sortable ? { cursor: 'pointer', userSelect: 'none' } : undefined}
+                  className={col.sortable ? 'u-sortable-th' : undefined}
                   scope="col"
                 >
                   {col.label}
@@ -188,16 +188,9 @@ export default function SortableTable({
         // Nav simple — usa clases btn/btn-sm si están disponibles en el host
         // (el resto del portal); el styling cae a defaults del browser si no.
         <div
-          className="sortable-table-pager"
+          className="sortable-table-pager u-sortable-pager"
           role="navigation"
           aria-label="Paginación tabla"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            padding: '8px 4px',
-            justifyContent: 'flex-end',
-          }}
         >
           <button
             type="button"
