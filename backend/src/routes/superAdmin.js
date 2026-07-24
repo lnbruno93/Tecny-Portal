@@ -656,7 +656,10 @@ async function createTenantTx(client, req, body) {
       // 1.5. SET LOCAL antes de cualquier INSERT en tabla RLS-protegida.
       // Para BYPASSRLS, el SET LOCAL es defense-in-depth (no requerido por
       // RLS pero útil si en el futuro algún UPDATE consulta current_setting).
-      await client.query(`SET LOCAL app.current_tenant = ${tenant.id}`);
+      await client.query(
+        `SELECT set_config('app.current_tenant', $1::text, true)`,
+        [String(tenant.id)]
+      );
 
       // 2. User owner — email_verified_at=NOW() (admin-vouched).
       // password_hash queda con un placeholder NO-USABLE: 60 chars con

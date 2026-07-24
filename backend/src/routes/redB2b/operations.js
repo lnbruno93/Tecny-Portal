@@ -97,7 +97,10 @@ const redB2bEmail = require('../../lib/redB2bEmail');
 // con BYPASSRLS, los WITH CHECK del FORCE RLS validan).
 // ──────────────────────────────────────────────────────────────────────────
 async function notify(client, tenantId, type, payload, opts = {}) {
-  await client.query(`SET LOCAL app.current_tenant = ${Number(tenantId)}`);
+  await client.query(
+    `SELECT set_config('app.current_tenant', $1::text, true)`,
+    [String(tenantId)]
+  );
   await client.query(
     `INSERT INTO cross_tenant_notifications
        (tenant_id, partnership_id, cross_tenant_operation_id, type, payload)
@@ -244,7 +247,10 @@ router.post('/', validate(createOperationSchema), async (req, res, next) => {
 
         // E + F. SET LOCAL seller → createSellerVenta (valida productos +
         // decrement stock + INSERT movimientos_cc + items_movimiento_cc).
-        await client.query(`SET LOCAL app.current_tenant = ${Number(myTenantId)}`);
+        await client.query(
+          `SELECT set_config('app.current_tenant', $1::text, true)`,
+          [String(myTenantId)]
+        );
         let sellerResult;
         try {
           sellerResult = await createSellerVenta(client, myTenantId, {
@@ -283,7 +289,10 @@ router.post('/', validate(createOperationSchema), async (req, res, next) => {
         // G. SET LOCAL buyer → auto-create productos (uno por item, sin dedup).
         // PR-D #463: bulkificado. Antes hacía N round-trips (loop +
         // findOrCreateBuyerProducto singular). Ahora 1 INSERT con UNNEST.
-        await client.query(`SET LOCAL app.current_tenant = ${Number(buyerTenantId)}`);
+        await client.query(
+          `SELECT set_config('app.current_tenant', $1::text, true)`,
+          [String(buyerTenantId)]
+        );
 
         const itemsParaCrear = body.items.map((it) => {
           const sellerProd = sellerProdMap.get(Number(it.producto_id));
@@ -369,14 +378,23 @@ router.post('/', validate(createOperationSchema), async (req, res, next) => {
         // UPDATE de links: movimientos_cc.cross_tenant_operation_id + idem
         // en proveedor_movimientos. Cada UPDATE necesita SET LOCAL del lado
         // correspondiente para que el RLS estricto permita el write.
-        await client.query(`SET LOCAL app.current_tenant = ${Number(myTenantId)}`);
+        await client.query(
+          `SELECT set_config('app.current_tenant', $1::text, true)`,
+          [String(myTenantId)]
+        );
         await client.query(
           `UPDATE movimientos_cc SET cross_tenant_operation_id = $1
              WHERE id = $2 AND tenant_id = $3`,
           [crossOp.id, sellerResult.movimientoCcId, myTenantId]
         );
 
-        await client.query(`SET LOCAL app.current_tenant = ${Number(buyerTenantId)}`);
+        await client.query(
+
+          `SELECT set_config('app.current_tenant', $1::text, true)`,
+
+          [String(buyerTenantId)]
+
+        );
         await client.query(
           `UPDATE proveedor_movimientos SET cross_tenant_operation_id = $1
              WHERE id = $2 AND tenant_id = $3`,
@@ -412,7 +430,10 @@ router.post('/', validate(createOperationSchema), async (req, res, next) => {
         );
 
         // Audit del seller (notify cambió el SET LOCAL al buyer — restauramos).
-        await client.query(`SET LOCAL app.current_tenant = ${Number(myTenantId)}`);
+        await client.query(
+          `SELECT set_config('app.current_tenant', $1::text, true)`,
+          [String(myTenantId)]
+        );
         await audit(client, {
           tenantId: myTenantId,
           userId,
@@ -833,7 +854,10 @@ router.post('/:id/cancel', validate(cancelOperationSchema), async (req, res, nex
         const items = itemsQ.rows;
 
         // SET LOCAL seller → revert stock + soft-delete mov.
-        await client.query(`SET LOCAL app.current_tenant = ${Number(myTenantId)}`);
+        await client.query(
+          `SELECT set_config('app.current_tenant', $1::text, true)`,
+          [String(myTenantId)]
+        );
         if (items.length > 0) {
           await client.query(
             `UPDATE productos p SET
@@ -861,7 +885,10 @@ router.post('/:id/cancel', validate(cancelOperationSchema), async (req, res, nex
 
         // SET LOCAL buyer → revert stock (sin guard) + soft-delete mov.
         const buyerTenantId = op.buyer_tenant_id;
-        await client.query(`SET LOCAL app.current_tenant = ${Number(buyerTenantId)}`);
+        await client.query(
+          `SELECT set_config('app.current_tenant', $1::text, true)`,
+          [String(buyerTenantId)]
+        );
 
         let stockNegativoBuyer = false;
         if (items.length > 0) {
@@ -935,7 +962,10 @@ router.post('/:id/cancel', validate(cancelOperationSchema), async (req, res, nex
         );
 
         // Audit (volvemos al SET LOCAL del seller).
-        await client.query(`SET LOCAL app.current_tenant = ${Number(myTenantId)}`);
+        await client.query(
+          `SELECT set_config('app.current_tenant', $1::text, true)`,
+          [String(myTenantId)]
+        );
         await audit(client, {
           tenantId: myTenantId,
           userId,
@@ -1044,7 +1074,10 @@ router.patch('/:id', validate(patchOperationSchema), async (req, res, next) => {
         }
 
         // UPDATE mov_cc seller (notas).
-        await client.query(`SET LOCAL app.current_tenant = ${Number(myTenantId)}`);
+        await client.query(
+          `SELECT set_config('app.current_tenant', $1::text, true)`,
+          [String(myTenantId)]
+        );
         await client.query(
           `UPDATE movimientos_cc SET notas = $1
              WHERE id = $2 AND tenant_id = $3`,
@@ -1053,7 +1086,10 @@ router.patch('/:id', validate(patchOperationSchema), async (req, res, next) => {
 
         // UPDATE proveedor_mov buyer (notas).
         const buyerTenantId = op.buyer_tenant_id;
-        await client.query(`SET LOCAL app.current_tenant = ${Number(buyerTenantId)}`);
+        await client.query(
+          `SELECT set_config('app.current_tenant', $1::text, true)`,
+          [String(buyerTenantId)]
+        );
         await client.query(
           `UPDATE proveedor_movimientos SET notas = $1
              WHERE id = $2 AND tenant_id = $3`,
