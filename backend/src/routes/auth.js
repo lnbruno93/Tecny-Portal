@@ -655,10 +655,22 @@ router.post('/logout', requireAuth, async (req, res, next) => {
     );
     // 2026-07-12 (auditoría TOTAL Auth P1-1): audit LOGOUT explícito.
     // Antes solo quedaba el bump de password_changed_at silencioso.
-    audit('users', 'LOGOUT', req.user.id, {
-      req,
-      despues: {},
-    }).catch((err) => logger.warn({ err: err.message, userId: req.user.id }, '[auth-audit] LOGOUT no persistido'));
+    //
+    // 2026-07-24 (Sentry TECNY-PORTAL-BACKEND-16): envolvemos en withTenant()
+    // porque el audit() sin client usa el pool default (sin SET LOCAL de
+    // app.current_tenant). La RLS policy de audit_logs evalúa
+    // `NULLIF(current_setting(...), '')::int` — sin SET LOCAL retorna NULL,
+    // y el WITH CHECK del INSERT falla porque `tenant_id = NULL` no es TRUE.
+    // Antes del fix RLS de esta misma PR (migration 20260724000001), este
+    // path fallaba con casting error (500 silencioso capturado por el
+    // .catch). Con withTenant() la connection queda con SET LOCAL correcto
+    // y el INSERT pasa la policy.
+    db.withTenant(req.tenantId, (client) =>
+      audit(client, 'users', 'LOGOUT', req.user.id, {
+        req,
+        despues: {},
+      })
+    ).catch((err) => logger.warn({ err: err.message, userId: req.user.id }, '[auth-audit] LOGOUT no persistido'));
     // P-04 Fase 3.6: invalidar cache de auth meta (cross-instance Redis).
     // Sin esto, otra réplica con el row cacheado seguiría aceptando el token
     // hasta TTL de 60s. Fire-and-forget — userAuthCache loggea fallos
