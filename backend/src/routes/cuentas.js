@@ -35,6 +35,12 @@ const { grupoMoneda } = require('../lib/cajaLedger');
 // comment en el endpoint POST /cobranzas-masivas más abajo.
 const { invalidateCajas } = require('../lib/cajasCache');
 const logger = require('../lib/logger');
+// 2026-07-24 (cache follow-up): DASHBOARD_VENTAS suma movimientos_cc tipo
+// 'compra' + 'devolucion' al calcular KPIs B2B (ventas_count, ingresos B2B,
+// ganancia). Sin invalidate post-COMMIT, dashboard stale hasta 30s TTL.
+// Ver comment en ventas.js:1912 sobre por qué el helper está attached al
+// router — es un compromise pragmático.
+const { invalidateDashboardVentas } = require('./ventas');
 
 // Rate-limit específico para cobranza masiva: 10 req / 15 min por user.
 // Cada lote puede ser de hasta 100 cobranzas → write-heavy y mantiene
@@ -950,6 +956,10 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
     // Venta B2B descontó stock — invalidar el cache de métricas para que el
     // dashboard de Inventario refleje el nuevo total en el próximo refresh.
     if (insertedItems.length > 0 || productosCreados.length > 0) invalidateMetricas(req.tenantId);
+    // Cualquier tipo (compra, devolucion, pago, mercaderia_recibida...) mueve
+    // el saldo del cliente + potencialmente los KPIs del dashboard. Invalidamos
+    // siempre — el costo de un refetch es menor al de mostrar KPIs stale.
+    invalidateDashboardVentas(req.tenantId);
 
     res.status(201).json({ ...mov, items: insertedItems, productos_creados: productosCreados });
   } catch (err) {
@@ -1053,6 +1063,7 @@ router.delete('/movimientos/:id', async (req, res, next) => {
     // DELETE de venta B2B repuso stock — invalidar cache para que el dashboard
     // refleje el nuevo total inmediatamente.
     invalidateMetricas(req.tenantId);
+    invalidateDashboardVentas(req.tenantId);  // cancelar movimiento_cc afecta KPIs B2B
     res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
@@ -1210,6 +1221,7 @@ router.post('/movimientos/:movId/items/:itemId/devolver', async (req, res, next)
 
     await client.query('COMMIT');
     invalidateMetricas(req.tenantId);
+    invalidateDashboardVentas(req.tenantId);  // devolucion revierte parte del ingreso B2B
     res.json({
       ok: true,
       item_id: itemId,

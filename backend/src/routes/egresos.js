@@ -23,6 +23,11 @@ const {
   createEgresoSchema, updateEgresoSchema, queryEgresosSchema, generarPeriodoSchema,
 } = require('../schemas/egresos');
 const { requiereTc } = require('../schemas/_common');
+// 2026-07-24 (cache follow-up): DASHBOARD_VENTAS suma egresos al calcular
+// "ganancia neta" y "egresos" KPI. Sin invalidate post-COMMIT, el dashboard
+// queda stale hasta 30s post-mutation. Helper exportado desde ventas.js
+// (attached al router — ver comment en ventas.js:1912).
+const { invalidateDashboardVentas } = require('./ventas');
 
 // Postea el egreso al ledger de su caja (solo si está pagado y tiene caja).
 async function postEgresoLedger(client, e) {
@@ -307,6 +312,7 @@ router.post('/', egresosCargar, validate(createEgresoSchema), async (req, res, n
     await postEgresoLedger(client, rows[0]);
     await audit(client, 'egresos', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
+    invalidateDashboardVentas(req.tenantId);  // afecta KPI "egresos" + "ganancia neta"
     res.status(201).json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -374,6 +380,7 @@ router.put('/:id', egresosCargar, validate(updateEgresoSchema), async (req, res,
     await postEgresoLedger(client, { ...rows[0], user_id: req.user.id });
     await audit(client, 'egresos', 'UPDATE', id, { antes: b, despues: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
+    invalidateDashboardVentas(req.tenantId);  // edición pudo cambiar monto/estado → afecta KPIs
     res.json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -396,6 +403,7 @@ router.delete('/:id', egresosCargar, async (req, res, next) => {
     await reverseCajaMovimientos(client, 'egresos', id);
     await audit(client, 'egresos', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
+    invalidateDashboardVentas(req.tenantId);  // egreso removido → dashboard cambia
     res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK');

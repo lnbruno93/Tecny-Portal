@@ -1909,4 +1909,19 @@ router.get('/:id/emails-enviados', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// 2026-07-24 (cache follow-up): exportar el helper de invalidación como
+// named export además del router (default). Consumers hacen:
+//   const { invalidateDashboardVentas } = require('./ventas');
+// para invalidar el cache desde egresos.js + cuentas.js/movimientos que
+// también afectan los KPIs del dashboard (egresos, ganancia neta, B2B
+// ventas count/ingresos).
+//
+// Trade-off: el helper vive acoplado al router porque el dashboardCache
+// depende de computeDashboard (200+ líneas) que solo tiene sentido acá.
+// Extraer todo a `lib/dashboardVentasCache.js` requeriría mover
+// computeDashboard también (o injection pattern) — deferred. La forma
+// actual funciona (Router es un objeto/function con propiedades
+// attachables) y consumers ya requieren ventas.js indirectamente vía
+// app.use en app.js.
 module.exports = router;
+module.exports.invalidateDashboardVentas = invalidateDashboardVentas;

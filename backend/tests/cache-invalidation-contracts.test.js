@@ -125,6 +125,31 @@ const CONTRACTS = [
       'invalidateMetricas(req.tenantId)': 3, // POST + PUT (2 paths) + DELETE
     },
   },
+  // 2026-07-24 (cache follow-up post-PR #868): egresos y cuentas/movimientos
+  // también afectan los KPIs del dashboard. Al momento del audit inicial no
+  // se incluyeron por scope; este follow-up cierra el círculo completo.
+  {
+    file: 'src/routes/egresos.js',
+    description: 'POST/PUT/DELETE egresos invalidan DASHBOARD_VENTAS (ganancia neta)',
+    expectedCalls: [
+      `require('./ventas')`,
+      `invalidateDashboardVentas(req.tenantId)`,
+    ],
+    minOccurrences: {
+      'invalidateDashboardVentas(req.tenantId)': 3, // POST + PUT + DELETE
+    },
+  },
+  {
+    file: 'src/routes/cuentas.js',
+    description: 'POST/DELETE movimientos + devolver items invalidan DASHBOARD_VENTAS (B2B KPIs)',
+    expectedCalls: [
+      `require('./ventas')`,
+      `invalidateDashboardVentas(req.tenantId)`,
+    ],
+    minOccurrences: {
+      'invalidateDashboardVentas(req.tenantId)': 3, // POST + DELETE + devolver
+    },
+  },
 ];
 
 // ── Helper ───────────────────────────────────────────────────────────────
