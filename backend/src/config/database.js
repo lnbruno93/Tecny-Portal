@@ -18,6 +18,25 @@ const pool = new Pool({
   idleTimeoutMillis:       parseInt(process.env.DB_IDLE_TIMEOUT)  || 30_000,  // libera conexiones ociosas
   allowExitOnIdle:         true,  // permite que el proceso termine sin clientes colgados
 
+  // 2026-07-24 (Sentry TECNY-PORTAL-BACKEND-17): TCP keep-alive habilitado
+  // para prevenir "Connection terminated unexpectedly" cuando el proxy/LB
+  // de Railway cierra silenciosamente conexiones idle a los ~1-3min. Sin
+  // keep-alive, el cliente cree que la conexión sigue viva hasta la próxima
+  // query, que falla con read ECONNRESET → el error se propaga como
+  // "Connection terminated" a la request del user.
+  //
+  // Con keep-alive: el kernel envía TCP keepalive packets cada 30s. Si el
+  // otro extremo no responde, el socket se marca dead y el pool lo descarta
+  // en el próximo idle sweep — el user NO ve el error, solo puede haber una
+  // reconnection latencia (~50ms) transparente.
+  //
+  // Nombres correctos del pg driver (node-postgres respeta la naming del
+  // libpq nativo):
+  //   - `keepAlive: true`               → habilita TCP keep-alive
+  //   - `keepAliveInitialDelayMillis`   → cuándo empezar los probes
+  keepAlive:                     true,
+  keepAliveInitialDelayMillis:   parseInt(process.env.DB_KEEPALIVE_INITIAL) || 30_000,
+
   // Cortafuegos contra queries colgadas: una query lenta NO debe ocupar una
   // de las pocas conexiones del pool indefinidamente (agotaría el pool y tumbaría la API).
   statement_timeout:                   parseInt(process.env.DB_STATEMENT_TIMEOUT) || 15_000, // mata la query en el server
@@ -311,6 +330,9 @@ function getAdminPool() {
     connectionTimeoutMillis: parseInt(process.env.DB_CONN_TIMEOUT)   || 5_000,
     idleTimeoutMillis:       parseInt(process.env.DB_IDLE_TIMEOUT)   || 30_000,
     allowExitOnIdle:         true,
+    // Ver comment del pool principal. Mismo motivo — Railway cierra idle TCP.
+    keepAlive:                   true,
+    keepAliveInitialDelayMillis: parseInt(process.env.DB_KEEPALIVE_INITIAL) || 30_000,
     statement_timeout:                   parseInt(process.env.DB_STATEMENT_TIMEOUT) || 15_000,
     query_timeout:                       parseInt(process.env.DB_QUERY_TIMEOUT)     || 15_000,
     idle_in_transaction_session_timeout: parseInt(process.env.DB_IDLE_TX_TIMEOUT)   || 10_000,
