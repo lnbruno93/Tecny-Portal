@@ -151,9 +151,9 @@ export default function Equipo() {
 
       {loading ? (
         <div className="stack u-gap-var-gap">
-          <div className="card" style={{ minHeight: 120 }}>
-            <span className="skeleton" style={{ display: 'inline-block', width: 180, height: 16, marginBottom: 10 }} />
-            <span className="skeleton" style={{ display: 'block', width: '100%', height: 48 }} />
+          <div className="card u-equipo-skel-card">
+            <span className="skeleton u-equipo-skel-title" />
+            <span className="skeleton u-equipo-skel-block" />
           </div>
         </div>
       ) : (
@@ -177,28 +177,11 @@ export default function Equipo() {
                   {data.super_admins.map((a) => (
                     <li
                       key={a.id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
-                        padding: '12px 16px',
-                        borderTop: '1px solid var(--border-soft)',
-                      }}
+                      className="u-equipo-list-row"
                     >
                       <div
                         aria-hidden="true"
-                        style={{
-                          width: 36,
-                          height: 36,
-                          borderRadius: 10,
-                          background: 'var(--bg-soft)',
-                          display: 'grid',
-                          placeItems: 'center',
-                          fontSize: 13,
-                          fontWeight: 700,
-                          color: 'var(--text-dim)',
-                          flexShrink: 0,
-                        }}
+                        className="u-equipo-avatar"
                       >
                         {initials(a)}
                       </div>
@@ -254,13 +237,7 @@ export default function Equipo() {
                   {data.pending_invites.map((inv) => (
                     <li
                       key={inv.id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
-                        padding: '12px 16px',
-                        borderTop: '1px solid var(--border-soft)',
-                      }}
+                      className="u-equipo-list-row"
                     >
                       <div className="u-flex-1-minw-0">
                         <div className="u-flex-center-8-wrap-nogap">

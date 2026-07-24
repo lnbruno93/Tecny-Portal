@@ -2409,3 +2409,29 @@ a { color: inherit; text-decoration: none; }
 .u-color-orange-fg            { color: var(--orange-fg, #c2410c); }
 .u-kpi-value                  { font-size: 18px; font-weight: 600; }
 .u-fs-12-mt-2                 { font-size: 12px; margin-top: 2px; }
+
+/* — Sprint 100 batch admin (Facturacion + Equipo + ChangePasswordModal) — */
+/* Primer batch de migración del admin-frontend. Total: 3 archivos, 17 hits. */
+
+/* Facturacion: banner de error + kpi grid con minmax + skeleton KPI +
+   select del método de pago. */
+.u-fact-error                  { margin-bottom: var(--gap); background: var(--neg-soft); border: 1px solid transparent; color: var(--neg); font-size: 13px; }
+.u-fact-kpi-grid               { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.u-fact-skel-kpi               { display: inline-block; width: 80px; height: 22px; }
+.u-fact-metodo-select          { min-width: 140px; padding: 4px 8px; font-size: 13px; }
+
+/* Equipo: skeleton card mientras carga + list-row con separator (compartida
+   entre super-admins activos y invites pendientes) + avatar circular con
+   initials del user. */
+.u-equipo-skel-card            { min-height: 120px; }
+.u-equipo-skel-title           { display: inline-block; width: 180px; height: 16px; margin-bottom: 10px; }
+.u-equipo-skel-block           { display: block; width: 100%; height: 48px; }
+.u-equipo-list-row             { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--border-soft); }
+.u-equipo-avatar               { width: 36px; height: 36px; border-radius: 10px; background: var(--bg-soft); display: grid; place-items: center; font-size: 13px; font-weight: 700; color: var(--text-dim); flex-shrink: 0; }
+
+/* Admin ChangePasswordModal: banners success/error + eye toggle button
+   (repetido 2 veces — 1 por campo current/new) + 2FA input estilizado. */
+.u-admin-cpw-success           { padding: 10px 12px; border-radius: 8px; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); color: var(--pos); font-size: 13px; }
+.u-admin-cpw-error             { padding: 10px 12px; border-radius: 8px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: var(--neg); font-size: 13px; }
+.u-admin-cpw-eye               { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: transparent; border: none; cursor: pointer; font-size: 12px; padding: 4px; }
+.u-admin-cpw-2fa-input         { width: 100%; font-family: monospace; letter-spacing: 0.1em; }
