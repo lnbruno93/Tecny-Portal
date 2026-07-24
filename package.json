@@ -10,7 +10,7 @@
     "e2e:install": "playwright install --with-deps chromium",
     "e2e:report": "playwright show-report",
     "verify:csp": "node scripts/security/verify-csp-parity.js",
-    "test:csp": "node --test scripts/security/verify-csp-parity.test.js"
+    "test:csp": "node --test scripts/security/verify-csp-parity.test.js scripts/security/csp-invariants.test.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",
