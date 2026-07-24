@@ -88,6 +88,14 @@
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
     Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
     Content-Security-Policy = "default-src 'self'; script-src 'self' https://*.hcaptcha.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.hcaptcha.com; img-src 'self' data: blob: https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app https://*.hcaptcha.com; frame-src 'self' data: https://*.hcaptcha.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests; script-src-attr 'none'; report-uri https://tecny-backend-production.up.railway.app/api/csp-report"
+    # Sprint 106 (2026-07-24): Trusted Types Report-Only. Header SEPARADO del
+    # CSP enforce arriba — este NO bloquea nada, solo reporta al backend para
+    # análisis. Datos guían Sprint 106b (enforce mode) según qué violations
+    # aparecen. `require-trusted-types-for 'script'` activa TT para script sinks
+    # (innerHTML, setAttribute('src',...), etc.). `trusted-types` sin args limita
+    # policies creables al nombre "default"; `'allow-duplicates'` permite que
+    # hCaptcha/otras libs registren sus propias sin conflictos.
+    Content-Security-Policy-Report-Only = "require-trusted-types-for 'script'; trusted-types 'allow-duplicates' default; report-uri https://tecny-backend-production.up.railway.app/api/csp-report"
 
 # ── Branch deploys (staging) ──────────────────────────────────────────
 #
@@ -109,6 +117,8 @@
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
     Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
     Content-Security-Policy = "default-src 'self'; script-src 'self' https://*.hcaptcha.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.hcaptcha.com; img-src 'self' data: blob: https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app https://*.hcaptcha.com; frame-src 'self' data: https://*.hcaptcha.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests; script-src-attr 'none'; report-uri https://tecny-backend-staging.up.railway.app/api/csp-report"
+    # Sprint 106 (2026-07-24): Trusted Types Report-Only. Ver comment en block production.
+    Content-Security-Policy-Report-Only = "require-trusted-types-for 'script'; trusted-types 'allow-duplicates' default; report-uri https://tecny-backend-staging.up.railway.app/api/csp-report"
 
 # ── Deploy previews (PRs) ─────────────────────────────────────────────
 #
