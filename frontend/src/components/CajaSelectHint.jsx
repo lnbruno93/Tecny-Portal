@@ -18,7 +18,7 @@ export default function CajaSelectHint() {
   return (
     <>
       <option disabled value="" className="u-color-text-muted">──────────</option>
-      <option disabled value="" style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
+      <option disabled value="" className="u-color-text-muted u-fst-italic">
         ¿Falta una caja? Cargala en Cajas → Config
       </option>
     </>

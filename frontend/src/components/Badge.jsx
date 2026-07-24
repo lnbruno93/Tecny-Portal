@@ -8,11 +8,12 @@
 //
 // Históricamente este componente vivía duplicado en cada screen. En U-13
 // (auditoría 2026-06-10) se centralizó y se migraron Inventario, Envíos,
-// Cajas, Usuarios y Financiera al import único. `style`/`className` se
-// pasan para permitir override puntual (ej. tamaño reducido en chips de
-// permisos en Usuarios.jsx). `className` se concatena con `badge badge-{tone}`,
-// no lo reemplaza.
-export default function Badge({ tone = 'default', children, style, className }) {
+// Cajas, Usuarios y Financiera al import único. `className` se concatena
+// con `badge badge-{tone}`, no lo reemplaza.
+//
+// Sprint 99 (CSP): removida la prop `style` — no había callers usándola en
+// código real. Si en el futuro se necesita override puntual, usar className.
+export default function Badge({ tone = 'default', children, className }) {
   const cls = `badge badge-${tone}${className ? ` ${className}` : ''}`;
-  return <span className={cls} style={style}>{children}</span>;
+  return <span className={cls}>{children}</span>;
 }

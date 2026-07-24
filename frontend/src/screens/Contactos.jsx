@@ -300,18 +300,7 @@ export default function Contactos() {
           {exportOpen && (
             <div
               role="menu"
-              style={{
-                position: 'absolute',
-                top: 'calc(100% + 4px)',
-                right: 0,
-                minWidth: 260,
-                background: 'var(--surface)',
-                border: '1px solid var(--border)',
-                borderRadius: 10,
-                boxShadow: '0 10px 30px rgba(0, 0, 0, 0.35)',
-                padding: 6,
-                zIndex: 50,
-              }}
+              className="u-export-dropdown"
             >
               <button
                 type="button"

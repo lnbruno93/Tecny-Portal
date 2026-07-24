@@ -368,10 +368,9 @@ export default function Signup() {
                       `flex:1` para repartir el ancho 50/50 (signup tiene 2
                       opciones full-width, no es un filtro compacto). */}
                   <div
-                    className="seg"
+                    className="seg u-seg-full"
                     role="radiogroup"
                     aria-labelledby="pais-label"
-                    style={{ display: 'flex', width: '100%' }}
                   >
                     <button
                       type="button"

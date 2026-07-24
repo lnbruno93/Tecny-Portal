@@ -355,7 +355,7 @@ export default function Login() {
               cuenta todavía. Antes solo se llegaba a /signup vía Landing — si
               alguien compartía /login al invitar, el invitado quedaba atrapado. */}
           {!twofaRequired && (
-            <div className="lg-signup-row" style={{ marginTop: 18, textAlign: 'center', fontSize: 13 }}>
+            <div className="lg-signup-row u-login-signup-row">
               <span className="muted">¿No tenés cuenta? </span>
               <Link to="/signup" className="lg-link">Crear cuenta nueva</Link>
             </div>

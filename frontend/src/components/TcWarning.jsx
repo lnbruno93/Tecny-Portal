@@ -13,11 +13,15 @@
 // Uso:
 //   <input type="number" value={tc} onChange={...} />
 //   <TcWarning tc={tc} />
+//
+// Sprint 99 (CSP): removida la prop `style` — no había callers usándola en
+// código real, era passthrough dead API. Si en el futuro se necesita override
+// puntual, pasarlo via className.
 
 import { useTcReferencia } from '../contexts/TcReferenciaContext';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 
-export default function TcWarning({ tc, style }) {
+export default function TcWarning({ tc, className = '' }) {
   const { verificarTc } = useTcReferencia();
   // Debounce el valor: ignoramos cambios <400ms entre tecleos. Para inputs
   // type=number, el browser pasa el value crudo (string) o '' al limpiar.
@@ -28,17 +32,7 @@ export default function TcWarning({ tc, style }) {
     <div
       role="alert"
       aria-live="polite"
-      style={{
-        fontSize: 11,
-        color: 'var(--warn, #d97706)',
-        background: 'rgba(234, 179, 8, 0.08)',
-        border: '1px solid rgba(234, 179, 8, 0.3)',
-        borderRadius: 4,
-        padding: '4px 8px',
-        marginTop: 4,
-        lineHeight: 1.3,
-        ...style,
-      }}
+      className={'u-tc-warning ' + className}
       title="Configurable en Config → Alertas → Configurar TC"
     >
       ⚠ {warning.msg}

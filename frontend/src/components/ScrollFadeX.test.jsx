@@ -43,13 +43,15 @@ describe('ScrollFadeX', () => {
     expect(wrapper.classList.contains('has-overflow-right')).toBe(false);
   });
 
-  it('forwardea className y style adicionales al wrapper externo', () => {
+  it('forwardea className adicional al wrapper externo', () => {
+    // Sprint 99 (CSP): removida la prop `style` del componente. El test antes
+    // verificaba style passthrough — hoy solo className. Si en el futuro se
+    // reintroduce alguna API de override puntual, hacerlo via className.
     const { container } = render(
-      <ScrollFadeX className="my-extra" style={{ marginTop: 10 }}>x</ScrollFadeX>
+      <ScrollFadeX className="my-extra">x</ScrollFadeX>
     );
     const wrapper = container.querySelector('.scroll-fade-rx');
     expect(wrapper.classList.contains('my-extra')).toBe(true);
-    expect(wrapper.style.marginTop).toBe('10px');
   });
 
   it('disconnect del ResizeObserver al desmontar (smoke)', () => {
