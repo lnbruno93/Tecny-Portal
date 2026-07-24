@@ -196,17 +196,24 @@ function enableTenantRlsFor(pgm, tableName) {
 // arranca, se detecta en Railway logs, y no llega tráfico a un backend
 // con RLS mal configurado.
 //
-// Chequea 3 invariantes:
+// Chequea 4 invariantes:
 //   1. Toda tabla en TABLAS_TENANT_SCOPED tiene policy `tenant_isolation`.
 //   2. Toda tabla con column `tenant_id` está en TABLAS_TENANT_SCOPED
 //      O en TABLAS_TENANT_ID_SIN_RLS (whitelist). Sin excepción silenciosa.
 //   3. audit_logs tiene su policy nullable.
+//   4. **CONTENT check** — cada policy `tenant_isolation` usa NULLIF en su
+//      predicate. Este chequeo cierra el gap del bug 2026-07-24 (Sentry #16):
+//      la migration `20260619000001_audit_logs_rls_tighten` reescribió la
+//      policy de audit_logs SIN NULLIF y el boot pasaba porque la policy
+//      SÍ existía — pero el predicate quedaba bugueado. Con este chequeo,
+//      cualquier migration que reintroduzca `current_setting(...)::int` sin
+//      NULLIF hace fallar el boot antes de recibir tráfico.
 //
 // Costa ~2 queries al boot (una a information_schema.columns, otra a
-// pg_policies). Trivial.
+// pg_policies con qual/with_check). Trivial.
 //
 // @param {object} pool — pg Pool o Client
-// @returns {Promise<{ok: true, checked: number}>} en success
+// @returns {Promise<{ok: true, checked: number, contentChecked: number}>} en success
 // @throws {Error} con mensaje enumerando el drift si hay problema
 async function assertRlsCoverage(pool) {
   // Query 1: tablas con tenant_id (excluyendo particiones de audit_logs).
@@ -225,9 +232,13 @@ async function assertRlsCoverage(pool) {
   `);
   const tablasConTenantId = new Set(colRows.map((r) => r.table_name));
 
-  // Query 2: tablas con policy 'tenant_isolation'.
+  // Query 2: tablas con policy 'tenant_isolation' + CONTENT del predicate.
+  // pg_policies expone `qual` (USING expression) y `with_check` (WITH CHECK
+  // expression). Postgres los devuelve como texto normalizado — el pretty
+  // printing es estable entre versiones (11+), así que un match sobre
+  // `NULLIF(current_setting(...` es confiable.
   const { rows: polRows } = await pool.query(`
-    SELECT tablename
+    SELECT tablename, qual, with_check
       FROM pg_policies
      WHERE policyname = 'tenant_isolation'
        AND schemaname = 'public'
@@ -273,6 +284,55 @@ async function assertRlsCoverage(pool) {
     );
   }
 
+  // Chequeo 4: CONTENT del predicate. Cada policy debe usar NULLIF para
+  // manejar `current_setting()` retornando '' cuando la GUC no está seteada.
+  //
+  // Este chequeo habría cazado el bug de Sentry TECNY-PORTAL-BACKEND-16
+  // (2026-07-24): la migration `20260619000001_audit_logs_rls_tighten`
+  // reintrodujo el pattern SIN NULLIF y estuvo latente ~5 semanas hasta
+  // que un endpoint específico (/logout) lo disparó. Con este chequeo,
+  // el boot post-deploy de esa migration habría abortado inmediatamente.
+  //
+  // Pattern esperado:
+  //   `NULLIF(current_setting('app.current_tenant', true), '')::integer`
+  //   (Postgres normaliza `::int` → `::integer` al persistir la policy.)
+  //
+  // Pattern BUGUEADO (rechazado):
+  //   `current_setting('app.current_tenant', true)::integer`
+  //   (sin NULLIF → cast '' a int throwea con pg_strtoint32_safe)
+  let contentChecked = 0;
+  for (const pol of polRows) {
+    // Chequear ambos qual (USING) y with_check (WITH CHECK).
+    // Postgres puede devolver with_check = null si es idéntico a qual y
+    // se creó con `FOR ALL` — normalizamos para evitar false positive.
+    const preds = [
+      { name: 'USING', text: pol.qual },
+      { name: 'WITH CHECK', text: pol.with_check },
+    ].filter((p) => p.text != null);
+
+    for (const { name, text } of preds) {
+      contentChecked += 1;
+      // Verificar que use NULLIF envolviendo current_setting.
+      // Match tolerante a whitespace: `NULLIF ( current_setting`
+      const hasNullifWrap = /NULLIF\s*\(\s*current_setting\s*\(\s*'app\.current_tenant'/i.test(text);
+      // Verificar que NO tenga el pattern bugueado (cast directo sin NULLIF).
+      // Buscar `current_setting(...)::` sin NULLIF envolvente.
+      // El regex es: `current_setting('app.current_tenant', true)::(int|integer)`
+      // NO precedido por `NULLIF(` (usando negative lookbehind).
+      const hasBuggedCast = /(?<!NULLIF\s*\(\s*)current_setting\s*\(\s*'app\.current_tenant'\s*,\s*true\s*\)\s*::\s*int/i.test(text);
+
+      if (!hasNullifWrap || hasBuggedCast) {
+        errores.push(
+          `Policy 'tenant_isolation' en "${pol.tablename}" tiene predicate ` +
+          `${name} SIN NULLIF envolvente. Esto revive el bug Sentry #16 ` +
+          `(cast '' → int throwea pg_strtoint32_safe). Usar PREDICATE_CLOSED ` +
+          `de rlsCanonical.js o reescribir con NULLIF(current_setting(...), '')::int. ` +
+          `Actual: ${JSON.stringify(text)}`
+        );
+      }
+    }
+  }
+
   if (errores.length > 0) {
     const err = new Error(
       `[rlsCanonical] Drift detectado entre schema y canónico. ` +
@@ -283,7 +343,7 @@ async function assertRlsCoverage(pool) {
     throw err;
   }
 
-  return { ok: true, checked: tablasConTenantId.size };
+  return { ok: true, checked: tablasConTenantId.size, contentChecked };
 }
 
 module.exports = {
