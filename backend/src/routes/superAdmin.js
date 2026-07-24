@@ -72,6 +72,9 @@ const {
 const fileStore = require('../lib/fileStore');
 const { invalidateTenantStatus } = require('../lib/tenantStatus');
 const { invalidateUserAuth } = require('../lib/userAuthCache');
+// 2026-07-24 (cache audit P2 follow-up): clases-merge mueve productos entre
+// clases → el cache INVENTARIO_METRICAS (que agrega inv_por_clase) queda stale.
+const { invalidateMetricas } = require('../lib/inventarioCache');
 // #473: reusamos las defaults de signup para que el set de cajas creado por
 // "cambiar país" matchee 1:1 al que recibe un tenant nuevo del país destino.
 const { getDefaultCajasPorPais } = require('./signup');
@@ -3416,6 +3419,21 @@ router.post('/tenants/:id/clases-merge',
         { super_admin: req.user.id, tenant_id: id, ...result },
         '[super-admin] POST /tenants/:id/clases-merge'
       );
+
+      // 2026-07-24 (cache audit P2): invalidar INVENTARIO_METRICAS cross-instance.
+      // El merge mueve N productos de `duplicada_id` a `canonica_id` (ver UPDATE
+      // productos SET clase_id arriba). El cache `inv_por_clase[]` que sirve el
+      // Dashboard queda stale (muestra ambas categorías con productos aunque
+      // ya se mergearon) hasta el próximo TTL (20s).
+      // Fire-and-forget con catch para no bloquear la response — el cache es
+      // fail-open by design.
+      invalidateMetricas(id).catch(err =>
+        logger.warn(
+          { err: err.message, tenantId: id, productos_movidos: result.productos_movidos },
+          '[super-admin] clases-merge: invalidateMetricas falló'
+        )
+      );
+
       res.json(result);
     } catch (err) {
       next(err);
