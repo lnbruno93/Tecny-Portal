@@ -4803,3 +4803,24 @@ body.modal-open { overflow: hidden; }
 .u-contacto-picker-seg         { gap: 4px; margin-bottom: 8px; background: var(--surface-2); padding: 3px; border-radius: 6px; width: fit-content; }
 /* Utility: italic simple (usa CajaSelectHint). */
 .u-fst-italic                  { font-style: italic; }
+
+/* — Sprint 104 CSP: PorCategoriaBreakdownModal cat-* classes ────────────
+   Migradas del `<style>` block dinámico que vivía adentro del componente.
+   4 variantes de grid + 2 variantes de count según los props showPercentage
+   y moneyKey (evita template literals dinámicos dentro de un style block). */
+.cat-breakdown                 { display: flex; flex-direction: column; }
+.cat-row                       { display: grid; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13.5px; }
+.cat-row:last-child            { border-bottom: none; }
+/* 4 combinaciones de (showPercentage on/off) × (moneyKey on/off). */
+.cat-row-basic                 { grid-template-columns: auto 1fr auto; }
+.cat-row-with-pct              { grid-template-columns: auto 1fr auto auto; }
+.cat-row-with-money            { grid-template-columns: auto 1fr auto auto; }
+.cat-row-with-both             { grid-template-columns: auto 1fr auto auto auto; }
+.cat-em                        { font-size: 16px; line-height: 1; }
+.cat-name                      { font-weight: 500; }
+.cat-pct                       { color: var(--text-muted); font-size: 12px; min-width: 44px; text-align: right; }
+/* 2 modes para el count según si hay money column. */
+.cat-count-money               { color: var(--text-muted); font-size: 12.5px; }
+.cat-count-only                { font-variant-numeric: tabular-nums; min-width: 64px; text-align: right; }
+.cat-value                     { font-weight: 500; font-variant-numeric: tabular-nums; }
+.cat-value .ccy                { font-size: 11.5px; color: var(--text-muted); font-weight: 500; margin-right: 4px; }
