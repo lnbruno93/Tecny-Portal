@@ -48,7 +48,9 @@ const COMMON_DIRECTIVES = Object.freeze({
   // legacy (tanto portal como admin). Migrar a classes → borrar. TODO tech-debt.
   'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com', 'https://*.hcaptcha.com'],
 
-  'font-src': ["'self'", 'https://fonts.gstatic.com', 'data:'],
+  // Sprint 105 (2026-07-24): `data:` removido — no hay @font-face data-embedded
+  // en ninguno de los 2 apps. Cargamos Inter/JetBrains Mono via Google Fonts.
+  'font-src': ["'self'", 'https://fonts.gstatic.com'],
 
   // Backend prod + staging en ambos porque el bundle se compila con VITE_API_URL
   // definida en build time — el CSP tiene que cubrir cualquiera de las 2
@@ -60,36 +62,56 @@ const COMMON_DIRECTIVES = Object.freeze({
     'https://*.hcaptcha.com',
   ],
 
-  'frame-src': ["'self'", 'https://*.hcaptcha.com'],
+  // Sprint 105 (2026-07-24): `data:` agregado — el modal viewer de comprobantes
+  // en Financiera.jsx renderiza PDFs como `<iframe src="data:application/pdf;...">`
+  // (contenido viene del backend en base64). Sin `data:` en frame-src el CSP
+  // bloquea silenciosamente el iframe → el user ve visor vacío.
+  'frame-src': ["'self'", 'data:', 'https://*.hcaptcha.com'],
   'manifest-src': ["'self'"],
   'worker-src': ["'self'"],
   'object-src': ["'none'"],
   'base-uri': ["'self'"],
   'form-action': ["'self'"],
   'frame-ancestors': ["'none'"],
+  // Sprint 105 (2026-07-24): defense-in-depth. HSTS ya bumpea http→https
+  // para browsers que respetan STS; `upgrade-insecure-requests` cubre todo
+  // request subresource dentro de la página (imágenes, XHR, etc.).
+  'upgrade-insecure-requests': [],
+  // Sprint 105 (2026-07-24): bloquea inline event handlers `onclick="..."`,
+  // `onload="..."`, etc. React usa syntheticEvent (no HTML attrs) → 0 impacto
+  // funcional, prevención de que se agreguen a futuro.
+  'script-src-attr': ["'none'"],
 });
 
 // ── Diferencias LEGÍTIMAS por site ────────────────────────────────────
 // El resto de las directivas son idénticas entre root y admin.
 const SITE_DIFFERENCES = Object.freeze({
   // Portal (frontend/netlify.toml) — landing pública tecnyapp.com.
+  //
+  // Sprint 105 (2026-07-24): `blob:` REMOVIDO. Auditando createObjectURL en
+  // frontend/src: solo se usa en downloadBlob.js (crea <a href="blob:"> para
+  // download, NO <img src="blob:">). Ningún componente del portal renderiza
+  // imágenes con blob URLs → CSP no lo necesita.
   root: {
-    // 'blob:' habilita <img src="blob:..."> generados por URL.createObjectURL
-    // (posible en flows de upload preview). El admin también lo necesitaría
-    // si diera preview upload, pero admin hace preview vía data: URLs, no blob.
     'img-src': [
       "'self'",
       'data:',
-      'blob:',
       'https://tecny-backend-production.up.railway.app',
       'https://tecny-backend-staging.up.railway.app',
     ],
   },
   // Admin (admin-frontend/netlify.toml) — admin.tecnyapp.com.
+  //
+  // Sprint 105 (2026-07-24): `blob:` AGREGADO. TrustedCompaniesCard usa
+  // `URL.createObjectURL(file)` y luego lo pasa a `<img src={addPreview}>`
+  // como preview de logo mientras se está subiendo. Sin blob: el CSP bloquea
+  // el preview → el user no ve la imagen antes de submit (feature latente
+  // rota, no reportada porque users no probaron esa función crítica todavía).
   admin: {
     'img-src': [
       "'self'",
       'data:',
+      'blob:',
       'https://tecny-backend-production.up.railway.app',
       'https://tecny-backend-staging.up.railway.app',
     ],
