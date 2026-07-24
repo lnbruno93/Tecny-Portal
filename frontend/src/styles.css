@@ -4681,3 +4681,46 @@ body.modal-open { overflow: hidden; }
 .u-barrio-zona-header-with-top { border-top: 1px solid var(--hairline); }
 .u-barrio-option               { padding: 6px 10px; font-size: 13px; cursor: pointer; background: transparent; }
 .u-barrio-option-highlight     { background: var(--surface-2); }
+
+/* — Sprint 96 batch (Forbidden + NotFound + HourChart + EditarVendedor + Novedades + BackfillPanel) — */
+/* Forbidden 403 page — flex column centered con emoji + title + desc + botón. */
+.u-forbidden-page              { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 16px; padding: 32px; text-align: center; }
+.u-forbidden-emoji             { font-size: 42px; line-height: 1; }
+.u-forbidden-title             { font-weight: 700; font-size: 20px; color: var(--text); }
+.u-forbidden-desc              { color: var(--text-muted); font-size: 14px; max-width: 360px; }
+/* NotFound 404 page — max-width container con code visual + desc + actions. */
+.u-notfound-page               { max-width: 480px; margin: 60px auto; text-align: center; padding: 0 20px; }
+.u-notfound-code               { font-size: 72px; font-weight: 700; color: var(--accent); line-height: 1; margin-bottom: 12px; }
+.u-notfound-desc               { color: var(--text-muted); font-size: 14px; margin-bottom: 24px; line-height: 1.6; }
+.u-notfound-actions            { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+/* HourChart — barras verticales por hora (0-23). Ancho de barra + height/color
+   controlado por CSS; height% queda como único residual data-driven. */
+.u-hourchart                   { display: flex; align-items: flex-end; gap: 2px; height: 110px; }
+.u-hourchart-col               { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 3px; }
+.u-hourchart-bar               { width: 62%; background: var(--pos); border-radius: 2px 2px 0 0; }
+.u-hourchart-bar-empty         { background: var(--border); }
+.u-hourchart-tick              { font-size: 8px; }
+/* EditarVendedorModal — body + textos del form (help/label/hint). */
+.u-ev-body                     { padding: 18px 22px; }
+.u-ev-help                     { margin: 0 0 14px; font-size: 13px; color: var(--text-muted); line-height: 1.5; }
+.u-ev-label                    { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; color: var(--text); }
+.u-ev-hint                     { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+/* Novedades — tabs (base + active variant) + Nota card (base + unseen variant)
+   + tone helpers para el iconito y el badge del tipo de nota. */
+.u-novedades-tab                        { padding: 8px 14px; background: transparent; border: none; color: var(--text-muted); font-size: 13px; font-weight: 500; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; display: inline-flex; align-items: center; gap: 6px; font-family: inherit; }
+.u-novedades-tab-active                 { color: var(--text); font-weight: 600; border-bottom-color: var(--accent); }
+.u-novedades-note                       { display: grid; grid-template-columns: 40px 1fr auto; gap: 12px; padding: 14px 16px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); align-items: flex-start; }
+.u-novedades-note-unseen                { border-color: var(--accent); background: linear-gradient(180deg, var(--accent-soft), transparent 40%), var(--surface); }
+.u-novedades-icon                       { width: 36px; height: 36px; border-radius: 8px; display: grid; place-items: center; font-size: 18px; }
+.u-novedades-badge                      { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 4px; }
+/* Tone helpers para novedades: aplican background var(--<tone>-soft) + color var(--<tone>)
+   a cualquier elemento. Namespaced con `u-nov-` para no chocar con las
+   `.u-tone-*` existentes (que sólo aplican `color:`). */
+.u-nov-tone-info                        { background: var(--info-soft); color: var(--info); }
+.u-nov-tone-pos                         { background: var(--pos-soft); color: var(--pos); }
+.u-nov-tone-warn                        { background: var(--warn-soft); color: var(--warn); }
+/* BackfillPanel — descripción + botón row + report container/meta. */
+.u-backfill-desc               { padding: 14px 18px; border-bottom: 1px solid var(--hairline); }
+.u-backfill-btnrow             { gap: 8px; padding: 14px 18px; flex-wrap: wrap; }
+.u-backfill-report             { padding: 14px 18px; border-top: 1px solid var(--hairline); background: var(--surface-2); }
+.u-backfill-report-meta        { font-size: 11px; color: var(--text-muted); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }

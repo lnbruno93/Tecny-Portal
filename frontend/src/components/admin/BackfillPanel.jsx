@@ -97,11 +97,11 @@ export default function BackfillPanel({
         </h3>
       </div>
 
-      <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--hairline)' }}>
+      <div className="u-backfill-desc">
         {descripcion}
       </div>
 
-      <div className="flex-row" style={{ gap: 8, padding: '14px 18px', flexWrap: 'wrap' }}>
+      <div className="flex-row u-backfill-btnrow">
         <button
           className="btn"
           onClick={handleReport}
@@ -133,11 +133,11 @@ export default function BackfillPanel({
       {report && (
         // aria-live="polite" anuncia el reporte cuando aparece (UX M2 a11y).
         <div
-          style={{ padding: '14px 18px', borderTop: '1px solid var(--hairline)', background: 'var(--surface-2)' }}
+          className="u-backfill-report"
           role="status"
           aria-live="polite"
         >
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div className="u-backfill-report-meta">
             {report.apply
               ? <><Icons.Check size={12} className="u-color-pos" aria-hidden="true"/> Aplicado</>
               : <>· Reporte</>}

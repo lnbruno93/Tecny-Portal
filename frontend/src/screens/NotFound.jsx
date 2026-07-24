@@ -11,15 +11,15 @@ import { Icons } from '../components/Icons';
 
 export default function NotFound() {
   return (
-    <div style={{ maxWidth: 480, margin: '60px auto', textAlign: 'center', padding: '0 20px' }}>
-      <div style={{ fontSize: 72, fontWeight: 700, color: 'var(--accent)', lineHeight: 1, marginBottom: 12 }}>
+    <div className="u-notfound-page">
+      <div className="u-notfound-code">
         404
       </div>
       <h1 className="page-title u-mb-8">Pantalla no encontrada</h1>
-      <p style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 24, lineHeight: 1.6 }}>
+      <p className="u-notfound-desc">
         La URL que abriste no corresponde a ninguna sección del portal. Puede que la dirección esté mal escrita o que la pantalla haya cambiado de lugar.
       </p>
-      <div style={{ display: 'flex', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
+      <div className="u-notfound-actions">
         <Link to="/inicio" className="btn btn-primary">
           <Icons.Home size={14} /> Ir al Inicio
         </Link>

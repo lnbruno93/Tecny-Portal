@@ -12,30 +12,24 @@ export default function HourChart({ data }) {
   (data || []).forEach(h => { byH[h.hora] = h.n; });
   const max = Math.max(1, ...Object.values(byH));
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 110 }}>
+    <div className="u-hourchart">
       {Array.from({ length: 24 }, (_, h) => {
         const n = byH[h] || 0;
-        const pct = Math.round((n / max) * 100);
+        const pct = Math.max(Math.round((n / max) * 100), 3);
         return (
           <div
             key={h}
             title={`${h}:00 — ${n} venta(s)`}
-            style={{
-              flex: 1,
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'flex-end',
-              alignItems: 'center',
-              gap: 3,
-            }}
+            className="u-hourchart-col"
           >
-            <div style={{
-              width: '62%',
-              height: Math.max(pct, 3) + '%',
-              background: n ? 'var(--pos)' : 'var(--border)',
-              borderRadius: '2px 2px 0 0',
-            }} />
-            <div className="muted" style={{ fontSize: 8 }}>
+            {/* Bar height es data-driven (data-attr no ayuda, height varía continuo).
+                CSS controla width/border-radius/color (via .empty modifier). El
+                width/pct queda como único residual — necesario para el visual. */}
+            <div
+              className={'u-hourchart-bar' + (n ? '' : ' u-hourchart-bar-empty')}
+              style={{ height: pct + '%' }}
+            />
+            <div className="muted u-hourchart-tick">
               {h % 4 === 0 ? String(h).padStart(2, '0') : ' '}
             </div>
           </div>

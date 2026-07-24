@@ -4,21 +4,12 @@ import { useNavigate } from 'react-router-dom';
 export default function Forbidden() {
   const navigate = useNavigate();
   return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      height: '100%',
-      gap: 16,
-      padding: 32,
-      textAlign: 'center',
-    }}>
-      <div style={{ fontSize: 42, lineHeight: 1 }}>🔒</div>
-      <div style={{ fontWeight: 700, fontSize: 20, color: 'var(--text)' }}>
+    <div className="u-forbidden-page">
+      <div className="u-forbidden-emoji">🔒</div>
+      <div className="u-forbidden-title">
         Sin acceso
       </div>
-      <div style={{ color: 'var(--text-muted)', fontSize: 14, maxWidth: 360 }}>
+      <div className="u-forbidden-desc">
         No tenés permisos para ver este módulo.
         <br />
         Pedile al administrador que habilite el acceso.

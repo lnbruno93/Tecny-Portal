@@ -80,26 +80,27 @@ export default function EditarVendedorModal({ state, onClose, onSave, vendedores
           <div className="modal-hd">
             <h3 id="editar-vendedor-title">Editar vendedor del comprobante</h3>
           </div>
-          <div className="modal-body" style={{ padding: '18px 22px' }}>
-            <p style={{ margin: '0 0 14px', fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+          <div className="modal-body u-ev-body">
+            <p className="u-ev-help">
               Cambia el nombre que aparece en la línea "ATENDIDO POR" del comprobante impreso.
               No afecta reportería ni el vendedor asignado en los ítems.
             </p>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6, color: 'var(--text)' }}>
+            <label className="u-ev-label">
               Nombre a mostrar
             </label>
+            {/* Fix incidental: había 2 className props — el primero ('input')
+                era silenciosamente ignorado por React. Consolidado en uno. */}
             <input
               type="text"
-              className="input"
+              className="input u-w-100"
               value={valor}
               onChange={e => setValor(e.target.value)}
               placeholder="Ej: Lautaro B. — o dejar vacío para volver al automático"
               maxLength={120}
               autoFocus
-              className="u-w-100"
               disabled={guardando}
             />
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+            <div className="u-ev-hint">
               Máx. 120 caracteres. Vacío = usar el vendedor asignado en los ítems.
             </div>
           </div>
