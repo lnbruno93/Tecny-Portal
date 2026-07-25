@@ -85,8 +85,13 @@ const NOISE_PATTERNS = [
   /NetworkError when attempting to fetch/i,     // Firefox
   /Load failed/i,                               // Safari
   /Network request failed/i,                    // misc
-  /The operation was aborted/i,                 // user navegó/cerró
-  /AbortError/i,                                // user navegó/cerró
+  /The operation was aborted/i,                 // user navegó/cerró (Firefox)
+  /AbortError/i,                                // user navegó/cerró (Chrome clásico / Node)
+  // 2026-07-25 Sentry TECNY-PORTAL-BACKEND-19: Safari + Chrome moderno usan
+  // el mensaje "Fetch is aborted" (variante "was aborted" existe también).
+  // Los patterns AbortError/The operation was aborted NO matchean estas
+  // variantes → el noise se colaba al backend y de ahí a Sentry.
+  /[Ff]etch (is|was) aborted/,                  // Safari / Chrome moderno / WebKit iOS
   // Chunk load failures (ampliación 2026-07-06). Mantener sincronizado
   // con `chunkReload.js#isChunkLoadError` — los patterns idénticos.
   /valid JavaScript MIME type/i,                // chunk devolvió HTML (index) en vez de JS
