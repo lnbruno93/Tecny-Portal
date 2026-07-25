@@ -836,20 +836,24 @@ body {
 
 /* 2026-07-25 (pedido Lucas UX): variante compacta para tablas con muchas
    filas (Inventario típicamente 100-200 productos/página). Reduce padding
-   vertical 12px→7px (~40% menos alto por fila) sin cambiar horizontal ni
+   vertical 12px→4px (~66% menos alto por fila) sin cambiar horizontal ni
    font-size. Se aplica desde el JSX con .table-compact (opt-in), no toca
    el resto de tablas del portal.
    Mobile (≤640px): mantiene el padding original — el tap target no debe
    caer bajo 44px (WCAG 2.1 AA), y en mobile igual scrolleás horizontal
-   así que la ganancia vertical importa menos. */
+   así que la ganancia vertical importa menos.
+   Iteración 2026-07-25 (post-preview): user comparó 7px vs 5/4/3px en un
+   HTML mock y eligió 4px. Con badges "Disponible" (~22px de alto propio)
+   y font-size 13px + line-height default, la fila queda en ~28-30px total
+   — bien cómoda visualmente sin apretar. */
 @media (min-width: 641px) {
   .tbl.table-compact tbody td,
   .table.table-compact tbody td {
-    padding: 7px 14px;
+    padding: 4px 14px;
   }
   .tbl.table-compact thead th,
   .table.table-compact thead th {
-    padding: 8px 14px;
+    padding: 5px 14px;
   }
 }
 
