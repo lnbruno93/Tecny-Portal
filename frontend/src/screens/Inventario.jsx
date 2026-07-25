@@ -79,6 +79,18 @@ const VISTAS = [
   { value: 'todos_ocultos',       label: 'Todo (visible + oculto)' },
 ];
 
+// 2026-07-25 (pedido Lucas UX): opciones del selector "Filas por página".
+// Antes hardcodeaba limit=50. Con tenants de 500+ productos = 10 páginas para
+// buscar algo. Ahora el operador elige. Default 100 (2x más denso que antes
+// sin ser abrumador). El backend acepta hasta 200 (parsePagination maxLimit).
+// Ver también la clase .table-compact aplicada a la grilla — juntas dan ~3x
+// más productos visibles sin scroll.
+const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
+const PAGE_SIZE_DEFAULT = 100;
+// LocalStorage key — el user setting persiste entre sesiones. La URL param
+// `?rows=N` sigue teniendo precedencia (deep-link).
+const PAGE_SIZE_LS_KEY = 'inventario:pageSize';
+
 const ESTADO_DISPLAY = {
   disponible: { label: 'Disponible', tone: 'pos' },
   vendido:    { label: 'Vendido',    tone: 'default' },
@@ -246,6 +258,32 @@ export default function Inventario() {
   const setClaseFilter = useCallback((v) => setParam('clase', v, 'todos'), [setParam]);
   const setVistaFiltro = useCallback((v) => setParam('vista', v, 'no_vendidos'), [setParam]);
   const setDepositoFiltro = useCallback((v) => setParam('deposito', v, 'todos'), [setParam]);
+
+  // 2026-07-25 (pedido Lucas UX): filas por página. Precedencia:
+  //   1. URL param `?rows=N` (deep-link específico gana siempre).
+  //   2. localStorage `inventario:pageSize` (preferencia persistente).
+  //   3. PAGE_SIZE_DEFAULT (100).
+  //
+  // Solo se aceptan valores del enum PAGE_SIZE_OPTIONS — cualquier otro
+  // (?rows=999, LS corrupto) cae al default. El backend hace clamp adicional
+  // a 200 (parsePagination.maxLimit), guard doble.
+  const pageSize = (() => {
+    const urlVal = parseInt(searchParams.get('rows'), 10);
+    if (PAGE_SIZE_OPTIONS.includes(urlVal)) return urlVal;
+    if (typeof window !== 'undefined') {
+      const lsVal = parseInt(window.localStorage.getItem(PAGE_SIZE_LS_KEY), 10);
+      if (PAGE_SIZE_OPTIONS.includes(lsVal)) return lsVal;
+    }
+    return PAGE_SIZE_DEFAULT;
+  })();
+  const setPageSize = useCallback((v) => {
+    const n = parseInt(v, 10);
+    if (!PAGE_SIZE_OPTIONS.includes(n)) return;
+    // Persistir preferencia (aplicará al próximo mount aunque el user cierre
+    // el tab). URL solo si != default — mantiene URLs limpias por defecto.
+    try { window.localStorage.setItem(PAGE_SIZE_LS_KEY, String(n)); } catch (_) { /* SSR / private mode */ }
+    setParam('rows', String(n), String(PAGE_SIZE_DEFAULT));
+  }, [setParam]);
 
   // 2026-07-04 (#507): filtro de fecha para vista='vendidos'. Default 'todo' →
   // no filtra (compat con comportamiento previo). El backend acepta desde/hasta
@@ -439,7 +477,7 @@ export default function Inventario() {
   const loadProductos = useCallback(async () => {
     setLoading(true);
     try {
-      const params = { page, limit: 50, vista: vistaFiltro };
+      const params = { page, limit: pageSize, vista: vistaFiltro };
       // 2026-07-04 (#507): merge del rango de fechas SOLO en vista Vendidos.
       // rangeToParams devuelve {} para preset='todo', así que no rompe otras vistas.
       if (vistaFiltro === 'vendidos') Object.assign(params, rangeToParams(vendidosRange));
@@ -502,7 +540,7 @@ export default function Inventario() {
   // otro filtro, el re-fetch usa `clases` ya poblado y canonicaliza a
   // clase_id. Trade-off consciente: 1 request extra si añadiéramos
   // `clases` a deps rompía tests con `mockResolvedValueOnce`.
-  }, [page, claseFilter, vistaFiltro, depositoFiltro, dSearch, toast, drillFilters, vendidosRange]);
+  }, [page, pageSize, claseFilter, vistaFiltro, depositoFiltro, dSearch, toast, drillFilters, vendidosRange]);
 
   const loadMetricas = useCallback(async () => {
     try { setMetricas(await inventario.metricas()); } catch (_) {}
@@ -578,7 +616,11 @@ export default function Inventario() {
 
   // Cambiar filtros → volver a page 1. Usamos dSearch (no search) para que el
   // reset ocurra junto con el fetch debounceado.
-  useEffect(() => { setPage(1); }, [claseFilter, vistaFiltro, dSearch]);
+  // 2026-07-25: pageSize agregado a las deps. Si el user pasa de 25 a 200
+  // filas, la página 3 anterior probablemente no exista más (200 rows por
+  // página = menos páginas totales). Reset a 1 para evitar landing en "no
+  // hay resultados" cuando en realidad hay datos.
+  useEffect(() => { setPage(1); }, [claseFilter, vistaFiltro, dSearch, pageSize]);
 
   // ── Modal alta/edición ──
   function openCreate() {
@@ -1395,6 +1437,21 @@ export default function Inventario() {
                 </select>
               </>
             )}
+            {/* 2026-07-25 (pedido Lucas UX): "Filas por página". Persiste en
+                localStorage + URL (?rows=N). Default 100 (2× denso que antes).
+                Combinado con .table-compact reduce el scroll a la mitad. */}
+            <label className="field-label u-mb-0-mr-4 u-ml-12">Filas</label>
+            <select
+              className="input u-w-84"
+              value={pageSize}
+              onChange={e => setPageSize(e.target.value)}
+              aria-label="Cantidad de filas por página"
+              title="Cantidad de filas por página"
+            >
+              {PAGE_SIZE_OPTIONS.map(n => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
           </div>
           <div className="input-group u-w-300">
             <span className="addon addon-l"><Icons.Search size={14} /></span>
@@ -1470,7 +1527,11 @@ export default function Inventario() {
         // (15) para que el layout no salte al llegar el dato.
         // aria-busy para lectores de pantalla. U-12 auditoría 2026-06-10.
         <div className="card card-flush u-overflow-x-auto" aria-busy="true" aria-live="polite">
-          <table className="table">
+          {/* 2026-07-25 (pedido Lucas UX): table-compact reduce padding vertical
+              12px→7px en desktop, ~2× más filas visibles sin scroll. Junto con
+              el selector "Filas por página" (default 100) mejora densidad ~3×
+              para tenants con inventarios grandes (500+ productos). */}
+          <table className="table table-compact">
             <thead>
               {/* Widths ajustados 2026-06-15: la columna IMEI/Serial se estiraba
                   desproporcionadamente y "Proveedor" wrappeaba en 2 líneas con
@@ -1553,7 +1614,9 @@ export default function Inventario() {
         })()
       ) : (
         <div className="card card-flush u-overflow-x-auto">
-          <table className="table">
+          {/* 2026-07-25 (pedido Lucas UX): table-compact — misma justificación
+              que la tabla skeleton arriba. */}
+          <table className="table table-compact">
             <thead>
               {/* Widths ajustados 2026-06-15: la columna IMEI/Serial se estiraba
                   desproporcionadamente y "Proveedor" wrappeaba en 2 líneas con
