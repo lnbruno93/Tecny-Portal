@@ -35,6 +35,27 @@ export function fmtSigned(n: MontoInput): string {
   return v < 0 ? `−${s}` : v > 0 ? `+${s}` : s;
 }
 
+// 2026-07-25 fix P0 bug: descompone un monto en `{ sign, magnitude, cls }`
+// para renderizar montos que pueden ser positivos O negativos con el signo
+// visible + color CSS correcto. Bug root cause: en Dashboard.jsx y VentasList
+// el KPI de ganancia usaba `className="pos"` hardcoded + `fmt()` que
+// devuelve magnitud sin signo → un valor -19 se mostraba como "u$s19" en
+// verde. Reportado por cliente de Lucas 2026-07-25 con screenshot.
+//
+// Convención:
+//   · positivo → sign='',  cls='pos' (verde)
+//   · negativo → sign='−', cls='neg' (rojo)  — U+2212 minus (no ASCII hyphen)
+//   · cero     → sign='',  cls='pos' (verde tenue — no hay pérdida)
+//
+// El caller compone el JSX:
+//   const { sign, magnitude, cls } = fmtSignedParts(monto);
+//   <span className={cls}>{sign}u$s{magnitude}</span>
+export function fmtSignedParts(n: MontoInput): { sign: '' | '−'; magnitude: string; cls: 'pos' | 'neg' } {
+  const v = Number(n) || 0;
+  const magnitude = Math.round(Math.abs(v)).toLocaleString('es-AR');
+  return v < 0 ? { sign: '−', magnitude, cls: 'neg' } : { sign: '', magnitude, cls: 'pos' };
+}
+
 // Fecha YYYY-MM-DD o ISO → dd/mm/aa (es-AR). Tolera null y formatos con/sin hora.
 export function fmtFecha(iso: string | Date | null | undefined): string {
   if (!iso) return '—';

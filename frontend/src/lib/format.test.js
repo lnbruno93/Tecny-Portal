@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fmt, fmtSigned, fmtFecha, fmtMoney, fmtImei } from './format';
+import { fmt, fmtSigned, fmtSignedParts, fmtFecha, fmtMoney, fmtImei } from './format';
 
 describe('format', () => {
   it('fmt: monto completo en magnitud, sin abreviar', () => {
@@ -16,6 +16,57 @@ describe('format', () => {
     expect(fmtSigned(-500)).toBe('−500'); // signo menos tipográfico
     expect(fmtSigned(0)).toBe('0');
     expect(fmtSigned(1234)).toBe('+1.234');
+  });
+
+  // 2026-07-25 fix P0 bug: fmtSignedParts descompone en sign/magnitude/cls
+  // para renderizar montos que pueden ser +/− con signo visible + color
+  // CSS correcto. Bug reportado por cliente: ganancia_neta_usd = -19 se
+  // mostraba como "u$s19" en verde (className="pos" hardcoded + fmt magnitud).
+  describe('fmtSignedParts', () => {
+    it('positivo → sin signo, cls="pos"', () => {
+      expect(fmtSignedParts(500)).toEqual({ sign: '', magnitude: '500', cls: 'pos' });
+      expect(fmtSignedParts(1234)).toEqual({ sign: '', magnitude: '1.234', cls: 'pos' });
+    });
+
+    it('negativo → signo "−" (U+2212), cls="neg"', () => {
+      expect(fmtSignedParts(-19)).toEqual({ sign: '−', magnitude: '19', cls: 'neg' });
+      expect(fmtSignedParts(-1500)).toEqual({ sign: '−', magnitude: '1.500', cls: 'neg' });
+    });
+
+    it('cero → sin signo, cls="pos" (verde tenue, no hay pérdida)', () => {
+      expect(fmtSignedParts(0)).toEqual({ sign: '', magnitude: '0', cls: 'pos' });
+    });
+
+    it('null / undefined / string inválido → { sign:"", magnitude:"0", cls:"pos" }', () => {
+      expect(fmtSignedParts(null)).toEqual({ sign: '', magnitude: '0', cls: 'pos' });
+      expect(fmtSignedParts(undefined)).toEqual({ sign: '', magnitude: '0', cls: 'pos' });
+      expect(fmtSignedParts('abc')).toEqual({ sign: '', magnitude: '0', cls: 'pos' });
+    });
+
+    it('string numérico → parsea', () => {
+      expect(fmtSignedParts('-19')).toEqual({ sign: '−', magnitude: '19', cls: 'neg' });
+      expect(fmtSignedParts('42')).toEqual({ sign: '', magnitude: '42', cls: 'pos' });
+    });
+
+    // El signo usa U+2212 MINUS SIGN (no U+002D HYPHEN-MINUS ASCII) — misma
+    // convención que fmtSigned. Test explícito para catchar regresiones si
+    // alguien cambia el minus por ASCII (visual sutil pero rompe alineación
+    // en fonts monoespaciadas).
+    it('signo negativo usa U+2212 MINUS SIGN (no ASCII hyphen)', () => {
+      const { sign } = fmtSignedParts(-1);
+      expect(sign).toBe('−');
+      expect(sign).not.toBe('-'); // ASCII hyphen U+002D
+    });
+
+    // Fix root case del bug: ganancia_neta_usd = -19 (backend calcula bien),
+    // pero fmt() devuelve "19" y className="pos" muestra verde. Este test
+    // documenta la fórmula correcta para renderizar el KPI:
+    //   <span className={cls}>{sign}u$s{magnitude}</span>  → "−u$s19" (rojo)
+    it('caso del bug reportado 2026-07-25: -19 → sign="−", magnitude="19", cls="neg"', () => {
+      const { sign, magnitude, cls } = fmtSignedParts(-19);
+      expect(`${sign}u$s${magnitude}`).toBe('−u$s19');
+      expect(cls).toBe('neg');
+    });
   });
 
   it('fmtFecha: YYYY-MM-DD e ISO → dd/mm/aa', () => {

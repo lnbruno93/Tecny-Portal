@@ -24,7 +24,7 @@
 import { memo } from 'react';
 import { Icons } from '../../components/Icons';
 import Badge from '../../components/Badge';
-import { fmt, fmtImei } from '../../lib/format';
+import { fmt, fmtImei, fmtSignedParts } from '../../lib/format';
 import { sym } from './utils';
 
 // Sprint 87 CSP: el color del select de estado ahora se resuelve por clase
@@ -153,9 +153,15 @@ const VentaRow = memo(function VentaRow({
               <div key={k}>{p.metodo_nombre}: {sym(p.moneda)}{fmt(p.monto)}</div>
             ))}
       </td>
-      {showGanancia && (
-        <td className="mono pos u-fw-600">u$s{fmt(v.ganancia_usd)}</td>
-      )}
+      {showGanancia && (() => {
+        // 2026-07-25 fix P0: si una venta se cerró a pérdida (ganancia_usd < 0),
+        // antes se mostraba en verde con magnitud absoluta ("u$s19" para -19).
+        // Ver Dashboard.jsx mismo fix + `fmtSignedParts` en `lib/format.ts`.
+        const { sign, magnitude, cls } = fmtSignedParts(v.ganancia_usd);
+        return (
+          <td className={`mono ${cls} u-fw-600`}>{sign}u$s{magnitude}</td>
+        );
+      })()}
       <td className="mono u-fw-600">u$s{fmt(v.total_usd)}</td>
       <td className="u-text-right-nowrap">
         {/* 2026-06-10: select de estado movido al badge de la izquierda.

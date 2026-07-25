@@ -94,6 +94,45 @@ describe('Dashboard — desglose de ganancia neta (Tema C.4)', () => {
   });
 });
 
+// 2026-07-25 fix P0 (bug reportado por cliente vía Lucas con screenshot):
+// cuando ganancia_neta_usd es NEGATIVO (período con egresos > ganancia bruta),
+// antes se mostraba con className="pos" hardcoded → verde + fmt magnitud
+// absoluta ("u$s19" en verde para -19). Root cause: fmt() devuelve magnitud
+// sin signo (diseño intencional) pero el caller no aplicaba la clase CSS +
+// prefijo signo apropiado. Fix: usar fmtSignedParts en el KPI + VentasList.
+describe('Dashboard — KPI ganancia neta con signo correcto', () => {
+  it('positivo → verde con "u$s{n}", sin signo', () => {
+    render(<Dashboard d={makeDashboard({ ganancia_neta_usd: 25 })} />);
+    const kpiValue = screen.getByTestId('kpi-ganancia-value');
+    expect(kpiValue.textContent).toBe('u$s25');
+    expect(kpiValue.className).toMatch(/\bpos\b/);
+    expect(kpiValue.className).not.toMatch(/\bneg\b/);
+  });
+
+  it('cero → verde con "u$s0", sin signo', () => {
+    render(<Dashboard d={makeDashboard({ ganancia_neta_usd: 0 })} />);
+    const kpiValue = screen.getByTestId('kpi-ganancia-value');
+    expect(kpiValue.textContent).toBe('u$s0');
+    expect(kpiValue.className).toMatch(/\bpos\b/);
+  });
+
+  it('NEGATIVO → rojo con "−u$s{n}" (bug fix 2026-07-25)', () => {
+    // Caso del screenshot del cliente: Bruta 0, egresos 19 → neta -19.
+    // Debe mostrar "−u$s19" (con U+2212 minus) en rojo, no "u$s19" en verde.
+    render(<Dashboard d={makeDashboard({
+      ganancia_bruta_acreditada_usd: 0,
+      costo_financiero_acreditado_usd: 0,
+      egresos_usd: 19,
+      ganancia_neta_usd: -19,
+      margen_pct: 0,
+    })} />);
+    const kpiValue = screen.getByTestId('kpi-ganancia-value');
+    expect(kpiValue.textContent).toBe('−u$s19');
+    expect(kpiValue.className).toMatch(/\bneg\b/);
+    expect(kpiValue.className).not.toMatch(/\bpos\b/);
+  });
+});
+
 // 2026-07-04 (ventas.ver_ganancias): el backend redacta el bloque de
 // ganancia cuando el user no tiene la cap. El componente detecta la ausencia
 // del campo `ganancia_neta_usd` para ocultar la card entera (modo "no mostrar
