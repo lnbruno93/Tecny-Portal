@@ -90,3 +90,87 @@ describe('Depósitos — DELETE', () => {
     expect(badId.status).toBe(400);
   });
 });
+
+// 2026-07-25: POST /depositos/bulk — resolve-or-create batch usado por
+// el import XLSX. Reemplaza el requerimiento de "ID DEPÓSITO (SÓLO NÚMERO)"
+// en la planilla — el operador puede escribir nombres y se auto-crean si
+// no existen (mismo patrón que POST /clases/bulk).
+describe('Depósitos — POST /depositos/bulk', () => {
+  it('crea múltiples depósitos nuevos y devuelve mapping completo', async () => {
+    const nombres = ['BulkDep A', 'BulkDep B', 'BulkDep C'];
+    const r = await request(app).post('/api/inventario/depositos/bulk').set(auth())
+      .send({ nombres });
+    expect(r.status).toBe(200);
+    expect(r.body.map).toBeDefined();
+    expect(Object.keys(r.body.map).sort()).toEqual(nombres.map(n => n.toLowerCase()).sort());
+    // Todos los ids son integers positivos (depositos usa SERIAL PK).
+    for (const id of Object.values(r.body.map)) {
+      expect(typeof id).toBe('number');
+      expect(id).toBeGreaterThan(0);
+    }
+    // Aparecen en el listado.
+    const list = await request(app).get('/api/inventario/depositos').set(auth());
+    for (const n of nombres) {
+      expect(list.body.some(d => d.nombre === n)).toBe(true);
+    }
+  });
+
+  it('es idempotente: bulk con nombres ya existentes devuelve los mismos ids', async () => {
+    const nombres = ['BulkDep Idem 1', 'BulkDep Idem 2'];
+    const r1 = await request(app).post('/api/inventario/depositos/bulk').set(auth())
+      .send({ nombres });
+    expect(r1.status).toBe(200);
+    const map1 = r1.body.map;
+
+    const r2 = await request(app).post('/api/inventario/depositos/bulk').set(auth())
+      .send({ nombres });
+    expect(r2.status).toBe(200);
+    expect(r2.body.map).toEqual(map1);
+
+    // Sin duplicados en el listado.
+    const list = await request(app).get('/api/inventario/depositos').set(auth());
+    for (const n of nombres) {
+      const matches = list.body.filter(d => d.nombre.toLowerCase() === n.toLowerCase());
+      expect(matches.length).toBe(1);
+    }
+  });
+
+  it('dedup case-insensitive en el input', async () => {
+    const r = await request(app).post('/api/inventario/depositos/bulk').set(auth())
+      .send({ nombres: ['BulkDep Case', 'bulkdep case', 'BULKDEP CASE'] });
+    expect(r.status).toBe(200);
+    expect(Object.keys(r.body.map)).toEqual(['bulkdep case']);
+    const list = await request(app).get('/api/inventario/depositos').set(auth());
+    const matches = list.body.filter(d => d.nombre.toLowerCase() === 'bulkdep case');
+    expect(matches.length).toBe(1);
+  });
+
+  it('resolve-or-create mixto: 1 existente + 1 nuevo → devuelve ambos', async () => {
+    await request(app).post('/api/inventario/depositos').set(auth())
+      .send({ nombre: 'BulkDep Mixto Existente' });
+    const r = await request(app).post('/api/inventario/depositos/bulk').set(auth())
+      .send({ nombres: ['BulkDep Mixto Existente', 'BulkDep Mixto Nuevo'] });
+    expect(r.status).toBe(200);
+    expect(Object.keys(r.body.map).sort()).toEqual(['bulkdep mixto existente', 'bulkdep mixto nuevo']);
+  });
+
+  it('lista vacía → { map: {} } (no-op)', async () => {
+    const r = await request(app).post('/api/inventario/depositos/bulk').set(auth())
+      .send({ nombres: [] });
+    expect(r.status).toBe(200);
+    expect(r.body.map).toEqual({});
+  });
+
+  it('rechaza más de 500 nombres (guard)', async () => {
+    const nombres = Array.from({ length: 501 }, (_, i) => `BulkDep Overflow ${i}`);
+    const r = await request(app).post('/api/inventario/depositos/bulk').set(auth())
+      .send({ nombres });
+    expect(r.status).toBe(400);
+  });
+
+  it('sin auth → 401', async () => {
+    const r = await request(app).post('/api/inventario/depositos/bulk')
+      .send({ nombres: ['x'] });
+    expect(r.status).toBe(401);
+  });
+});

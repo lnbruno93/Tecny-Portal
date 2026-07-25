@@ -671,6 +671,11 @@ export const inventario = {
   deleteCategoria: (id) => api(`/api/inventario/categorias/${id}`, 'DELETE'),
   depositos:       () => api('/api/inventario/depositos'),
   createDeposito:  (data) => api('/api/inventario/depositos', 'POST', data),
+  // 2026-07-25: bulk resolve-or-create para el import XLSX. Antes la
+  // planilla exigía "ID DEPÓSITO (SÓLO NÚMERO)" — user reportó fricción.
+  // Ahora la columna acepta nombre O ID, y si el nombre no matchea se
+  // auto-crea el depósito (mismo patrón que bulkClases/bulkCategorias).
+  bulkDepositos:   (nombres) => api('/api/inventario/depositos/bulk', 'POST', { nombres }),
   deleteDeposito:  (id) => api(`/api/inventario/depositos/${id}`, 'DELETE'),
   // 2026-07-08 F3.b — CRUD de Categorías (clases_producto). Reemplaza el
   // enum global F1 por una tabla editable por tenant. Endpoints mergeados

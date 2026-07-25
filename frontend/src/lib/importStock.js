@@ -201,28 +201,35 @@ export function cleanImei(v) {
 }
 
 // rows: string[][] (incluye fila de encabezados). ctx: { depositos, proveedores, clases }.
-// Devuelve [{ body, error, warning, _claseNueva, _proveedorNuevo }]:
-//   · body listo para POST /inventario/productos/bulk (clase_id puede ser
-//     null si _claseNueva está seteada — el caller debe crearla via bulk y
-//     reconciliar).
-//   · error: validación que ABORTA la fila (nombre vacío, costo 0, depósito inexistente, etc.)
+// Devuelve [{ body, error, warning, _claseNueva, _depositoNuevo, _proveedorNuevo }]:
+//   · body listo para POST /inventario/productos/bulk (clase_id o deposito_id
+//     pueden ser null si _claseNueva/_depositoNuevo están seteados — el caller
+//     los crea via bulk y reconcilia).
+//   · error: validación que ABORTA la fila (nombre vacío, costo 0, ID depósito
+//     inexistente, etc.)
 //   · warning: aviso informativo — la fila SÍ se importa. Ej. accesorio con
 //     stock=0 (útil para dar de alta el modelo antes de recibir mercadería).
 //   · _claseNueva: string si el valor de columna clase/categoria/rubro NO existe
 //     en el catálogo `clases_producto`. Marker para que el caller la cree
 //     antes del bulk. Si existe (o si la columna vino vacía y se usó fallback),
 //     _claseNueva es null.
+//   · _depositoNuevo: string si la columna deposito trae un NOMBRE (no ID)
+//     que no matchea ningún depósito preexistente. Marker para auto-create
+//     via `POST /inventario/depositos/bulk`. Si trae ID numérico, o si el
+//     nombre matchea, _depositoNuevo es null.
 //   · _proveedorNuevo: ídem para proveedores.
 //
 // Junio 2026: el comportamiento previo era "tirar error si la categoría no
 // existe" — se pasó a "aceptar y marcar como pendiente de crear en Colecciones".
-// 2026-07-25: el auto-create se movió de Colecciones (tabla legacy `categorias`)
-// a Categorías (tabla `clases_producto`). User pidió consolidar TODO en
-// Categorías y remover el concepto de Colecciones (que agrupaba productos por
-// nombres arbitrarios y hoy no aporta valor). El campo body.categoria_id
-// (Colección) queda siempre null desde el import — el operador puede seguir
-// asignándolo manualmente desde el form del producto si quiere (pero la UI
-// también deprecó ese field 2026-07-11).
+// 2026-07-25 (a): el auto-create se movió de Colecciones (tabla legacy
+// `categorias`) a Categorías (tabla `clases_producto`). User pidió consolidar
+// TODO en Categorías y remover el concepto de Colecciones. El campo
+// `body.categoria_id` queda siempre null desde el import.
+// 2026-07-25 (b): la columna `deposito` del XLSX ahora acepta nombre O ID
+// numérico. Si nombre no matchea → auto-create (mismo patrón que Categorías).
+// Antes solo aceptaba ID y silenciaba nombres inexistentes (`deposito_id =
+// null`), causando fricción — user reportó que la planilla decía "ID
+// DEPÓSITO (SÓLO NÚMERO)" y tenía que memorizar los IDs.
 //
 // Julio 2026: "Stock en 0" pasó de error a warning — permite dar de alta el
 // producto aunque todavía no haya stock físico (feature pedida por owner).
@@ -289,17 +296,33 @@ export function mapStockRows(rows, { depositos = [], proveedores = [], clases = 
       const esUnitario = (claseSlug === 'celular_sellado' || claseSlug === 'celular_usado' || claseSlug === 'ipads');
       const cantidad = esUnitario ? 1 : Math.max(0, Math.round(parseNum(stockRaw)));
 
-      // Depósito por ID numérico (lo que usa la planilla); si no, por nombre.
+      // Depósito: acepta ID numérico O nombre.
+      //   1. Si es número → busca por ID. Si no existe → error (probable typo
+      //      del ID en la planilla, no queremos ignorar silente).
+      //   2. Si es nombre → busca case-insensitive en el catálogo. Si matchea,
+      //      resuelve. Si NO matchea, marca `_depositoNuevo` para auto-create
+      //      via bulk (mismo patrón que _claseNueva).
+      //   3. Vacío → deposito_id = null (producto sin depósito asignado — OK).
+      //
+      // 2026-07-25: antes, un nombre inexistente quedaba silente en
+      // deposito_id=null. Ahora se auto-crea. Ver header comment del helper.
       const depRaw = String(get('deposito')).trim();
       let deposito_id = null;
+      let _depositoNuevo = null;
       let depError = null;
       if (depRaw) {
         if (/^\d+$/.test(depRaw)) {
           const byId = depositos.find(d => String(d.id) === depRaw);
-          if (byId) deposito_id = byId.id; else depError = `Depósito ID ${depRaw} no existe`;
+          if (byId) deposito_id = byId.id;
+          else depError = `Depósito ID ${depRaw} no existe`;
         } else {
           const byName = depositos.find(d => d.nombre.toLowerCase() === depRaw.toLowerCase());
-          deposito_id = byName ? byName.id : null;
+          if (byName) {
+            deposito_id = byName.id;
+          } else {
+            // Marker para auto-create. Preserva la caps del operador.
+            _depositoNuevo = depRaw;
+          }
         }
       }
 
@@ -355,7 +378,7 @@ export function mapStockRows(rows, { depositos = [], proveedores = [], clases = 
         warning = 'Stock en 0 — el producto se dará de alta sin unidades disponibles';
       }
 
-      return { body, error, warning, _claseNueva, _proveedorNuevo };
+      return { body, error, warning, _claseNueva, _depositoNuevo, _proveedorNuevo };
     });
 }
 
@@ -402,13 +425,20 @@ export function groupRowsByProveedor(mapped) {
 //     (output del bulk de clases en confirmImport). 2026-07-25: renombrado
 //     desde `newCatByName` — target cambió de `categorias` (Colecciones) a
 //     `clases_producto` (Categorías).
+//   - newDepositoByName: Map<lowercase nombre, id> de Depósitos recién creados
+//     (output del bulk de depositos en confirmImport). 2026-07-25.
 //   - provIdByName: Map<lowercase nombre, id> de proveedores resueltos
 //     (output del bulk de proveedores resolve-or-create).
 //
 // Devuelve: array de movimientos listos para enviar al endpoint.
 // Throws si un grupo no resuelve a un proveedor_id válido (defensa para evitar
 // mandar payloads que el backend rechazaría con un 400 menos informativo).
-export function buildBulkMovimientosPayload({ groups, newClaseByName = new Map(), provIdByName = new Map() } = {}) {
+export function buildBulkMovimientosPayload({
+  groups,
+  newClaseByName    = new Map(),
+  newDepositoByName = new Map(),
+  provIdByName      = new Map(),
+} = {}) {
   if (!Array.isArray(groups) || groups.length === 0) return [];
   return groups.map(g => {
     const provId = g.proveedor_id || provIdByName.get((g.proveedor_nuevo || '').trim().toLowerCase());
@@ -421,6 +451,10 @@ export function buildBulkMovimientosPayload({ groups, newClaseByName = new Map()
       // upstream en el caso normal, pero defensivo por si llega sin id).
       if (r._claseNueva && !body.clase_id) {
         body.clase_id = newClaseByName.get(r._claseNueva.toLowerCase()) || null;
+      }
+      // Reconcilia deposito_id si era un Depósito nuevo (auto-create).
+      if (r._depositoNuevo && !body.deposito_id) {
+        body.deposito_id = newDepositoByName.get(r._depositoNuevo.toLowerCase()) || null;
       }
       // El backend (#H-06) rellena producto.proveedor con el nombre del
       // proveedor del movimiento. Quitamos el campo del producto_stock para
@@ -487,20 +521,26 @@ export function findDuplicateImeis(rows) {
 }
 
 // Helper: dado el resultado de mapStockRows, devuelve los nombres únicos
-// (case-insensitive) de Categorías y proveedores nuevos a crear. Útil para
-// mostrar en el preview "Se crearán N categorías nuevas: [lista]".
+// (case-insensitive) de Categorías, Depósitos y proveedores nuevos a crear.
+// Útil para mostrar en el preview "Se crearán N categorías + M depósitos".
 //
-// 2026-07-25: la key `categorias` del return se renombró a `clases` — target
-// pasó de `categorias` (Colecciones) a `clases_producto` (Categorías).
-// El caller (Inventario.jsx confirmImport) ahora hace `inventario.bulkClases`
-// en vez de `bulkCategorias`.
+// 2026-07-25 (a): la key `categorias` del return se renombró a `clases` —
+// target pasó de `categorias` (Colecciones) a `clases_producto` (Categorías).
+// 2026-07-25 (b): agregada key `depositos` para el flow de auto-create de
+// depósitos nuevos (`POST /inventario/depositos/bulk`). Antes, un nombre
+// de depósito no reconocido quedaba silente en `deposito_id=null`.
 export function extractNewCatalogos(mapped) {
-  const clases = new Map(); // key=lowercase, value=nombre original (preserva caps de la primera aparición)
-  const provs = new Map();
+  const clases    = new Map(); // key=lowercase, value=nombre original (preserva caps de la 1ra aparición)
+  const depositos = new Map();
+  const provs     = new Map();
   for (const r of mapped) {
     if (r._claseNueva) {
       const k = r._claseNueva.toLowerCase();
       if (!clases.has(k)) clases.set(k, r._claseNueva);
+    }
+    if (r._depositoNuevo) {
+      const k = r._depositoNuevo.toLowerCase();
+      if (!depositos.has(k)) depositos.set(k, r._depositoNuevo);
     }
     if (r._proveedorNuevo) {
       const k = r._proveedorNuevo.toLowerCase();
@@ -508,7 +548,8 @@ export function extractNewCatalogos(mapped) {
     }
   }
   return {
-    clases: [...clases.values()],
+    clases:      [...clases.values()],
+    depositos:   [...depositos.values()],
     proveedores: [...provs.values()],
   };
 }

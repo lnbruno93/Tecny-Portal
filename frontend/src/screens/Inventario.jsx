@@ -104,13 +104,19 @@ const TIPO_CARGA_OPTIONS = [
 const ESTADO_OPTIONS = Object.entries(ESTADO_DISPLAY).map(([v, m]) => ({ value: v, label: m.label }));
 
 // Encabezados EXACTOS de la planilla del negocio (misma base para importar y exportar).
+// 2026-07-25: última columna cambió de "ID DEPOSITO(SÓLO NÚMERO)" a
+// "DEPOSITO(nombre o ID)". El backend ya soportaba nombre pero el header
+// forzaba al operador a memorizar IDs. Ahora acepta nombre y auto-crea si
+// no existe (mismo patrón que CATEGORIA post-fix XLSX PR #876).
 const PLANTILLA_HEADERS = ['Nombre', 'GB(solo iph)', 'BATERIA(solo iph)', 'COLOR(solo iph)', 'COSTO',
   'MONEDA COSTO(ARS/USD)', 'PRECIO', 'MONEDA PRECIO(ARS/USD)', 'IMEI(solo iph)', 'TIPO(unitario, stock)',
-  'CATEGORIA', 'PROVEEDOR', 'STOCK(solo acc)', 'ID DEPOSITO(SÓLO NÚMERO)'];
+  'CATEGORIA', 'PROVEEDOR', 'STOCK(solo acc)', 'DEPOSITO(nombre o ID)'];
 // Filas de ejemplo: un celular (IMEI, sin STOCK) y un accesorio (STOCK, sin IMEI).
+// 2026-07-25: cambiado deposito ejemplo de "1" (ID numérico) a "Principal"
+// (nombre) para reforzar que el nombre es aceptado + más intuitivo.
 const PLANTILLA_EJEMPLO = [
-  ['iPhone 15 Pro', '256', '92', 'Natural', '800', 'USD', '950', 'USD', '356938035643809', 'Unitario', 'iPhone Nuevo', 'Juan Distribuidor', '', '1'],
-  ['Funda iPhone 15', '', '', '', '3', 'USD', '8', 'USD', '', 'stock', 'Accesorios', 'Mayorista Acc', '20', '1'],
+  ['iPhone 15 Pro', '256', '92', 'Natural', '800', 'USD', '950', 'USD', '356938035643809', 'Unitario', 'iPhone Nuevo', 'Juan Distribuidor', '', 'Principal'],
+  ['Funda iPhone 15', '', '', '', '3', 'USD', '8', 'USD', '', 'stock', 'Accesorios', 'Mayorista Acc', '20', 'Principal'],
 ];
 
 // Parser CSV mínimo (soporta comillas, comas y saltos dentro de campos).
@@ -891,15 +897,16 @@ export default function Inventario() {
     setImportError('');
     try {
       // ── Paso 1: bulk resolve-or-create de catálogos ──────────────────────
-      // Categorías (clases_producto): necesarias porque el body de producto
-      // exige clase_id. Lo hacemos como antes (un solo bulk) para minimizar RTTs.
+      // Categorías (clases_producto) + Depósitos: necesarios porque el body de
+      // producto puede referenciar clase_id/deposito_id. Lo hacemos en bulks
+      // separados (1 request cada uno) para minimizar RTTs.
       //
-      // 2026-07-25: cambió de `bulkCategorias` (tabla legacy Colecciones =
-      // `categorias`) a `bulkClases` (tabla `clases_producto` = Categorías,
-      // fuente de verdad F3.a-onwards). User reportó que la planilla estaba
-      // auto-creando Colecciones cuando debería crear Categorías. Ver
-      // extractNewCatalogos (importStock.js) — el return key cambió a `clases`.
-      const { clases: clasesNuevas } = extractNewCatalogos(validRows);
+      // 2026-07-25 (a): categorías cambió de `bulkCategorias` (tabla legacy
+      // Colecciones) a `bulkClases` (tabla `clases_producto`, F3.a-onwards).
+      // 2026-07-25 (b): depósitos ahora también auto-crea si el operador
+      // escribe un nombre nuevo en la columna del XLSX (antes solo aceptaba
+      // ID; user reportó fricción). Ver extractNewCatalogos (importStock.js).
+      const { clases: clasesNuevas, depositos: depositosNuevos } = extractNewCatalogos(validRows);
       const newClaseByName = new Map();
       if (clasesNuevas.length > 0) {
         try {
@@ -907,6 +914,15 @@ export default function Inventario() {
           for (const [k, v] of Object.entries(map || {})) newClaseByName.set(k, v);
         } catch (e) {
           throw new Error(`No se pudieron crear las categorías: ${e.message}`);
+        }
+      }
+      const newDepositoByName = new Map();
+      if (depositosNuevos.length > 0) {
+        try {
+          const { map } = await inventario.bulkDepositos(depositosNuevos);
+          for (const [k, v] of Object.entries(map || {})) newDepositoByName.set(k, v);
+        } catch (e) {
+          throw new Error(`No se pudieron crear los depósitos: ${e.message}`);
         }
       }
 
@@ -939,6 +955,7 @@ export default function Inventario() {
       const movimientos = buildBulkMovimientosPayload({
         groups: importGroups,
         newClaseByName,
+        newDepositoByName,
         provIdByName,
       });
 
@@ -951,6 +968,7 @@ export default function Inventario() {
       // Toast contextual.
       const extras = [];
       if (clasesNuevas.length) extras.push(`${clasesNuevas.length} categoría${clasesNuevas.length === 1 ? '' : 's'}`);
+      if (depositosNuevos.length) extras.push(`${depositosNuevos.length} depósito${depositosNuevos.length === 1 ? '' : 's'}`);
       if (nombresProvNuevos.length) extras.push(`${nombresProvNuevos.length} proveedor${nombresProvNuevos.length === 1 ? '' : 'es'}`);
       const suffix = extras.length ? ` (+ ${extras.join(' y ')} nueva${extras.length === 1 ? '' : 's'})` : '';
       toast.success(
