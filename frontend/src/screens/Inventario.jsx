@@ -225,6 +225,11 @@ export default function Inventario() {
   // evita inflar la history en typing rápido.
   const claseFilter = searchParams.get('clase') || 'todos';
   const vistaFiltro = searchParams.get('vista') || 'no_vendidos';
+  // 2026-07-25 (pedido Lucas): filtro por depósito. Persistido en URL como
+  // ?deposito=<id> (número stringificado) para deep-link + bookmarks. Value
+  // 'todos' (default) NO escribe URL, mismo pattern que clase/vista.
+  // Backend ya acepta `?deposito_id=` (inventario.js:641) — solo cableamos UI.
+  const depositoFiltro = searchParams.get('deposito') || 'todos';
   const search = searchParams.get('q') || '';
   const setParam = useCallback((key, value, def) => {
     const next = new URLSearchParams(searchParams);
@@ -234,6 +239,7 @@ export default function Inventario() {
   }, [searchParams, setSearchParams]);
   const setClaseFilter = useCallback((v) => setParam('clase', v, 'todos'), [setParam]);
   const setVistaFiltro = useCallback((v) => setParam('vista', v, 'no_vendidos'), [setParam]);
+  const setDepositoFiltro = useCallback((v) => setParam('deposito', v, 'todos'), [setParam]);
 
   // 2026-07-04 (#507): filtro de fecha para vista='vendidos'. Default 'todo' →
   // no filtra (compat con comportamiento previo). El backend acepta desde/hasta
@@ -460,6 +466,12 @@ export default function Inventario() {
         else params.clase = claseFilter;  // fallback compat: backend acepta slug
       }
       if (dSearch.trim()) params.buscar = dSearch.trim();
+      // 2026-07-25 (pedido Lucas): filtro depósito. Solo mandamos si != 'todos'.
+      // Compatible con drill-down: el drill-down puede ya haber seteado
+      // deposito_id → params.deposito_id se sobreescribe abajo si aplica.
+      if (depositoFiltro && depositoFiltro !== 'todos') {
+        params.deposito_id = depositoFiltro;
+      }
       // Drill-down: aplicamos los filtros que vinieron por URL al fetch.
       // El backend rechaza claves desconocidas (Zod), así que sólo pasamos lo válido.
       // Importante: el drill-down sobreescribe la vista a 'todos_ocultos' para que el
@@ -484,7 +496,7 @@ export default function Inventario() {
   // otro filtro, el re-fetch usa `clases` ya poblado y canonicaliza a
   // clase_id. Trade-off consciente: 1 request extra si añadiéramos
   // `clases` a deps rompía tests con `mockResolvedValueOnce`.
-  }, [page, claseFilter, vistaFiltro, dSearch, toast, drillFilters, vendidosRange]);
+  }, [page, claseFilter, vistaFiltro, depositoFiltro, dSearch, toast, drillFilters, vendidosRange]);
 
   const loadMetricas = useCallback(async () => {
     try { setMetricas(await inventario.metricas()); } catch (_) {}
@@ -1340,6 +1352,25 @@ export default function Inventario() {
             >
               {VISTAS.map(v => <option key={v.value} value={v.value}>{v.label}</option>)}
             </select>
+            {/* 2026-07-25 (pedido Lucas): filtro Depósito. Solo se muestra
+                si el tenant configuró al menos 1 depósito — si no, el select
+                no aportaría nada útil y solo agregaría ruido visual. */}
+            {depositos.length > 0 && (
+              <>
+                <label className="field-label u-mb-0-mr-4 u-ml-12">Depósito</label>
+                <select
+                  className="input u-w-200"
+                  value={depositoFiltro}
+                  onChange={e => setDepositoFiltro(e.target.value)}
+                  aria-label="Filtrar por depósito"
+                >
+                  <option value="todos">Todos los depósitos</option>
+                  {depositos.map(d => (
+                    <option key={d.id} value={d.id}>{d.nombre}</option>
+                  ))}
+                </select>
+              </>
+            )}
           </div>
           <div className="input-group u-w-300">
             <span className="addon addon-l"><Icons.Search size={14} /></span>
