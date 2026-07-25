@@ -230,28 +230,91 @@ describe('mapStockRows', () => {
   });
 });
 
+// 2026-07-25: depósito ahora acepta nombre O ID. Auto-create si nombre no matchea.
+describe('mapStockRows — depósito por nombre O ID + auto-create', () => {
+  // Custom ctx con 2 depósitos preexistentes para probar los distintos paths.
+  const ctxDep = {
+    clases: [
+      { id: 'aa', nombre: 'iPhone Nuevo', activa: true, es_base: true, es_sin_categoria: false, slug_legacy: 'celular_sellado' },
+      { id: 'bb', nombre: 'Fundas',       activa: true, es_base: false, es_sin_categoria: false, slug_legacy: null },
+    ],
+    depositos: [{ id: 1, nombre: 'Principal' }, { id: 2, nombre: 'Local Centro' }],
+  };
+  const rowsWithDep = (depValue) => [HEADERS,
+    ['iPhone X', '128', '90', 'Black', '800', 'USD', '900', 'USD', '111', 'Unitario', 'iPhone Nuevo', 'P', '', depValue]];
+
+  it('depósito por ID numérico existente → resuelve al mismo id', () => {
+    const [{ body, error, _depositoNuevo }] = mapStockRows(rowsWithDep('1'), ctxDep);
+    expect(error).toBeNull();
+    expect(body.deposito_id).toBe(1);
+    expect(_depositoNuevo).toBeNull();
+  });
+
+  it('depósito por ID inexistente → ERROR (probable typo)', () => {
+    const [{ error }] = mapStockRows(rowsWithDep('999'), ctxDep);
+    expect(error).toMatch(/Depósito ID 999/);
+  });
+
+  it('depósito por nombre existente (case-insensitive) → resuelve al id', () => {
+    const [{ body, error, _depositoNuevo }] = mapStockRows(rowsWithDep('PRINCIPAL'), ctxDep);
+    expect(error).toBeNull();
+    expect(body.deposito_id).toBe(1);
+    expect(_depositoNuevo).toBeNull();
+  });
+
+  it('depósito por nombre con espacios → resuelve al id', () => {
+    const [{ body, error, _depositoNuevo }] = mapStockRows(rowsWithDep('Local Centro'), ctxDep);
+    expect(error).toBeNull();
+    expect(body.deposito_id).toBe(2);
+    expect(_depositoNuevo).toBeNull();
+  });
+
+  it('depósito por nombre inexistente → _depositoNuevo marker para auto-create', () => {
+    const [{ body, error, _depositoNuevo }] = mapStockRows(rowsWithDep('Local Palermo'), ctxDep);
+    expect(error).toBeNull();
+    expect(body.deposito_id).toBeNull();
+    expect(_depositoNuevo).toBe('Local Palermo');
+  });
+
+  it('depósito vacío → deposito_id null sin error ni marker', () => {
+    const [{ body, error, _depositoNuevo }] = mapStockRows(rowsWithDep(''), ctxDep);
+    expect(error).toBeNull();
+    expect(body.deposito_id).toBeNull();
+    expect(_depositoNuevo).toBeNull();
+  });
+
+  it('preserva la caps del nombre original en _depositoNuevo (no downcase)', () => {
+    const [{ _depositoNuevo }] = mapStockRows(rowsWithDep('MacBook Depósito'), ctxDep);
+    expect(_depositoNuevo).toBe('MacBook Depósito');
+  });
+});
+
 describe('extractNewCatalogos', () => {
-  // 2026-07-25: la key `categorias` del return se renombró a `clases` — el
+  // 2026-07-25 (a): la key `categorias` del return se renombró a `clases` — el
   // target de auto-create pasó de `categorias` (Colecciones legacy) a
   // `clases_producto` (Categorías, fuente de verdad F3.a-onwards).
-  it('extrae nombres únicos de clases y proveedores nuevos (case-insensitive)', () => {
+  // 2026-07-25 (b): agregada key `depositos` para auto-create de depósitos
+  // nuevos escritos en la columna del XLSX (antes silent).
+  it('extrae nombres únicos de clases + depósitos + proveedores nuevos (case-insensitive)', () => {
     const mapped = [
-      { _claseNueva: 'iPhone Pro', _proveedorNuevo: 'Distri A' },
-      { _claseNueva: 'IPHONE PRO', _proveedorNuevo: 'Distri B' }, // duplicado de clase
-      { _claseNueva: 'Accesorios', _proveedorNuevo: 'distri a' }, // duplicado de prov
-      { _claseNueva: null, _proveedorNuevo: null },
+      { _claseNueva: 'iPhone Pro', _depositoNuevo: 'Local Palermo',  _proveedorNuevo: 'Distri A' },
+      { _claseNueva: 'IPHONE PRO', _depositoNuevo: 'LOCAL PALERMO',  _proveedorNuevo: 'Distri B' }, // dup clase + dup dep
+      { _claseNueva: 'Accesorios', _depositoNuevo: null,             _proveedorNuevo: 'distri a' }, // dup prov
+      { _claseNueva: null,         _depositoNuevo: 'Depósito Centro',_proveedorNuevo: null },
+      { _claseNueva: null,         _depositoNuevo: null,             _proveedorNuevo: null },
     ];
-    const { clases, proveedores } = extractNewCatalogos(mapped);
-    expect(clases).toEqual(['iPhone Pro', 'Accesorios']); // primera aparición preserva caps
+    const { clases, depositos, proveedores } = extractNewCatalogos(mapped);
+    expect(clases).toEqual(['iPhone Pro', 'Accesorios']);
+    expect(depositos).toEqual(['Local Palermo', 'Depósito Centro']);
     expect(proveedores).toEqual(['Distri A', 'Distri B']);
   });
 
   it('lista vacía si no hay catálogos nuevos', () => {
     const mapped = [
-      { _claseNueva: null, _proveedorNuevo: null },
-      { _claseNueva: null, _proveedorNuevo: null },
+      { _claseNueva: null, _depositoNuevo: null, _proveedorNuevo: null },
+      { _claseNueva: null, _depositoNuevo: null, _proveedorNuevo: null },
     ];
-    expect(extractNewCatalogos(mapped)).toEqual({ clases: [], proveedores: [] });
+    expect(extractNewCatalogos(mapped)).toEqual({ clases: [], depositos: [], proveedores: [] });
   });
 });
 
@@ -412,6 +475,21 @@ describe('buildBulkMovimientosPayload', () => {
     const newClaseByName = new Map([['accesorios especiales', 'zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz']]);
     const [m] = buildBulkMovimientosPayload({ groups: [g], newClaseByName });
     expect(m.items[0].producto_stock.clase_id).toBe('zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz');
+  });
+
+  it('reconcilia deposito_id si el Depósito era nuevo (newDepositoByName)', () => {
+    // 2026-07-25 (b): mismo patrón que clase_id — deposito_id null en el
+    // body inicial se rellena post-bulkDepositos usando el marker.
+    const g = mkGroup({
+      rows: [{
+        body: { nombre: 'X', clase_id: 'someid', deposito_id: null, costo: 100, costo_moneda: 'USD', cantidad: 1 },
+        error: null,
+        _depositoNuevo: 'Local Palermo',
+      }],
+    });
+    const newDepositoByName = new Map([['local palermo', 42]]);
+    const [m] = buildBulkMovimientosPayload({ groups: [g], newDepositoByName });
+    expect(m.items[0].producto_stock.deposito_id).toBe(42);
   });
 
   it('moneda ARS: TC se incluye, caja_id se castea a number', () => {

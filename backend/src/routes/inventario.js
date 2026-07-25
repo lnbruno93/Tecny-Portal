@@ -315,6 +315,75 @@ router.post('/depositos', validate(nombreSchema), async (req, res, next) => {
   }
 });
 
+// POST /depositos/bulk — resolve-or-create batch de depósitos.
+//
+// 2026-07-25: nuevo endpoint para el import XLSX. Reemplaza el requerimiento
+// de "ID DEPÓSITO (SÓLO NÚMERO)" en la planilla — user reportó fricción UX
+// tener que memorizar IDs. Ahora la columna acepta nombre O ID, y si el
+// nombre no matchea ningún depósito preexistente se auto-crea (mismo patrón
+// que el bulk de Categorías `POST /clases/bulk`).
+//
+// Idempotente vía ON CONFLICT sobre índice parcial unique `(tenant_id,
+// LOWER(nombre)) WHERE deleted_at IS NULL` — case-insensitive, ignora
+// soft-deleted (para no reusar accidentalmente uno borrado).
+//
+// Response shape: `{ map: { lowercase_nombre: id } }` — mismo pattern que
+// `POST /categorias/bulk` y `POST /clases/bulk` para que el frontend
+// reutilice el mismo mecanismo de reconciliación.
+//
+// Autorización: cualquier user con `inventario.crear` — mismo requerimiento
+// del bulk de productos que sigue en el flow real del import.
+router.post(
+  '/depositos/bulk',
+  requireCapability('inventario.crear'),
+  validate(nombresBulkSchema),
+  async (req, res, next) => {
+    try {
+      // Dedup case-insensitive preservando la 1ra capitalización vista.
+      const inputDedup = [...new Map(
+        req.body.nombres.map(n => [String(n).trim().toLowerCase(), String(n).trim()])
+      ).values()].filter(Boolean);
+      if (inputDedup.length === 0) return res.json({ map: {} });
+
+      const map = await db.withTenant(req.tenantId, async (client) => {
+        // ON CONFLICT usa el índice parcial UNIQUE `(tenant_id, LOWER(nombre))
+        // WHERE deleted_at IS NULL` (migration 20260624110000). Necesita
+        // repetir el WHERE predicate porque es un CREATE UNIQUE INDEX (no
+        // CONSTRAINT) — mismo patrón que clases/bulk y categorias/bulk.
+        //
+        // El INSERT no necesita tenant_id explícito acá porque el DEFAULT
+        // de la columna es `current_setting('app.current_tenant')::int`
+        // (validado por el rls_default trigger). Pero pasarlo explícito
+        // es más defensivo — si algún día el default se cae, no rompe.
+        await client.query(
+          `INSERT INTO depositos (tenant_id, nombre)
+           SELECT $1, unnest($2::text[])
+           ON CONFLICT (tenant_id, LOWER(nombre)) WHERE deleted_at IS NULL DO NOTHING`,
+          [req.tenantId, inputDedup]
+        );
+        const lowers = inputDedup.map(n => n.toLowerCase());
+        const { rows } = await client.query(
+          `SELECT id, nombre FROM depositos
+            WHERE tenant_id = $1
+              AND LOWER(nombre) = ANY($2::text[])
+              AND deleted_at IS NULL`,
+          [req.tenantId, lowers]
+        );
+        await audit(client, 'depositos', 'INSERT', null, {
+          tipo: 'bulk_resolve_or_create_depositos',
+          nombres: inputDedup,
+          user_id: req.user.id,
+          req,
+        });
+        const out = {};
+        for (const r of rows) out[r.nombre.toLowerCase()] = r.id;
+        return out;
+      });
+      res.json({ map });
+    } catch (err) { next(err); }
+  }
+);
+
 router.delete('/depositos/:id', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
