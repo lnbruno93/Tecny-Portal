@@ -680,6 +680,12 @@ export const inventario = {
   updateClase:    (id, data) => api(`/api/inventario/clases/${id}`, 'PUT', data),
   deleteClase:    (id)       => api(`/api/inventario/clases/${id}`, 'DELETE'),
   reorderClases:  (items)    => api('/api/inventario/clases/reorder', 'POST', { items }),
+  // 2026-07-25: bulk resolve-or-create de Categorías, usado por el import
+  // XLSX (confirmImport) para crear en batch las Categorías nuevas escritas
+  // en la planilla. Reemplaza el uso previo de `bulkCategorias` que target-
+  // eaba la tabla legacy `categorias` (Colecciones) — user pidió consolidar
+  // TODO en Categorías (clases_producto).
+  bulkClases:     (nombres) => api('/api/inventario/clases/bulk', 'POST', { nombres }),
   // 2026-07-11: share link público de Equipos Usados.
   // - get():    devuelve config + stats (crea el link con defaults en la 1ra
   //             llamada). Auth: `inventario.ver`.

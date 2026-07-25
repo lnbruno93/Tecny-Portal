@@ -17,16 +17,22 @@ export function normHeader(s) {
 }
 
 // Sinónimos aceptados por campo (ya normalizados con normHeader).
+//
+// 2026-07-25: `categoria` y `rubro` se movieron de la key legacy `categoria`
+// (que targetaba `categorias` = Colecciones) a la key `clase` (target
+// `clases_producto` = Categorías, la fuente de verdad F3.a-onwards). El
+// operador reportó que la planilla auto-creaba Colecciones cuando debería
+// crear Categorías — user pidió consolidar TODO en Categorías y remover el
+// concepto de Colecciones. La key `categoria` de STOCK_ALIASES se eliminó.
 export const STOCK_ALIASES = {
   nombre:        ['nombre', 'modelo', 'producto'],
-  clase:         ['clase'],
+  clase:         ['clase', 'categoria', 'rubro'],
   tipo_carga:    ['tipo', 'tipocarga', 'carga'],
   estado:        ['estado'],
   imei:          ['imei', 'serie', 'nroserie', 'numeroserie'],
   gb:            ['gb', 'almacenamiento', 'capacidad'],
   color:         ['color'],
   bateria:       ['bateria', 'bat', 'salud', 'saludbateria'],
-  categoria:     ['categoria', 'rubro'],
   deposito:      ['deposito', 'iddeposito', 'depositoid', 'sucursal'],
   proveedor:     ['proveedor'],
   costo:         ['costo', 'costos', 'compra', 'costounitario'],
@@ -96,41 +102,60 @@ const CLASE_ALIASES = {
   // 'celular usado' o el slug directo.
   'celular': 'celular_sellado',
 };
-// F3.c-2 (2026-07-09): la resolución ahora usa el catálogo `clases` del
-// tenant (tabla `clases_producto` de F3.a #528) — permite categorías
-// custom del tenant (ej. "Repuestos", "Camisetas") además de los 9 slugs
-// F1 base. Devuelve `{ clase, clase_id }` — el body del producto puede
-// mandar ambos; backend deriva lo que falte (PR #530).
+// F3.c-2 (2026-07-09): la resolución usa el catálogo `clases` del tenant
+// (tabla `clases_producto` de F3.a #528) — permite categorías custom del
+// tenant (ej. "Repuestos", "Camisetas") además de los 9 slugs F1 base.
+//
+// 2026-07-25: cuando el operador escribe un valor que NO matchea ninguna
+// clase existente NI un alias F1 legacy, ANTES caíamos al fallback
+// "Sin categoría" — el operador tenía que reclasificar manualmente después
+// del import. Ahora devolvemos `_claseNueva: raw` como marker para que el
+// caller (Inventario.jsx `confirmImport`) haga bulk resolve-or-create en
+// `clases_producto` y reconcilie el `clase_id`. Mismo pattern que ya
+// usábamos para `_categoriaNueva` (Colecciones), pero targeteando Categorías
+// (la fuente de verdad post-F3) en vez de Colecciones (tabla legacy que se
+// deprecó — user pidió consolidar TODO en Categorías 2026-07-25).
+//
+// El fallback "Sin categoría" solo se usa cuando la fila NO trae valor en
+// la columna clase/categoria/rubro (raw vacío o whitespace).
 //
 // Prioridad de match:
 //   1. Nombre exacto (case-insensitive) en `clases` activas → cubre las
 //      base + custom del tenant.
 //   2. Slug F1 legacy vía CLASE_ALIASES → mapea a la fila base
 //      correspondiente en `clases` por `slug_legacy`.
-//   3. Fallback: fila `es_sin_categoria=true` del sistema. El operador
-//      la reclasifica desde el modal Categorías después del import.
+//   3. Auto-create: mark `_claseNueva: raw` para que el caller lo cree.
+//      NO se usa el fallback "Sin categoría" — el operador escribió algo
+//      con intención, lo respetamos.
+//   4. Fallback "Sin categoría": SOLO cuando raw está vacío (no aplica acá,
+//      lo maneja el caller — ver mapStockRows).
 //
-// Return type: `{ clase: string|null, clase_id: string|null }`. `clase`
-// se preserva para retrocompatibilidad con el schema de productos (backend
-// también actualiza `productos.clase` legacy hasta F3.d cleanup).
+// Return type: `{ clase, clase_id, _claseNueva }`.
+//   - `clase`: slug_legacy si matcheó por nombre O por alias legacy; null
+//     si es una clase custom del tenant o si es auto-create.
+//   - `clase_id`: UUID si matcheó; null si es auto-create (pendiente de
+//     resolver post-bulk).
+//   - `_claseNueva`: string con el raw (preservando caps + emoji stripped)
+//     cuando no matcheó nada — señal para auto-create. null si matcheó.
 function resolveClaseXlsx(raw, clases = []) {
-  const noMatch = { clase: null, clase_id: null };
-  if (!raw) return noMatch;
+  const empty = { clase: null, clase_id: null, _claseNueva: null };
+  if (!raw) return empty;
   // Strip emoji leading. Rangos:
   //   · U+1F300–U+1FAFF: pictographs (📲 📱 💻 🔋 etc.)
   //   · U+2300–U+27BF: technical + misc symbols (⌚ ♻ etc.)
   //   · U+FE0F: variation selector (aparece después del symbol en algunos
   //     emojis compuestos como ♻️).
-  const norm = String(raw).trim()
-    .replace(/^[\u{1F300}-\u{1FAFF}\u{2300}-\u{27BF}]\u{FE0F}?\s*/u, '')
-    .toLowerCase();
+  const noEmoji = String(raw).trim()
+    .replace(/^[\u{1F300}-\u{1FAFF}\u{2300}-\u{27BF}]\u{FE0F}?\s*/u, '');
+  const norm = noEmoji.toLowerCase();
+  if (!norm) return empty;  // era solo emoji o whitespace
 
   // 1) Nombre exacto en clases del tenant (base + custom).
   const byNombre = clases.find(c =>
     c.activa && !c.es_sin_categoria && c.nombre && c.nombre.toLowerCase() === norm
   );
   if (byNombre) {
-    return { clase: byNombre.slug_legacy || null, clase_id: byNombre.id };
+    return { clase: byNombre.slug_legacy || null, clase_id: byNombre.id, _claseNueva: null };
   }
 
   // 2) Alias F1 → slug_legacy → clase_id.
@@ -142,17 +167,13 @@ function resolveClaseXlsx(raw, clases = []) {
     return {
       clase: slug,
       clase_id: byBase ? byBase.id : null,
+      _claseNueva: null,
     };
   }
 
-  // 3) Fallback: "Sin categoría" del sistema (fila `es_sin_categoria`).
-  //    El operador la reclasifica desde el modal después del import.
-  const sinCat = clases.find(c => c.es_sin_categoria);
-  if (sinCat) {
-    return { clase: null, clase_id: sinCat.id };
-  }
-
-  return noMatch;
+  // 3) Auto-create: mark for bulk create in the caller. Preserva la
+  //    capitalización original (sin emoji) para display consistente.
+  return { clase: null, clase_id: null, _claseNueva: noEmoji };
 }
 
 // Excel/Google Sheets guarda IMEIs de 15 dígitos como notación científica
@@ -179,28 +200,36 @@ export function cleanImei(v) {
   return s;
 }
 
-// rows: string[][] (incluye fila de encabezados). ctx: { categorias, depositos, proveedores }.
-// Devuelve [{ body, error, warning, _categoriaNueva, _proveedorNuevo }]:
-//   · body listo para POST /inventario/productos/bulk (categoria_id puede ser
-//     null si _categoriaNueva está seteada — el caller debe crearla y reemplazar).
+// rows: string[][] (incluye fila de encabezados). ctx: { depositos, proveedores, clases }.
+// Devuelve [{ body, error, warning, _claseNueva, _proveedorNuevo }]:
+//   · body listo para POST /inventario/productos/bulk (clase_id puede ser
+//     null si _claseNueva está seteada — el caller debe crearla via bulk y
+//     reconciliar).
 //   · error: validación que ABORTA la fila (nombre vacío, costo 0, depósito inexistente, etc.)
 //   · warning: aviso informativo — la fila SÍ se importa. Ej. accesorio con
 //     stock=0 (útil para dar de alta el modelo antes de recibir mercadería).
-//   · _categoriaNueva: string si la categoría de la fila NO existe en el catálogo
-//     actual. Marker para que el caller la cree antes del bulk. Si existe,
-//     body.categoria_id ya está seteado y _categoriaNueva es null.
+//   · _claseNueva: string si el valor de columna clase/categoria/rubro NO existe
+//     en el catálogo `clases_producto`. Marker para que el caller la cree
+//     antes del bulk. Si existe (o si la columna vino vacía y se usó fallback),
+//     _claseNueva es null.
 //   · _proveedorNuevo: ídem para proveedores.
 //
 // Junio 2026: el comportamiento previo era "tirar error si la categoría no
-// existe" — ahora se acepta y se marca como pendiente de crear. El caller
-// (Inventario.jsx → confirmImport) hace el create antes del bulk de productos.
+// existe" — se pasó a "aceptar y marcar como pendiente de crear en Colecciones".
+// 2026-07-25: el auto-create se movió de Colecciones (tabla legacy `categorias`)
+// a Categorías (tabla `clases_producto`). User pidió consolidar TODO en
+// Categorías y remover el concepto de Colecciones (que agrupaba productos por
+// nombres arbitrarios y hoy no aporta valor). El campo body.categoria_id
+// (Colección) queda siempre null desde el import — el operador puede seguir
+// asignándolo manualmente desde el form del producto si quiere (pero la UI
+// también deprecó ese field 2026-07-11).
+//
 // Julio 2026: "Stock en 0" pasó de error a warning — permite dar de alta el
 // producto aunque todavía no haya stock físico (feature pedida por owner).
-export function mapStockRows(rows, { categorias = [], depositos = [], proveedores = [], clases = [] } = {}) {
+export function mapStockRows(rows, { depositos = [], proveedores = [], clases = [] } = {}) {
   if (!Array.isArray(rows) || rows.length < 2) return [];
   const idx = buildIdx(rows[0]);
 
-  const findCat = (n) => categorias.find(c => c.nombre.toLowerCase() === String(n ?? '').trim().toLowerCase());
   const findProv = (n) => proveedores.find(p => p.nombre.toLowerCase() === String(n ?? '').trim().toLowerCase());
 
   return rows.slice(1)
@@ -218,29 +247,39 @@ export function mapStockRows(rows, { categorias = [], depositos = [], proveedore
       const hasStock = stockRaw !== '';
       const tipoRaw = String(get('tipo_carga')).trim().toLowerCase();
 
-      // Clase: 2 caminos.
-      //   1) Si el XLSX trae columna CLASE con un valor reconocible, lo usamos.
-      //      Acepta los 9 slugs nuevos, sus labels con emoji, y los legacy
-      //      'celular'/'accesorio' (mapean vía CLASE_ALIASES en resolveClaseXlsx).
-      //   2) Si no trae CLASE o no matchea nada, resolveClaseXlsx devuelve
-      //      la fila `es_sin_categoria` del tenant. El operador la reclasifica
-      //      desde el modal "Categorías" post-import.
+      // Categoría (columna 'clase' / 'categoria' / 'rubro' del XLSX, todos
+      // aliases de STOCK_ALIASES.clase desde 2026-07-25).
+      //   1) Si trae valor reconocible (nombre exacto o alias F1 legacy) →
+      //      resolveClaseXlsx devuelve clase_id.
+      //   2) Si trae valor NO reconocible → resolveClaseXlsx marca
+      //      `_claseNueva` para auto-create en el bulk. clase_id queda null
+      //      y se reconcilia post-bulkClases en el caller.
+      //   3) Si NO trae valor → fallback heurístico por hasStock (abajo).
       //
       // F3.d-3 (2026-07-09): body ya no incluye `clase` VARCHAR (columna
       // dropeada). Se manda solo `clase_id`. La regla de cantidad usa el
       // `slug_legacy` que resolveClaseXlsx devuelve como `clase` (nombre
       // interno del helper, no del body).
-      const claseXlsx = resolveClaseXlsx(get('clase'), clases);
+      const claseRaw = String(get('clase')).trim();
+      const claseXlsx = resolveClaseXlsx(claseRaw, clases);
       let clase_id = claseXlsx.clase_id;
-      // Fallback: si el XLSX no trajo columna clase (heurística), buscamos
-      // `accesorios_varios` (hasStock) o `celular_sellado` (sin stock) en las
-      // base del tenant.
-      if (!clase_id) {
+      let _claseNueva = claseXlsx._claseNueva;
+      // Fallback: solo si el XLSX no trajo valor Y no hay auto-create pendiente.
+      // Buscamos `accesorios_varios` (hasStock) o `celular_sellado` (sin stock)
+      // en las base del tenant. Si tampoco existen (tenant nuevo raro), última
+      // caída a `es_sin_categoria`.
+      if (!clase_id && !_claseNueva) {
         const fallbackSlug = hasStock ? 'accesorios_varios' : 'celular_sellado';
         const byFallback = clases.find(c =>
           c.activa && c.es_base && c.slug_legacy === fallbackSlug
         );
-        if (byFallback) clase_id = byFallback.id;
+        if (byFallback) {
+          clase_id = byFallback.id;
+        } else {
+          // Última caída: fila `es_sin_categoria` del sistema.
+          const sinCat = clases.find(c => c.es_sin_categoria);
+          if (sinCat) clase_id = sinCat.id;
+        }
       }
       const tipo_carga = (hasStock || tipoRaw === 'stock' || tipoRaw === 'lote') ? 'lote' : 'unitario';
       // Regla de cantidad: si el slug_legacy es de las "por-unidad" (celular
@@ -265,8 +304,6 @@ export function mapStockRows(rows, { categorias = [], depositos = [], proveedore
       }
 
       const bat = String(get('bateria')).trim();
-      const categoriaRaw = String(get('categoria')).trim();
-      const cat = findCat(categoriaRaw);
       const proveedorRaw = String(get('proveedor')).trim();
       const prov = proveedorRaw ? findProv(proveedorRaw) : null;
       const costo = parseNum(get('costo'));
@@ -282,7 +319,11 @@ export function mapStockRows(rows, { categorias = [], depositos = [], proveedore
         gb: cleanGb(get('gb')) || null,
         color: String(get('color')).trim() || null,
         bateria: bat === '' ? null : Math.max(0, Math.min(100, Math.round(parseNum(bat)))),
-        categoria_id: cat ? cat.id : null,
+        // 2026-07-25: categoria_id (Colección legacy) siempre null desde el
+        // import XLSX. Ver header comment — user pidió consolidar en Categorías
+        // y remover Colecciones. El operador puede asignar manualmente si
+        // aún usa Colecciones (el form ya deprecó el field 2026-07-11).
+        categoria_id: null,
         deposito_id,
         proveedor: proveedorRaw || null,
         costo,
@@ -292,19 +333,17 @@ export function mapStockRows(rows, { categorias = [], depositos = [], proveedore
         cantidad,
       };
 
-      // Markers para auto-create. Solo si trae nombre y NO existe en catálogo.
+      // Markers para auto-create. Solo si trae valor y NO existe en catálogo.
       // Se devuelven al caller que decide crearlos antes del bulk.
-      const _categoriaNueva = (categoriaRaw && !cat) ? categoriaRaw : null;
       const _proveedorNuevo = (proveedorRaw && !prov) ? proveedorRaw : null;
 
       // Validaciones que evitan importar stock que rompe ventas/valorizado.
       // NOTA: "Categoría no existe" YA NO es error — se crea automáticamente
-      // (ver _categoriaNueva). Solo "falta categoría" sigue siendo error porque
-      // no podemos inventar un nombre.
+      // (ver _claseNueva). Si la columna vino vacía, cae al fallback
+      // heurístico (accesorios_varios / celular_sellado) — sigue sin ser error.
       let error = null;
       if (!nombre) error = 'Falta el nombre';
       else if (depError) error = depError;
-      else if (!categoriaRaw) error = 'Falta la categoría';
       else if (!(costo > 0)) error = 'Costo en 0 o inválido';
       else if (!(precio_venta > 0)) error = 'Precio en 0 o inválido';
 
@@ -316,7 +355,7 @@ export function mapStockRows(rows, { categorias = [], depositos = [], proveedore
         warning = 'Stock en 0 — el producto se dará de alta sin unidades disponibles';
       }
 
-      return { body, error, warning, _categoriaNueva, _proveedorNuevo };
+      return { body, error, warning, _claseNueva, _proveedorNuevo };
     });
 }
 
@@ -359,15 +398,17 @@ export function groupRowsByProveedor(mapped) {
 // Argumentos:
 //   - groups: el state importGroups del modal (output de buildImportGroups,
 //     posiblemente editado por el usuario).
-//   - newCatByName: Map<lowercase nombre, id> de categorías recién creadas
-//     (output del bulk de categorías en confirmImport).
+//   - newClaseByName: Map<lowercase nombre, id> de Categorías recién creadas
+//     (output del bulk de clases en confirmImport). 2026-07-25: renombrado
+//     desde `newCatByName` — target cambió de `categorias` (Colecciones) a
+//     `clases_producto` (Categorías).
 //   - provIdByName: Map<lowercase nombre, id> de proveedores resueltos
 //     (output del bulk de proveedores resolve-or-create).
 //
 // Devuelve: array de movimientos listos para enviar al endpoint.
 // Throws si un grupo no resuelve a un proveedor_id válido (defensa para evitar
 // mandar payloads que el backend rechazaría con un 400 menos informativo).
-export function buildBulkMovimientosPayload({ groups, newCatByName = new Map(), provIdByName = new Map() } = {}) {
+export function buildBulkMovimientosPayload({ groups, newClaseByName = new Map(), provIdByName = new Map() } = {}) {
   if (!Array.isArray(groups) || groups.length === 0) return [];
   return groups.map(g => {
     const provId = g.proveedor_id || provIdByName.get((g.proveedor_nuevo || '').trim().toLowerCase());
@@ -376,10 +417,10 @@ export function buildBulkMovimientosPayload({ groups, newCatByName = new Map(), 
     }
     const items = g.rows.map(r => {
       const body = { ...r.body };
-      // Reconcilia categoria_id si era una categoría nueva (caso ya manejado
+      // Reconcilia clase_id si era una Categoría nueva (caso ya manejado
       // upstream en el caso normal, pero defensivo por si llega sin id).
-      if (r._categoriaNueva && !body.categoria_id) {
-        body.categoria_id = newCatByName.get(r._categoriaNueva.toLowerCase()) || null;
+      if (r._claseNueva && !body.clase_id) {
+        body.clase_id = newClaseByName.get(r._claseNueva.toLowerCase()) || null;
       }
       // El backend (#H-06) rellena producto.proveedor con el nombre del
       // proveedor del movimiento. Quitamos el campo del producto_stock para
@@ -446,15 +487,20 @@ export function findDuplicateImeis(rows) {
 }
 
 // Helper: dado el resultado de mapStockRows, devuelve los nombres únicos
-// (case-insensitive) de categorías y proveedores nuevos a crear. Útil para
+// (case-insensitive) de Categorías y proveedores nuevos a crear. Útil para
 // mostrar en el preview "Se crearán N categorías nuevas: [lista]".
+//
+// 2026-07-25: la key `categorias` del return se renombró a `clases` — target
+// pasó de `categorias` (Colecciones) a `clases_producto` (Categorías).
+// El caller (Inventario.jsx confirmImport) ahora hace `inventario.bulkClases`
+// en vez de `bulkCategorias`.
 export function extractNewCatalogos(mapped) {
-  const cats = new Map(); // key=lowercase, value=nombre original (preserva caps de la primera aparición)
+  const clases = new Map(); // key=lowercase, value=nombre original (preserva caps de la primera aparición)
   const provs = new Map();
   for (const r of mapped) {
-    if (r._categoriaNueva) {
-      const k = r._categoriaNueva.toLowerCase();
-      if (!cats.has(k)) cats.set(k, r._categoriaNueva);
+    if (r._claseNueva) {
+      const k = r._claseNueva.toLowerCase();
+      if (!clases.has(k)) clases.set(k, r._claseNueva);
     }
     if (r._proveedorNuevo) {
       const k = r._proveedorNuevo.toLowerCase();
@@ -462,7 +508,7 @@ export function extractNewCatalogos(mapped) {
     }
   }
   return {
-    categorias: [...cats.values()],
+    clases: [...clases.values()],
     proveedores: [...provs.values()],
   };
 }

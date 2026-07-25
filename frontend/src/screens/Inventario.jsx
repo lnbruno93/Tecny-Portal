@@ -891,14 +891,20 @@ export default function Inventario() {
     setImportError('');
     try {
       // ── Paso 1: bulk resolve-or-create de catálogos ──────────────────────
-      // Categorías: necesario porque el body de producto exige categoria_id.
-      // Lo hacemos como antes (un solo bulk) para minimizar RTTs.
-      const { categorias: catsNuevas } = extractNewCatalogos(validRows);
-      const newCatByName = new Map();
-      if (catsNuevas.length > 0) {
+      // Categorías (clases_producto): necesarias porque el body de producto
+      // exige clase_id. Lo hacemos como antes (un solo bulk) para minimizar RTTs.
+      //
+      // 2026-07-25: cambió de `bulkCategorias` (tabla legacy Colecciones =
+      // `categorias`) a `bulkClases` (tabla `clases_producto` = Categorías,
+      // fuente de verdad F3.a-onwards). User reportó que la planilla estaba
+      // auto-creando Colecciones cuando debería crear Categorías. Ver
+      // extractNewCatalogos (importStock.js) — el return key cambió a `clases`.
+      const { clases: clasesNuevas } = extractNewCatalogos(validRows);
+      const newClaseByName = new Map();
+      if (clasesNuevas.length > 0) {
         try {
-          const { map } = await inventario.bulkCategorias(catsNuevas);
-          for (const [k, v] of Object.entries(map || {})) newCatByName.set(k, v);
+          const { map } = await inventario.bulkClases(clasesNuevas);
+          for (const [k, v] of Object.entries(map || {})) newClaseByName.set(k, v);
         } catch (e) {
           throw new Error(`No se pudieron crear las categorías: ${e.message}`);
         }
@@ -932,7 +938,7 @@ export default function Inventario() {
       // con proveedor auto-asignado al nombre del proveedor del movimiento.
       const movimientos = buildBulkMovimientosPayload({
         groups: importGroups,
-        newCatByName,
+        newClaseByName,
         provIdByName,
       });
 
@@ -944,7 +950,7 @@ export default function Inventario() {
 
       // Toast contextual.
       const extras = [];
-      if (catsNuevas.length) extras.push(`${catsNuevas.length} categoría${catsNuevas.length === 1 ? '' : 's'}`);
+      if (clasesNuevas.length) extras.push(`${clasesNuevas.length} categoría${clasesNuevas.length === 1 ? '' : 's'}`);
       if (nombresProvNuevos.length) extras.push(`${nombresProvNuevos.length} proveedor${nombresProvNuevos.length === 1 ? '' : 'es'}`);
       const suffix = extras.length ? ` (+ ${extras.join(' y ')} nueva${extras.length === 1 ? '' : 's'})` : '';
       toast.success(
@@ -1983,21 +1989,15 @@ export default function Inventario() {
       )}
 
       {/* ── Modal catálogos ── */}
-      {/* F3.b — Modal nuevo de Categorías (clases_producto). Ver design doc
+      {/* F3.b — Modal de Categorías (clases_producto). Ver design doc
           `docs/design/categorias-crud-tenant-f3.md`.
-          2026-07-11: le pasamos también las Colecciones (categorias legacy)
-          para que el modal las muestre como segunda sección — antes vivían
-          en el modal "Depósitos" (renombrado) y quedaba semánticamente
-          confuso post-F3. Ahora toda la agrupación en un solo lugar. */}
+          2026-07-25: removidas las props de Colecciones (tabla legacy
+          `categorias`) — user pidió consolidar TODO en Categorías. El
+          modal ahora es 100% dedicado a `clases_producto`. */}
       <CategoriasProductoModal
         open={showClasesModal}
         onClose={() => setShowClasesModal(false)}
         toast={toast}
-        colecciones={categorias}
-        nuevaColeccion={nuevaCat}
-        setNuevaColeccion={setNuevaCat}
-        onAddColeccion={addCategoria}
-        onDelColeccion={delCategoria}
       />
 
       {/* F3-Fase2b — Detalle "Inversión por categoría" (drawer del KPI Total

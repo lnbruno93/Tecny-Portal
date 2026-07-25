@@ -29,6 +29,9 @@ vi.mock('../lib/api', () => {
       deleteProducto:   vi.fn(),
       bulkProductos:    vi.fn(),
       bulkCategorias:   vi.fn(),
+      // 2026-07-25: nuevo bulk que reemplaza bulkCategorias en el import XLSX.
+      // Ver PR "remove Colecciones auto-create → Categorías (clases_producto)".
+      bulkClases:       vi.fn().mockResolvedValue({ map: {} }),
       bulkDeleteDisponibles: vi.fn(),
       createCategoria:  vi.fn(),
       deleteCategoria:  vi.fn(),

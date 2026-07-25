@@ -2,12 +2,21 @@ import { describe, it, expect } from 'vitest';
 import { mapStockRows, normHeader, parseNum, extractNewCatalogos, groupRowsByProveedor, buildBulkMovimientosPayload, findDuplicateImeis, cleanImei } from './importStock';
 
 // Encabezados reales del negocio (con aclaraciones entre paréntesis).
+// 2026-07-25: la columna "CATEGORIA" ahora se resuelve contra `clases_producto`
+// (Categorías) en vez de `categorias` legacy (Colecciones). Ver STOCK_ALIASES:
+// 'categoria' y 'rubro' son aliases de la key `clase`.
 const HEADERS = ['Nombre', 'GB(solo iph)', 'BATERIA(solo iph)', 'COLOR(solo iph)', 'COSTO',
   'MONEDA COSTO(ARS/USD)', 'PRECIO', 'MONEDA PRECIO(ARS/USD)', 'IMEI(solo iph)',
   'TIPO(unitario, stock)', 'CATEGORIA', 'PROVEEDOR', 'STOCK(solo acc)', 'ID DEPOSITO(SÓLO NÚMERO)'];
 
+// Contexto de tests: `clases` reemplaza el uso previo de `categorias`.
+// Incluye base de "iPhone Nuevo" (activa, es_base, con slug_legacy) y
+// "Fundas" (activa, custom) para cubrir casos comunes.
 const ctx = {
-  categorias: [{ id: 11, nombre: 'iPhone Nuevo' }, { id: 12, nombre: 'Fundas' }],
+  clases: [
+    { id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', nombre: 'iPhone Nuevo', activa: true, es_base: true,  es_sin_categoria: false, slug_legacy: 'celular_sellado' },
+    { id: 'ffffffff-ffff-ffff-ffff-ffffffffffff', nombre: 'Fundas',       activa: true, es_base: false, es_sin_categoria: false, slug_legacy: null },
+  ],
   depositos: [{ id: 1, nombre: 'Principal' }, { id: 2, nombre: 'Local Centro' }],
 };
 
@@ -71,7 +80,10 @@ describe('mapStockRows', () => {
     expect(body.bateria).toBe(100);
     expect(body.costo).toBe(1350);
     expect(body.precio_venta).toBe(1390);
-    expect(body.categoria_id).toBe(11);
+    // 2026-07-25: la CATEGORIA del XLSX ahora resuelve a clase_id (Categorías)
+    // en vez de categoria_id (Colecciones legacy). categoria_id queda null.
+    expect(body.clase_id).toBe('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    expect(body.categoria_id).toBeNull();
     expect(body.deposito_id).toBeNull();
   });
 
@@ -156,6 +168,10 @@ describe('mapStockRows', () => {
   });
 
   it('compat: encabezados limpios de la plantilla CSV', () => {
+    // 2026-07-25: la columna `categoria` ahora es alias de `clase`. Si el
+    // XLSX tiene ambas columnas y hay match en `clases`, la primera que
+    // buildIdx encuentra gana (order determinístico por STOCK_ALIASES.clase =
+    // ['clase', 'categoria', 'rubro'] — 'clase' primero).
     const rows = [
       ['nombre', 'clase', 'categoria', 'costo', 'costo_moneda', 'precio_venta', 'precio_moneda', 'imei', 'cantidad'],
       ['iPhone 15', 'celular', 'iPhone Nuevo', '800', 'USD', '950', 'USD', '356938035643809', '']];
@@ -164,40 +180,44 @@ describe('mapStockRows', () => {
     expect(body.nombre).toBe('iPhone 15');
     expect(body.costo).toBe(800);
     expect(body.precio_venta).toBe(950);
-    expect(body.categoria_id).toBe(11); // ctx categorías incluye 'iPhone Nuevo' id 11
+    // Alias 'celular' → slug 'celular_sellado' → matchea iPhone Nuevo (base).
+    expect(body.clase_id).toBe('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
   });
 
-  it('bloquea filas sin categoría (la queremos siempre para análisis posterior)', () => {
+  // 2026-07-25: cuando la columna CATEGORIA/CLASE viene vacía, ya no es
+  // error — cae al fallback heurístico. Antes falla ba con "Falta la categoría"
+  // porque la valida contra Colecciones (categorias legacy).
+  it('celda categoria/clase vacía → NO es error, cae al fallback heurístico', () => {
     const rows = [HEADERS,
       ['iPhone sin cat', '128', '90', 'Black', '800', 'USD', '900', 'USD', '111', 'Unitario', '', 'P']];
     const [{ error }] = mapStockRows(rows, ctx);
-    expect(error).toMatch(/categor/i);
+    expect(error).toBeNull();
   });
 
-  // Junio 2026: si la categoría no existe ya NO es error — se marca para
-  // auto-create. El caller (Inventario.jsx confirmImport) la crea antes del bulk.
-  it('si la categoría no existe, NO es error y se marca como _categoriaNueva', () => {
+  // 2026-07-25: si la clase NO existe en el catálogo, se marca para
+  // auto-create en `clases_producto` (Categorías). El caller (Inventario.jsx
+  // confirmImport) llama bulkClases antes del bulk de productos.
+  it('si la clase no existe, NO es error y se marca como _claseNueva', () => {
     const rows = [HEADERS,
       ['iPhone X', '128', '90', 'Black', '800', 'USD', '900', 'USD', '111', 'Unitario', 'Categoria Fantasma', 'P']];
-    const [{ error, _categoriaNueva, body }] = mapStockRows(rows, ctx);
+    const [{ error, _claseNueva, body }] = mapStockRows(rows, ctx);
     expect(error).toBeNull();
-    expect(_categoriaNueva).toBe('Categoria Fantasma');
-    expect(body.categoria_id).toBeNull(); // se completa después del create
+    expect(_claseNueva).toBe('Categoria Fantasma');
+    expect(body.clase_id).toBeNull(); // se completa después del create
   });
 
-  it('match case-insensitive contra categorías existentes (no duplica por mayúsculas)', () => {
-    const ctxCustom = { categorias: [{ id: 7, nombre: 'iPhone Nuevo' }], depositos: [] };
+  it('match case-insensitive contra clases existentes (no duplica por mayúsculas)', () => {
     const rows = [HEADERS,
       ['iPhone X', '128', '90', 'Black', '800', 'USD', '900', 'USD', '111', 'Unitario', 'IPHONE NUEVO', 'P']];
-    const [{ error, _categoriaNueva, body }] = mapStockRows(rows, ctxCustom);
+    const [{ error, _claseNueva, body }] = mapStockRows(rows, ctx);
     expect(error).toBeNull();
-    expect(_categoriaNueva).toBeNull(); // matcheó la existente, no se crea otra
-    expect(body.categoria_id).toBe(7);
+    expect(_claseNueva).toBeNull(); // matcheó la existente, no se crea otra
+    expect(body.clase_id).toBe('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
   });
 
   it('proveedor nuevo se marca con _proveedorNuevo (case-insensitive)', () => {
     const ctxCustom = {
-      categorias: [{ id: 1, nombre: 'iPhone' }],
+      clases: [{ id: 'x', nombre: 'iPhone', activa: true, es_base: true, es_sin_categoria: false, slug_legacy: 'celular_sellado' }],
       depositos: [],
       proveedores: [{ id: 9, nombre: 'Francisco de la Torre' }],
     };
@@ -211,24 +231,27 @@ describe('mapStockRows', () => {
 });
 
 describe('extractNewCatalogos', () => {
-  it('extrae nombres únicos de categorías y proveedores nuevos (case-insensitive)', () => {
+  // 2026-07-25: la key `categorias` del return se renombró a `clases` — el
+  // target de auto-create pasó de `categorias` (Colecciones legacy) a
+  // `clases_producto` (Categorías, fuente de verdad F3.a-onwards).
+  it('extrae nombres únicos de clases y proveedores nuevos (case-insensitive)', () => {
     const mapped = [
-      { _categoriaNueva: 'iPhone Pro', _proveedorNuevo: 'Distri A' },
-      { _categoriaNueva: 'IPHONE PRO', _proveedorNuevo: 'Distri B' }, // duplicado de cat
-      { _categoriaNueva: 'Accesorios', _proveedorNuevo: 'distri a' }, // duplicado de prov
-      { _categoriaNueva: null, _proveedorNuevo: null },
+      { _claseNueva: 'iPhone Pro', _proveedorNuevo: 'Distri A' },
+      { _claseNueva: 'IPHONE PRO', _proveedorNuevo: 'Distri B' }, // duplicado de clase
+      { _claseNueva: 'Accesorios', _proveedorNuevo: 'distri a' }, // duplicado de prov
+      { _claseNueva: null, _proveedorNuevo: null },
     ];
-    const { categorias, proveedores } = extractNewCatalogos(mapped);
-    expect(categorias).toEqual(['iPhone Pro', 'Accesorios']); // primera aparición preserva caps
+    const { clases, proveedores } = extractNewCatalogos(mapped);
+    expect(clases).toEqual(['iPhone Pro', 'Accesorios']); // primera aparición preserva caps
     expect(proveedores).toEqual(['Distri A', 'Distri B']);
   });
 
   it('lista vacía si no hay catálogos nuevos', () => {
     const mapped = [
-      { _categoriaNueva: null, _proveedorNuevo: null },
-      { _categoriaNueva: null, _proveedorNuevo: null },
+      { _claseNueva: null, _proveedorNuevo: null },
+      { _claseNueva: null, _proveedorNuevo: null },
     ];
-    expect(extractNewCatalogos(mapped)).toEqual({ categorias: [], proveedores: [] });
+    expect(extractNewCatalogos(mapped)).toEqual({ clases: [], proveedores: [] });
   });
 });
 
@@ -314,14 +337,15 @@ describe('buildBulkMovimientosPayload', () => {
     rows: [{
       body: {
         nombre: 'iPhone 15 Pro',
-        clase: 'celular', tipo_carga: 'unitario', estado: 'disponible',
+        clase_id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+        tipo_carga: 'unitario', estado: 'disponible',
         imei: '356789012345671', gb: '256', color: 'Titanio Natural',
-        categoria_id: 11, deposito_id: null, proveedor: 'Distri A',
+        categoria_id: null, deposito_id: null, proveedor: 'Distri A',
         costo: 1450, costo_moneda: 'USD',
         precio_venta: 1650, precio_moneda: 'USD',
         cantidad: 1,
       },
-      error: null, _categoriaNueva: null, _proveedorNuevo: null,
+      error: null, _claseNueva: null, _proveedorNuevo: null,
     }],
     ...over,
   });
@@ -349,15 +373,15 @@ describe('buildBulkMovimientosPayload', () => {
   it('valor: cantidad>1 multiplica el costo USD; ARS deja valor en null', () => {
     const usdMulti = mkGroup({
       rows: [{ body: {
-        nombre: 'Funda', clase: 'accesorio', tipo_carga: 'lote',
-        costo: 5, costo_moneda: 'USD', cantidad: 100, categoria_id: 12,
-      }, error: null, _categoriaNueva: null }],
+        nombre: 'Funda', clase_id: 'ffffffff-ffff-ffff-ffff-ffffffffffff', tipo_carga: 'lote',
+        costo: 5, costo_moneda: 'USD', cantidad: 100, categoria_id: null,
+      }, error: null, _claseNueva: null }],
     });
     const ars = mkGroup({
       rows: [{ body: {
-        nombre: 'Cargador', clase: 'accesorio', tipo_carga: 'lote',
-        costo: 8000, costo_moneda: 'ARS', cantidad: 50, categoria_id: 12,
-      }, error: null, _categoriaNueva: null }],
+        nombre: 'Cargador', clase_id: 'ffffffff-ffff-ffff-ffff-ffffffffffff', tipo_carga: 'lote',
+        costo: 8000, costo_moneda: 'ARS', cantidad: 50, categoria_id: null,
+      }, error: null, _claseNueva: null }],
     });
     const [mUsd] = buildBulkMovimientosPayload({ groups: [usdMulti] });
     const [mArs] = buildBulkMovimientosPayload({ groups: [ars] });
@@ -375,17 +399,19 @@ describe('buildBulkMovimientosPayload', () => {
     expect(m.proveedor_id).toBe(999);
   });
 
-  it('reconcilia categoria_id si la categoría era nueva (newCatByName)', () => {
+  it('reconcilia clase_id si la Categoría era nueva (newClaseByName)', () => {
+    // 2026-07-25: renombrado desde reconcilia categoria_id / newCatByName.
+    // Ahora targetea Categorías (clases_producto) en vez de Colecciones.
     const g = mkGroup({
       rows: [{
-        body: { nombre: 'X', categoria_id: null, costo: 100, costo_moneda: 'USD', cantidad: 1 },
+        body: { nombre: 'X', clase_id: null, categoria_id: null, costo: 100, costo_moneda: 'USD', cantidad: 1 },
         error: null,
-        _categoriaNueva: 'Accesorios Especiales',
+        _claseNueva: 'Accesorios Especiales',
       }],
     });
-    const newCatByName = new Map([['accesorios especiales', 777]]);
-    const [m] = buildBulkMovimientosPayload({ groups: [g], newCatByName });
-    expect(m.items[0].producto_stock.categoria_id).toBe(777);
+    const newClaseByName = new Map([['accesorios especiales', 'zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz']]);
+    const [m] = buildBulkMovimientosPayload({ groups: [g], newClaseByName });
+    expect(m.items[0].producto_stock.clase_id).toBe('zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz');
   });
 
   it('moneda ARS: TC se incluye, caja_id se castea a number', () => {
@@ -504,10 +530,13 @@ describe('findDuplicateImeis', () => {
 });
 
 // F3.c-2 (2026-07-09) — resolveClaseXlsx recibe `clases` del tenant y
-// devuelve `clase_id` además del slug legacy. Cuando el import no matchea
-// nada, cae a la fila `es_sin_categoria=true` del sistema.
-describe('mapStockRows — F3.c-2 clase_id via clases del tenant', () => {
-  const CATEGORIAS = [{ id: 1, nombre: 'Celulares' }];
+// devuelve `clase_id` además del slug legacy.
+// 2026-07-25 — cuando el import no matchea nada, YA NO cae a la fila
+// `es_sin_categoria=true` (comportamiento del F3.c-2). Ahora marca
+// `_claseNueva` para que el caller haga bulkClases y cree la Categoría
+// automáticamente. El fallback "Sin categoría" solo aplica cuando la
+// columna viene vacía (raw sin valor).
+describe('mapStockRows — clase_id via clases del tenant', () => {
   const CLASES = [
     { id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', nombre: 'Watch',              emoji: '⌚', activa: true,  es_base: true,  es_sin_categoria: false, slug_legacy: 'watch' },
     { id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', nombre: 'Celular Sellado',    emoji: '📲', activa: true,  es_base: true,  es_sin_categoria: false, slug_legacy: 'celular_sellado' },
@@ -515,52 +544,80 @@ describe('mapStockRows — F3.c-2 clase_id via clases del tenant', () => {
     { id: 'dddddddd-dddd-dddd-dddd-dddddddddddd', nombre: 'Sin categoría',                   activa: true,  es_base: false, es_sin_categoria: true,  slug_legacy: null },
     { id: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee', nombre: 'Inactiva',           emoji: '💤', activa: false, es_base: false, es_sin_categoria: false, slug_legacy: null },
   ];
+  // Nota: columna `categoria` acá es alias de `clase` (STOCK_ALIASES post 2026-07-25).
   const HEAD = ['nombre', 'categoria', 'costo', 'precio_venta', 'clase', 'cantidad'];
-  const rowsWith = (clase, cantidad = 1) => [HEAD, ['iPhone 15', 'Celulares', 100, 200, clase, cantidad]];
+  const rowsWith = (clase, cantidad = 1) => [HEAD, ['iPhone 15', '', 100, 200, clase, cantidad]];
 
   it('slug F1 estándar ("watch") → clase_id de la fila base es_base', () => {
-    const [row] = mapStockRows(rowsWith('watch'), { categorias: CATEGORIAS, clases: CLASES });
+    const [row] = mapStockRows(rowsWith('watch'), { clases: CLASES });
     expect(row.body.clase_id).toBe('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    expect(row._claseNueva).toBeNull();
   });
 
   it('nombre exacto de categoría custom del tenant ("Repuestos") → clase_id (sin slug_legacy)', () => {
-    const [row] = mapStockRows(rowsWith('Repuestos'), { categorias: CATEGORIAS, clases: CLASES });
+    const [row] = mapStockRows(rowsWith('Repuestos'), { clases: CLASES });
     expect(row.body.clase_id).toBe('cccccccc-cccc-cccc-cccc-cccccccccccc');
+    expect(row._claseNueva).toBeNull();
   });
 
   it('alias legacy ("sellado") → clase_id de la fila base "celular_sellado"', () => {
-    const [row] = mapStockRows(rowsWith('sellado'), { categorias: CATEGORIAS, clases: CLASES });
+    const [row] = mapStockRows(rowsWith('sellado'), { clases: CLASES });
     expect(row.body.clase_id).toBe('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+    expect(row._claseNueva).toBeNull();
   });
 
   it('emoji leading + case-insensitive → normaliza y matchea', () => {
     // '⌚ WATCH' → strip emoji → 'WATCH' → lowercase → 'watch' → match
-    const [row] = mapStockRows(rowsWith('⌚ WATCH'), { categorias: CATEGORIAS, clases: CLASES });
+    const [row] = mapStockRows(rowsWith('⌚ WATCH'), { clases: CLASES });
     expect(row.body.clase_id).toBe('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    expect(row._claseNueva).toBeNull();
   });
 
-  it('sin match ("Fundas de neopreno") → fallback a "Sin categoría" del sistema', () => {
-    const [row] = mapStockRows(rowsWith('Fundas de neopreno'), { categorias: CATEGORIAS, clases: CLASES });
-    expect(row.body.clase_id).toBe('dddddddd-dddd-dddd-dddd-dddddddddddd');
-  });
-
-  it('categoría inactiva NO matchea (aunque el nombre coincida)', () => {
-    const [row] = mapStockRows(rowsWith('Inactiva'), { categorias: CATEGORIAS, clases: CLASES });
-    // No matchea "Inactiva" (activa=false) → cae al fallback "Sin categoría".
-    expect(row.body.clase_id).toBe('dddddddd-dddd-dddd-dddd-dddddddddddd');
-  });
-
-  it('sin `clases` en ctx → devuelve slug F1 heurístico y clase_id=null (compat, backend deriva)', () => {
-    const [row] = mapStockRows(rowsWith('watch'), { categorias: CATEGORIAS });
-    // Sin `clases` catálogo, el alias resuelve a slug pero clase_id queda null.
-    // Backend deriva clase_id via resolveClaseAndClaseId (F3.c-1 #530).
+  it('sin match ("Fundas de neopreno") → _claseNueva marker para auto-create', () => {
+    // 2026-07-25: cambió de "fallback a Sin categoría" a "marker para
+    // auto-create". El caller hace bulkClases y reconcilia el clase_id.
+    const [row] = mapStockRows(rowsWith('Fundas de neopreno'), { clases: CLASES });
     expect(row.body.clase_id).toBeNull();
+    expect(row._claseNueva).toBe('Fundas de neopreno');
+  });
+
+  it('categoría inactiva NO matchea → marca _claseNueva para auto-create', () => {
+    // Antes: caía al fallback "Sin categoría". Ahora: se crea una nueva
+    // "Inactiva" al importar (probably distinta a la vieja porque el índice
+    // parcial WHERE deleted_at IS NULL no filtra activa=false; el operador
+    // decide qué hacer post-import).
+    const [row] = mapStockRows(rowsWith('Inactiva'), { clases: CLASES });
+    expect(row._claseNueva).toBe('Inactiva');
+    expect(row.body.clase_id).toBeNull();
+  });
+
+  it('sin `clases` en ctx + valor con contenido → _claseNueva marker', () => {
+    // Sin `clases` catálogo (edge case, tenant sin base seedeada — no
+    // debería pasar en prod pero cubrimos por defensa), y el operador
+    // escribió algo que no matchea alias legacy → marker para auto-create.
+    // ("Repuestos" no está en CLASE_ALIASES; con `watch` seguiría el path
+    // del alias legacy y devolvería clase_id=null pero sin _claseNueva.)
+    const [row] = mapStockRows(rowsWith('Repuestos'), {});
+    expect(row.body.clase_id).toBeNull();
+    expect(row._claseNueva).toBe('Repuestos');
   });
 
   it('celda `clase` vacía → fallback heurístico (con stock → accesorios_varios) + clase_id NULL', () => {
     // Sin columna clase, hasStock (5) → 'accesorios_varios' heurístico. Como
-    // este CLASES de test no tiene accesorios_varios base, clase_id queda null.
-    const [row] = mapStockRows([HEAD, ['iPhone 15', 'Celulares', 100, 200, '', 5]], { categorias: CATEGORIAS, clases: CLASES });
+    // este CLASES de test no tiene accesorios_varios base, clase_id cae al
+    // fallback secundario "Sin categoría" del sistema.
+    const [row] = mapStockRows([HEAD, ['iPhone 15', '', 100, 200, '', 5]], { clases: CLASES });
+    // Ultimo fallback: fila `es_sin_categoria` del sistema (dddddddd...).
+    expect(row.body.clase_id).toBe('dddddddd-dddd-dddd-dddd-dddddddddddd');
+    expect(row._claseNueva).toBeNull();
+  });
+
+  it('celda `clase` vacía sin fila es_sin_categoria en ctx → clase_id NULL', () => {
+    // Edge: ni fallback base ni es_sin_categoria → clase_id null. Backend
+    // rechazaría el bulk pero el mapper no invalida (caller decide).
+    const clasesSinFallback = CLASES.filter(c => !c.es_sin_categoria && c.slug_legacy !== 'accesorios_varios' && c.slug_legacy !== 'celular_sellado');
+    const [row] = mapStockRows([HEAD, ['iPhone 15', '', 100, 200, '', 5]], { clases: clasesSinFallback });
     expect(row.body.clase_id).toBeNull();
+    expect(row._claseNueva).toBeNull();
   });
 });

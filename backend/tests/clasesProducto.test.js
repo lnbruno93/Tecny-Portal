@@ -281,3 +281,104 @@ describe('Categorías (clases_producto) — POST /clases/reorder', () => {
     expect(r.status).toBe(400);
   });
 });
+
+// 2026-07-25: POST /clases/bulk — resolve-or-create batch usado por el
+// import XLSX. Reemplaza `POST /categorias/bulk` (Colecciones legacy).
+// Ver: docs/design/categorias-crud-tenant-f3.md + PR "remove Colecciones
+// auto-create → Categorías".
+describe('Categorías (clases_producto) — POST /clases/bulk', () => {
+  it('crea múltiples clases nuevas y devuelve mapping completo', async () => {
+    const nombres = ['XLSX Bulk A', 'XLSX Bulk B', 'XLSX Bulk C'];
+    const r = await request(app).post('/api/inventario/clases/bulk').set(auth())
+      .send({ nombres });
+    expect(r.status).toBe(200);
+    expect(r.body.map).toBeDefined();
+    expect(Object.keys(r.body.map).sort()).toEqual(nombres.map(n => n.toLowerCase()).sort());
+    // Todos los ids son UUID válidos.
+    for (const id of Object.values(r.body.map)) {
+      expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+    }
+    // Aparecen en el listado con activa=true, emoji=null, orden=0.
+    const list = await request(app).get('/api/inventario/clases').set(auth());
+    for (const n of nombres) {
+      const found = list.body.find(c => c.nombre === n);
+      expect(found).toBeDefined();
+      expect(found.activa).toBe(true);
+      expect(found.emoji).toBeNull();
+      expect(found.orden).toBe(0);
+      expect(found.es_base).toBe(false);
+      expect(found.es_sin_categoria).toBe(false);
+    }
+  });
+
+  it('es idempotente: bulk con nombres ya existentes devuelve los ids sin crear duplicados', async () => {
+    // Crear una primera vez.
+    const nombres = ['XLSX Idempot 1', 'XLSX Idempot 2'];
+    const r1 = await request(app).post('/api/inventario/clases/bulk').set(auth())
+      .send({ nombres });
+    expect(r1.status).toBe(200);
+    const mapPrimero = r1.body.map;
+
+    // Segunda vez con los mismos: deben devolver los MISMOS ids.
+    const r2 = await request(app).post('/api/inventario/clases/bulk').set(auth())
+      .send({ nombres });
+    expect(r2.status).toBe(200);
+    expect(r2.body.map).toEqual(mapPrimero);
+
+    // No hay duplicados en el listado (unique index (tenant_id, LOWER(nombre))).
+    const list = await request(app).get('/api/inventario/clases').set(auth());
+    for (const n of nombres) {
+      const matches = list.body.filter(c => c.nombre.toLowerCase() === n.toLowerCase());
+      expect(matches.length).toBe(1);
+    }
+  });
+
+  it('dedup case-insensitive en el input — 3 casings del mismo nombre → 1 fila', async () => {
+    const r = await request(app).post('/api/inventario/clases/bulk').set(auth())
+      .send({ nombres: ['XLSX Case Test', 'xlsx case test', 'XLSX CASE TEST'] });
+    expect(r.status).toBe(200);
+    // El map devuelve una sola entry (lowercase key).
+    expect(Object.keys(r.body.map)).toEqual(['xlsx case test']);
+    // Solo 1 fila creada en DB.
+    const list = await request(app).get('/api/inventario/clases').set(auth());
+    const matches = list.body.filter(c => c.nombre.toLowerCase() === 'xlsx case test');
+    expect(matches.length).toBe(1);
+  });
+
+  it('resolve-or-create mixto: 1 existente + 1 nuevo → devuelve ambos en el map', async () => {
+    // Crear una preexistente.
+    await request(app).post('/api/inventario/clases').set(auth())
+      .send({ nombre: 'XLSX Mixto Existente' });
+    // Bulk pide una existente + una nueva.
+    const r = await request(app).post('/api/inventario/clases/bulk').set(auth())
+      .send({ nombres: ['XLSX Mixto Existente', 'XLSX Mixto Nueva'] });
+    expect(r.status).toBe(200);
+    expect(Object.keys(r.body.map).sort()).toEqual(['xlsx mixto existente', 'xlsx mixto nueva']);
+  });
+
+  it('lista vacía → { map: {} } (no-op)', async () => {
+    const r = await request(app).post('/api/inventario/clases/bulk').set(auth())
+      .send({ nombres: [] });
+    expect(r.status).toBe(200);
+    expect(r.body.map).toEqual({});
+  });
+
+  it('rechaza más de 500 nombres (guard de abuso)', async () => {
+    const nombres = Array.from({ length: 501 }, (_, i) => `XLSX Bulk Overflow ${i}`);
+    const r = await request(app).post('/api/inventario/clases/bulk').set(auth())
+      .send({ nombres });
+    expect(r.status).toBe(400);
+  });
+
+  it('rechaza nombres vacíos (schema Zod)', async () => {
+    const r = await request(app).post('/api/inventario/clases/bulk').set(auth())
+      .send({ nombres: ['   ', ''] });
+    expect(r.status).toBe(400);
+  });
+
+  it('sin auth → 401', async () => {
+    const r = await request(app).post('/api/inventario/clases/bulk')
+      .send({ nombres: ['x'] });
+    expect(r.status).toBe(401);
+  });
+});

@@ -49,6 +49,7 @@ const {
   createClaseProductoSchema,
   updateClaseProductoSchema,
   reorderClasesProductoSchema,
+  bulkClasesSchema,
 } = require('../schemas/clasesProducto');
 
 /**
@@ -1930,6 +1931,96 @@ router.post(
         }
       });
       res.status(201).json(row);
+    } catch (err) { next(err); }
+  }
+);
+
+// POST /clases/bulk — resolve-or-create batch de Categorías.
+//
+// 2026-07-25: nuevo endpoint. Reemplaza el uso previo del import XLSX del
+// `POST /categorias/bulk` (tabla legacy `categorias` = Colecciones). El
+// operador reportó que la planilla auto-creaba Colecciones cuando debería
+// crear Categorías (`clases_producto`) — la fuente de verdad F3.a-onwards.
+//
+// Idempotente:
+//   - Dedup case-insensitive del input.
+//   - INSERT ... ON CONFLICT (uq_clases_producto_tenant_nombre) DO NOTHING.
+//     El unique es case-insensitive vía `LOWER(nombre)` en el índice parcial
+//     (ver migration 20260708000001_clases_producto.js) — reusar un nombre
+//     ya existente es no-op.
+//   - SELECT devuelve mapping para TODOS (recién creados + preexistentes).
+//
+// Response shape: `{ map: { lowercase_nombre: uuid } }` — idéntico al
+// `POST /categorias/bulk` legacy para que el frontend reutilice el mismo
+// pattern de reconciliación en `confirmImport`.
+//
+// Los nombres se crean con:
+//   · activa=true          (aparecen en dropdowns inmediatamente)
+//   · emoji=null           (el operador puede editarlo después del import)
+//   · orden=0              (aparecen primero en el modal — consistente con
+//                          el manual `POST /clases`; el operador reordena si
+//                          quiere ubicarlos al final)
+//   · es_base=false        (default de la columna en la migration)
+//   · es_sin_categoria=false (idem)
+//
+// Autorización: cualquier user con `inventario.crear` — mismo que `POST
+// /clases` singular. El import XLSX ya exige `inventario.crear` para el bulk
+// de productos, así que el permiso está garantizado en el flujo real.
+router.post(
+  '/clases/bulk',
+  requireCapability('inventario.crear'),
+  validate(bulkClasesSchema),
+  async (req, res, next) => {
+    try {
+      // Dedup case-insensitive preservando la 1ra capitalización vista.
+      const inputDedup = [...new Map(
+        req.body.nombres.map(n => [String(n).trim().toLowerCase(), String(n).trim()])
+      ).values()].filter(Boolean);
+      if (inputDedup.length === 0) return res.json({ map: {} });
+
+      const map = await db.withTenant(req.tenantId, async (client) => {
+        // ON CONFLICT usa el índice parcial UNIQUE (tenant_id, LOWER(nombre))
+        // WHERE deleted_at IS NULL (migration 20260708000002 líneas 80-84).
+        // Como es un CREATE UNIQUE INDEX (no CONSTRAINT), hay que usar column
+        // inference + repetir el WHERE predicate del índice — Postgres no
+        // acepta `ON CONSTRAINT` para índices sin constraint asociado.
+        //
+        // Comportamiento intencional: NO se re-usa una clase soft-deleted
+        // aunque el nombre matchee — el índice partial la excluye del
+        // conflict check, así que un INSERT con nombre "borrado" crearía
+        // una nueva fila. Para restaurar, el operador debe hacerlo via UI
+        // (o directamente en DB) — F3.a design doc.
+        await client.query(
+          `INSERT INTO clases_producto (tenant_id, nombre, emoji, orden, activa)
+           SELECT $1, unnest($2::text[]), NULL, 0, TRUE
+           ON CONFLICT (tenant_id, LOWER(nombre)) WHERE deleted_at IS NULL DO NOTHING`,
+          [req.tenantId, inputDedup]
+        );
+        // SELECT para obtener id de TODOS (recién creados + ya existentes).
+        // Usa LOWER(nombre) match para respetar case-insensitivity del unique.
+        // Excluye soft-deleted (evita reusar accidentalmente una borrada —
+        // si la reuse fue intencional, el operador debe restaurarla primero).
+        const lowers = inputDedup.map(n => n.toLowerCase());
+        const { rows } = await client.query(
+          `SELECT id, nombre FROM clases_producto
+            WHERE tenant_id = $1
+              AND LOWER(nombre) = ANY($2::text[])
+              AND deleted_at IS NULL`,
+          [req.tenantId, lowers]
+        );
+        // Audit: 1 entry por operación bulk (con la lista de nombres input).
+        // No registramos uno por cada — audit_logs explotaría con imports grandes.
+        await audit(client, 'clases_producto', 'INSERT', null, {
+          tipo: 'bulk_resolve_or_create_clases',
+          nombres: inputDedup,
+          user_id: req.user.id,
+          req,
+        });
+        const out = {};
+        for (const r of rows) out[r.nombre.toLowerCase()] = r.id;
+        return out;
+      });
+      res.json({ map });
     } catch (err) { next(err); }
   }
 );
