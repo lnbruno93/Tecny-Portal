@@ -15,7 +15,7 @@
 //   └──────────┴──────────────────────────┴───────────┘
 
 import { useState } from 'react';
-import { fmt } from '../../lib/format';
+import { fmt, fmtSignedParts } from '../../lib/format';
 import { sym } from './utils';
 import { useMonedasTenant } from '../../lib/useMonedasTenant';
 // F3.d-1 (2026-07-09): CLASES_LABELS y claseLabel se removieron. Los chips
@@ -137,7 +137,22 @@ export default function Dashboard({ d }) {
         {showGanancias && (
         <div className="card card-tight u-flex-1" data-testid="kpi-ganancia">
           <div className="kpi-label">Ganancia neta</div>
-          <div className="kpi-value mono pos u-fs-17">u$s{fmt(d.ganancia_neta_usd)}</div>
+          {/*
+            2026-07-25 fix P0 (bug reportado por cliente): antes se usaba
+            className="pos" hardcoded + fmt() que devuelve magnitud absoluta,
+            entonces -19 se mostraba como "u$s19" en verde (parecía ganancia
+            cuando era pérdida). fmtSignedParts descompone en sign/magnitude/cls
+            y renderizamos con signo visible + color correcto. Aplicable a
+            períodos donde egresos > ganancia bruta.
+          */}
+          {(() => {
+            const { sign, magnitude, cls } = fmtSignedParts(d.ganancia_neta_usd);
+            return (
+              <div className={`kpi-value mono ${cls} u-fs-17`} data-testid="kpi-ganancia-value">
+                {sign}u$s{magnitude}
+              </div>
+            );
+          })()}
           {/*
             Tema C.4 (2026-06-13): desglose de la cascada que llega a la neta.
             Lucas pidió aprobar "B" — ver bruta + costo financiero + neta para que
