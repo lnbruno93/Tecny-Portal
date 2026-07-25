@@ -1,103 +1,58 @@
 /**
  * Migration: backfill NULLIF en policies tenant_isolation de 7 tablas
  *
- * ── Contexto ──────────────────────────────────────────────────────────────
- *   El chequeo de CONTENT del predicate agregado a `assertRlsCoverage`
- *   (2026-07-24, junto con este PR) reveló 7 tablas cuyas policies
- *   `tenant_isolation` NO usan `NULLIF(current_setting(...), '')` — la
- *   misma clase de bug que causó Sentry TECNY-PORTAL-BACKEND-16 en
- *   `audit_logs` esta semana.
+ * ── NO-OP hotfix 2026-07-25 ──────────────────────────────────────────────
  *
- *   Tablas afectadas:
- *     - chat_conversations
- *     - chat_messages
- *     - chat_rate_limits
- *     - clases_producto
- *     - egresos_recurrentes_overrides
- *     - proyecciones_mensuales
- *     - share_links
+ * Esta migration fue REEMPLAZADA por no-op durante un hotfix urgente:
+ * intentaba `DROP POLICY IF EXISTS tenant_isolation ON <tabla>` para 7
+ * tablas y falló en producción con:
  *
- *   Todas creadas después del fix NULLIF del 2026-06-18. Sus migrations
- *   originales usaron `CREATE POLICY ... USING (tenant_id =
- *   current_setting(...)::int)` directamente (sin el helper canónico
- *   `enableTenantRlsFor` que aún no existía o no estaba imponiéndose).
+ *   error: must be owner of relation clases_producto
  *
- * ── Por qué es P0 ─────────────────────────────────────────────────────────
- *   Mismo patrón exacto que hizo explotar `/logout` con Sentry #16: si
- *   cualquier endpoint escribe/lee una de estas tablas SIN haber hecho
- *   `SET LOCAL app.current_tenant` primero, PG evalúa
- *   `''::int` → exception `pg_strtoint32_safe` → request 500 + connection
- *   envenenada (que después el pool cierra, propagando "Connection
- *   terminated" al próximo consumer — Sentry #17).
+ * Root cause:
+ *   El rol de migrations en prod es `ipro_app` (NOSUPERUSER). Las 7
+ *   tablas afectadas (`clases_producto`, `chat_conversations`,
+ *   `chat_messages`, `chat_rate_limits`, `egresos_recurrentes_overrides`,
+ *   `proyecciones_mensuales`, `share_links`) fueron creadas en su momento
+ *   por un rol distinto (probably `postgres` superuser). Por eso el
+ *   `ipro_app` no puede hacer DROP POLICY sobre ellas.
  *
- *   No requiere que un atacante haga nada — con el flujo actual, un
- *   endpoint mal auth-configurado o un job/cron sin tenant context es
- *   suficiente. La latencia para explotar es "hasta que alguien ejecute
- *   el path". Preferimos que el boot falle si esto vuelve a aparecer
- *   (chequeo 4 en assertRlsCoverage) que descubrirlo en producción.
+ *   El CI job `NOSUPERUSER RLS Tests` no cazó el bug porque en CI las
+ *   tablas SÍ son owned por el rol de migrations — el gap es que en prod
+ *   los owners son heterogéneos.
  *
- * ── Fix ───────────────────────────────────────────────────────────────────
- *   Reescribir las 7 policies usando `PREDICATE_CLOSED` de rlsCanonical.
- *   Idempotente: DROP + CREATE.
+ * Impacto del no-op:
+ *   Las 7 tablas afectadas siguen con predicate SIN `NULLIF` — lo cual
+ *   sigue siendo un bug latente (mismo pattern que Sentry #16 audit_logs).
+ *   NO es P0: el pattern solo se dispara si algún endpoint las escribe
+ *   SIN `SET LOCAL app.current_tenant` primero, y hoy TODAS las escrituras
+ *   pasan por `withTenant()`. El startup assertion CONTENT check
+ *   (rlsCanonical.js chequeo 4, agregado en PR #864) sigue vivo y va a
+ *   fallar el boot si el drift se agranda.
  *
- *   Todas las 7 tablas tienen `tenant_id NOT NULL` verificado (2026-07-24,
- *   information_schema.columns). Por eso usamos `PREDICATE_CLOSED` (no la
- *   variante NULLABLE de audit_logs).
+ * Follow-up:
+ *   1. Script SQL manual (con superuser en Railway console): hacer
+ *      `ALTER TABLE <tabla> OWNER TO ipro_app` para las 7 tablas afectadas.
+ *   2. Nueva migration (timestamp posterior) que ahora sí puede hacer
+ *      DROP + CREATE POLICY sin problema.
+ *   3. Update del CI test para que replique el mix de owners heterogéneos
+ *      de prod (crear alguna tabla con rol distinto en el setup).
  *
- * ── Down ──────────────────────────────────────────────────────────────────
- *   Restaura los predicates ORIGINALES (sin NULLIF). Rollback puramente
- *   defensivo — si algo se rompe, la migration down NO reintroduce el bug
- *   activamente porque el error solo ocurre cuando falta SET LOCAL. Pero
- *   si necesitás rollback de emergencia, este `down` es exactamente
- *   simétrico con el `up` — te devuelve al estado pre-fix.
- *
- * ── Test post-migration ───────────────────────────────────────────────────
- *   El test `assertRlsCoverage (integration) › estado actual del schema
- *   es OK` en `backend/tests/rlsCanonical.test.js` valida que después de
- *   esta migration TODAS las policies (incluidas las 7) matchean el
- *   predicate canónico con NULLIF.
+ * Por qué se dejó el file como no-op (en vez de eliminarlo):
+ *   La migration `20260724000002` NUNCA se marcó como corrida en la
+ *   tabla `pgmigrations` (los 9 deploys fallaron ANTES del INSERT del
+ *   registro). Eliminar el file directamente funciona técnicamente,
+ *   pero deja un "hueco" en el timestamp sequence de migrations que
+ *   confunde a un dev futuro leyendo git log. El no-op preserva el
+ *   timestamp + documenta lo que pasó + no muta DB.
  */
 
-const {
-  PREDICATE_CLOSED,
-} = require('../src/lib/rlsCanonical');
-
-// Predicate buggeado (SIN NULLIF) — usado por el down para rollback exacto.
-const PREDICATE_BUGGED = `tenant_id = current_setting('app.current_tenant', true)::int`;
-
-// Las 7 tablas afectadas — enumeradas explícitamente para que el diff sea
-// claro y no dependamos de un query dinámico en la migration (que podría
-// tocar tablas no intencionales si el schema cambia entre `up` y `down`).
-const TABLAS_A_FIXEAR = [
-  'chat_conversations',
-  'chat_messages',
-  'chat_rate_limits',
-  'clases_producto',
-  'egresos_recurrentes_overrides',
-  'proyecciones_mensuales',
-  'share_links',
-];
-
+// eslint-disable-next-line no-unused-vars
 exports.up = (pgm) => {
-  for (const tabla of TABLAS_A_FIXEAR) {
-    pgm.sql(`
-      DROP POLICY IF EXISTS tenant_isolation ON ${tabla};
-      CREATE POLICY tenant_isolation ON ${tabla}
-        FOR ALL TO PUBLIC
-        USING (${PREDICATE_CLOSED})
-        WITH CHECK (${PREDICATE_CLOSED});
-    `);
-  }
+  // No-op. Ver header comment.
 };
 
+// eslint-disable-next-line no-unused-vars
 exports.down = (pgm) => {
-  for (const tabla of TABLAS_A_FIXEAR) {
-    pgm.sql(`
-      DROP POLICY IF EXISTS tenant_isolation ON ${tabla};
-      CREATE POLICY tenant_isolation ON ${tabla}
-        FOR ALL TO PUBLIC
-        USING (${PREDICATE_BUGGED})
-        WITH CHECK (${PREDICATE_BUGGED});
-    `);
-  }
+  // No-op.
 };

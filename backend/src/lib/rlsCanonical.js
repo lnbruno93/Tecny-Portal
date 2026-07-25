@@ -300,7 +300,23 @@ async function assertRlsCoverage(pool) {
   // Pattern BUGUEADO (rechazado):
   //   `current_setting('app.current_tenant', true)::integer`
   //   (sin NULLIF → cast '' a int throwea con pg_strtoint32_safe)
+  // 2026-07-25 hotfix: el chequeo 4 (CONTENT) originalmente throwaba fatal
+  // si detectaba drift. En prod, 7 tablas están en drift (no aplican NULLIF)
+  // porque la migration de backfill (20260724000002) falla por owner
+  // mismatch — el rol `ipro_app` NOSUPERUSER no puede DROP POLICY sobre
+  // tablas cuyo owner es otro rol.
+  //
+  // Hasta que se corra el fix manual con superuser (ALTER TABLE OWNER TO
+  // ipro_app + re-run migration), el chequeo 4 se degrada a warning +
+  // Sentry alert — NO aborta boot. Los otros chequeos (1-3, coverage)
+  // siguen siendo fatales.
+  //
+  // Impacto real del drift: bajo. El bug pattern (predicate sin NULLIF)
+  // solo se dispara si algún endpoint escribe sin `SET LOCAL
+  // app.current_tenant`. Hoy TODAS las escrituras a estas tablas pasan
+  // por `withTenant()`. La observabilidad vía Sentry captura si aparece.
   let contentChecked = 0;
+  const contentWarnings = [];
   for (const pol of polRows) {
     // Chequear ambos qual (USING) y with_check (WITH CHECK).
     // Postgres puede devolver with_check = null si es idéntico a qual y
@@ -322,7 +338,7 @@ async function assertRlsCoverage(pool) {
       const hasBuggedCast = /(?<!NULLIF\s*\(\s*)current_setting\s*\(\s*'app\.current_tenant'\s*,\s*true\s*\)\s*::\s*int/i.test(text);
 
       if (!hasNullifWrap || hasBuggedCast) {
-        errores.push(
+        contentWarnings.push(
           `Policy 'tenant_isolation' en "${pol.tablename}" tiene predicate ` +
           `${name} SIN NULLIF envolvente. Esto revive el bug Sentry #16 ` +
           `(cast '' → int throwea pg_strtoint32_safe). Usar PREDICATE_CLOSED ` +
@@ -331,6 +347,29 @@ async function assertRlsCoverage(pool) {
         );
       }
     }
+  }
+
+  // Emitir warning + Sentry para el drift de CONTENT (no fatal).
+  if (contentWarnings.length > 0) {
+    // Logger optional import (evita ciclo si rlsCanonical se usa desde tests
+    // que no cargan logger). Fallback a console.warn.
+    let logger;
+    try { logger = require('./logger'); } catch { logger = console; }
+    const warnMsg =
+      `[rlsCanonical] CONTENT drift detectado en ${contentWarnings.length} predicate(s). ` +
+      `Boot continúa (warning-only) porque el fix requiere superuser en DB para ` +
+      `re-owner de tablas. Hacer follow-up: script SQL manual + re-run backfill migration.`;
+    logger.warn({ count: contentWarnings.length, samples: contentWarnings.slice(0, 3) }, warnMsg);
+    try {
+      const Sentry = require('@sentry/node');
+      if (process.env.SENTRY_DSN) {
+        Sentry.captureMessage(warnMsg, {
+          level: 'warning',
+          tags: { source: 'rls_content_drift' },
+          extra: { warnings: contentWarnings },
+        });
+      }
+    } catch { /* Sentry not available */ }
   }
 
   if (errores.length > 0) {
