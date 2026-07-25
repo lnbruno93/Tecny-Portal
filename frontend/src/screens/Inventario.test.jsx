@@ -479,4 +479,105 @@ describe('Pantalla Inventario', () => {
       }
     });
   });
+
+  // 2026-07-25 (pedido Lucas UX): selector "Filas por página" con default 100
+  // (antes 50 hardcoded). Persiste en URL `?rows=N` + localStorage. Cambio
+  // motivado por tenants con 500+ productos que necesitaban demasiadas
+  // páginas para navegar.
+  describe('Filas por página (densidad Inventario)', () => {
+    beforeEach(() => {
+      // Aislar cada test — LS puede pisar el default si un test previo lo escribió.
+      try { window.localStorage.removeItem('inventario:pageSize'); } catch (_) { /* jsdom OK */ }
+    });
+
+    it('default 100 filas: el request lleva limit=100 sin URL param', async () => {
+      renderInventario();
+      await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
+      // Primer request debe llevar limit=100 (el nuevo default).
+      const firstCall = inventarioApi.productos.mock.calls[0][0];
+      expect(firstCall.limit).toBe(100);
+      expect(firstCall.page).toBe(1);
+    });
+
+    it('URL `?rows=200` → request lleva limit=200 (deep-link)', async () => {
+      renderInventario(['/inventario?rows=200']);
+      await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
+      const firstCall = inventarioApi.productos.mock.calls[0][0];
+      expect(firstCall.limit).toBe(200);
+    });
+
+    it('URL con `?rows=999` inválido → cae al default 100', async () => {
+      renderInventario(['/inventario?rows=999']);
+      await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
+      const firstCall = inventarioApi.productos.mock.calls[0][0];
+      expect(firstCall.limit).toBe(100);
+    });
+
+    it('localStorage con pageSize 200 → aplica sin URL param', async () => {
+      window.localStorage.setItem('inventario:pageSize', '200');
+      renderInventario();
+      await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
+      const firstCall = inventarioApi.productos.mock.calls[0][0];
+      expect(firstCall.limit).toBe(200);
+    });
+
+    it('URL param gana sobre localStorage', async () => {
+      window.localStorage.setItem('inventario:pageSize', '25');
+      renderInventario(['/inventario?rows=200']);
+      await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
+      const firstCall = inventarioApi.productos.mock.calls[0][0];
+      expect(firstCall.limit).toBe(200);
+    });
+
+    it('cambiar el select "Filas" persiste en URL + localStorage + redispatch', async () => {
+      renderInventario();
+      await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
+      inventarioApi.productos.mockClear();
+
+      const select = screen.getByLabelText('Cantidad de filas por página');
+      fireEvent.change(select, { target: { value: '200' } });
+
+      // Nuevo request con limit=200.
+      await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
+      const nextCall = inventarioApi.productos.mock.calls[0][0];
+      expect(nextCall.limit).toBe(200);
+
+      // localStorage persistido para próxima sesión.
+      expect(window.localStorage.getItem('inventario:pageSize')).toBe('200');
+
+      // URL actualizada.
+      expect(screen.getByTestId('location').textContent).toMatch(/rows=200/);
+    });
+
+    it('volver al default (100) NO escribe URL — la mantiene limpia', async () => {
+      window.localStorage.setItem('inventario:pageSize', '25');
+      renderInventario(['/inventario?rows=200']);
+      await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
+      inventarioApi.productos.mockClear();
+
+      const select = screen.getByLabelText('Cantidad de filas por página');
+      fireEvent.change(select, { target: { value: '100' } });
+
+      await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
+      // La URL NO debe tener ?rows=100 (default no ensucia deep-links).
+      expect(screen.getByTestId('location').textContent).not.toMatch(/rows=/);
+      // localStorage sí guarda 100 explícito (para próxima sesión).
+      expect(window.localStorage.getItem('inventario:pageSize')).toBe('100');
+    });
+
+    it('cambiar el pageSize resetea page a 1 (evita landing en "sin resultados")', async () => {
+      // Simulamos estar en página 3 con 25 filas, y saltamos a 200 (menos páginas totales).
+      renderInventario(['/inventario?rows=25&page=3']);
+      await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
+      inventarioApi.productos.mockClear();
+
+      const select = screen.getByLabelText('Cantidad de filas por página');
+      fireEvent.change(select, { target: { value: '200' } });
+
+      await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
+      const nextCall = inventarioApi.productos.mock.calls[0][0];
+      expect(nextCall.limit).toBe(200);
+      expect(nextCall.page).toBe(1);
+    });
+  });
 });
