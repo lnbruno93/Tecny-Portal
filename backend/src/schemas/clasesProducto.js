@@ -69,8 +69,21 @@ const reorderClasesProductoSchema = z.object({
     .max(100, 'Máximo 100 items por reorder'),
 }).strict();
 
+// ── Bulk resolve-or-create ──
+// 2026-07-25: usado por el import XLSX (Inventario.jsx confirmImport) para
+// crear en batch todas las Categorías nuevas que el operador escribió en la
+// planilla. Idempotente vía ON CONFLICT — devuelve mapping para reconciliar
+// los `clase_id` de cada row del bulk de productos.
+//
+// Reemplaza el uso previo de `POST /categorias/bulk` (tabla legacy `categorias`
+// = Colecciones) — user pidió consolidar TODO en Categorías 2026-07-25.
+const bulkClasesSchema = z.object({
+  nombres: z.array(nombre).max(500, 'Máximo 500 nombres por lote'),
+}).strict();
+
 module.exports = {
   createClaseProductoSchema,
   updateClaseProductoSchema,
   reorderClasesProductoSchema,
+  bulkClasesSchema,
 };

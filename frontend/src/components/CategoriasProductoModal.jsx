@@ -32,17 +32,13 @@ export default function CategoriasProductoModal({
   open,
   onClose,
   toast,
-  // 2026-07-11: sección Colecciones (tabla legacy `categorias`) migrada
-  // desde el modal "Depósitos" (renombrado). Los handlers viven en
-  // Inventario.jsx porque comparten el state con otros usos (dropdown
-  // categoria_id en el form de producto, etc.) — este modal solo los
-  // consume. Props opcionales: si no se pasan, la sección Colecciones
-  // NO se muestra (backwards compat).
-  colecciones,
-  nuevaColeccion,
-  setNuevaColeccion,
-  onAddColeccion,
-  onDelColeccion,
+  // 2026-07-25: sección Colecciones removida — user pidió consolidar TODO en
+  // Categorías (`clases_producto`) y remover el concepto de Colecciones
+  // (tabla legacy `categorias`, ver docs/design/categorias-crud-tenant-f3.md).
+  // Las props `colecciones` / `nuevaColeccion` / `setNuevaColeccion` /
+  // `onAddColeccion` / `onDelColeccion` que este modal recibía se eliminaron.
+  // Si alguna llamada aún las pasa se ignoran silenciosamente (compat de
+  // llamadas viejas en el mismo release).
 }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -184,54 +180,10 @@ export default function CategoriasProductoModal({
           ) : (
             <CatList items={items} onEdit={setEditing} onDelete={handleDelete} onReorder={handleReorder} />
           )}
-
-          {/* Sección Colecciones (categorias legacy) — 2026-07-11.
-              Solo se muestra si el parent (Inventario.jsx) pasa las props.
-              Cross-purpose "agrupación libre" — el operador puede tener
-              hasta N colecciones tipo "iPhones 2024", "Rebajados", etc.
-              Complementaria a Categorías (tipo de producto). */}
-          {colecciones !== undefined && (
-            <div className="u-section-with-top-border">
-              <div className="u-fw-600-fs-14-mb-4">Colecciones</div>
-              <p className="muted tiny u-mb-12">
-                Agrupación libre auxiliar, independiente del tipo de producto. Útil para separar
-                "iPhones Nuevos", "Rebajados", "Promoción", etc. Un producto puede pertenecer a una
-                colección además de tener su categoría.
-              </p>
-              <div className="flex-row u-gap-6-mb-12">
-                <input
-                  className="input"
-                  placeholder="Nueva colección"
-                  value={nuevaColeccion || ''}
-                  onChange={e => setNuevaColeccion(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); onAddColeccion?.(); } }}
-                />
-                <button type="button" className="btn btn-sm" onClick={onAddColeccion}>
-                  <Icons.Plus size={13} /> Agregar
-                </button>
-              </div>
-              <div className="stack u-gap-4">
-                {colecciones.length === 0 && <div className="muted tiny">Sin colecciones</div>}
-                {colecciones.map(c => {
-                  const count = Number(c.productos_count ?? 0);
-                  const stock = Number(c.stock_disponible ?? 0);
-                  return (
-                    <div key={c.id} className="flex-between u-fs-13-p-6-0-border-bottom">
-                      <span className="u-flex-1-ellipsis-nowrap" title={c.nombre}>
-                        {c.nombre}
-                      </span>
-                      <span className="muted tiny u-mr-8-nowrap" title={`${count} producto${count === 1 ? '' : 's'} cargado${count === 1 ? '' : 's'} · ${stock} unidad${stock === 1 ? '' : 'es'} en stock`}>
-                        {count} prod · {stock} u
-                      </span>
-                      <button type="button" className="icon-btn u-color-neg" onClick={() => onDelColeccion?.(c)}>
-                        <Icons.Trash size={13} />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          {/* 2026-07-25: sección "Colecciones" (tabla legacy `categorias`)
+              removida — user pidió consolidar TODO en Categorías. Los props
+              relacionados (`colecciones`, `nuevaColeccion`, etc.) también se
+              limpiaron del componente. */}
         </div>
 
         <div className="modal-ft">
