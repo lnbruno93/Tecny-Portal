@@ -137,6 +137,32 @@ describe('reportError — filtro de ruido (NOISE_PATTERNS)', () => {
       expect(mockFetch).toHaveBeenCalledTimes(1);
     });
   });
+
+  // 2026-07-25 Sentry TECNY-PORTAL-BACKEND-19: cuando un usuario aborta
+  // fetch (navega, cambia de pantalla), Safari + Chrome moderno emiten
+  // "Fetch is aborted" en vez de "AbortError" o "The operation was aborted".
+  // El pattern nuevo `/[Ff]etch (is|was) aborted/` cubre las variantes.
+  describe('AbortError variants — Safari + Chrome moderno (Sentry #19)', () => {
+    it('NO reporta "Fetch is aborted" (Safari — TECNY-PORTAL-BACKEND-19)', async () => {
+      const { reportError } = await import('./reportError.js');
+      reportError(new TypeError('Fetch is aborted'));
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('NO reporta "Fetch was aborted" (variante WebKit)', async () => {
+      const { reportError } = await import('./reportError.js');
+      reportError(new TypeError('Fetch was aborted'));
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    // Regresión guard: no debe silenciar OTROS mensajes con "aborted" que
+    // podrían ser bugs reales (ej. "Transaction aborted" en un flow de DB).
+    it('SÍ reporta "Transaction aborted" (no es fetch abort — puede ser bug)', async () => {
+      const { reportError } = await import('./reportError.js');
+      reportError(new Error('Transaction aborted by savepoint rollback'));
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+  });
 });
 
 // Auditoría 2026-06-30 Q-09: si el build sale sin VITE_API_URL, el fallback

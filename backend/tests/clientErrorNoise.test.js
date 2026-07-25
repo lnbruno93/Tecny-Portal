@@ -28,8 +28,14 @@ describe('isClientErrorNoise — filtro defensivo de ruido /api/client-errors', 
       ['NetworkError when attempting to fetch resource', 'Firefox'],
       ['Load failed', 'Safari'],
       ['Network request failed', 'misc'],
-      ['The operation was aborted', 'user navegó'],
-      ['AbortError: The user aborted a request', 'user cerró'],
+      ['The operation was aborted', 'user navegó (Firefox)'],
+      ['AbortError: The user aborted a request', 'user cerró (Chrome clásico)'],
+      // 2026-07-25 Sentry TECNY-PORTAL-BACKEND-19 — Safari + Chrome moderno
+      // usan mensajes distintos que los patterns AbortError/The operation
+      // was aborted NO matcheaban.
+      ['Fetch is aborted', 'Safari / Chrome moderno — TECNY-PORTAL-BACKEND-19'],
+      ['Fetch was aborted', 'variante también reportada por WebKit'],
+      ['TypeError: Fetch is aborted', 'con TypeError prefix Safari'],
       // Chunk load.
       ['Expected a JavaScript module script but got HTML — not a valid JavaScript MIME type', 'chunk HTML'],
       ['Failed to load dynamically imported module', 'browser genérico'],
@@ -75,6 +81,11 @@ describe('isClientErrorNoise — filtro defensivo de ruido /api/client-errors', 
 
     it('incluye el pattern _result.default (regresión que motivó el fix)', () => {
       const hasIt = NOISE_PATTERNS.some((p) => p.test("undefined is not an object (evaluating 'e._result.default')"));
+      expect(hasIt).toBe(true);
+    });
+
+    it('incluye el pattern "Fetch is aborted" (Sentry #19 2026-07-25)', () => {
+      const hasIt = NOISE_PATTERNS.some((p) => p.test('Fetch is aborted'));
       expect(hasIt).toBe(true);
     });
   });
