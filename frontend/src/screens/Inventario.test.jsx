@@ -267,6 +267,73 @@ describe('Pantalla Inventario', () => {
       expect(lastCall[0].deposito_id).toBeUndefined();
     });
 
+    // 2026-07-25 (pedido Lucas): filtro depósito. Backend ya aceptaba
+    // `?deposito_id=`; agregamos la UI.
+    describe('filtro Depósito', () => {
+      it('sin depósitos configurados: el select NO aparece', async () => {
+        inventarioApi.depositos.mockResolvedValue([]);
+        renderInventario();
+        await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
+        // No hay label "Depósito" en la UI porque el tenant no configuró ninguno.
+        expect(screen.queryByLabelText(/Filtrar por depósito/i)).toBeNull();
+      });
+
+      it('con depósitos: el select aparece y default es "Todos"', async () => {
+        inventarioApi.depositos.mockResolvedValue([
+          { id: 1, nombre: 'Depósito Central' },
+          { id: 2, nombre: 'Depósito Local' },
+        ]);
+        renderInventario();
+        await waitFor(() => expect(inventarioApi.depositos).toHaveBeenCalled());
+        const select = await screen.findByLabelText(/Filtrar por depósito/i);
+        expect(select.value).toBe('todos');
+        // "Todos los depósitos" + 2 opciones custom.
+        expect(select.querySelectorAll('option')).toHaveLength(3);
+      });
+
+      it('cambiar el select agrega ?deposito=<id> a la URL y envía deposito_id al backend', async () => {
+        inventarioApi.depositos.mockResolvedValue([
+          { id: 42, nombre: 'Depósito Central' },
+        ]);
+        renderInventario();
+        await waitFor(() => expect(inventarioApi.depositos).toHaveBeenCalled());
+        const select = await screen.findByLabelText(/Filtrar por depósito/i);
+        fireEvent.change(select, { target: { value: '42' } });
+        await waitFor(() => {
+          expect(screen.getByTestId('location').textContent).toMatch(/[?&]deposito=42/);
+        });
+        // Y el próximo fetch incluye `deposito_id: '42'`.
+        await waitFor(() => {
+          const lastCall = inventarioApi.productos.mock.calls[inventarioApi.productos.mock.calls.length - 1];
+          expect(lastCall[0].deposito_id).toBe('42');
+        });
+      });
+
+      it('URL con ?deposito=<id> pre-selecciona la opción al mount', async () => {
+        inventarioApi.depositos.mockResolvedValue([
+          { id: 7, nombre: 'Depósito Norte' },
+        ]);
+        renderInventario(['/inventario?deposito=7']);
+        await waitFor(() => expect(inventarioApi.depositos).toHaveBeenCalled());
+        const select = await screen.findByLabelText(/Filtrar por depósito/i);
+        expect(select.value).toBe('7');
+        // Fetch incluye el filtro.
+        await waitFor(() => {
+          const lastCall = inventarioApi.productos.mock.calls[inventarioApi.productos.mock.calls.length - 1];
+          expect(lastCall[0].deposito_id).toBe('7');
+        });
+      });
+
+      it('default (deposito=todos) NO escribe ?deposito= en URL', async () => {
+        inventarioApi.depositos.mockResolvedValue([
+          { id: 1, nombre: 'Depósito Central' },
+        ]);
+        renderInventario();
+        await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
+        expect(screen.getByTestId('location').textContent).not.toMatch(/[?&]deposito=/);
+      });
+    });
+
     it('re-mount con ?clase=<slug legacy> preserva el slug en el fetch (compat)', async () => {
       // F3.d-3 (2026-07-09): al re-mount, `loadProductos` se dispara ANTES
       // de que `clases` termine de cargar (fetch paralelo, catálogo vive
