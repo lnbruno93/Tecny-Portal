@@ -357,10 +357,58 @@ const cspReportLimiter = rateLimit({
   message: { error: 'rate-limit' },
 });
 // CSP envía `application/csp-report` o `application/reports+json` (Reporting API)
+//
+// 2026-07-26 (audit 07-25 Track E P1-1): captura Sentry con throttling.
+// Antes: solo logger.warn — los CSP violations solo eran visibles con
+// grep manual en Railway logs. Al detectar un ataque XSS activo (script-src
+// violation con URL sospechosa) queríamos alerta en tiempo real. Ahora
+// reportamos a Sentry como warning con tags (violated_directive, blocked_uri,
+// source_file) para pivot en el dashboard. `logger.warn` sigue existiendo
+// para trail en logs.
+//
+// Anti-noise: extension chrome-extension:// bloqueos son ruido puro (users
+// con AdBlock/Grammarly). Ese path se filtra ANTES de reportar Sentry pero
+// se sigue loggeando para trail.
 app.post('/api/csp-report', cspReportLimiter, express.json({ type: ['application/csp-report', 'application/reports+json', 'application/json'], limit: '64kb' }), (req, res) => {
   const report = req.body && (req.body['csp-report'] || (Array.isArray(req.body) ? req.body[0]?.body : req.body));
   // Loguear como warning para que aparezca en alertas pero no en error
   logger.warn({ csp: report, ua: req.headers['user-agent'] }, 'csp violation');
+
+  // Reporte a Sentry (defensivo — silent-fail si Sentry no está configurado).
+  try {
+    const blockedUri = report?.['blocked-uri'] || report?.blockedURL || '';
+    // Filtro anti-noise: extensiones del browser (AdBlock, Grammarly, etc.)
+    // triggerean cientos de violations por día que no son actionable.
+    const isExtensionNoise = typeof blockedUri === 'string' &&
+      (blockedUri.startsWith('chrome-extension://') ||
+       blockedUri.startsWith('moz-extension://') ||
+       blockedUri.startsWith('safari-extension://') ||
+       blockedUri.startsWith('safari-web-extension://'));
+    if (!isExtensionNoise) {
+      const Sentry = require('@sentry/node');
+      if (process.env.SENTRY_DSN) {
+        const directive = report?.['violated-directive'] || report?.effectiveDirective || 'unknown';
+        const documentUri = report?.['document-uri'] || report?.documentURL || 'unknown';
+        const sourceFile = report?.['source-file'] || report?.sourceFile || 'unknown';
+        Sentry.captureMessage(`CSP violation: ${directive}`, {
+          level: 'warning',
+          tags: {
+            source:            'csp-report',
+            violated_directive: String(directive).slice(0, 100),
+            blocked_scheme:    String(blockedUri).split(':')[0] || 'unknown',
+          },
+          extra: {
+            blocked_uri:  String(blockedUri).slice(0, 500),
+            document_uri: String(documentUri).slice(0, 500),
+            source_file:  String(sourceFile).slice(0, 500),
+            user_agent:   String(req.headers['user-agent'] || '').slice(0, 200),
+            full_report:  report,
+          },
+        });
+      }
+    }
+  } catch { /* Sentry no disponible o report malformed — el logger.warn ya persistió el trail */ }
+
   res.status(204).end();
 });
 
