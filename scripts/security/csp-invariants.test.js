@@ -247,19 +247,36 @@ test('root y admin tienen las mismas backend URLs en connect-src', () => {
   );
 });
 
-test('root y admin tienen las mismas backend URLs en img-src', () => {
-  const rootImg  = tokensFor('root',  'img-src');
-  const adminImg = tokensFor('admin', 'img-src');
-  const backends = ['https://tecny-backend-production.up.railway.app',
-                    'https://tecny-backend-staging.up.railway.app'];
-  for (const backend of backends) {
-    assert.ok(
-      rootImg.includes(backend),
-      `[root] img-src debe incluir ${backend}. Actual: ${JSON.stringify(rootImg)}`
-    );
-    assert.ok(
-      adminImg.includes(backend),
-      `[admin] img-src debe incluir ${backend}. Actual: ${JSON.stringify(adminImg)}`
+test('root y admin tienen las mismas backend URLs en img-src (per-context)', () => {
+  // Sprint 1 audit 07-25 · Fix 10: el invariante viejo hardcodeaba que
+  // TODOS los contextos debían incluir prod+staging en img-src. Eso era
+  // laxo y permitía data exfiltration a staging desde prod. Ahora el
+  // invariante es más fuerte: root y admin deben coincidir POR CONTEXTO,
+  // y cada contexto define su propio set de backend URLs
+  // (BACKEND_URLS_BY_CONTEXT en csp-spec.js).
+  //
+  // El bug fixture del 2026-07-19 (logos admin no cargaban en prod por
+  // divergencia entre root y admin) sigue cubierto porque el assert
+  // deepEqual root-vs-admin cachearía cualquier diferencia sin
+  // depender de qué URLs específicas están.
+  for (const context of REQUIRED_CONTEXTS) {
+    const rootImg  = expectedCspFor('root',  context)['img-src'];
+    const adminImg = expectedCspFor('admin', context)['img-src'];
+    const backendUrls = ['https://tecny-backend-production.up.railway.app',
+                         'https://tecny-backend-staging.up.railway.app'];
+    // Filtrar solo los tokens que son backend URLs — root y admin difieren
+    // en tokens estáticos ('data:', 'blob:') legítimamente, pero DEBEN
+    // matchear en el subset backend.
+    const rootBackends  = rootImg.filter(t => backendUrls.includes(t));
+    const adminBackends = adminImg.filter(t => backendUrls.includes(t));
+    assert.deepEqual(
+      rootBackends,
+      adminBackends,
+      `[${context}] backend URLs en img-src deben coincidir entre root y admin. ` +
+      `El bug del 2026-07-19 (logos admin no cargaban) fue una divergencia ` +
+      `no intencional entre estos dos. Ver docs/CSP.md.\n` +
+      `  root:  ${JSON.stringify(rootBackends)}\n` +
+      `  admin: ${JSON.stringify(adminBackends)}`
     );
   }
 });

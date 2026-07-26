@@ -34,9 +34,31 @@
  * `siteDifferences` — cualquier otra divergencia es un bug.
  */
 
+// ── Backend URLs por contexto ─────────────────────────────────────────
+// Sprint 1 audit 07-25 · Fix 10 (Track D P1-2): antes production incluía
+// ambas URLs (prod + staging) en `connect-src` e `img-src`. Un XSS injectado
+// en prod podía usar staging como canal de exfiltración/data-loading si el
+// atacante controlaba también staging. Ahora cada contexto habilita
+// SOLO su backend correspondiente. `deploy-preview` mantiene ambas porque
+// los previews de PRs a veces necesitan point a prod backend para
+// smoke-testing (config común en el codebase).
+const BACKEND_URLS_BY_CONTEXT = Object.freeze({
+  production:       ['https://tecny-backend-production.up.railway.app'],
+  'branch-deploy':  ['https://tecny-backend-staging.up.railway.app'],
+  // Deploy-preview: orden production-primero (matchea el orden histórico
+  // en netlify.toml — el parity check es order-sensitive porque el header
+  // CSP también es order-sensitive del punto de vista del browser).
+  'deploy-preview': ['https://tecny-backend-production.up.railway.app', 'https://tecny-backend-staging.up.railway.app'],
+});
+
 // ── Directivas COMUNES a los 2 sites y a los 3 contextos ──────────────
 // Cualquier cambio acá debe reflejarse en LOS 6 blocks (2 files × 3 contextos).
 // El script verify-csp-parity.js asserta que sea así.
+//
+// NOTA (Sprint 1 audit 07-25 · Fix 10): `connect-src` e `img-src` ahora
+// dependen del contexto (via BACKEND_URLS_BY_CONTEXT) — se componen en
+// `expectedCspFor(site, context)`. El resto sigue siendo idéntico entre
+// contextos.
 const COMMON_DIRECTIVES = Object.freeze({
   'default-src': ["'self'"],
 
@@ -51,16 +73,6 @@ const COMMON_DIRECTIVES = Object.freeze({
   // Sprint 105 (2026-07-24): `data:` removido — no hay @font-face data-embedded
   // en ninguno de los 2 apps. Cargamos Inter/JetBrains Mono via Google Fonts.
   'font-src': ["'self'", 'https://fonts.gstatic.com'],
-
-  // Backend prod + staging en ambos porque el bundle se compila con VITE_API_URL
-  // definida en build time — el CSP tiene que cubrir cualquiera de las 2
-  // targets posibles para que no falle por config drift.
-  'connect-src': [
-    "'self'",
-    'https://tecny-backend-production.up.railway.app',
-    'https://tecny-backend-staging.up.railway.app',
-    'https://*.hcaptcha.com',
-  ],
 
   // Sprint 105 (2026-07-24): `data:` agregado — el modal viewer de comprobantes
   // en Financiera.jsx renderiza PDFs como `<iframe src="data:application/pdf;...">`
@@ -85,6 +97,10 @@ const COMMON_DIRECTIVES = Object.freeze({
 
 // ── Diferencias LEGÍTIMAS por site ────────────────────────────────────
 // El resto de las directivas son idénticas entre root y admin.
+//
+// Sprint 1 audit 07-25 · Fix 10: los backend URLs de `img-src` se componen
+// en `expectedCspFor(site, context)` desde BACKEND_URLS_BY_CONTEXT. Acá
+// solo declaramos los tokens NON-backend (self, data:, blob:).
 const SITE_DIFFERENCES = Object.freeze({
   // Portal (frontend/netlify.toml) — landing pública tecnyapp.com.
   //
@@ -93,12 +109,7 @@ const SITE_DIFFERENCES = Object.freeze({
   // download, NO <img src="blob:">). Ningún componente del portal renderiza
   // imágenes con blob URLs → CSP no lo necesita.
   root: {
-    'img-src': [
-      "'self'",
-      'data:',
-      'https://tecny-backend-production.up.railway.app',
-      'https://tecny-backend-staging.up.railway.app',
-    ],
+    imgSrcBase: ["'self'", 'data:'],
   },
   // Admin (admin-frontend/netlify.toml) — admin.tecnyapp.com.
   //
@@ -108,13 +119,7 @@ const SITE_DIFFERENCES = Object.freeze({
   // el preview → el user no ve la imagen antes de submit (feature latente
   // rota, no reportada porque users no probaron esa función crítica todavía).
   admin: {
-    'img-src': [
-      "'self'",
-      'data:',
-      'blob:',
-      'https://tecny-backend-production.up.railway.app',
-      'https://tecny-backend-staging.up.railway.app',
-    ],
+    imgSrcBase: ["'self'", 'data:', 'blob:'],
   },
 });
 
@@ -155,9 +160,23 @@ function expectedCspFor(site, context) {
   if (!siteDiff) throw new Error(`site desconocido: ${site}`);
   const reportUri = REPORT_URI_BY_CONTEXT[context];
   if (!reportUri) throw new Error(`context desconocido: ${context}`);
+  const backendUrls = BACKEND_URLS_BY_CONTEXT[context];
+  if (!backendUrls) throw new Error(`context desconocido para backend URLs: ${context}`);
   return {
     ...COMMON_DIRECTIVES,
-    ...siteDiff,
+    // connect-src: 'self' + backend(s) del contexto + hCaptcha.
+    // Sprint 1 audit 07-25 · Fix 10: se compone por contexto (antes era
+    // COMMON con prod+staging siempre).
+    'connect-src': [
+      "'self'",
+      ...backendUrls,
+      'https://*.hcaptcha.com',
+    ],
+    // img-src: base del site (self, data:, opcional blob:) + backend(s) del contexto.
+    'img-src': [
+      ...siteDiff.imgSrcBase,
+      ...backendUrls,
+    ],
     'report-uri': [reportUri],
   };
 }
@@ -165,6 +184,7 @@ function expectedCspFor(site, context) {
 module.exports = {
   COMMON_DIRECTIVES,
   SITE_DIFFERENCES,
+  BACKEND_URLS_BY_CONTEXT,
   REPORT_URI_BY_CONTEXT,
   REQUIRED_CONTEXTS,
   SITES,
