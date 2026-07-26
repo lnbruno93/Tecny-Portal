@@ -72,6 +72,10 @@ const resetPasswordStore = isTestEnv ? undefined : new PostgresRateLimitStore({ 
 // del cache en cada intento. Con IP como key (aunque el endpoint requiera JWT),
 // mitigamos amplificación desde una sola IP. Store dedicado para no colisionar.
 const logoutStore = isTestEnv ? undefined : new PostgresRateLimitStore({ db, prefix: 'logout', logger });
+// 2026-07-26 (audit 07-25 Track C P1-1): store para /api/auth/refresh.
+// El endpoint no tenía rate limiter — un refresh robado podía usarse en
+// refresh flooding indefinido. Prefix dedicado para no colisionar.
+const refreshStore = isTestEnv ? undefined : new PostgresRateLimitStore({ db, prefix: 'refresh', logger });
 
 const authRoutes         = require('./routes/auth');
 const signupRoutes       = require('./routes/signup');
@@ -764,6 +768,29 @@ const logoutLimiter = rateLimit({
   ...(logoutStore && { store: logoutStore }),
 });
 app.use('/api/auth/logout', requireAuth, logoutLimiter);
+
+// 2026-07-26 (audit 07-25 Track C P1-1): rate limiter para /api/auth/refresh.
+// El comment del handler en routes/auth.js:725 aseguraba que había un
+// "refreshLimiter en app.js" — mentira, nunca se aplicó. Sin él, un refresh
+// token robado (vía XSS hipotético, dispositivo compartido) podía usarse
+// para refresh flooding indefinido → keep-alive de sesión aunque el usuario
+// real haga logout. El limiter no depende de auth (el endpoint mismo no la
+// requiere — lee el cookie httpOnly), así que key por IP normalizada IPv6.
+// Política: 60/hora/IP es holgada para uso legítimo (client interceptor
+// pre-expira hace ~1 refresh cada 7-8h con JWT 8h TTL; 5 tabs abiertas +
+// 8h uso continuo = ~5 refresh/día — MUY por debajo del cap). El cap protege
+// contra el vector abuse sin friction en flow real.
+const refreshLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hora
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiadas renovaciones de sesión, esperá una hora.' },
+  keyGenerator: (req) => ipKeyGenerator(req),
+  skip: () => process.env.NODE_ENV === 'test',
+  ...(refreshStore && { store: refreshStore }),
+});
+app.use('/api/auth/refresh', refreshLimiter);
 
 // Auth (sin restricción de permisos)
 // 2026-06-16 TANDA 2.1: signupRoutes va ANTES de authRoutes — ambos montados
