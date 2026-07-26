@@ -44,8 +44,50 @@ const pool = new Pool({
   idle_in_transaction_session_timeout: parseInt(process.env.DB_IDLE_TX_TIMEOUT)   || 10_000, // libera tx abandonadas
 });
 
+// 2026-07-26 (audit 07-25 Track E P1-2): reportar pool errors a Sentry con
+// throttle. Antes: solo `logger.error` → cuando el pool tenía un error
+// (Postgres cerró conexión idle, timeout de red, etc.) el ops se enteraba
+// solo grepeando Railway logs. Los pool errors son la señal más temprana
+// de outage — deberían salir en Sentry como error.
+//
+// Throttle: bucket in-memory con dedupe por (err.code + err.message.slice)
+// y ventana de 60s. Sin él, un incidente de red produce cientos de errores
+// idénticos por minuto → llenan Sentry de ruido, esconden otros bugs.
+// Trade-off aceptado: perdemos count granular (1 alerta por bucket) a
+// cambio de mantener el dashboard usable durante outage.
+const _poolErrorBuckets = new Map();
+const POOL_ERROR_WINDOW_MS = 60_000;
+function _reportPoolErrorThrottled(err, tag) {
+  // Fast-path exit si Sentry no está configurado O si estamos en tests.
+  // Chequear ANTES de cualquier require() — durante Jest teardown, un pool
+  // error dispara este handler y `require('@sentry/node')` explota con
+  // "You are trying to require a file after the Jest environment has
+  // been torn down". CI Integration Tests fallaba por esto (2026-07-26).
+  if (!process.env.SENTRY_DSN) return;
+  if (process.env.NODE_ENV === 'test') return;
+  try {
+    const bucketKey = `${tag}:${err?.code || 'unknown'}:${String(err?.message || '').slice(0, 80)}`;
+    const now = Date.now();
+    const last = _poolErrorBuckets.get(bucketKey);
+    if (last && now - last < POOL_ERROR_WINDOW_MS) return; // dentro del throttle
+    _poolErrorBuckets.set(bucketKey, now);
+    // Best-effort cleanup: si el mapa crece mucho (>200 entries), purgar
+    // entradas viejas. Bounded para no leak memoria en un outage largo.
+    if (_poolErrorBuckets.size > 200) {
+      const cutoff = now - POOL_ERROR_WINDOW_MS;
+      for (const [k, t] of _poolErrorBuckets) if (t < cutoff) _poolErrorBuckets.delete(k);
+    }
+    const Sentry = require('@sentry/node');
+    Sentry.captureException(err, {
+      level: 'error',
+      tags: { source: tag, err_code: String(err?.code || 'unknown') },
+    });
+  } catch { /* Sentry no disponible — el logger.error ya persistió el trail */ }
+}
+
 pool.on('error', (err) => {
   logger.error({ err }, 'PostgreSQL pool error');
+  _reportPoolErrorThrottled(err, 'pg_pool_main');
 });
 
 // ── Instrumentación defensiva: int-cast errors ───────────────────────────
@@ -339,6 +381,7 @@ function getAdminPool() {
   });
   _adminPool.on('error', (err) => {
     logger.error({ err }, 'Admin PostgreSQL pool error');
+    _reportPoolErrorThrottled(err, 'pg_pool_admin');
   });
   return _adminPool;
 }

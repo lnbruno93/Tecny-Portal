@@ -709,7 +709,16 @@ router.post('/resend-verification', requireAuth, resendLimiter, async (req, res,
   const client = await db.connect();
   try {
     await client.query('BEGIN');
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    // 2026-07-26 (audit 07-25 Track C P1-2): última interpolación SET LOCAL
+    // legacy del backend. Cerrada por consistencia con el refactor masivo
+    // de PR #866 (29 usages → bind param). Aunque `req.tenantId` viene de
+    // JWT verificado (bajo riesgo de SQL injection real), la interpolación
+    // rompe la promesa "SIEMPRE bind param" y evita cualquier
+    // future-proofing bug si algún día cambia el shape de req.tenantId.
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     const { rows: [user] } = await client.query(
       `SELECT id, email, nombre, email_verified_at FROM users

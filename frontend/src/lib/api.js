@@ -561,7 +561,12 @@ export const cuentas = {
   // Usado por el selector de la grilla unificada de Ventas para B2B.
   setEstadoMovimiento: (id, estado) =>
     api(`/api/cuentas/movimientos/${id}/estado`, 'PATCH', { estado }),
-  cobranzaMasiva:   (data) => api('/api/cuentas/cobranzas-masivas', 'POST', data),
+  // Pattern G Idempotency-Key opcional (bulk). El caller genera UUID al
+  // abrir el modal; cada retry del mismo submit envía el MISMO UUID → server
+  // devuelve replay del 1er batch (audit 07-25 Sprint 1 Fix 1).
+  cobranzaMasiva:   (data, idempotencyKey = null) =>
+    api('/api/cuentas/cobranzas-masivas', 'POST', data, 15000,
+      idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : null),
 };
 
 export const proveedores = {

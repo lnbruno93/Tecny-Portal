@@ -722,9 +722,12 @@ router.post('/logout', requireAuth, async (req, res, next) => {
 // Sin auth middleware — el auth es el cookie. Si el cookie es inválido,
 // devolvemos 401 y el frontend hace fallback al login.
 //
-// Rate limit dedicado (refreshLimiter en app.js) contra abuse: un
-// atacante que roba un refresh podría hacer refresh flooding para keep
-// alive indefinido — el limiter (60/hour por IP) frena eso.
+// Rate limit dedicado: `refreshLimiter` en app.js (60/hora/IP normalizada
+// IPv6, PG-backed cross-instance). Wireado en Sprint 1 audit 07-25 · Fix 2
+// (2026-07-26) — el comment original de este handler afirmaba que ya
+// estaba, pero en realidad nunca se había registrado. Un refresh token
+// robado podía usarse en flooding indefinido → keep-alive de sesión aún
+// después de logout del user legítimo.
 router.post('/refresh', async (req, res, next) => {
   try {
     const refreshToken = req.cookies?.[refreshTokens.COOKIE_NAME];

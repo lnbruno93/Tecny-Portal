@@ -52,6 +52,13 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
   const { toast } = useToast();
   const confirm = useConfirm();
 
+  // 2026-07-26 (audit 07-25 Track A P1-6): Idempotency-Key para el batch
+  // entero. Init lazy con useState-factory → randomUUID() corre solo en el
+  // 1er render. Todos los retries del mismo modal mandan el mismo UUID →
+  // el server devuelve replay sin duplicar cobranzas. La key se resetea
+  // al desmontar y re-montar el modal (cerrar + abrir de nuevo).
+  const [idempotencyKey] = useState(() => crypto.randomUUID());
+
   // #B-09: confirm-on-close si hay data cargada
   async function tryClose() {
     const usadas = rows.filter(isUsedRow).length;
@@ -178,7 +185,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
           };
         }),
       };
-      const res = await cuentasApi.cobranzaMasiva(payload);
+      const res = await cuentasApi.cobranzaMasiva(payload, idempotencyKey);
       toast.success(`Cobranza masiva guardada · ${res.creados} pagos · USD ${totalUsd.toLocaleString('es-AR', { maximumFractionDigits: 2 })}`);
       onSaved?.(res);
       onClose();

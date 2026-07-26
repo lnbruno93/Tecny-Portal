@@ -1411,10 +1411,9 @@ export default function Inventario() {
           <div className="flex-row u-gap-8-center">
             <label className="field-label u-mb-0-mr-4">Vista</label>
             <select
-              className="input"
+              className="input u-w-240"
               value={vistaFiltro}
               onChange={e => setVistaFiltro(e.target.value)}
-              className="u-w-240"
             >
               {VISTAS.map(v => <option key={v.value} value={v.value}>{v.label}</option>)}
             </select>

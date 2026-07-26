@@ -548,12 +548,21 @@ export default function Cajas() {
   async function handleCreateAjuste(e) {
     e.preventDefault();
     if (!ajusteForm.monto || Number(ajusteForm.monto) <= 0) { toast.error('El monto debe ser mayor a 0.'); return; }
-    if (cajaSel.moneda === 'ARS' && (!ajusteForm.tc || Number(ajusteForm.tc) <= 0)) { toast.error('Para una caja en ARS ingresá el TC.'); return; }
+    // 2026-07-26 (audit 07-25 Track A P1-1): multi-país UY. Antes el gate era
+    // `moneda === 'ARS'` hardcodeado → cajas en UYU no pedían TC ni lo
+    // persistían al backend, rompiendo el ledger cross-moneda (mismo bug
+    // que syncVentaVuelto del Sprint 0 Fix 6). El pattern correcto es
+    // "moneda fiat local" (ARS OR UYU) — USD/USDT no necesitan TC.
+    const esFiatLocal = cajaSel.moneda === 'ARS' || cajaSel.moneda === 'UYU';
+    if (esFiatLocal && (!ajusteForm.tc || Number(ajusteForm.tc) <= 0)) {
+      toast.error(`Para una caja en ${cajaSel.moneda} ingresá el TC.`);
+      return;
+    }
     setAjusteSaving(true);
     try {
       await cajas.createCajaAjuste(cajaSel.id, {
         fecha: ajusteForm.fecha, tipo: ajusteForm.tipo, monto: Number(ajusteForm.monto),
-        tc: cajaSel.moneda === 'ARS' ? Number(ajusteForm.tc) : null,
+        tc: esFiatLocal ? Number(ajusteForm.tc) : null,
         concepto: ajusteForm.concepto || null,
       });
       toast.success('Ajuste registrado.');
@@ -1062,7 +1071,8 @@ export default function Cajas() {
                     <input type="date" className="input" value={ajusteForm.fecha} onChange={e => setAjusteForm(f => ({ ...f, fecha: e.target.value }))} /></div>
                   <div className="field u-w-110px"><label className="field-label">Monto</label>
                     <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} step="0.01" className="input" value={ajusteForm.monto} onChange={e => setAjusteForm(f => ({ ...f, monto: e.target.value }))} /></div>
-                  {cajaSel.moneda === 'ARS' && (
+                  {/* audit 07-25 P1-1: gate por moneda fiat local (ARS + UYU), no solo ARS */}
+                  {(cajaSel.moneda === 'ARS' || cajaSel.moneda === 'UYU') && (
                     <div className="field u-w-90px"><label className="field-label">TC</label>
                       <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} step="0.01" className="input" value={ajusteForm.tc} onChange={e => setAjusteForm(f => ({ ...f, tc: e.target.value }))} /></div>
                   )}

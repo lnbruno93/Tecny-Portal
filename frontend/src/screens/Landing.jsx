@@ -795,9 +795,15 @@ export default function Landing() {
               </div>
             </a>
 
-            {/* Instagram — canal social, ver contenido reciente + productos */}
+            {/* Instagram — canal social, ver contenido reciente + productos.
+                2026-07-26 (audit 07-25 P1-1 XSS defensivo): `sanitizeHref`
+                inline en vez de pasar el URL crudo. React NO sanitiza
+                `href` — un `javascript:` URL persistido por super-admin
+                comprometido ejecutaría en cada visitante. Backend ya
+                restringe a http(s) via Zod refine, pero defense-in-depth
+                acá también. */}
             <a
-              href={contact.instagram_url}
+              href={/^https?:\/\//i.test(contact.instagram_url) ? contact.instagram_url : '#'}
               target="_blank"
               rel="noopener noreferrer"
               className="contact-card"

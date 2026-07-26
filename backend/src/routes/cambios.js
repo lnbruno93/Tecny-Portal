@@ -9,7 +9,7 @@ const validate = require('../lib/validate');
 const audit    = require('../lib/audit');
 const parseId  = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
-const { round2 } = require('../lib/money');
+const { round2, assertMonedaValidaParaPais } = require('../lib/money');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
 const { createEntidadSchema, updateEntidadSchema, createMovimientoSchema } = require('../schemas/cambios');
 const {
@@ -216,6 +216,29 @@ router.post('/movimientos', validate(createMovimientoSchema), async (req, res, n
   const client = await db.connect();
   try {
     const { entidad_id, fecha, tipo, monto_ars, tc, monto_usd, caja_id, comentarios } = req.body;
+
+    // 2026-07-26 (audit 07-25 Track A P1-3): validar tipo vs país del tenant.
+    // Los 8 tipos (entrega_ars/uyu/usd_por_ars/usd_por_uyu, recibo_ars/uyu/usd/usd_uy)
+    // implican una moneda local ARS o UYU. Un tenant AR-only NO debería poder
+    // crear tipos _uyu (entrega_uyu, recibo_uyu, entrega_usd_por_uyu, recibo_usd_uy).
+    // Antes: el schema aceptaba los 8 tipos, sin gate por país → un frontend
+    // manipulado o un client de API podía crear rows corruption con
+    // moneda inconsistente vs país del tenant. Fix: inferir moneda local del
+    // tipo y validar con `assertMonedaValidaParaPais`.
+    const tipoImplicaUyu = tipo === 'entrega_uyu' || tipo === 'recibo_uyu' ||
+                           tipo === 'entrega_usd_por_uyu' || tipo === 'recibo_usd_uy';
+    const tipoImplicaArs = tipo === 'entrega_ars' || tipo === 'recibo_ars' ||
+                           tipo === 'entrega_usd_por_ars';
+    // recibo_usd es cross-moneda (recibe USD, cancela deuda USD) — no implica
+    // local, no requiere gate.
+    if (tipoImplicaUyu) {
+      try { assertMonedaValidaParaPais('UYU', req.tenantPais, 'tipo'); }
+      catch (err) { return res.status(400).json({ error: err.message }); }
+    } else if (tipoImplicaArs) {
+      try { assertMonedaValidaParaPais('ARS', req.tenantPais, 'tipo'); }
+      catch (err) { return res.status(400).json({ error: err.message }); }
+    }
+
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
     await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);

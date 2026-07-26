@@ -277,7 +277,18 @@ const updateSiteLandingContactSchema = z.object({
     z.null(),
   ]).optional(),
   contact_instagram_url: z.union([
-    z.string().trim().url('URL inválida').max(500),
+    // 2026-07-26 (audit 07-25 Track D P1-1): defense-in-depth XSS.
+    // Zod's `.url()` acepta `javascript:alert(1)` (URL válida per WHATWG),
+    // pero al renderear en `<a href={...}>` de Landing.jsx, React NO
+    // sanitiza esquemas peligrosos. Un super-admin comprometido (o
+    // supply chain attack) podía persistir un javascript: URL que
+    // ejecutaría en cada visitante de la landing. Refine restringe a
+    // esquemas seguros (http, https). Ver Landing.jsx: fallback rendered
+    // como <span> si el URL no es http(s).
+    z.string().trim().url('URL inválida').max(500).refine(
+      (u) => /^https?:\/\//i.test(u),
+      { message: 'URL debe empezar con http:// o https://' }
+    ),
     z.literal(''),
     z.null(),
   ]).optional(),

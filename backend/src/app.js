@@ -72,6 +72,10 @@ const resetPasswordStore = isTestEnv ? undefined : new PostgresRateLimitStore({ 
 // del cache en cada intento. Con IP como key (aunque el endpoint requiera JWT),
 // mitigamos amplificación desde una sola IP. Store dedicado para no colisionar.
 const logoutStore = isTestEnv ? undefined : new PostgresRateLimitStore({ db, prefix: 'logout', logger });
+// 2026-07-26 (audit 07-25 Track C P1-1): store para /api/auth/refresh.
+// El endpoint no tenía rate limiter — un refresh robado podía usarse en
+// refresh flooding indefinido. Prefix dedicado para no colisionar.
+const refreshStore = isTestEnv ? undefined : new PostgresRateLimitStore({ db, prefix: 'refresh', logger });
 
 const authRoutes         = require('./routes/auth');
 const signupRoutes       = require('./routes/signup');
@@ -357,10 +361,63 @@ const cspReportLimiter = rateLimit({
   message: { error: 'rate-limit' },
 });
 // CSP envía `application/csp-report` o `application/reports+json` (Reporting API)
+//
+// 2026-07-26 (audit 07-25 Track E P1-1): captura Sentry con throttling.
+// Antes: solo logger.warn — los CSP violations solo eran visibles con
+// grep manual en Railway logs. Al detectar un ataque XSS activo (script-src
+// violation con URL sospechosa) queríamos alerta en tiempo real. Ahora
+// reportamos a Sentry como warning con tags (violated_directive, blocked_uri,
+// source_file) para pivot en el dashboard. `logger.warn` sigue existiendo
+// para trail en logs.
+//
+// Anti-noise: extension chrome-extension:// bloqueos son ruido puro (users
+// con AdBlock/Grammarly). Ese path se filtra ANTES de reportar Sentry pero
+// se sigue loggeando para trail.
 app.post('/api/csp-report', cspReportLimiter, express.json({ type: ['application/csp-report', 'application/reports+json', 'application/json'], limit: '64kb' }), (req, res) => {
   const report = req.body && (req.body['csp-report'] || (Array.isArray(req.body) ? req.body[0]?.body : req.body));
   // Loguear como warning para que aparezca en alertas pero no en error
   logger.warn({ csp: report, ua: req.headers['user-agent'] }, 'csp violation');
+
+  // Reporte a Sentry (defensivo — silent-fail si Sentry no está configurado).
+  // Fast-path exit si Sentry no está configurado O si estamos en tests, antes
+  // de cualquier require() — evita "Jest environment torn down" cuando un
+  // request llega después del teardown (mismo issue que _reportPoolErrorThrottled
+  // en database.js). Ver CI failure 2026-07-26 en PR #884.
+  try {
+    if (!process.env.SENTRY_DSN || process.env.NODE_ENV === 'test') return res.status(204).end();
+    const blockedUri = report?.['blocked-uri'] || report?.blockedURL || '';
+    // Filtro anti-noise: extensiones del browser (AdBlock, Grammarly, etc.)
+    // triggerean cientos de violations por día que no son actionable.
+    const isExtensionNoise = typeof blockedUri === 'string' &&
+      (blockedUri.startsWith('chrome-extension://') ||
+       blockedUri.startsWith('moz-extension://') ||
+       blockedUri.startsWith('safari-extension://') ||
+       blockedUri.startsWith('safari-web-extension://'));
+    if (!isExtensionNoise) {
+      const Sentry = require('@sentry/node');
+      if (process.env.SENTRY_DSN) {
+        const directive = report?.['violated-directive'] || report?.effectiveDirective || 'unknown';
+        const documentUri = report?.['document-uri'] || report?.documentURL || 'unknown';
+        const sourceFile = report?.['source-file'] || report?.sourceFile || 'unknown';
+        Sentry.captureMessage(`CSP violation: ${directive}`, {
+          level: 'warning',
+          tags: {
+            source:            'csp-report',
+            violated_directive: String(directive).slice(0, 100),
+            blocked_scheme:    String(blockedUri).split(':')[0] || 'unknown',
+          },
+          extra: {
+            blocked_uri:  String(blockedUri).slice(0, 500),
+            document_uri: String(documentUri).slice(0, 500),
+            source_file:  String(sourceFile).slice(0, 500),
+            user_agent:   String(req.headers['user-agent'] || '').slice(0, 200),
+            full_report:  report,
+          },
+        });
+      }
+    }
+  } catch { /* Sentry no disponible o report malformed — el logger.warn ya persistió el trail */ }
+
   res.status(204).end();
 });
 
@@ -716,6 +773,29 @@ const logoutLimiter = rateLimit({
   ...(logoutStore && { store: logoutStore }),
 });
 app.use('/api/auth/logout', requireAuth, logoutLimiter);
+
+// 2026-07-26 (audit 07-25 Track C P1-1): rate limiter para /api/auth/refresh.
+// El comment del handler en routes/auth.js:725 aseguraba que había un
+// "refreshLimiter en app.js" — mentira, nunca se aplicó. Sin él, un refresh
+// token robado (vía XSS hipotético, dispositivo compartido) podía usarse
+// para refresh flooding indefinido → keep-alive de sesión aunque el usuario
+// real haga logout. El limiter no depende de auth (el endpoint mismo no la
+// requiere — lee el cookie httpOnly), así que key por IP normalizada IPv6.
+// Política: 60/hora/IP es holgada para uso legítimo (client interceptor
+// pre-expira hace ~1 refresh cada 7-8h con JWT 8h TTL; 5 tabs abiertas +
+// 8h uso continuo = ~5 refresh/día — MUY por debajo del cap). El cap protege
+// contra el vector abuse sin friction en flow real.
+const refreshLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hora
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiadas renovaciones de sesión, esperá una hora.' },
+  keyGenerator: (req) => ipKeyGenerator(req),
+  skip: () => process.env.NODE_ENV === 'test',
+  ...(refreshStore && { store: refreshStore }),
+});
+app.use('/api/auth/refresh', refreshLimiter);
 
 // Auth (sin restricción de permisos)
 // 2026-06-16 TANDA 2.1: signupRoutes va ANTES de authRoutes — ambos montados

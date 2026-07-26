@@ -1249,12 +1249,61 @@ router.post('/movimientos/:movId/items/:itemId/devolver', async (req, res, next)
 // (vendedor lo tiene), pero la cobranza masiva tiene su propia capability
 // `b2b.cobranza_masiva` — vendedor NO la tiene en default, encargado SÍ.
 router.post('/cobranzas-masivas', requireCapability('b2b.cobranza_masiva'), cobranzaLimiter, validate(cobranzaMasivaSchema), async (req, res, next) => {
+  // 2026-07-26 (audit 07-25 Track A P1-6, Pattern G bulk): Idempotency-Key
+  // para el batch entero. Semántica: 1 Idempotency-Key = 1 batch de N
+  // cobranzas. Si el user hace doble-click o hay retry por 502 de Netlify,
+  // el 2do request encuentra la key persistida en la FIRST fila del batch
+  // y devuelve replay sin re-ejecutar side effects (crear duplicados de
+  // caja_movimientos, sumar 2× en saldos, etc.).
+  //
+  // Detalle técnico: como movimientos_cc tiene UNIQUE (tenant_id,
+  // client_generated_id), no podemos persistir la key en las N filas del
+  // batch. Solución: persistimos SOLO en la primera fila (índice 0 en el
+  // orden del batch). En replay, encontramos esa primera fila y reconstruimos
+  // el lote leyendo audit_logs.despues.ids (el audit-lote ya se persiste
+  // como {_bulk: true, ids: [...], count: N} — ver `audit(...)` abajo).
+  const idem = parseIdempotencyKey(req);
+  if (idem.error) {
+    return res.status(400).json({ error: idem.error, reason: 'idempotency_key_invalid' });
+  }
+
   const client = await db.connect();
   try {
     const { cobranzas } = req.body;
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
     await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+
+    // Idempotency replay antes de tocar clientes + cajas. Si el batch ya
+    // se procesó, reconstruimos el response desde la primera fila +
+    // audit_logs.
+    if (idem.key) {
+      const firstRow = await findExistingByIdempotencyKey(client, 'movimientos_cc', idem.key);
+      if (firstRow) {
+        // Reconstruir el batch completo via audit_logs.despues.ids.
+        const { rows: auditRows } = await client.query(
+          `SELECT despues FROM audit_logs
+             WHERE tabla = 'movimientos_cc'
+               AND accion = 'INSERT'
+               AND registro_id = $1::text
+               AND deleted_at IS NULL
+             LIMIT 1`,
+          [String(firstRow.id)]
+        );
+        const ids = auditRows[0]?.despues?.ids || [firstRow.id];
+        const { rows: creadosReplay } = await client.query(
+          'SELECT * FROM movimientos_cc WHERE id = ANY($1::int[]) AND deleted_at IS NULL',
+          [ids]
+        );
+        await client.query('ROLLBACK');
+        return res.status(200).json({
+          ok: true,
+          creados: creadosReplay.length,
+          movimientos: creadosReplay,
+          idempotent_replay: true,
+        });
+      }
+    }
 
     // Pre-validación: clientes vivos y cajas vivas. Salvo bloqueo total
     // antes de empezar a INSERTAR para mensajes claros y rollback rápido.
@@ -1313,8 +1362,23 @@ router.post('/cobranzas-masivas', requireCapability('b2b.cobranza_masiva'), cobr
     // cajaLedger.js (import arriba). El local definía solo 2 grupos y hacía
     // que cobranzas UYU contra caja USDT pasaran validación con corrupción
     // silenciosa del saldo.
+    //
+    // 2026-07-26 (audit 07-25 Track A P1-2): agregado `assertMonedaValidaParaPais`.
+    // El check de grupo caja/pago no cubría el caso "AR-only tenant crea
+    // cobranza UYU contra una caja UYU inexistente/rogue" — teóricamente
+    // imposible porque el tenant AR-only no tiene cajas UYU, pero
+    // defense-in-depth cierra el hueco por si el flow admite crear caja
+    // UYU en tenant AR (bug latente en cajas.js) o si el body burla la
+    // caja lookup con un ID válido de OTRO tenant (no debería pasar por
+    // RLS, pero el error message es más claro con el guard aquí).
     for (let i = 0; i < cobranzasOrdenadas.length; i++) {
       const c = cobranzasOrdenadas[i];
+      try {
+        assertMonedaValidaParaPais(c.moneda, req.tenantPais, `cobranzas[${i}].moneda`);
+      } catch (err) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: err.message });
+      }
       const monedaCaja = cajaMoneda.get(c.caja_id);
       if (grupoMoneda(monedaCaja) !== grupoMoneda(c.moneda)) {
         await client.query('ROLLBACK');
@@ -1325,27 +1389,50 @@ router.post('/cobranzas-masivas', requireCapability('b2b.cobranza_masiva'), cobr
     }
 
     // 1) Bulk INSERT de movimientos_cc, devuelve los IDs en el orden de UNNEST.
+    //
+    // 2026-07-26 (audit 07-25 P1-6): la key de Idempotency se persiste SOLO en
+    // la primera fila del batch (índice 0 del orden). El UNIQUE index no
+    // permite N filas con la misma key. La primera fila actúa como "marker"
+    // del batch; el audit-lote guarda los ids del batch entero para poder
+    // reconstruir el response en replay.
     const montosUsd = cobranzasOrdenadas.map(c => round2(toUsd(c.monto, c.moneda, c.tc)));
-    const movRes = await client.query(
-      `INSERT INTO movimientos_cc
-         (cliente_cc_id, fecha, tipo, descripcion, monto_total, caja_id, created_by_user_id)
-       SELECT cli, f, t, d, m, k, $1
-         FROM UNNEST(
-           $2::int[], $3::date[], $4::text[], $5::text[],
-           $6::numeric[], $7::int[]
-         ) WITH ORDINALITY AS u(cli, f, t, d, m, k, ord)
-         ORDER BY ord
-       RETURNING *`,
-      [
-        req.user.id,
-        cobranzasOrdenadas.map(c => c.cliente_cc_id),
-        cobranzasOrdenadas.map(c => c.fecha),
-        cobranzasOrdenadas.map(c => c.tipo),
-        cobranzasOrdenadas.map(c => c.descripcion ?? 'Cobranza masiva'),
-        montosUsd,
-        cobranzasOrdenadas.map(c => c.caja_id),
-      ]
-    );
+    const clientGeneratedIds = cobranzasOrdenadas.map((_, i) => i === 0 ? (idem.key || null) : null);
+    let movRes;
+    try {
+      movRes = await client.query(
+        `INSERT INTO movimientos_cc
+           (cliente_cc_id, fecha, tipo, descripcion, monto_total, caja_id, created_by_user_id, client_generated_id)
+         SELECT cli, f, t, d, m, k, $1, cgi
+           FROM UNNEST(
+             $2::int[], $3::date[], $4::text[], $5::text[],
+             $6::numeric[], $7::int[], $8::uuid[]
+           ) WITH ORDINALITY AS u(cli, f, t, d, m, k, cgi, ord)
+           ORDER BY ord
+         RETURNING *`,
+        [
+          req.user.id,
+          cobranzasOrdenadas.map(c => c.cliente_cc_id),
+          cobranzasOrdenadas.map(c => c.fecha),
+          cobranzasOrdenadas.map(c => c.tipo),
+          cobranzasOrdenadas.map(c => c.descripcion ?? 'Cobranza masiva'),
+          montosUsd,
+          cobranzasOrdenadas.map(c => c.caja_id),
+          clientGeneratedIds,
+        ]
+      );
+    } catch (err) {
+      // Race window: 2 requests con misma key entraron concurrentemente,
+      // ambos pasaron el findExisting → ambos intentan INSERT, UNIQUE index
+      // atrapa al 2do (SQLSTATE 23505 sobre idx_movimientos_cc_idempotency).
+      if (isIdempotencyConflict(err)) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          error: 'La cobranza ya está siendo procesada. Reintentá en unos segundos.',
+          reason: 'idempotency_conflict',
+        });
+      }
+      throw err;
+    }
     const creados = movRes.rows;
 
     // 2) Bulk INSERT de caja_movimientos con los ref_id de los movs creados.
