@@ -234,7 +234,7 @@ export default function EquiposUsadosContent({ onCountChange }) {
           ]}
           onChange={setOrigen}
         />
-        <select className="input" value={estado} onChange={e => setEstado(e.target.value)} className="u-mw-180-max">
+        <select className="input u-mw-180-max" value={estado} onChange={e => setEstado(e.target.value)}>
           <option value="">Todos los estados</option>
           <option value="disponible">Disponible</option>
           <option value="vendido">Vendido</option>
