@@ -523,8 +523,10 @@ function ProyeccionGastosPanel({ onChange }) {
                         <tr key={r.id}>
                           <td className="u-pl-36">{r.concepto}</td>
                           <td className="sanidad-num-cell u-text-right">
-                            {r.moneda === 'ARS'
-                              ? <span className="sanidad-money"><span className="sanidad-money-prefix">ARS</span><span className="sanidad-money-amount">{fmt(Number(r.monto), 0)}</span></span>
+                            {/* audit 07-25 P1-1: display multi-país. Antes solo mostraba ARS,
+                                UYU aparecía como "—" y solo se veía el USD equivalente. */}
+                            {(r.moneda === 'ARS' || r.moneda === 'UYU')
+                              ? <span className="sanidad-money"><span className="sanidad-money-prefix">{r.moneda}</span><span className="sanidad-money-amount">{fmt(Number(r.monto), 0)}</span></span>
                               : <span className="muted tiny">—</span>}
                           </td>
                           <td className="sanidad-num-cell u-td-right-fw-500">
@@ -644,13 +646,14 @@ function RecurrenteEditRow({ draft, setDraft, categorias, onCreateCategoria, onS
         </div>
       </td>
       <td>
-        {draft.moneda === 'ARS' ? (
+        {/* audit 07-25 P1-1: gate multi-país. Antes solo ARS → UY tenants no
+            podían editar monto de la fila. */}
+        {(draft.moneda === 'ARS' || draft.moneda === 'UYU') ? (
           <input
-            className="input mono" type="number" inputMode="decimal" min="0" step="1000"
-            placeholder="Monto ARS"
+            className="input mono u-input-num-full-14" type="number" inputMode="decimal" min="0" step="1000"
+            placeholder={`Monto ${draft.moneda}`}
             value={draft.monto}
             onChange={(e) => setDraft({ ...draft, monto: e.target.value })}
-            className="u-input-num-full-14"
           />
         ) : (
           <span className="muted tiny">—</span>
