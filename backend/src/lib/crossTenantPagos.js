@@ -320,12 +320,23 @@ async function registerSellerCobro(client, sellerTenantId, args) {
     // El módulo Cambios de Divisa tiene entidades (financieras). Para Red B2B,
     // creamos (o reusamos) una entidad llamada "Red B2B — diferencias cambiarias"
     // del seller. Esto centraliza el tracking sin contaminar entidades reales.
+    //
+    // 2026-07-26 (audit 2026-07-25 Track C P0-2): defense-in-depth cross-tenant.
+    // Este es el 3er sitio con el mismo pattern (ya cerrado en
+    // `ensureSellerClienteCc` + `ensureBuyerProveedor` del audit 07-12).
+    // El SELECT corría bajo cliente admin/BYPASSRLS sin filtro `tenant_id`
+    // → el primer tenant que creaba la entidad "ganaba" el id, y siguientes
+    // tenants persistían `cambio_movimientos` con FK cross-tenant → la
+    // contabilidad de Cambios cross-tenant quedaba rota. Fix: filtro
+    // `tenant_id = $2` explícito. INSERT ya usa sellerTenantId → OK.
     const ENTIDAD_NOMBRE = 'Red B2B — diferencias cambiarias';
     const entQ = await client.query(
       `SELECT id FROM cambio_entidades
-         WHERE LOWER(nombre) = LOWER($1) AND deleted_at IS NULL
+         WHERE tenant_id = $2
+           AND LOWER(nombre) = LOWER($1)
+           AND deleted_at IS NULL
          LIMIT 1`,
-      [ENTIDAD_NOMBRE]
+      [ENTIDAD_NOMBRE, sellerTenantId]
     );
     let entidadId = entQ.rows[0]?.id;
     if (!entidadId) {

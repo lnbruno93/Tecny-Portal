@@ -223,28 +223,46 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
     // (round-trip a hCaptcha) — aceptable dado que solo lo pagan requests
     // que quieren loguear.
     //
-    // 2026-07-12 (hotfix post-audit): SKIP captcha en step 2 del flow 2FA.
-    // El token hCaptcha es SINGLE-USE — validarlo en step 1 quema el token.
-    // Si el user re-envía con code (step 2), hCaptcha responde `duplicate` y
-    // el login rebota con "verificación ya fue usada". Skip captcha cuando
-    // llega `code` en el body: es seguro porque (a) el step 2 requiere que
-    // el step 1 (password correcta) haya pasado exitosamente, y (b) el
-    // brute-force del TOTP tiene 10^6 combinaciones ya protegidas por
-    // loginLimiter (10/15min IP) + lockout per-user (SOL-3).
-    if (!code) {
-      const captcha = require('../lib/captcha');
-      const captchaResult = await captcha.verifyCaptcha(req.body.hcaptcha_response, req.ip);
-      if (!captchaResult.success) {
-        const errMap = {
-          expired:       'La verificación expiró. Intentá de nuevo.',
-          duplicate:     'La verificación ya fue usada. Recargá la página.',
-          invalid_token: 'Verificación inválida. Completá el captcha y reintentá.',
-        };
-        const msg = errMap[captchaResult.error] || 'No pudimos verificar el captcha. Reintentá en un minuto.';
-        logger.info({ source: 'login_captcha_fail', error: captchaResult.error, field, ip: req.ip },
-          'login rechazado por captcha');
-        return res.status(400).json({ error: msg, reason: 'captcha_failed' });
-      }
+    // 2026-07-12 (hotfix post-audit) — VERSIÓN ACTUAL (2026-07-25 audit Sprint 0):
+    // El hotfix original SKIPPEABA el captcha en step 2 del flow 2FA (cuando
+    // `code` estaba presente en el body), motivado por: token hCaptcha
+    // single-use → re-usarlo en step 2 respondía `duplicate` → login rebotaba.
+    //
+    // BUG (audit 2026-07-25 Track D P1-3, marcado como regresión de P0-1
+    // del audit 07-12): el `if (!code)` gate es bypasseable mandando
+    // `code: '000000'` (o cualquier fake) sin `hcaptcha_response` → salta
+    // el captcha y expone /login a brute-force de nuevo. Anula efectivamente
+    // el fix P0-1 del captcha invisible.
+    //
+    // FIX: SIEMPRE verificar captcha. En step 2 (cuando `code` presente),
+    // TOLERAR el error `duplicate` como éxito — es el flow legítimo del user
+    // re-enviando el mismo token del step 1. Cualquier otro error (expired,
+    // invalid_token) sigue siendo rechazo. El frontend acompaña mandando
+    // `hcaptcha_response` también en step 2 (ver Login.jsx).
+    //
+    // Por qué esto cierra el bypass:
+    //   1. Atacante manda `code: 'X'` sin `hcaptcha_response` → verifyCaptcha
+    //      devuelve error → 400 captcha_failed (antes: skippeaba).
+    //   2. Atacante manda `code: 'X'` con token fake `hcaptcha_response` →
+    //      verifyCaptcha devuelve `invalid_token` → 400.
+    //   3. Usuario legítimo en step 2 con `code` real + `hcaptcha_response`
+    //      del step 1 → verifyCaptcha devuelve `duplicate` (esperado) →
+    //      isCaptchaOk = true → sigue el flow.
+    const captcha = require('../lib/captcha');
+    const captchaResult = await captcha.verifyCaptcha(req.body.hcaptcha_response, req.ip);
+    const isStep2 = !!code;
+    const isCaptchaOk = captchaResult.success ||
+                        (isStep2 && captchaResult.error === 'duplicate');
+    if (!isCaptchaOk) {
+      const errMap = {
+        expired:       'La verificación expiró. Intentá de nuevo.',
+        duplicate:     'La verificación ya fue usada. Recargá la página.',
+        invalid_token: 'Verificación inválida. Completá el captcha y reintentá.',
+      };
+      const msg = errMap[captchaResult.error] || 'No pudimos verificar el captcha. Reintentá en un minuto.';
+      logger.info({ source: 'login_captcha_fail', error: captchaResult.error, field, ip: req.ip, is_step2: isStep2 },
+        'login rechazado por captcha');
+      return res.status(400).json({ error: msg, reason: 'captcha_failed' });
     }
 
     // 2026-06-16 TANDA 1: lookup case-insensitive cuando el field es email. La

@@ -126,13 +126,23 @@ async function syncVentaCaja(client, venta, userId) {
 async function syncVentaVuelto(client, venta, userId) {
   if (!retieneStock(venta.estado)) return;
   if (!venta.vuelto_monto || !venta.vuelto_moneda || !venta.vuelto_caja_id) return;
+  // 2026-07-26 (audit 2026-07-25 Track A P0-1): pasar `venta.vuelto_tc`.
+  // Antes: `tc: null` hardcoded. Cuando `vuelto_moneda` era ARS/UYU (fiat
+  // local), `postCajaMovimiento` calculaba `monto_usd = monto / (tc || 1)`
+  // → con `tc = null`, el fallback `|| 1` hacía `monto_usd = monto` con
+  // tipo de cambio 1:1 (o 0 si el helper devolvía null explícito). El
+  // saldo nativo por moneda quedaba correcto, pero el ledger cross-moneda
+  // (reportes USD-consolidados, Dashboard KPIs) subestimaba el egreso.
+  // `venta.vuelto_tc` ya se persiste con el TC del vuelto en el POST /ventas
+  // (validado por Zod). Fix mínimo: leerlo. Si es null (vuelto en USD/USDT),
+  // el ledger no necesita conversión.
   await postCajaMovimiento(client, {
     caja_id:   venta.vuelto_caja_id,
     fecha:     venta.fecha,
     tipo:      'egreso',
     monto:     Number(venta.vuelto_monto),
     moneda:    venta.vuelto_moneda,
-    tc:        null,
+    tc:        venta.vuelto_tc != null ? Number(venta.vuelto_tc) : null,
     origen:    'venta',
     ref_tabla: 'ventas',
     ref_id:    venta.id,

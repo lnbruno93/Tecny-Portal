@@ -172,28 +172,61 @@ describe('POST /api/auth/login', () => {
       expect(res.body.reason).toBe('captcha_failed');
     });
 
-    // 2026-07-12 (hotfix post-audit): regression test para el bug donde el
-    // step 2 del flow 2FA re-enviaba el mismo captcha token (single-use en
-    // hCaptcha) → duplicate → user bloqueado en "verificación ya fue usada".
-    // Fix: si el request incluye `code`, el backend skippea el captcha gate.
-    // Seguridad: step 2 asume que step 1 pasó con captcha válido; el TOTP
-    // brute-force ya está cubierto por loginLimiter + lockout per-user.
-    it('hotfix: step 2 del flow 2FA con code presente NO requiere captcha', async () => {
-      // Sin hcaptcha_response y CON code → NO debe rebotar por captcha_failed.
-      // El request va a rebotar por password/user/2FA inválidos (200 con
-      // twofa_required o 401), pero NUNCA con reason=captcha_failed.
+    // ═══════════════════════════════════════════════════════════════════
+    // 2026-07-26 (auditoría 07-25 Track D P1-3, regresión de P0-1 07-12):
+    //
+    // Historia: el hotfix original post-audit 07-12 introdujo un gate
+    // `if (!code) { ... verifyCaptcha ... }` para resolver un bug UX del
+    // flow 2FA (el frontend re-enviaba el mismo hcaptcha token entre step 1
+    // y step 2, y hCaptcha rechaza tokens repetidos como single-use). El
+    // shortcut funcionó pero abrió un bypass: cualquier request con un
+    // `code` arbitrario (ej. '000000') saltea el captcha completamente.
+    // La auditoría 07-25 identificó esto como regresión directa del P0
+    // Externa del 07-12.
+    //
+    // Fix nuevo: SIEMPRE verificar captcha, pero tolerar el error
+    // `duplicate` ÚNICAMENTE cuando el request es step 2 (code presente).
+    // El frontend ahora envía captchaToken en ambos steps (Login.jsx:127).
+    // Así:
+    //   - Bypass con code:'000000' sin token → REJECTED (missing → 400)
+    //   - Step 2 legítimo re-usando token válido → OK (duplicate tolerado)
+    //   - Step 2 con token nuevo → OK (success normal)
+    //
+    // Seguridad: TOTP brute-force sigue cubierto por loginLimiter + lockout
+    // per-user. El gate captcha ahora protege ambos steps del flow.
+    // ═══════════════════════════════════════════════════════════════════
+
+    it('audit 07-25 P1-3 REGRESSION: rechaza request con code pero SIN hcaptcha_response → 400 captcha_failed', async () => {
+      // Regresión directa contra el bypass del hotfix 07-12: un atacante
+      // que descubre el flow puede mandar `code: '000000'` sin token y
+      // saltear el gate completo. Este test lo previene.
       const res = await request(app)
         .post('/api/auth/login')
         .send({
           username: TEST_USER.username,
           password: TEST_USER.password,
-          code: '123456', // TOTP dummy — no importa si es válido para este test
+          code: '000000', // TOTP dummy — intento de bypass
           // NOTA: intencionalmente SIN hcaptcha_response.
         });
-      // Aceptamos cualquier response que NO sea captcha_failed. El path feliz
-      // depende del state de 2FA del test user; lo que importa es que el
-      // captcha NO haya rebotado el request antes.
-      expect(res.body.reason).not.toBe('captcha_failed');
+      expect(res.status).toBe(400);
+      expect(res.body.reason).toBe('captcha_failed');
+    });
+
+    it('audit 07-25 P1-3: step 2 legítimo con code + hcaptcha_response inválido rebota por captcha (no permite bypass)', async () => {
+      // Aún enviando un token en el body, si el token es inválido (config_error
+      // en test env sin HCAPTCHA_SECRET), el request debe rebotar. Solo el
+      // error `duplicate` está tolerado en step 2 — cualquier otro error
+      // (missing, invalid, config, network) sigue siendo un fail hard.
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({
+          username: TEST_USER.username,
+          password: TEST_USER.password,
+          code: '123456',
+          hcaptcha_response: 'token-invalido-no-duplicate',
+        });
+      expect(res.status).toBe(400);
+      expect(res.body.reason).toBe('captcha_failed');
     });
   });
 });

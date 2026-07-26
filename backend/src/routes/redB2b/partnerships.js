@@ -514,6 +514,16 @@ router.post('/:id/accept', async (req, res, next) => {
 // Helper: crea (o linkea con uno existente) el contacto que representa al
 // partner en el tenant `ownerTenantId`. SET LOCAL antes para satisfacer
 // el RLS estándar de contactos.
+//
+// 2026-07-26 (audit 2026-07-25 Track C P0-1): defense-in-depth cross-tenant.
+// El helper corre bajo `db.adminQuery` (BYPASSRLS/tecny_admin role), por lo
+// que RLS NO filtra por tenant. Sin `WHERE tenant_id = $` en el SELECT, un
+// contacto homónimo de OTRO tenant podía ser hijack-linkeado al partner del
+// tenant que aceptaba el partnership → corrupción cross-tenant silenciosa.
+// Es el 3er sitio con este mismo pattern en helpers admin (ver también
+// `crossTenantPagos.js:cambio_entidades` y `ensureSellerClienteCc` del
+// audit 07-12). Fix explícito: filtrar por tenant_id + deleted_at IS NULL
+// en ambos SELECT y UPDATE.
 async function upsertLinkedContacto(client, { ownerTenantId, linkedTenant }) {
   await client.query(
     `SELECT set_config('app.current_tenant', $1::text, true)`,
@@ -522,17 +532,26 @@ async function upsertLinkedContacto(client, { ownerTenantId, linkedTenant }) {
 
   // Buscar contacto pre-existente con el mismo nombre que no esté ya linkeado.
   // Si hay uno, lo linkeamos (preservando datos preexistentes). Sino, INSERT.
+  // FIX audit 07-25 P0-1: WHERE tenant_id = $2 + deleted_at IS NULL explícitos.
   const existingQ = await client.query(
     `SELECT id FROM contactos
-       WHERE nombre = $1
+       WHERE tenant_id = $2
+         AND nombre = $1
          AND linked_tenant_id IS NULL
+         AND deleted_at IS NULL
        LIMIT 1`,
-    [linkedTenant.nombre]
+    [linkedTenant.nombre, ownerTenantId]
   );
   if (existingQ.rows[0]) {
+    // FIX audit 07-25 P0-1: UPDATE también con tenant_id + deleted_at guard
+    // (defense-in-depth vs TOCTOU si otro proceso soft-deletea entre SELECT
+    // y UPDATE).
     await client.query(
-      `UPDATE contactos SET linked_tenant_id = $1 WHERE id = $2`,
-      [linkedTenant.id, existingQ.rows[0].id]
+      `UPDATE contactos SET linked_tenant_id = $1
+         WHERE id = $2
+           AND tenant_id = $3
+           AND deleted_at IS NULL`,
+      [linkedTenant.id, existingQ.rows[0].id, ownerTenantId]
     );
     return existingQ.rows[0].id;
   }

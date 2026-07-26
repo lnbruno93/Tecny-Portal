@@ -30,5 +30,15 @@ Disallow: /configuracion
 Disallow: /sanidad
 Disallow: /admin
 
+# 2026-07-26 (audit 2026-07-25 Track D P0-1): bloquear indexado del share link
+# público de Equipos Usados. La URL es "secret-in-URL" (token de 24 chars
+# base64url), NO una página pública oficial. Si el operador comparte el link en
+# un canal indexable (Twitter, blog, foro), Google podía crawlear el catálogo
+# completo con precios + WhatsApp del vendedor. Defense-in-depth con:
+#   - `X-Robots-Tag: noindex` en el backend (routes/shareLinks.js publicRouter)
+#   - `<meta name="robots" noindex>` en PublicoUsados.jsx
+#   - este Disallow en robots.txt
+Disallow: /publico/
+
 # Sitemap principal — Google lo descubre y crawlea las URLs listadas.
 Sitemap: https://tecnyapp.com/sitemap.xml
