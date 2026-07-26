@@ -227,6 +227,30 @@ adminRouter.post('/rotate', requireCapability('inventario.editar'), async (req, 
 
 const publicRouter = express.Router();
 
+// 2026-07-26 (audit 2026-07-25 Track D P0-1): fuerza `noindex` en TODAS las
+// respuestas del router público. Antes:
+//   - El endpoint /publico/usados/:token servía JSON sin `X-Robots-Tag`,
+//     el frontend público tampoco tenía `<meta name="robots">`, y el
+//     robots.txt del sitio no cubría `/publico/*` → **Google podía indexar
+//     catálogos completos con precios + WhatsApp del vendedor de CUALQUIER
+//     tenant** que compartiera el link en un canal público (Twitter, blog).
+//   - Bug de expectativa contractual (el share link es "URL-secret", no
+//     "URL-pública-oficial") + posible Ley 25.326 (dato personal expuesto
+//     a buscador sin consentimiento explícito).
+//
+// Fix defense-in-depth 3 capas:
+//   1. Backend header aquí (aplica también a error responses).
+//   2. Frontend `<meta name="robots" noindex>` en la screen PublicoUsados.
+//   3. `robots.txt` con `Disallow: /publico/`.
+//
+// El header cubre lo que un scraper puede ver antes de que el HTML del SPA
+// se render-ee, y también aplica al JSON endpoint por si Google lo indexa
+// como recurso independiente.
+publicRouter.use((req, res, next) => {
+  res.set('X-Robots-Tag', 'noindex, nofollow, noarchive, nosnippet');
+  next();
+});
+
 // Rate limit: 60 req/min por IP. Suficiente para uso normal (un cliente
 // que abre + refresca + navega ~10 veces) pero corta scraping agresivo.
 const publicLimiter = rateLimit({

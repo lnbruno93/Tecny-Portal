@@ -153,6 +153,23 @@ const PRICE_CHIPS = [
 export default function PublicoUsados() {
   const { token } = useParams();
 
+  // 2026-07-26 (audit 2026-07-25 Track D P0-1): frontend defense-in-depth vs
+  // indexado. El backend ya manda `X-Robots-Tag: noindex` y robots.txt tiene
+  // `Disallow: /publico/`, pero el HTML del SPA se sirve desde el index.html
+  // genérico de Netlify — sin meta robots. Un scraper (o Googlebot ignorando
+  // robots.txt) ve el HTML de la SPA. Inyectamos `<meta name="robots" ...>`
+  // en el <head> antes de que renderee el contenido dinámico. Cleanup al
+  // desmontar para no dejar residuos si otra ruta del SPA se navega client-side.
+  useEffect(() => {
+    const meta = document.createElement('meta');
+    meta.name = 'robots';
+    meta.content = 'noindex, nofollow, noarchive, nosnippet';
+    document.head.appendChild(meta);
+    return () => {
+      try { document.head.removeChild(meta); } catch { /* ya no está */ }
+    };
+  }, []);
+
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null); // { code, mensaje }
