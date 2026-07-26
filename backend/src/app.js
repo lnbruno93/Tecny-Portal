@@ -379,7 +379,12 @@ app.post('/api/csp-report', cspReportLimiter, express.json({ type: ['application
   logger.warn({ csp: report, ua: req.headers['user-agent'] }, 'csp violation');
 
   // Reporte a Sentry (defensivo — silent-fail si Sentry no está configurado).
+  // Fast-path exit si Sentry no está configurado O si estamos en tests, antes
+  // de cualquier require() — evita "Jest environment torn down" cuando un
+  // request llega después del teardown (mismo issue que _reportPoolErrorThrottled
+  // en database.js). Ver CI failure 2026-07-26 en PR #884.
   try {
+    if (!process.env.SENTRY_DSN || process.env.NODE_ENV === 'test') return res.status(204).end();
     const blockedUri = report?.['blocked-uri'] || report?.blockedURL || '';
     // Filtro anti-noise: extensiones del browser (AdBlock, Grammarly, etc.)
     // triggerean cientos de violations por día que no son actionable.

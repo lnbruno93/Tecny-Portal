@@ -58,6 +58,13 @@ const pool = new Pool({
 const _poolErrorBuckets = new Map();
 const POOL_ERROR_WINDOW_MS = 60_000;
 function _reportPoolErrorThrottled(err, tag) {
+  // Fast-path exit si Sentry no está configurado O si estamos en tests.
+  // Chequear ANTES de cualquier require() — durante Jest teardown, un pool
+  // error dispara este handler y `require('@sentry/node')` explota con
+  // "You are trying to require a file after the Jest environment has
+  // been torn down". CI Integration Tests fallaba por esto (2026-07-26).
+  if (!process.env.SENTRY_DSN) return;
+  if (process.env.NODE_ENV === 'test') return;
   try {
     const bucketKey = `${tag}:${err?.code || 'unknown'}:${String(err?.message || '').slice(0, 80)}`;
     const now = Date.now();
@@ -71,12 +78,10 @@ function _reportPoolErrorThrottled(err, tag) {
       for (const [k, t] of _poolErrorBuckets) if (t < cutoff) _poolErrorBuckets.delete(k);
     }
     const Sentry = require('@sentry/node');
-    if (process.env.SENTRY_DSN) {
-      Sentry.captureException(err, {
-        level: 'error',
-        tags: { source: tag, err_code: String(err?.code || 'unknown') },
-      });
-    }
+    Sentry.captureException(err, {
+      level: 'error',
+      tags: { source: tag, err_code: String(err?.code || 'unknown') },
+    });
   } catch { /* Sentry no disponible — el logger.error ya persistió el trail */ }
 }
 
