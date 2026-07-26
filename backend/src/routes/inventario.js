@@ -915,6 +915,16 @@ router.get('/usados', validate(queryUsadosSchema, 'query'), async (req, res, nex
     // JOIN LATERAL sobre `canjes` para tomar solo el canje más reciente si
     // por algún motivo hay >1 con el mismo producto_id. Simplifica el
     // paginado (una fila por producto siempre).
+    //
+    // 2026-07-26 (audit 07-25 Track B P1-5): defense-in-depth cross-tenant en
+    // los JOINs. En prod RLS de `canjes` (heredada por venta → tenant),
+    // `ventas` y `contactos` protege — pero:
+    //   1. Tests con superuser pool NO tienen RLS activo (bypass implícito),
+    //      y un canje de otro tenant podía matchear productos.
+    //   2. Si el rol del pool cambiara (bug de config, hotfix urgente),
+    //      quedaría abierto.
+    // Fix: agregar `AND <tabla>.tenant_id = p.tenant_id` en cada JOIN.
+    // Costo cero (índices tenant_id ya existen en canjes/ventas/contactos).
     const baseFrom = `
       FROM productos p
       LEFT JOIN clases_producto cp ON cp.id = p.clase_id AND cp.deleted_at IS NULL
@@ -923,14 +933,18 @@ router.get('/usados', validate(queryUsadosSchema, 'query'), async (req, res, nex
       LEFT JOIN LATERAL (
         -- 2026-07-12 (audit Stock P1-1): cj.deleted_at IS NULL — filter
         -- del partial index idx_canjes_venta_id_activos.
+        -- 2026-07-26 (audit 07-25 Stock P1-5): AND cj.tenant_id = p.tenant_id
+        -- defense-in-depth vs pool sin RLS (tests, hotfix config errado).
         SELECT cj.id, cj.venta_id, cj.valor_toma, cj.moneda AS canje_moneda
           FROM canjes cj
-         WHERE cj.producto_id = p.id AND cj.deleted_at IS NULL
+         WHERE cj.producto_id = p.id
+           AND cj.tenant_id = p.tenant_id
+           AND cj.deleted_at IS NULL
          ORDER BY cj.created_at DESC
          LIMIT 1
       ) cj ON true
-      LEFT JOIN ventas   v  ON v.id  = cj.venta_id AND v.deleted_at IS NULL
-      LEFT JOIN contactos co ON co.id = v.cliente_id AND co.deleted_at IS NULL
+      LEFT JOIN ventas   v  ON v.id  = cj.venta_id AND v.tenant_id = p.tenant_id AND v.deleted_at IS NULL
+      LEFT JOIN contactos co ON co.id = v.cliente_id AND co.tenant_id = p.tenant_id AND co.deleted_at IS NULL
     `;
 
     const countQuery = `SELECT COUNT(*) ${baseFrom} WHERE ${where}`;
