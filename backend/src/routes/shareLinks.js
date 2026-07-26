@@ -95,18 +95,30 @@ async function getOrCreateShareLink(client, tenantId) {
 }
 
 // Query de stats agregadas (vistas último mes, únicos hoy, última visita).
-async function getShareLinkStats(client, shareLinkId) {
+// 2026-07-26 (audit 07-25 Track B P1-6): signature ahora requiere `tenantId`
+// explícito para defense-in-depth. Antes la función corría bajo `adminQuery`
+// (BYPASSRLS) con solo el `shareLinkId` — si un caller futuro le pasara un
+// ID cross-tenant, leería stats de otro tenant sin señal. El nombre
+// engañoso ("stats" sugería self-contained) ocultaba la responsabilidad.
+//
+// Fix: JOIN a `share_links` con `WHERE sl.tenant_id = $2`. Si el ID no
+// pertenece al tenant, el subquery no devuelve nada y las agregaciones
+// dan 0/null (no leak de existencia). Costo cero (índice sl.id primary
+// key + sl.tenant_id ya existe).
+async function getShareLinkStats(client, shareLinkId, tenantId) {
   const q = `
     SELECT
       COUNT(*)                                             AS vistas_mes,
-      COUNT(*) FILTER (WHERE visto_en >= NOW() - INTERVAL '30 days') AS ult_mes,
-      COUNT(DISTINCT ip_hash) FILTER (WHERE visto_en::date = CURRENT_DATE) AS unicos_hoy,
-      MAX(visto_en)                                        AS ultimo_acceso
-      FROM share_link_views
-     WHERE share_link_id = $1
-       AND visto_en >= NOW() - INTERVAL '30 days'
+      COUNT(*) FILTER (WHERE slv.visto_en >= NOW() - INTERVAL '30 days') AS ult_mes,
+      COUNT(DISTINCT slv.ip_hash) FILTER (WHERE slv.visto_en::date = CURRENT_DATE) AS unicos_hoy,
+      MAX(slv.visto_en)                                    AS ultimo_acceso
+      FROM share_link_views slv
+      JOIN share_links      sl ON sl.id = slv.share_link_id
+     WHERE slv.share_link_id = $1
+       AND sl.tenant_id = $2
+       AND slv.visto_en >= NOW() - INTERVAL '30 days'
   `;
-  const { rows } = await client.query(q, [shareLinkId]);
+  const { rows } = await client.query(q, [shareLinkId, tenantId]);
   const r = rows[0] || {};
   return {
     vistas_ult_mes: Number(r.ult_mes || 0),
@@ -135,8 +147,10 @@ adminRouter.get('/', requireCapability('inventario.ver'), async (req, res, next)
     });
     // Stats vive fuera del withTenant porque `share_link_views` no tiene
     // RLS (analytics agregados sin scope de tenant en la query).
+    // 2026-07-26 (audit 07-25 P1-6): pasamos req.tenantId explícito para
+    // que el JOIN interno de getShareLinkStats haga el gate cross-tenant.
     const stats = await db.adminQuery(async (client) => {
-      return await getShareLinkStats(client, link.id);
+      return await getShareLinkStats(client, link.id, req.tenantId);
     });
     res.json({ ...link, stats });
   } catch (err) { next(err); }
