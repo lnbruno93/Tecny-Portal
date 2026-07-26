@@ -1313,8 +1313,23 @@ router.post('/cobranzas-masivas', requireCapability('b2b.cobranza_masiva'), cobr
     // cajaLedger.js (import arriba). El local definía solo 2 grupos y hacía
     // que cobranzas UYU contra caja USDT pasaran validación con corrupción
     // silenciosa del saldo.
+    //
+    // 2026-07-26 (audit 07-25 Track A P1-2): agregado `assertMonedaValidaParaPais`.
+    // El check de grupo caja/pago no cubría el caso "AR-only tenant crea
+    // cobranza UYU contra una caja UYU inexistente/rogue" — teóricamente
+    // imposible porque el tenant AR-only no tiene cajas UYU, pero
+    // defense-in-depth cierra el hueco por si el flow admite crear caja
+    // UYU en tenant AR (bug latente en cajas.js) o si el body burla la
+    // caja lookup con un ID válido de OTRO tenant (no debería pasar por
+    // RLS, pero el error message es más claro con el guard aquí).
     for (let i = 0; i < cobranzasOrdenadas.length; i++) {
       const c = cobranzasOrdenadas[i];
+      try {
+        assertMonedaValidaParaPais(c.moneda, req.tenantPais, `cobranzas[${i}].moneda`);
+      } catch (err) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: err.message });
+      }
       const monedaCaja = cajaMoneda.get(c.caja_id);
       if (grupoMoneda(monedaCaja) !== grupoMoneda(c.moneda)) {
         await client.query('ROLLBACK');
