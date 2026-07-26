@@ -16,10 +16,20 @@ async function syncFinancieraComprobante(client, ventaId, estado) {
   let pagoFin = null;
   let file = null;
   if (estado !== 'cancelado') {
+    // 2026-07-26 (audit 07-25 Track A P1-4): ORDER BY vp.id explícito.
+    // Antes: LIMIT 1 sin ORDER BY → si por bug del sync/edit una venta tenía
+    // 2 pagos con caja financiera (edge case pero posible con edit doble),
+    // la elección del monto para el comprobante quedaba indeterminística y
+    // podía cambiar entre ediciones o entre réplicas de Postgres. Consistente
+    // ahora con las otras queries del archivo (línea 34 ya ordena) y con
+    // comisionesMetodos.js:92. Ya estaba flageado como P2-5 en audit 07-12
+    // — no se cerró en el cierre (backlog "P2 residual"); se sube a P1 en
+    // audit 07-25 por reincidencia.
     const fin = await client.query(
       `SELECT vp.monto FROM venta_pagos vp
          JOIN metodos_pago mp ON mp.id = vp.metodo_pago_id
         WHERE vp.venta_id = $1 AND mp.es_financiera = true AND mp.deleted_at IS NULL
+        ORDER BY vp.id
         LIMIT 1`, [ventaId]
     );
     // P-03 Fase 5 (2026-06-13): el SELECT tiene que traer también archivo_key
