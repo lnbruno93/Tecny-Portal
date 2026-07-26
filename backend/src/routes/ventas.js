@@ -381,10 +381,22 @@ async function insertarDetalle(client, venta, b, ctx = {}) {
           sets.push(`proveedor = $${params.length}`);
         }
         if (sets.length > 0) {
+          // 2026-07-26 (audit 2026-07-25 Track B P0-1): defense-in-depth.
+          // El SELECT previo (línea 333-337) sí filtra por tenant_id +
+          // deleted_at IS NULL, pero este UPDATE final los omitía. Rompía la
+          // convención cross-módulo y abría TOCTOU: si otro proceso soft-
+          // deleteaba el producto entre SELECT y UPDATE, esta query lo
+          // "resucitaba" con nuevos valores. Fix: añadir ambos guards al
+          // WHERE explícitamente.
           params.push(c.producto_id);
+          const idxProdId = params.length;
+          params.push(ctx.tenantId);
+          const idxTenant = params.length;
           await client.query(
             `UPDATE productos SET ${sets.join(', ')}
-              WHERE id = $${params.length}`,
+              WHERE id = $${idxProdId}
+                AND tenant_id = $${idxTenant}
+                AND deleted_at IS NULL`,
             params
           );
         }
