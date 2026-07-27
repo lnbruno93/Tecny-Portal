@@ -276,7 +276,7 @@ export default function DevolucionMercaderiaProveedorModal({ proveedor, onClose,
             )}
 
             {!loadingProd && !fetchError && productos.length > 0 && (
-              <div className="u-flex-1-overflow-mh-0" style={{ maxHeight: 360 }}>
+              <div className="u-flex-1-overflow-mh-0 u-devolucion-picker">
                 <table className="u-provs-table">
                   <colgroup>
                     <col className="u-w-30" />{/* checkbox */}
@@ -301,9 +301,8 @@ export default function DevolucionMercaderiaProveedorModal({ proveedor, onClose,
                       const on = selectedIds.has(p.id);
                       return (
                         <tr key={p.id}
-                            className="u-provs-row"
-                            onClick={() => !saving && toggleOne(p.id)}
-                            style={{ cursor: saving ? 'default' : 'pointer' }}>
+                            className={`u-provs-row ${saving ? 'u-row-disabled' : 'u-row-clickable'}`}
+                            onClick={() => !saving && toggleOne(p.id)}>
                           <td className="cell u-text-center">
                             <input
                               type="checkbox"
@@ -346,7 +345,7 @@ export default function DevolucionMercaderiaProveedorModal({ proveedor, onClose,
 
         {/* ── Footer: total + acciones ───────────────────────────── */}
         <div className="modal-ft">
-          <div className="flex-row u-flex-gap-8-mt-10-end" style={{ justifyContent: 'space-between', width: '100%' }}>
+          <div className="flex-row u-flex-gap-8-mt-10-end u-modal-ft-spread">
             <div>
               <div className="muted tiny">Seleccionados</div>
               <div className="mono u-fs-14-fw-600-lh-11">

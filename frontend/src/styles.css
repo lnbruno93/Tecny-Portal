@@ -4320,6 +4320,11 @@ body.modal-open { overflow: hidden; }
 .u-provs-row                  { border-bottom: 1px solid var(--hairline); }
 .u-opacity-55                 { opacity: 0.55; }
 .u-provs-footer-td            { padding: 12px 16px; text-align: center; border-top: 1px dashed var(--border); }
+/* Devolución mercadería modal (task #236) — CSP-safe class utilities. */
+.u-devolucion-picker          { max-height: 360px; }
+.u-row-clickable              { cursor: pointer; }
+.u-row-disabled               { cursor: default; }
+.u-modal-ft-spread            { justify-content: space-between; width: 100%; }
 /* — Clientes admin (Sprint 68) — */
 .u-skel-h-16-w-60p            { height: 16px; width: 60%; }
 .u-skel-h-16-w-48             { height: 16px; width: 48px; }
