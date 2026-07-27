@@ -11,6 +11,10 @@ const parseId  = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { round2, assertMonedaValidaParaPais } = require('../lib/money');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
+// 2026-07-27 (audit 07-25 Track A P2-2): invalidateCajas — POST + DELETE
+// de movimientos mueven la caja destino (ingreso/egreso).
+const { invalidateCajas } = require('../lib/cajasCache');
+const logger = require('../lib/logger');
 const { createEntidadSchema, updateEntidadSchema, createMovimientoSchema } = require('../schemas/cambios');
 const {
   parseIdempotencyKey,
@@ -241,7 +245,10 @@ router.post('/movimientos', validate(createMovimientoSchema), async (req, res, n
 
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     // Idempotency replay antes de tocar entidad + caja.
     if (idem.key) {
@@ -331,6 +338,8 @@ router.post('/movimientos', validate(createMovimientoSchema), async (req, res, n
     });
     await audit(client, 'cambio_movimientos', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
+    invalidateCajas(req.tenantId).catch(err =>
+      logger.warn({ err: err.message }, 'cambios POST /movimientos: invalidateCajas falló'));
     res.status(201).json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -352,7 +361,10 @@ router.delete('/movimientos/:id', async (req, res, next) => {
   try {
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const { rows } = await client.query(
       'UPDATE cambio_movimientos SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *', [id]
     );
@@ -360,6 +372,8 @@ router.delete('/movimientos/:id', async (req, res, next) => {
     await reverseCajaMovimientos(client, 'cambio_movimientos', id);
     await audit(client, 'cambio_movimientos', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
+    invalidateCajas(req.tenantId).catch(err =>
+      logger.warn({ err: err.message }, 'cambios DELETE /movimientos: invalidateCajas falló'));
     res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK');

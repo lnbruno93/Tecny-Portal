@@ -140,7 +140,10 @@ router.post('/', requireCapability('contactos.crear_borrar'), validate(createCon
   const client = await db.connect();
   try {
     await client.query('BEGIN');
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const { nombre, apellido, telefono, dni, email, fecha_nacimiento, tipo, origen } = req.body;
     const { rows } = await client.query(
       `INSERT INTO contactos (nombre, apellido, telefono, dni, email, fecha_nacimiento, tipo, origen)
@@ -164,7 +167,10 @@ router.put('/:id', requireCapability('contactos.crear_borrar'), validate(updateC
     if (!id) return res.status(400).json({ error: 'ID inválido' });
 
     await client.query('BEGIN');
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const { rows: before } = await client.query(
       'SELECT * FROM contactos WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]
     );
@@ -201,7 +207,10 @@ router.delete('/:id', requireCapability('contactos.crear_borrar'), async (req, r
     if (!id) return res.status(400).json({ error: 'ID inválido' });
 
     await client.query('BEGIN');
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const { rows } = await client.query(
       'UPDATE contactos SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',
       [id]
