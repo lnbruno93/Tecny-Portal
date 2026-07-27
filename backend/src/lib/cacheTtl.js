@@ -228,6 +228,16 @@ function createCachedFetcherRedis(key, ttlMs, fetcher) {
 // callers son responsables de toString — defensive porque las keys de
 // Redis son strings y la concatenación implícita ya estaba dando false-
 // positives en tests con `userId` int.
+// 2026-07-27 (cleanup post audit 07-25): registry global de caches. Cada
+// `createTenantScopedCache` se auto-registra. El endpoint `/health/cache-stats`
+// enumera todos y devuelve su `getStats()` — cierra el follow-up del Sprint 3
+// Fix 5 (métrica de hit rate por instancia expuesta a observabilidad).
+//
+// Set (no Array) para dedupe automático — cada cache se instancia una vez
+// per boot, pero si algún callsite lo hiciera múltiples veces (bug), no
+// duplicaríamos entries.
+const CACHE_REGISTRY = new Set();
+
 function createTenantScopedCache({ keyPrefix, ttlMs, maxFetchers = 256, fetcher }) {
   if (typeof keyPrefix !== 'string' || !keyPrefix) {
     throw new Error('createTenantScopedCache: keyPrefix requerido');
@@ -278,7 +288,7 @@ function createTenantScopedCache({ keyPrefix, ttlMs, maxFetchers = 256, fetcher 
     return fn;
   }
 
-  return {
+  const cache = {
     async get(scopeKey) {
       return getFetcherForScope(scopeKey)();
     },
@@ -375,6 +385,24 @@ function createTenantScopedCache({ keyPrefix, ttlMs, maxFetchers = 256, fetcher 
       stats.invalidatePrefixLocalMap = 0;
     },
   };
+  // Auto-registro en el registry global. Ver comment arriba.
+  CACHE_REGISTRY.add(cache);
+  return cache;
 }
 
-module.exports = { createCachedFetcher, createCachedFetcherRedis, createTenantScopedCache };
+// Devuelve stats de TODOS los caches registrados. El endpoint
+// `/health/cache-stats` (app.js) lo consume. Ordenado por keyPrefix para
+// diff diffs estables entre boots.
+function getAllCacheStats() {
+  return Array.from(CACHE_REGISTRY)
+    .map((c) => c.getStats())
+    .sort((a, b) => (a.keyPrefix || '').localeCompare(b.keyPrefix || ''));
+}
+
+module.exports = {
+  createCachedFetcher,
+  createCachedFetcherRedis,
+  createTenantScopedCache,
+  getAllCacheStats,
+  CACHE_REGISTRY,
+};
