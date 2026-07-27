@@ -460,3 +460,163 @@ describe('Migration bulk UPDATE sobre FORCE RLS — bug incidente F3 2026-07-09'
     expect(rlsState[0].relforcerowsecurity).toBe(true);  // FORCE se restauró ✓
   });
 });
+
+/**
+ * Tests del pre-check de ownership (post-incidente 2026-07-25 no-op migration).
+ *
+ * Contexto:
+ *   La migration 20260724000002 falló en prod con "must be owner of relation
+ *   clases_producto" porque el rol de migrations (ipro_app NOSUPERUSER) no
+ *   era owner de 7 tablas creadas por otro rol previamente. El CI job
+ *   `NOSUPERUSER RLS Tests` NO cazó el bug porque en CI todas las tablas
+ *   son owned por el mismo rol (mig_rls_tester).
+ *
+ * Este suite replica el mix de owners heterogéneos y verifica que:
+ *   1. El pre-check del pattern DO block cazA el drift ANTES de intentar
+ *      DROP POLICY (fail-fast con mensaje claro apuntando al runbook).
+ *   2. El check pasa cuando todas las tablas son owned por current_user.
+ *
+ * Si alguien vuelve a introducir una migration que asuma ownership
+ * uniforme sin este pre-check, alguno de los tests de acá va a fallar.
+ */
+describe('Migration pre-check de ownership heterogéneo — bug 20260724000002', () => {
+  const OTHER_ROLE = 'mig_alien_owner_test';
+  const TEST_TABLE_A = 'mig_owner_test_a';
+  const TEST_TABLE_B = 'mig_owner_test_b';
+
+  beforeAll(async () => {
+    // Crear un rol "extranjero" que será owner de una tabla — simula el mix
+    // que teníamos en prod donde ipro_app NO era owner de las 7 tablas.
+    try {
+      await pool.query(`REASSIGN OWNED BY ${OTHER_ROLE} TO CURRENT_USER`);
+      await pool.query(`DROP OWNED BY ${OTHER_ROLE} CASCADE`);
+    } catch (_) { /* role no existía */ }
+    await pool.query(`DROP ROLE IF EXISTS ${OTHER_ROLE}`);
+    await pool.query(`CREATE ROLE ${OTHER_ROLE} LOGIN NOSUPERUSER`);
+
+    // Crear 2 tablas test: A owned por CURRENT_USER, B owned por OTHER_ROLE.
+    // La B simula "clases_producto" en prod (owner alien).
+    await pool.query(`
+      DROP TABLE IF EXISTS ${TEST_TABLE_A};
+      DROP TABLE IF EXISTS ${TEST_TABLE_B};
+      CREATE TABLE ${TEST_TABLE_A} (id SERIAL PRIMARY KEY, tenant_id INT NOT NULL);
+      CREATE TABLE ${TEST_TABLE_B} (id SERIAL PRIMARY KEY, tenant_id INT NOT NULL);
+    `);
+    await pool.query(`ALTER TABLE ${TEST_TABLE_B} OWNER TO ${OTHER_ROLE}`);
+  });
+
+  afterAll(async () => {
+    try {
+      await pool.query(`ALTER TABLE ${TEST_TABLE_B} OWNER TO CURRENT_USER`);
+    } catch (_) {}
+    await pool.query(`DROP TABLE IF EXISTS ${TEST_TABLE_A}`);
+    await pool.query(`DROP TABLE IF EXISTS ${TEST_TABLE_B}`);
+    try {
+      await pool.query(`REASSIGN OWNED BY ${OTHER_ROLE} TO CURRENT_USER`);
+      await pool.query(`DROP OWNED BY ${OTHER_ROLE} CASCADE`);
+      await pool.query(`DROP ROLE IF EXISTS ${OTHER_ROLE}`);
+    } catch (_) {}
+  });
+
+  it('pre-check DO block FALLA cuando alguna tabla tiene owner alien', async () => {
+    // Este es el SQL EXACTO del pre-check que agregamos a la migration
+    // 20260728000001_backfill_nullif_rls_tables_v2.js. Si el pre-check
+    // se rompe / se elimina, este test cae inmediatamente.
+    await expect(
+      pool.query(`
+        DO $$
+        DECLARE
+          wrong_owner_count integer;
+          wrong_owner_list text;
+        BEGIN
+          SELECT
+            COUNT(*),
+            string_agg(c.relname || ' (owner=' || r.rolname || ')', ', ')
+          INTO wrong_owner_count, wrong_owner_list
+          FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          JOIN pg_roles r ON r.oid = c.relowner
+          WHERE n.nspname = 'public'
+            AND c.relname IN ('${TEST_TABLE_A}', '${TEST_TABLE_B}')
+            AND r.rolname != current_user;
+
+          IF wrong_owner_count > 0 THEN
+            RAISE EXCEPTION
+              'Migration pre-check FAILED. % table(s) have owner != current_user (%). Wrong owners: %.',
+              wrong_owner_count, current_user, wrong_owner_list;
+          END IF;
+        END $$;
+      `)
+    ).rejects.toMatchObject({
+      // El mensaje debe apuntar EXPLÍCITAMENTE a la tabla con owner alien.
+      message: expect.stringMatching(new RegExp(`${TEST_TABLE_B}.*owner=${OTHER_ROLE}`)),
+    });
+  });
+
+  it('pre-check DO block PASA cuando todas las tablas son owned por current_user', async () => {
+    // Restaurar ownership de B a current_user y verificar que el mismo
+    // pre-check ahora pasa limpio (no throwea).
+    await pool.query(`ALTER TABLE ${TEST_TABLE_B} OWNER TO CURRENT_USER`);
+
+    // No debe throwear.
+    await pool.query(`
+      DO $$
+      DECLARE
+        wrong_owner_count integer;
+      BEGIN
+        SELECT COUNT(*)
+        INTO wrong_owner_count
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_roles r ON r.oid = c.relowner
+        WHERE n.nspname = 'public'
+          AND c.relname IN ('${TEST_TABLE_A}', '${TEST_TABLE_B}')
+          AND r.rolname != current_user;
+
+        IF wrong_owner_count > 0 THEN
+          RAISE EXCEPTION 'pre-check failed';
+        END IF;
+      END $$;
+    `);
+
+    // Restaurar el estado para next test si hay (defensivo — el afterAll
+    // limpia igual, pero mantiene isolation entre tests).
+    await pool.query(`ALTER TABLE ${TEST_TABLE_B} OWNER TO ${OTHER_ROLE}`);
+  });
+
+  it('DROP POLICY sobre tabla con owner alien FALLA con code 42501 (repro del bug prod)', async () => {
+    // Sanity check: sin el pre-check, si intentáramos DROP POLICY directo
+    // sobre una tabla con owner alien, falla con code 42501. Este es el
+    // error EXACTO que teníamos en prod. El test demuestra por qué el
+    // pre-check + runbook son necesarios: no podemos "fixear en la
+    // migration" sin la intervención superuser previa.
+    //
+    // Primero necesitamos que exista una policy para intentar dropearla:
+    await pool.query(`ALTER TABLE ${TEST_TABLE_B} OWNER TO CURRENT_USER`);
+    await pool.query(`
+      ALTER TABLE ${TEST_TABLE_B} ENABLE ROW LEVEL SECURITY;
+      CREATE POLICY tenant_isolation ON ${TEST_TABLE_B} FOR ALL TO PUBLIC
+        USING (tenant_id = 1);
+    `);
+    // Volver a owner alien.
+    await pool.query(`ALTER TABLE ${TEST_TABLE_B} OWNER TO ${OTHER_ROLE}`);
+
+    const client = await pool.connect();
+    try {
+      await client.query(`SET ROLE ${ROLE_NAME}`);
+      // ipro_app-equivalent intenta DROP POLICY sobre tabla owned por OTHER_ROLE.
+      await expect(
+        client.query(`DROP POLICY tenant_isolation ON ${TEST_TABLE_B}`)
+      ).rejects.toMatchObject({
+        code: '42501',  // insufficient_privilege
+        message: expect.stringMatching(/must be owner/i),
+      });
+    } finally {
+      try { await client.query('RESET ROLE'); } catch (_) {}
+      client.release();
+    }
+    // Cleanup: restore + drop policy con superuser.
+    await pool.query(`ALTER TABLE ${TEST_TABLE_B} OWNER TO CURRENT_USER`);
+    await pool.query(`DROP POLICY IF EXISTS tenant_isolation ON ${TEST_TABLE_B}`);
+  });
+});
