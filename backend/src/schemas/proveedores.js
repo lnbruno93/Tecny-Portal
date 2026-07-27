@@ -111,10 +111,45 @@ const bulkCreateMovimientosProveedorSchema = z.object({
     .max(50, 'Máximo 50 movimientos por bulk (uno por proveedor en el XLSX)'),
 }).strict();
 
+// 2026-07-27 (feature "Devolución de mercadería a proveedor" task #236):
+//
+// El operador puede devolver productos comprados a un proveedor por múltiples
+// motivos (error de envío del proveedor, defecto, arrepentimiento, cambio de
+// modelo). La devolución:
+//   - Reduce la deuda con el proveedor (equivale contable a un pago; el
+//     `saldoProveedor.js` ya trata `tipo='devolucion'` con signo negativo).
+//   - Elimina los productos del inventario (soft-delete deleted_at + oculto).
+//   - NO toca caja (no hay flujo de plata — los productos SON la contrapartida).
+//
+// V1 constraints:
+//   - Solo productos con `estado='disponible'` (no vendidos, reservados,
+//     en_tecnico). El check impide devolver algo que ya no se posee.
+//   - Solo productos owned por ESTE proveedor (via productos.proveedor_movimiento_id
+//     → proveedor_movimientos.proveedor_id). Evita devolver a un proveedor algo
+//     comprado a otro por error operativo.
+//   - Solo productos con costo_moneda='USD'. Simplifica la conversión de monto
+//     (típico en tech reseller). Si aparece un caso ARS/UYU, se rechaza con
+//     mensaje claro y se resuelve en v2 con TC del momento de la compra.
+//
+// Motivos disponibles: enum cerrado para permitir reporting futuro
+// ("qué proveedor tiene más devoluciones por defecto").
+const createDevolucionMercaderiaProveedorSchema = z.object({
+  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato de fecha inválido (YYYY-MM-DD)'),
+  motivo: z.enum(
+    ['error_proveedor', 'defecto', 'arrepentimiento', 'cambio_modelo', 'otro'],
+    { errorMap: () => ({ message: 'Motivo inválido. Válidos: error_proveedor, defecto, arrepentimiento, cambio_modelo, otro' }) }
+  ),
+  motivo_detalle: z.string().trim().max(500, 'Detalle demasiado largo (max 500 chars)').optional().nullable(),
+  producto_ids: z.array(z.number().int().positive())
+    .min(1, 'Al menos 1 producto es requerido')
+    .max(200, 'Máximo 200 productos por devolución'),
+}).strict();
+
 module.exports = {
   createProveedorSchema,
   updateProveedorSchema,
   createMovimientoProveedorSchema,
   bulkCreateMovimientosProveedorSchema,
   nombresBulkProveedoresSchema,
+  createDevolucionMercaderiaProveedorSchema,
 };
