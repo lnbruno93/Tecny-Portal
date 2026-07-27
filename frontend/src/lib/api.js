@@ -597,6 +597,17 @@ export const proveedores = {
   // 409 sin tocar nada. Devuelve { proveedores_borrados, movimientos_borrados,
   // productos_borrados }.
   bulkDeleteAll: () => api('/api/proveedores/bulk-delete-all', 'POST'),
+  // ─── Devolución de mercadería (task #236, 2026-07-27) ─────────────
+  // Lista de productos elegibles a devolver a un proveedor: owned por él,
+  // disponibles, con costo en USD. Alimenta el picker del modal.
+  productosDevolvibles: (id, params = {}) =>
+    api(`/api/proveedores/${id}/productos-devolvibles?` + new URLSearchParams(params)),
+  // Registra una devolución: reduce deuda del proveedor + soft-delete de
+  // los productos del inventario en una sola tx atómica. Idempotency-Key
+  // recomendado para evitar doble-envío por retry o doble-click.
+  createDevolucion: (id, data, idempotencyKey = null) =>
+    api(`/api/proveedores/${id}/devoluciones`, 'POST', data, 15000,
+      idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : null),
 };
 
 export const proyectos = {
