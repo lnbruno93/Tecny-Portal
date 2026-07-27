@@ -90,7 +90,10 @@ router.post('/', validate(createTransferenciaSchema), async (req, res, next) => 
     const isCross = !!(moneda_destino && monto_destino && tc);
     await client.query('BEGIN');
     // multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     // Validar que ambas cajas existen, no están eliminadas.
     const { rows: cajas } = await client.query(
@@ -233,7 +236,10 @@ router.delete('/:id', async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     const { rows } = await client.query(
       `UPDATE caja_transferencias SET deleted_at = NOW()

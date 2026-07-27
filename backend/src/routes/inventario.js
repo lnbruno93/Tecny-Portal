@@ -233,7 +233,10 @@ router.post('/categorias/bulk', validate(nombresBulkSchema), async (req, res, ne
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL después del BEGIN para que la tx
     // respete RLS. Aplica solo a esta tx — el client vuelve al pool limpio.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     // ON CONFLICT con el índice parcial idx_categorias_tenant_nombre
     // (tenant_id, LOWER(nombre) WHERE deleted_at IS NULL). 2026-06-24 ONB-3:
     // el índice cambió de global a per-tenant en migration
@@ -1585,7 +1588,10 @@ router.post('/productos/bulk-delete-disponibles', requireCapability('inventario.
   try {
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     // Validación: ¿hay envíos en curso apuntando a productos disponibles?
     // Estados 'Entregado' y 'Cancelado' son terminales — borrar el producto no
@@ -1678,7 +1684,10 @@ router.post('/productos/bulk-delete-disponibles-con-compras', bulkLimiter, admin
   const client = await db.connect();
   try {
     await client.query('BEGIN');
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     // 1. Guard contra envíos en curso (mismo check que el hermano).
     // 2026-07-12 (auditoría TOTAL Stock P1-3): tenant_id explícito además del
@@ -1845,7 +1854,10 @@ router.post('/productos/bulk', requireCapability('inventario.crear'), bulkLimite
   try {
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const cols = PRODUCTO_COLS.filter(c => !c.startsWith('foto_'));
 
     // Mismo default explícito que en el POST simple: columnas NOT NULL nuevas.

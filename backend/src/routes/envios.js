@@ -169,7 +169,10 @@ router.post('/', validate(createEnvioSchema), async (req, res, next) => {
     try {
       await client.query('BEGIN');
       // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-      await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+      await client.query(
+        `SELECT set_config('app.current_tenant', $1::text, true)`,
+        [String(req.tenantId)]
+      );
       // Validar combinaciones avanzadas de pagos ANTES de tocar nada.
       await validarPagosAvanzados(client, items, registrar_venta, cliente_cc_id);
 
@@ -245,7 +248,10 @@ router.put('/:id', validate(updateEnvioSchema), async (req, res, next) => {
   try {
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     // Lock de la fila dentro de la tx para serializar ediciones concurrentes
     const { rows: before } = await client.query(
       'SELECT * FROM envios WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]
@@ -376,7 +382,10 @@ router.post('/:id/confirmar-entrega', async (req, res, next) => {
   try {
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const { rows: before } = await client.query(
       'SELECT * FROM envios WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]
     );
@@ -428,7 +437,10 @@ router.delete('/:id', async (req, res, next) => {
   try {
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const { rows: before } = await client.query(
       'SELECT * FROM envios WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]
     );
