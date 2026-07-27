@@ -350,6 +350,87 @@ describe('POST /api/proveedores/:id/devoluciones — validaciones runtime', () =
   });
 });
 
+describe('GET /api/proveedores/:id/productos-devolvibles', () => {
+  let catId;
+
+  beforeAll(async () => {
+    const cat = await request(app).post('/api/inventario/categorias').set(auth())
+      .send({ nombre: 'iPhone (Devolvibles Tests)' });
+    catId = cat.body.id;
+  });
+
+  it('devuelve solo productos owned por ese proveedor, disponibles, en USD', async () => {
+    const provA = await crearProveedor({ nombre: 'ProvDevolvibles A' });
+    const provB = await crearProveedor({ nombre: 'ProvDevolvibles B' });
+
+    // Producto de provA — elegible
+    const pA = await crearCompraConProducto({
+      proveedorId: provA.id, categoriaId: catId,
+      imei: '900000000009001', costo: 500, montoCompra: 500,
+    });
+    // Producto de provB — NO debe aparecer en provA
+    const pB = await crearCompraConProducto({
+      proveedorId: provB.id, categoriaId: catId,
+      imei: '900000000009002', costo: 500, montoCompra: 500,
+    });
+
+    const res = await request(app).get(`/api/proveedores/${provA.id}/productos-devolvibles`).set(auth());
+    expect(res.status).toBe(200);
+    const ids = res.body.data.map((p) => p.id);
+    expect(ids).toContain(pA.producto.id);
+    expect(ids).not.toContain(pB.producto.id);
+    // Metadata que necesita el modal:
+    const item = res.body.data.find((p) => p.id === pA.producto.id);
+    expect(item.imei).toBe('900000000009001');
+    expect(Number(item.costo)).toBeCloseTo(500, 2);
+    expect(item.costo_moneda).toBe('USD');
+    expect(item.categoria_nombre).toBeDefined();
+    expect(item.proveedor_movimiento_id).toBe(pA.mov.id);
+  });
+
+  it('filtra productos vendidos y eliminados', async () => {
+    const prov = await crearProveedor({ nombre: 'ProvDevolvibles Filtro' });
+    const pVivo = await crearCompraConProducto({
+      proveedorId: prov.id, categoriaId: catId,
+      imei: '900000000009101', costo: 500, montoCompra: 500,
+    });
+    const pVendido = await crearCompraConProducto({
+      proveedorId: prov.id, categoriaId: catId,
+      imei: '900000000009102', costo: 500, montoCompra: 500,
+    });
+    await pool.query(`UPDATE productos SET estado = 'vendido' WHERE id = $1`, [pVendido.producto.id]);
+
+    const res = await request(app).get(`/api/proveedores/${prov.id}/productos-devolvibles`).set(auth());
+    expect(res.status).toBe(200);
+    const ids = res.body.data.map((p) => p.id);
+    expect(ids).toContain(pVivo.producto.id);
+    expect(ids).not.toContain(pVendido.producto.id);
+  });
+
+  it('acepta `?buscar=<texto>` filtrando por nombre o IMEI', async () => {
+    const prov = await crearProveedor({ nombre: 'ProvDevolvibles Buscar' });
+    const pMatch = await crearCompraConProducto({
+      proveedorId: prov.id, categoriaId: catId,
+      imei: '900000000009201', costo: 500, montoCompra: 500,
+    });
+    const pOther = await crearCompraConProducto({
+      proveedorId: prov.id, categoriaId: catId,
+      imei: '900000000009202', costo: 500, montoCompra: 500,
+    });
+
+    const res = await request(app).get(`/api/proveedores/${prov.id}/productos-devolvibles?buscar=900000000009201`).set(auth());
+    expect(res.status).toBe(200);
+    const ids = res.body.data.map((p) => p.id);
+    expect(ids).toContain(pMatch.producto.id);
+    expect(ids).not.toContain(pOther.producto.id);
+  });
+
+  it('proveedor inexistente → 404', async () => {
+    const res = await request(app).get('/api/proveedores/999999/productos-devolvibles').set(auth());
+    expect(res.status).toBe(404);
+  });
+});
+
 describe('POST /api/proveedores/:id/devoluciones — Idempotency-Key', () => {
   let catId;
 

@@ -992,6 +992,73 @@ router.get('/resumen/saldos', async (req, res, next) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
+// GET /:id/productos-devolvibles — Productos devolvibles a este proveedor
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Alimenta el modal de "Devolución de mercadería" (task #236) con la lista
+// de productos elegibles. Mismos criterios que el POST /:id/devoluciones,
+// pero en modo consulta (sin lockear ni modificar):
+//   - owned por ESTE proveedor (via productos.proveedor_movimiento_id →
+//     proveedor_movimientos.proveedor_id)
+//   - estado = 'disponible' + no soft-deleted + cantidad > 0
+//   - costo_moneda = 'USD' (v1 constraint)
+//
+// Soporta `?buscar=<texto>` para filtro cliente-side sobre nombre o IMEI.
+// Cap 500 filas — mismo orden de magnitud que Inventario en un tenant típico
+// del proveedor más grande; suficiente para que el modal sea usable sin
+// scroll infinito.
+router.get('/:id(\\d+)/productos-devolvibles', async (req, res, next) => {
+  try {
+    const proveedorId = parseId(req.params.id);
+    if (!proveedorId) return res.status(400).json({ error: 'ID de proveedor inválido' });
+
+    const { buscar } = req.query;
+
+    const rows = await db.withTenant(req.tenantId, async (client) => {
+      // 1. Verificar proveedor existe + no eliminado (evita 200 con lista vacía
+      //    cuando el proveedor no existe — mejor 404 explícito).
+      const { rows: prov } = await client.query(
+        `SELECT id FROM proveedores WHERE id = $1 AND deleted_at IS NULL`,
+        [proveedorId]
+      );
+      if (!prov[0]) return null;
+
+      const params = [proveedorId];
+      const conds  = [
+        `p.deleted_at IS NULL`,
+        `p.estado = 'disponible'`,
+        `p.cantidad > 0`,
+        `pm.proveedor_id = $1`,
+        `(p.costo_moneda IS NULL OR p.costo_moneda = 'USD')`,
+      ];
+      if (buscar && buscar.trim()) {
+        params.push(`%${buscar.trim()}%`);
+        conds.push(`(p.nombre ILIKE $${params.length} OR p.imei ILIKE $${params.length})`);
+      }
+
+      const { rows } = await client.query(
+        `SELECT p.id, p.nombre, p.imei, p.color, p.gb,
+                p.costo, p.costo_moneda,
+                pm.id   AS proveedor_movimiento_id,
+                pm.fecha AS fecha_compra,
+                c.nombre AS categoria_nombre
+           FROM productos p
+           JOIN proveedor_movimientos pm ON pm.id = p.proveedor_movimiento_id
+      LEFT JOIN categorias c            ON c.id = p.categoria_id
+          WHERE ${conds.join(' AND ')}
+       ORDER BY pm.fecha DESC, p.id DESC
+          LIMIT 500`,
+        params
+      );
+      return rows;
+    });
+
+    if (rows === null) return res.status(404).json({ error: 'Proveedor no encontrado' });
+    res.json({ data: rows });
+  } catch (err) { next(err); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 // POST /:id/devoluciones — Devolución de mercadería al proveedor (task #236, 2026-07-27)
 // ─────────────────────────────────────────────────────────────────────────
 //
