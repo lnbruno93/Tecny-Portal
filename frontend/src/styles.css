@@ -4321,7 +4321,11 @@ body.modal-open { overflow: hidden; }
 .u-opacity-55                 { opacity: 0.55; }
 .u-provs-footer-td            { padding: 12px 16px; text-align: center; border-top: 1px dashed var(--border); }
 /* Devolución mercadería modal (task #236) — CSP-safe class utilities. */
-.u-devolucion-picker          { max-height: 360px; }
+.u-devolucion-picker          { max-height: 480px; }
+/* Filas más compactas para el picker (más productos visibles sin scroll).
+   Overrides los 7px 8px default de `.cell` solo dentro del picker. */
+.u-devolucion-picker .cell    { padding: 5px 8px; }
+.u-devolucion-picker .u-provs-th { padding: 6px 8px; }
 .u-row-clickable              { cursor: pointer; }
 .u-row-disabled               { cursor: default; }
 .u-modal-ft-spread            { justify-content: space-between; width: 100%; }
