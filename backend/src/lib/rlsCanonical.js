@@ -161,6 +161,10 @@ const PREDICATE_CLOSED =
 // Para audit_logs: tenant_id NULLABLE (audits de sistema).
 const PREDICATE_CLOSED_NULLABLE = `tenant_id IS NULL OR (${PREDICATE_CLOSED})`;
 
+// 2026-07-27 (audit 07-25 Track E P1-5): throttle in-memory para el Sentry
+// alert de CONTENT drift. Ver assertRlsMatchesCanonical() al final del archivo.
+let _lastContentDriftAlert = 0;
+
 // ─── Helper para migrations ─────────────────────────────────────────────
 //
 // enableTenantRlsFor: aplica ENABLE + FORCE + policy `tenant_isolation`
@@ -350,26 +354,67 @@ async function assertRlsCoverage(pool) {
   }
 
   // Emitir warning + Sentry para el drift de CONTENT (no fatal).
+  //
+  // 2026-07-27 (audit 07-25 Track E P1-5):
+  //   (a) Throttle Sentry a 1 alert por hora por proceso — 2 réplicas × N
+  //       boots/día = ~10 alerts/día por drift persistente. Con throttle,
+  //       máximo ~48/día si Railway auto-scale genera 24 boots/día × 2
+  //       réplicas. Aceptable.
+  //   (b) `driftDetectedSince` incluido para forense — si el mensaje sigue
+  //       apareciendo después de esa fecha, es señal de que nadie corrió el
+  //       fix manual (follow-up PR #874 pendiente).
+  //   (c) Test unit que asserta que cada TABLAS_TENANT_ID_SIN_RLS tiene
+  //       reason ≥ 50 chars: ver tests/rlsCanonical.test.js.
   if (contentWarnings.length > 0) {
     // Logger optional import (evita ciclo si rlsCanonical se usa desde tests
     // que no cargan logger). Fallback a console.warn.
     let logger;
     try { logger = require('./logger'); } catch { logger = console; }
+
+    const DRIFT_DETECTED_SINCE = '2026-07-25';
+    const daysSinceDrift = Math.floor(
+      (Date.now() - new Date(DRIFT_DETECTED_SINCE).getTime()) / (1000 * 60 * 60 * 24)
+    );
+
     const warnMsg =
       `[rlsCanonical] CONTENT drift detectado en ${contentWarnings.length} predicate(s). ` +
       `Boot continúa (warning-only) porque el fix requiere superuser en DB para ` +
-      `re-owner de tablas. Hacer follow-up: script SQL manual + re-run backfill migration.`;
-    logger.warn({ count: contentWarnings.length, samples: contentWarnings.slice(0, 3) }, warnMsg);
-    try {
-      const Sentry = require('@sentry/node');
-      if (process.env.SENTRY_DSN) {
-        Sentry.captureMessage(warnMsg, {
-          level: 'warning',
-          tags: { source: 'rls_content_drift' },
-          extra: { warnings: contentWarnings },
-        });
-      }
-    } catch { /* Sentry not available */ }
+      `re-owner de tablas. Follow-up: script SQL manual + re-run backfill migration. ` +
+      `Drift persistente desde ${DRIFT_DETECTED_SINCE} (${daysSinceDrift} días). ` +
+      `Si ves este mensaje después de 2026-09-01, escalar el follow-up.`;
+    logger.warn({
+      count: contentWarnings.length,
+      samples: contentWarnings.slice(0, 3),
+      drift_detected_since: DRIFT_DETECTED_SINCE,
+      days_since_drift: daysSinceDrift,
+    }, warnMsg);
+
+    // Sentry throttle: 1 alert por hora por proceso. `_lastContentDriftAlert`
+    // module-level; sobrevive dentro del pod. Múltiples pods por hora aún
+    // pueden alertar, pero Sentry dedupe por título similar los agrupa.
+    const THROTTLE_MS = 60 * 60 * 1000; // 1 hora
+    const now = Date.now();
+    if (!_lastContentDriftAlert || (now - _lastContentDriftAlert) > THROTTLE_MS) {
+      _lastContentDriftAlert = now;
+      try {
+        // Fast-path exit si Sentry no está configurado (pattern del hotfix Sprint 1).
+        if (process.env.SENTRY_DSN && process.env.NODE_ENV !== 'test') {
+          const Sentry = require('@sentry/node');
+          Sentry.captureMessage(warnMsg, {
+            level: 'warning',
+            tags: {
+              source: 'rls_content_drift',
+              drift_since: DRIFT_DETECTED_SINCE,
+            },
+            extra: {
+              warnings: contentWarnings,
+              drift_detected_since: DRIFT_DETECTED_SINCE,
+              days_since_drift: daysSinceDrift,
+            },
+          });
+        }
+      } catch { /* Sentry not available */ }
+    }
   }
 
   if (errores.length > 0) {

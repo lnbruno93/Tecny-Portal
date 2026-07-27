@@ -47,12 +47,18 @@ describe('rlsCanonical constants (unit)', () => {
     expect(unique.size).toBe(TABLAS_TENANT_SCOPED.length);
   });
 
-  it('TABLAS_TENANT_ID_SIN_RLS whitelist documenta razón por tabla', () => {
+  it('TABLAS_TENANT_ID_SIN_RLS whitelist documenta razón por tabla ≥ 50 chars', () => {
+    // 2026-07-27 (audit 07-25 Track E P1-5): threshold subido de 20 → 50 chars.
+    // Racional: 20 chars aceptaba entries triviales ("no aplica RLS acá."). 50
+    // chars fuerza explicación de POR QUÉ + CÓMO se garantiza aislamiento
+    // alternativo (capability, adminQuery, etc.). Sin la explicación explícita,
+    // un dev futuro que agregue tabla a la whitelist se ahorra el análisis del
+    // trade-off — la mayoría de gaps cross-tenant históricos empezaron así.
     expect(Object.isFrozen(TABLAS_TENANT_ID_SIN_RLS)).toBe(true);
     for (const [tabla, razon] of Object.entries(TABLAS_TENANT_ID_SIN_RLS)) {
       expect(typeof tabla).toBe('string');
       expect(razon).toMatch(/./); // no vacía
-      expect(razon.length).toBeGreaterThan(20); // razón descriptiva, no trivial
+      expect(razon.length).toBeGreaterThanOrEqual(50); // razón descriptiva, no trivial
     }
     // Whitelist actual — enumeradas explícitamente para catchar si alguien
     // agrega o quita una excepción sin discutirlo.

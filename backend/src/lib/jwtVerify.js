@@ -26,7 +26,16 @@ const jwt = require('jsonwebtoken');
  * payload y extrae el user.id. Cachea el resultado en `req._validatedJwtUserId`
  * (undefined = no consultado, null = inválido, número = user.id).
  *
- * @param {object} req — Express Request. Se muta agregando _validatedJwtUserId.
+ * 2026-07-27 (audit 07-25 Track E P1-4): ADEMÁS cacheamos el `decoded` completo
+ * en `req._verifiedJwtDecoded` para que `requireAuth` (middleware/auth.js) NO
+ * tenga que hacer un tercer jwt.verify. Antes: rate limiter (skip global) +
+ * rate limiter (keyGenerator authenticated) + requireAuth = 3 verifys por
+ * request en el hot path autenticado. Con cache: 1 solo.
+ *
+ * Sí se paga la deserialización una vez y se comparte.
+ *
+ * @param {object} req — Express Request. Se muta agregando _validatedJwtUserId
+ *                       y _verifiedJwtDecoded (payload completo si válido).
  * @returns {number|null} — user.id si el token es válido, null si no.
  */
 function validateAndGetJwtUserId(req) {
@@ -47,9 +56,13 @@ function validateAndGetJwtUserId(req) {
     const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     // decoded.id viene del payload (seteado en makeToken). Si falta, cae a null.
     req._validatedJwtUserId = decoded.id != null ? Number(decoded.id) : null;
+    // Guardamos el payload completo — requireAuth necesita iat/iat_ms para
+    // el check de password_changed_at, no solo el id.
+    req._verifiedJwtDecoded = decoded;
     return req._validatedJwtUserId;
   } catch {
     req._validatedJwtUserId = null;
+    req._verifiedJwtDecoded = null;
     return null;
   }
 }
@@ -63,4 +76,16 @@ function hasValidSignedJwt(req) {
   return validateAndGetJwtUserId(req) != null;
 }
 
-module.exports = { validateAndGetJwtUserId, hasValidSignedJwt };
+/**
+ * Devuelve el payload decoded del JWT si ya fue validado en este request
+ * (por el rate limiter), sino null. `requireAuth` lo usa como fast-path
+ * para saltar su propio jwt.verify.
+ *
+ * @param {object} req
+ * @returns {object|null} — decoded payload si válido, null si no.
+ */
+function getVerifiedJwtDecoded(req) {
+  return req._verifiedJwtDecoded !== undefined ? req._verifiedJwtDecoded : null;
+}
+
+module.exports = { validateAndGetJwtUserId, hasValidSignedJwt, getVerifiedJwtDecoded };
