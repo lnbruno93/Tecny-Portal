@@ -9,6 +9,11 @@
   (login, signup, /inicio, etc.) no van al sitemap porque no son parte del
   funnel indexable — el operador llega por link directo o desde la landing.
 
+  2026-07-27 (audit 07-25 Externa P3-1 fix): agregar las secciones ancladas
+  de la landing (#precios, #features, #contacto, #faq). Google respeta
+  anchor fragments cuando el link es explícito en el sitemap — mejora el
+  ranking de queries específicas ("Tecny precios", "Tecny FAQ").
+
   Actualizar `lastmod` cuando se hagan cambios significativos de contenido
   (rebrand, features, precios, etc.). No hace falta actualizarlo con cada
   deploy.
@@ -16,9 +21,33 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://tecnyapp.com/</loc>
-    <lastmod>2026-07-19</lastmod>
+    <lastmod>2026-07-27</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://tecnyapp.com/#precios</loc>
+    <lastmod>2026-07-27</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://tecnyapp.com/#features</loc>
+    <lastmod>2026-07-27</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://tecnyapp.com/#faq</loc>
+    <lastmod>2026-07-27</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://tecnyapp.com/#contacto</loc>
+    <lastmod>2026-07-27</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
   </url>
   <url>
     <loc>https://tecnyapp.com/terminos</loc>

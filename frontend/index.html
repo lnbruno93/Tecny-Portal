@@ -59,6 +59,15 @@
          próximo deploy. Aceptable: Google recrawlea a veces por mes y el
          precio hardcoded acá NO es el que ve el usuario (ese viene del
          backend). Es solo el hint estructural para SEO.
+
+         2026-07-27 (audit 07-25 Externa P2-1, P2-6, P3-4 fixes):
+           · Naming plans corregido "Solo/Equipo" → "Starter/Pro" (matchea la
+             landing dinámica — antes desincronizado desde el rebrand).
+           · Agregado `sameAs` en Organization (Instagram) para grafo social.
+           · Agregado `width`/`height` en logo (Rich Results Best Practices).
+           · `priceValidUntil` subido a 2028-12-31 (2 años de runway).
+             TODO: cuando el CMS admin exponga TTL de precios, tomar de ahí
+             dinámicamente vía SSR/build-time inject.
     -->
     <script type="application/ld+json">
     {
@@ -75,20 +84,20 @@
       "offers": [
         {
           "@type": "Offer",
-          "name": "Solo",
+          "name": "Starter",
           "price": "39",
           "priceCurrency": "USD",
-          "priceValidUntil": "2027-12-31",
+          "priceValidUntil": "2028-12-31",
           "url": "https://tecnyapp.com/#precios",
           "availability": "https://schema.org/InStock",
           "description": "Para el revendedor independiente. 1 usuario, cotizador + usados, financiera básica."
         },
         {
           "@type": "Offer",
-          "name": "Equipo",
+          "name": "Pro",
           "price": "189",
           "priceCurrency": "USD",
-          "priceValidUntil": "2027-12-31",
+          "priceValidUntil": "2028-12-31",
           "url": "https://tecnyapp.com/#precios",
           "availability": "https://schema.org/InStock",
           "description": "Hasta 10 usuarios, 7 módulos completos, permisos por usuario, OCR ilimitado."
@@ -109,8 +118,13 @@
         "url": "https://tecnyapp.com/",
         "logo": {
           "@type": "ImageObject",
-          "url": "https://tecnyapp.com/pwa-icon.svg"
-        }
+          "url": "https://tecnyapp.com/pwa-icon.svg",
+          "width": 512,
+          "height": 512
+        },
+        "sameAs": [
+          "https://instagram.com/tecny.app"
+        ]
       }
     }
     </script>
