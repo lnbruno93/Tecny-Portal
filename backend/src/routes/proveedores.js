@@ -23,6 +23,7 @@ const {
 const {
   createProveedorSchema, updateProveedorSchema, createMovimientoProveedorSchema,
   bulkCreateMovimientosProveedorSchema, nombresBulkProveedoresSchema,
+  createDevolucionMercaderiaProveedorSchema,
 } = require('../schemas/proveedores');
 // Fórmula canónica del saldo por proveedor — evita divergencia entre listado,
 // resumen, chat-tools y dashboardMensual (task #150 consolidación).
@@ -56,6 +57,10 @@ const compraMovimientoLimiter = rateLimit({
     ? `prov-mov:${req.user.id}`
     : `prov-mov:ip:${ipKeyGenerator(req)}`,
   message: { error: 'Demasiadas compras a proveedor en poco tiempo. Probá en unos minutos.' },
+  // Bypass en tests — mismo pattern que signupLimiter. Las suites de integración
+  // hacen bursts de >30 POSTs contra el mismo user y toparían el limiter en
+  // NODE_ENV=test si no lo skipeamos (falso positivo 429, no bug de la ruta).
+  skip: () => process.env.NODE_ENV === 'test',
 });
 
 // ─── PROVEEDORES ────────────────────────────────────────────
@@ -985,5 +990,337 @@ router.get('/resumen/saldos', async (req, res, next) => {
     res.json({ proveedores: rows, total_deuda_usd });
   } catch (err) { next(err); }
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// GET /:id/productos-devolvibles — Productos devolvibles a este proveedor
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Alimenta el modal de "Devolución de mercadería" (task #236) con la lista
+// de productos elegibles. Mismos criterios que el POST /:id/devoluciones,
+// pero en modo consulta (sin lockear ni modificar):
+//   - owned por ESTE proveedor (via productos.proveedor_movimiento_id →
+//     proveedor_movimientos.proveedor_id)
+//   - estado = 'disponible' + no soft-deleted + cantidad > 0
+//   - costo_moneda = 'USD' (v1 constraint)
+//
+// Soporta `?buscar=<texto>` para filtro cliente-side sobre nombre o IMEI.
+// Cap 500 filas — mismo orden de magnitud que Inventario en un tenant típico
+// del proveedor más grande; suficiente para que el modal sea usable sin
+// scroll infinito.
+router.get('/:id(\\d+)/productos-devolvibles', async (req, res, next) => {
+  try {
+    const proveedorId = parseId(req.params.id);
+    if (!proveedorId) return res.status(400).json({ error: 'ID de proveedor inválido' });
+
+    const { buscar } = req.query;
+
+    const rows = await db.withTenant(req.tenantId, async (client) => {
+      // 1. Verificar proveedor existe + no eliminado (evita 200 con lista vacía
+      //    cuando el proveedor no existe — mejor 404 explícito).
+      const { rows: prov } = await client.query(
+        `SELECT id FROM proveedores WHERE id = $1 AND deleted_at IS NULL`,
+        [proveedorId]
+      );
+      if (!prov[0]) return null;
+
+      const params = [proveedorId];
+      const conds  = [
+        `p.deleted_at IS NULL`,
+        `p.estado = 'disponible'`,
+        `p.cantidad > 0`,
+        `pm.proveedor_id = $1`,
+        `(p.costo_moneda IS NULL OR p.costo_moneda = 'USD')`,
+      ];
+      if (buscar && buscar.trim()) {
+        params.push(`%${buscar.trim()}%`);
+        conds.push(`(p.nombre ILIKE $${params.length} OR p.imei ILIKE $${params.length})`);
+      }
+
+      const { rows } = await client.query(
+        `SELECT p.id, p.nombre, p.imei, p.color, p.gb,
+                p.costo, p.costo_moneda,
+                pm.id   AS proveedor_movimiento_id,
+                pm.fecha AS fecha_compra,
+                c.nombre AS categoria_nombre
+           FROM productos p
+           JOIN proveedor_movimientos pm ON pm.id = p.proveedor_movimiento_id
+      LEFT JOIN categorias c            ON c.id = p.categoria_id
+          WHERE ${conds.join(' AND ')}
+       ORDER BY pm.fecha DESC, p.id DESC
+          LIMIT 500`,
+        params
+      );
+      return rows;
+    });
+
+    if (rows === null) return res.status(404).json({ error: 'Proveedor no encontrado' });
+    res.json({ data: rows });
+  } catch (err) { next(err); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// POST /:id/devoluciones — Devolución de mercadería al proveedor (task #236, 2026-07-27)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// El operador devuelve productos comprados a este proveedor. Casos típicos:
+// error de envío del proveedor, defecto, arrepentimiento, cambio de modelo.
+//
+// Efectos:
+//   1. Crea proveedor_movimiento tipo='devolucion' con monto_usd = SUM(costos)
+//      → saldoProveedor.js ya cuenta este tipo con signo negativo, así que
+//        automáticamente reduce lo que le debemos al proveedor.
+//   2. INSERT proveedor_movimiento_items con snapshot de cada producto
+//      (nombre, imei, valor) — mismo pattern que las compras.
+//   3. Soft-delete de los productos (deleted_at=NOW(), oculto=true).
+//      El proveedor_movimiento_id del producto se mantiene para trazabilidad
+//      histórica (podés ver de qué compra vino cada producto devuelto).
+//   4. Audit log del movimiento.
+//   5. Invalida caché de inventario (productos ya no aparecen en Inventario)
+//      y de cuentas de proveedor.
+//
+// Constraints v1:
+//   - Todos los productos deben estar con estado='disponible' + no soft-deleted
+//     + cantidad > 0. Un producto ya vendido no se puede devolver (no lo
+//     tenemos físicamente).
+//   - Todos los productos deben ser owned por este proveedor (traceable via
+//     productos.proveedor_movimiento_id → proveedor_movimientos.proveedor_id).
+//     Evita devolver a proveedor X algo comprado a proveedor Y por error.
+//   - Solo productos con costo_moneda='USD'. Simplifica la suma sin ambigüedad
+//     de TC. Casos ARS/UYU se rechazan con mensaje claro y se resuelven en v2.
+//
+// Idempotency: header `Idempotency-Key` UUID. Si se recibe 2 requests con la
+// misma key, el 2do devuelve el movimiento del 1ro sin re-ejecutar (evita
+// devolver el mismo producto 2 veces por retry del cliente).
+//
+// Cache: usa `.catch()` post-COMMIT igual que el resto del router (fire-and-
+// forget, no bloquea la respuesta si Redis está caído).
+router.post('/:id(\\d+)/devoluciones',
+  compraMovimientoLimiter,
+  validate(createDevolucionMercaderiaProveedorSchema),
+  async (req, res, next) => {
+    const idem = parseIdempotencyKey(req);
+    if (idem.error) {
+      return res.status(400).json({ error: idem.error, reason: 'idempotency_key_invalid' });
+    }
+
+    const proveedorId = parseId(req.params.id);
+    if (!proveedorId) return res.status(400).json({ error: 'ID de proveedor inválido' });
+
+    const { fecha, motivo, motivo_detalle, producto_ids } = req.body;
+
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `SELECT set_config('app.current_tenant', $1::text, true)`,
+        [String(req.tenantId)]
+      );
+
+      // Idempotency replay: si ya se procesó este key, devolver el mov original.
+      if (idem.key) {
+        const existing = await findExistingByIdempotencyKey(client, 'proveedor_movimientos', idem.key);
+        if (existing) {
+          await client.query('ROLLBACK');
+          return res.status(200).json({ ...existing, idempotent_replay: true });
+        }
+      }
+
+      // 1. Validar proveedor existe + no eliminado (FOR UPDATE lockea la fila
+      //    para que updates concurrentes no cambien el nombre/data usada acá).
+      const prov = await client.query(
+        `SELECT id, nombre FROM proveedores WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
+        [proveedorId]
+      );
+      if (!prov.rows[0]) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Proveedor no encontrado', reason: 'proveedor_not_found' });
+      }
+
+      // 2. SELECT productos con FOR UPDATE — validar en una sola query:
+      //    - existen
+      //    - no soft-deleted
+      //    - estado = 'disponible'
+      //    - cantidad > 0
+      //    - JOIN con proveedor_movimientos para verificar owned por este proveedor
+      //
+      //    Retornamos costo/costo_moneda/nombre/imei para el snapshot + suma.
+      const { rows: productos } = await client.query(
+        `SELECT p.id, p.nombre, p.imei, p.costo, p.costo_moneda,
+                p.proveedor_movimiento_id,
+                pm.proveedor_id AS pm_proveedor_id
+           FROM productos p
+      LEFT JOIN proveedor_movimientos pm ON pm.id = p.proveedor_movimiento_id
+          WHERE p.id = ANY($1::int[])
+            AND p.deleted_at IS NULL
+            AND p.estado = 'disponible'
+            AND p.cantidad > 0
+       ORDER BY p.id
+            FOR UPDATE OF p`,
+        [producto_ids]
+      );
+
+      // 2.a. Detectar productos NO elegibles (no existen o ya vendidos/eliminados).
+      const foundIds = new Set(productos.map((r) => r.id));
+      const invalidIds = producto_ids.filter((id) => !foundIds.has(id));
+      if (invalidIds.length > 0) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          error:
+            `${invalidIds.length} producto(s) no elegible(s) para devolución. ` +
+            `Deben estar disponibles (no vendidos, no eliminados). IDs: ${invalidIds.join(', ')}`,
+          reason: 'productos_no_elegibles',
+          invalid_ids: invalidIds,
+        });
+      }
+
+      // 2.b. Detectar productos que NO fueron comprados a este proveedor.
+      //      Usamos el snapshot proveedor_movimiento_id → proveedor_movimientos.proveedor_id.
+      //      Un producto sin proveedor_movimiento_id (ej. canje, seed manual)
+      //      NO es elegible — no se puede rastrear a una compra a este proveedor.
+      const wrongProvIds = productos
+        .filter((p) => p.pm_proveedor_id !== proveedorId)
+        .map((p) => p.id);
+      if (wrongProvIds.length > 0) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          error:
+            `${wrongProvIds.length} producto(s) no fueron comprados a este proveedor ` +
+            `(o no tienen origen rastreable). IDs: ${wrongProvIds.join(', ')}`,
+          reason: 'productos_wrong_proveedor',
+          invalid_ids: wrongProvIds,
+        });
+      }
+
+      // 2.c. V1 constraint: rechazar productos con costo_moneda != 'USD'.
+      //      Devolvemos deuda en USD (equivalente contable) — sin conversión
+      //      inambigua no podemos sumar montos de monedas mixtas.
+      const nonUsdIds = productos
+        .filter((p) => (p.costo_moneda || 'USD') !== 'USD')
+        .map((p) => p.id);
+      if (nonUsdIds.length > 0) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          error:
+            `${nonUsdIds.length} producto(s) tienen costo en moneda distinta a USD. ` +
+            `Devolución v1 solo soporta USD. IDs: ${nonUsdIds.join(', ')}`,
+          reason: 'productos_moneda_no_usd',
+          invalid_ids: nonUsdIds,
+        });
+      }
+
+      // 3. Calcular monto total USD (suma de costos — todos ya son USD por 2.c).
+      const monto_usd = round2(
+        productos.reduce((sum, p) => sum + Number(p.costo || 0), 0)
+      );
+
+      // 4. Motivo labels para descripción legible en UI/reportes.
+      const MOTIVO_LABELS = {
+        error_proveedor:  'Error del proveedor',
+        defecto:          'Defecto',
+        arrepentimiento:  'Arrepentimiento',
+        cambio_modelo:    'Cambio de modelo',
+        otro:             'Otro',
+      };
+      const descripcion =
+        `Devolución mercadería · ${MOTIVO_LABELS[motivo]} · ${productos.length} producto(s)`;
+
+      // 5. INSERT proveedor_movimiento tipo='devolucion' (moneda=USD, tc=null
+      //    porque es nativo USD, monto=monto_usd sin conversión).
+      const { rows: movRows } = await client.query(
+        `INSERT INTO proveedor_movimientos
+            (proveedor_id, fecha, tipo, descripcion, monto, moneda, monto_usd,
+             notas, created_by_user_id, client_generated_id)
+         VALUES ($1, $2, 'devolucion', $3, $4, 'USD', $5, $6, $7, $8)
+         RETURNING *`,
+        [
+          proveedorId,
+          fecha,
+          descripcion,
+          monto_usd,
+          monto_usd,
+          motivo_detalle ?? null,
+          req.user.id,
+          idem.key,
+        ]
+      );
+      const mov = movRows[0];
+
+      // 6. INSERT proveedor_movimiento_items (bulk UNNEST — mismo pattern que
+      //    compras). Snapshot inmutable — si el producto se re-crea con el mismo
+      //    IMEI mañana, el registro histórico sigue intacto.
+      await client.query(
+        `INSERT INTO proveedor_movimiento_items
+            (proveedor_movimiento_id, producto, imei_serial, valor, notas)
+         SELECT $1, p, i, v, n
+           FROM UNNEST($2::text[], $3::text[], $4::numeric[], $5::text[])
+                AS u(p, i, v, n)`,
+        [
+          mov.id,
+          productos.map((p) => p.nombre ?? null),
+          productos.map((p) => p.imei ?? null),
+          productos.map((p) => Number(p.costo || 0)),
+          productos.map(() => `Devuelto · motivo: ${motivo}`),
+        ]
+      );
+
+      // 7. Soft-delete de los productos. `oculto=true` los quita de listados
+      //    default; `deleted_at=NOW()` los excluye de todos los queries de
+      //    inventario. Mantenemos `proveedor_movimiento_id` para trazabilidad
+      //    (podés ver qué productos originalmente vinieron de una compra dada
+      //    y cuáles se devolvieron después).
+      await client.query(
+        `UPDATE productos
+            SET deleted_at = NOW(),
+                oculto = true
+          WHERE id = ANY($1::int[])`,
+        [producto_ids]
+      );
+
+      // 8. Audit log.
+      await audit(client, req, {
+        accion: 'devolucion_mercaderia_proveedor',
+        entidad: 'proveedor_movimientos',
+        registro_id: String(mov.id),
+        datos: {
+          proveedor_id: proveedorId,
+          proveedor_nombre: prov.rows[0].nombre,
+          motivo,
+          motivo_detalle: motivo_detalle || null,
+          monto_usd,
+          productos_devueltos: productos.length,
+          producto_ids,
+        },
+      });
+
+      await client.query('COMMIT');
+
+      // 9. Invalidate caches post-COMMIT. Fire-and-forget (no rompemos response
+      //    si Redis está caído — el next boot los levantará frescos).
+      invalidateMetricas(req.tenantId).catch((err) =>
+        require('../lib/logger').warn(
+          { err: err.message, tenantId: req.tenantId },
+          '[proveedores.devoluciones] invalidateMetricas post-COMMIT falló'
+        )
+      );
+
+      return res.status(201).json({
+        movimiento: mov,
+        productos_devueltos: productos.length,
+        monto_total_usd: monto_usd,
+      });
+    } catch (err) {
+      try { await client.query('ROLLBACK'); } catch { /* swallow */ }
+      if (isIdempotencyConflict(err)) {
+        return res.status(409).json({
+          error: 'Otro request con la misma Idempotency-Key está en curso. Reintentá en un instante.',
+          reason: 'idempotency_conflict',
+        });
+      }
+      return next(err);
+    } finally {
+      client.release();
+    }
+  }
+);
 
 module.exports = router;
