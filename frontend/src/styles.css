@@ -4326,6 +4326,11 @@ body.modal-open { overflow: hidden; }
    Overrides los 7px 8px default de `.cell` solo dentro del picker. */
 .u-devolucion-picker .cell    { padding: 5px 8px; }
 .u-devolucion-picker .u-provs-th { padding: 6px 8px; }
+/* Textarea del detalle con placeholder/texto centrado vertical.
+   `.input` default no aplica padding vertical (height:36px 1-line). Para un
+   textarea con visual space extra, subo padding vertical simétrico para que
+   el texto quede al medio de la caja en vez de pegado arriba. */
+.u-textarea-vcenter           { padding-top: 12px; padding-bottom: 12px; }
 .u-row-clickable              { cursor: pointer; }
 .u-row-disabled               { cursor: default; }
 .u-modal-ft-spread            { justify-content: space-between; width: 100%; }
