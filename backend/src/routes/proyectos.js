@@ -110,7 +110,10 @@ router.post('/', validate(createProyectoSchema), async (req, res, next) => {
   try {
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const { rows } = await client.query(
       `INSERT INTO proyectos (nombre, objetivo, fecha_creacion)
        VALUES ($1, $2, COALESCE($3, CURRENT_DATE)) RETURNING *`,
@@ -136,7 +139,10 @@ router.put('/:id', validate(updateProyectoSchema), async (req, res, next) => {
   try {
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const { rows } = await client.query(
       `UPDATE proyectos SET
          nombre = COALESCE($1, nombre), objetivo = COALESCE($2, objetivo),
@@ -170,7 +176,10 @@ router.delete('/:id', requireCapability('proyectos.eliminar'), async (req, res, 
   try {
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const { rows } = await client.query(
       'UPDATE proyectos SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *', [id]
     );
@@ -237,7 +246,10 @@ router.post('/movimientos', validate(createMovimientoProyectoSchema), async (req
   try {
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     // Validación: proyecto existe (con RLS aplicada via SET LOCAL).
     const { rows: p } = await client.query(
@@ -331,7 +343,10 @@ router.delete('/movimientos/:id', async (req, res, next) => {
   try {
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const { rows: before } = await client.query(
       'SELECT * FROM proyecto_movimientos WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]
     );

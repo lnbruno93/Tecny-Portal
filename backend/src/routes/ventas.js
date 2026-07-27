@@ -1345,7 +1345,10 @@ router.post('/', validate(createVentaSchema), async (req, res, next) => {
     validarCuentaCorriente(b.pagos, b.cliente_cc_id);
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     // Idempotency replay: si el caller ya intentó con esta key y triunfó,
     // devolvemos la venta original SIN reejecutar side effects (stock, cajas,
@@ -1496,7 +1499,10 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
 
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const { rows: beforeRows } = await client.query('SELECT * FROM ventas WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]);
     if (!beforeRows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Venta no encontrada' }); }
     const before = beforeRows[0];
@@ -1686,7 +1692,10 @@ router.patch('/:id/vendedor-nombre', validate(updateVendedorNombreSchema), async
     const nuevoVendedor = raw && raw.trim() ? raw.trim() : null;
 
     await client.query('BEGIN');
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     const { rows: before } = await client.query(
       'SELECT id, vendedor_nombre FROM ventas WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
@@ -1737,7 +1746,10 @@ router.delete('/:id', requireCapability('ventas.eliminar'), async (req, res, nex
 
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const { rows: before } = await client.query('SELECT * FROM ventas WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]);
     if (!before[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Venta no encontrada' }); }
 
@@ -1810,7 +1822,10 @@ router.post('/:id/enviar-comprobante', enviarComprobanteLimiter, validate(enviar
     }
 
     await client.query('BEGIN');
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     // Validación de existencia + lookup reenvio_de_id. RLS asegura cross-
     // tenant (404 si la venta es de otro tenant).

@@ -146,7 +146,10 @@ router.post('/', validate(createComprobanteSchema), async (req, res, next) => {
   try {
     const { fecha, cliente, vendedor_id, monto, monto_financiera, monto_neto, referencia, archivo_data, archivo_nombre, archivo_tipo } = req.body;
     await client.query('BEGIN');
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     // P-03 Fase 3: bifurcación de upload por feature flag.
     //   Si flag `storage_r2_comprobantes` ON + STORAGE_DRIVER=r2 → fileStore.put
@@ -242,7 +245,10 @@ router.post('/manuales', validate(createManualComprobanteSchema), async (req, re
   try {
     const { fecha, cliente, vendedor_id, monto_bruto, pct, referencia } = req.body;
     await client.query('BEGIN');
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     const pctEfectivo = await resolverPctFinanciera(client, pct);
     const { bruto, pct: pctFinal, comision, neto } = computeNeto(monto_bruto, pctEfectivo);
@@ -291,7 +297,10 @@ router.patch('/manuales/:id', validate(updateManualComprobanteSchema), async (re
   const client = await db.connect();
   try {
     await client.query('BEGIN');
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const { rows: before } = await client.query(
       `SELECT id, fecha, cliente, vendedor_id, monto, monto_financiera,
               monto_neto, referencia, venta_id
@@ -394,7 +403,10 @@ router.delete('/:id', async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const { rows: before } = await client.query(
       'SELECT * FROM comprobantes WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
       [id]

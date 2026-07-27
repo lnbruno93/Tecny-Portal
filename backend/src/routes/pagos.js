@@ -84,7 +84,10 @@ router.post('/', validate(createPagoSchema), async (req, res, next) => {
   try {
     const { fecha, monto, referencia, caja_id, convertir_usd, tc, monto_usd } = req.body;
     await client.query('BEGIN');
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     // 1. Validar caja destino (existe + no eliminada).
     const cajaRes = await client.query(
@@ -181,7 +184,10 @@ router.delete('/:id', async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const { rows: before } = await client.query(
       'SELECT * FROM pagos WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]
     );
