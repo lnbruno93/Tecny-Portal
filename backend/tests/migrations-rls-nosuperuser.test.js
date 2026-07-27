@@ -518,21 +518,29 @@ describe('Migration pre-check de ownership heterogéneo — bug 20260724000002',
     } catch (_) {}
   });
 
-  it('pre-check DO block FALLA cuando alguna tabla tiene owner alien', async () => {
-    // Este es el SQL EXACTO del pre-check que agregamos a la migration
+  it('pre-check DO block emite NOTICE (no throw) cuando alguna tabla tiene owner alien', async () => {
+    // 2026-07-27 hotfix: antes el pre-check throwaba EXCEPTION (fail-fast).
+    // Cambió a NOTICE (warn-only) para no bloquear deploys en environments
+    // con DBs distintas (staging) donde el ALTER OWNER manual no se aplicó.
+    //
+    // Este SQL es el EXACTO del pre-check de la migration
     // 20260728000001_backfill_nullif_rls_tables_v2.js. Si el pre-check
-    // se rompe / se elimina, este test cae inmediatamente.
-    await expect(
-      pool.query(`
+    // se rompe / cambia el shape, este test cae.
+    let capturedNotices = [];
+    const client = await pool.connect();
+    try {
+      // Capturar los NOTICE messages para verificarlos.
+      client.on('notice', (msg) => capturedNotices.push(msg.message || ''));
+
+      // No debe throwear.
+      await client.query(`
         DO $$
         DECLARE
-          wrong_owner_count integer;
           wrong_owner_list text;
         BEGIN
           SELECT
-            COUNT(*),
             string_agg(c.relname || ' (owner=' || r.rolname || ')', ', ')
-          INTO wrong_owner_count, wrong_owner_list
+          INTO wrong_owner_list
           FROM pg_class c
           JOIN pg_namespace n ON n.oid = c.relnamespace
           JOIN pg_roles r ON r.oid = c.relowner
@@ -540,47 +548,136 @@ describe('Migration pre-check de ownership heterogéneo — bug 20260724000002',
             AND c.relname IN ('${TEST_TABLE_A}', '${TEST_TABLE_B}')
             AND r.rolname != current_user;
 
-          IF wrong_owner_count > 0 THEN
-            RAISE EXCEPTION
-              'Migration pre-check FAILED. % table(s) have owner != current_user (%). Wrong owners: %.',
-              wrong_owner_count, current_user, wrong_owner_list;
+          IF wrong_owner_list IS NOT NULL THEN
+            RAISE NOTICE
+              '[Migration test] Some tables have owner != current_user (%). Wrong owners: %.',
+              current_user, wrong_owner_list;
           END IF;
         END $$;
-      `)
-    ).rejects.toMatchObject({
-      // El mensaje debe apuntar EXPLÍCITAMENTE a la tabla con owner alien.
-      message: expect.stringMatching(new RegExp(`${TEST_TABLE_B}.*owner=${OTHER_ROLE}`)),
-    });
+      `);
+    } finally {
+      client.release();
+    }
+
+    // El NOTICE debe apuntar EXPLÍCITAMENTE a la tabla con owner alien.
+    const noticeText = capturedNotices.join(' | ');
+    expect(noticeText).toMatch(new RegExp(`${TEST_TABLE_B}.*owner=${OTHER_ROLE}`));
   });
 
-  it('pre-check DO block PASA cuando todas las tablas son owned por current_user', async () => {
-    // Restaurar ownership de B a current_user y verificar que el mismo
-    // pre-check ahora pasa limpio (no throwea).
+  it('pre-check DO block NO emite NOTICE cuando todas las tablas son owned por current_user', async () => {
+    // Restaurar ownership de B a current_user y verificar que el pre-check
+    // NO genera NOTICE (wrong_owner_list resulta NULL).
     await pool.query(`ALTER TABLE ${TEST_TABLE_B} OWNER TO CURRENT_USER`);
 
-    // No debe throwear.
+    let capturedNotices = [];
+    const client = await pool.connect();
+    try {
+      client.on('notice', (msg) => capturedNotices.push(msg.message || ''));
+
+      await client.query(`
+        DO $$
+        DECLARE
+          wrong_owner_list text;
+        BEGIN
+          SELECT
+            string_agg(c.relname || ' (owner=' || r.rolname || ')', ', ')
+          INTO wrong_owner_list
+          FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          JOIN pg_roles r ON r.oid = c.relowner
+          WHERE n.nspname = 'public'
+            AND c.relname IN ('${TEST_TABLE_A}', '${TEST_TABLE_B}')
+            AND r.rolname != current_user;
+
+          IF wrong_owner_list IS NOT NULL THEN
+            RAISE NOTICE 'Should not fire';
+          END IF;
+        END $$;
+      `);
+    } finally {
+      client.release();
+    }
+
+    // No debe haber NOTICE alguno del pre-check.
+    const noticeText = capturedNotices.join(' | ');
+    expect(noticeText).not.toMatch(/Should not fire/);
+
+    // Restaurar el estado para next test.
+    await pool.query(`ALTER TABLE ${TEST_TABLE_B} OWNER TO ${OTHER_ROLE}`);
+  });
+
+  it('per-table DROP con EXCEPTION handler skipea tabla con owner alien y sigue con las demás', async () => {
+    // Verifica el nuevo pattern: DROP POLICY per-table con EXCEPTION
+    // handler. Si una tabla falla con insufficient_privilege, loggea
+    // NOTICE y sigue con la siguiente tabla (best-effort).
+    //
+    // Este es el patrón exacto de la migration v2 post-hotfix.
+
+    // Setup: crear policy inicial en ambas tablas (con owner=current_user)
+    // para tener algo que dropear. Luego devolver B a owner alien.
+    await pool.query(`ALTER TABLE ${TEST_TABLE_B} OWNER TO CURRENT_USER`);
     await pool.query(`
-      DO $$
-      DECLARE
-        wrong_owner_count integer;
-      BEGIN
-        SELECT COUNT(*)
-        INTO wrong_owner_count
-        FROM pg_class c
-        JOIN pg_namespace n ON n.oid = c.relnamespace
-        JOIN pg_roles r ON r.oid = c.relowner
-        WHERE n.nspname = 'public'
-          AND c.relname IN ('${TEST_TABLE_A}', '${TEST_TABLE_B}')
-          AND r.rolname != current_user;
-
-        IF wrong_owner_count > 0 THEN
-          RAISE EXCEPTION 'pre-check failed';
-        END IF;
-      END $$;
+      ALTER TABLE ${TEST_TABLE_A} ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE ${TEST_TABLE_B} ENABLE ROW LEVEL SECURITY;
+      DROP POLICY IF EXISTS tenant_isolation ON ${TEST_TABLE_A};
+      DROP POLICY IF EXISTS tenant_isolation ON ${TEST_TABLE_B};
+      CREATE POLICY tenant_isolation ON ${TEST_TABLE_A} FOR ALL TO PUBLIC USING (tenant_id = 1);
+      CREATE POLICY tenant_isolation ON ${TEST_TABLE_B} FOR ALL TO PUBLIC USING (tenant_id = 1);
     `);
+    await pool.query(`ALTER TABLE ${TEST_TABLE_B} OWNER TO ${OTHER_ROLE}`);
 
-    // Restaurar el estado para next test si hay (defensivo — el afterAll
-    // limpia igual, pero mantiene isolation entre tests).
+    // Simular el per-table pattern de la migration desde ROLE_NAME
+    // (ipro_app-equivalent NOSUPERUSER).
+    let capturedNotices = [];
+    const client = await pool.connect();
+    try {
+      client.on('notice', (msg) => capturedNotices.push(msg.message || ''));
+      await client.query(`SET ROLE ${ROLE_NAME}`);
+
+      // Tabla A: NOSUPERUSER es owner → drop+create OK.
+      await client.query(`ALTER TABLE ${TEST_TABLE_A} OWNER TO ${ROLE_NAME}`).catch(() => {});
+      // (no podemos ALTER OWNER como NOSUPERUSER — lo hacemos con RESET ROLE)
+      await client.query('RESET ROLE');
+      await client.query(`ALTER TABLE ${TEST_TABLE_A} OWNER TO ${ROLE_NAME}`);
+      await client.query(`SET ROLE ${ROLE_NAME}`);
+
+      for (const table of [TEST_TABLE_A, TEST_TABLE_B]) {
+        await client.query(`
+          DO $$
+          BEGIN
+            DROP POLICY IF EXISTS tenant_isolation ON ${table};
+            CREATE POLICY tenant_isolation ON ${table}
+              FOR ALL TO PUBLIC
+              USING (tenant_id = 2);
+          EXCEPTION
+            WHEN insufficient_privilege THEN
+              RAISE NOTICE '[test] Skipped ${table} (owner mismatch)';
+          END $$;
+        `);
+      }
+    } finally {
+      try { await client.query('RESET ROLE'); } catch (_) {}
+      client.release();
+    }
+
+    // Verificar: A tiene policy nueva (tenant_id = 2), B queda con la vieja.
+    const { rows: policiesA } = await pool.query(
+      `SELECT qual FROM pg_policies WHERE tablename = '${TEST_TABLE_A}' AND policyname = 'tenant_isolation'`
+    );
+    const { rows: policiesB } = await pool.query(
+      `SELECT qual FROM pg_policies WHERE tablename = '${TEST_TABLE_B}' AND policyname = 'tenant_isolation'`
+    );
+    expect(policiesA[0].qual).toContain('tenant_id = 2');
+    expect(policiesB[0].qual).toContain('tenant_id = 1');
+    // NOTICE debe haber capturado el skip de B.
+    const noticeText = capturedNotices.join(' | ');
+    expect(noticeText).toMatch(new RegExp(`Skipped ${TEST_TABLE_B}`));
+
+    // Cleanup.
+    await pool.query(`ALTER TABLE ${TEST_TABLE_A} OWNER TO CURRENT_USER`);
+    await pool.query(`ALTER TABLE ${TEST_TABLE_B} OWNER TO CURRENT_USER`);
+    await pool.query(`DROP POLICY IF EXISTS tenant_isolation ON ${TEST_TABLE_A}`);
+    await pool.query(`DROP POLICY IF EXISTS tenant_isolation ON ${TEST_TABLE_B}`);
     await pool.query(`ALTER TABLE ${TEST_TABLE_B} OWNER TO ${OTHER_ROLE}`);
   });
 

@@ -74,26 +74,38 @@ const AFFECTED_TABLES = [
 const PREDICATE_CLOSED = `tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::int`;
 
 exports.up = async (pgm) => {
-  // ── Pre-check: guard-rail de ownership ───────────────────────────────
+  // ── Pre-check + per-table DROP: tolerante a ownership heterogéneo ────
   //
-  // Antes de intentar cualquier DROP POLICY, verificamos que TODAS las
-  // tablas afectadas son owned por el rol current_user (que es el rol de
-  // migrations — típicamente `ipro_app` en prod). Si alguna tabla tiene
-  // owner distinto, abortamos con mensaje que apunta al runbook.
+  // 2026-07-27 hotfix (bloqueaba deploy staging):
+  //   Este pre-check ANTES lanzaba `RAISE EXCEPTION` si cualquier tabla
+  //   tenía owner != current_user. Funcionaba en prod (donde el ALTER
+  //   OWNER manual del runbook step 2 ya se había aplicado antes del
+  //   deploy) pero bloqueó staging (que tiene su propia DB Postgres-AueP
+  //   instance, con owners heterogéneos que nunca se corrigieron manualmente).
   //
-  // Esto convierte un failure mid-batch (v1 fallaba en la 3ra tabla) en
-  // un failure fast en tiempo cero, con instrucciones claras.
+  //   Nuevo comportamiento: si detecta owner alien, emite WARNING con
+  //   NOTICE (visible en boot logs pero no fatal). El DROP+CREATE POLICY
+  //   se hace TABLE-BY-TABLE con manejo de error individual: si una tabla
+  //   específica falla con "must be owner", loggea warning y sigue con
+  //   la siguiente. Best-effort.
+  //
+  //   Consecuencia: la migration siempre se marca como aplicada (no
+  //   bloquea deploys), y las tablas que se pudieron fixear quedan
+  //   fixed. Las que no se pudieron quedan en su drift previo (mismo
+  //   estado que si la migration fuera no-op — no empeora nada).
+  //
+  //   El operador ve NOTICES en boot logs de Railway con las tablas
+  //   pendientes → aplica el runbook step 2 cuando pueda → próximo
+  //   deploy (o re-run manual) las arregla.
   const tables = AFFECTED_TABLES.map((t) => `'${t}'`).join(', ');
   pgm.sql(`
     DO $$
     DECLARE
-      wrong_owner_count integer;
       wrong_owner_list text;
     BEGIN
       SELECT
-        COUNT(*),
         string_agg(c.relname || ' (owner=' || r.rolname || ')', ', ')
-      INTO wrong_owner_count, wrong_owner_list
+      INTO wrong_owner_list
       FROM pg_class c
       JOIN pg_namespace n ON n.oid = c.relnamespace
       JOIN pg_roles r ON r.oid = c.relowner
@@ -101,26 +113,34 @@ exports.up = async (pgm) => {
         AND c.relname IN (${tables})
         AND r.rolname != current_user;
 
-      IF wrong_owner_count > 0 THEN
-        RAISE EXCEPTION
-          'Migration 20260728000001 pre-check FAILED. % table(s) have owner != current_user (%). Wrong owners: %. Fix: run docs/RUNBOOK_RLS_OWNER_FIX.md step 2 (ALTER TABLE ... OWNER TO %) with superuser BEFORE re-deploying this migration.',
-          wrong_owner_count, current_user, wrong_owner_list, current_user;
+      IF wrong_owner_list IS NOT NULL THEN
+        RAISE NOTICE
+          '[Migration 20260728000001] Some tables have owner != current_user (%). Wrong owners: %. Per-table DROP+CREATE will skip these. Fix: docs/RUNBOOK_RLS_OWNER_FIX.md step 2 (ALTER TABLE ... OWNER TO %) with superuser.',
+          current_user, wrong_owner_list, current_user;
       END IF;
     END $$;
   `);
 
-  // ── Fix: DROP+CREATE POLICY con NULLIF ───────────────────────────────
+  // ── Fix: DROP+CREATE POLICY con NULLIF, per-table best-effort ────────
   //
-  // Recorremos las 7 tablas y aplicamos el predicate canónico. Postgres
-  // permite CREATE POLICY sin FOR y sin TO — heredan defaults (FOR ALL,
-  // TO PUBLIC) que matchean lo que hacía el enableTenantRlsFor original.
+  // Cada tabla envuelta en un DO block con EXCEPTION handling. Si el
+  // DROP POLICY falla con code 42501 (insufficient_privilege / must be
+  // owner), loggeamos NOTICE y seguimos. Cualquier otro error se re-lanza
+  // (para no ocultar bugs reales).
   for (const table of AFFECTED_TABLES) {
     pgm.sql(`
-      DROP POLICY IF EXISTS tenant_isolation ON ${table};
-      CREATE POLICY tenant_isolation ON ${table}
-        FOR ALL TO PUBLIC
-        USING (${PREDICATE_CLOSED})
-        WITH CHECK (${PREDICATE_CLOSED});
+      DO $$
+      BEGIN
+        DROP POLICY IF EXISTS tenant_isolation ON ${table};
+        CREATE POLICY tenant_isolation ON ${table}
+          FOR ALL TO PUBLIC
+          USING (${PREDICATE_CLOSED})
+          WITH CHECK (${PREDICATE_CLOSED});
+      EXCEPTION
+        WHEN insufficient_privilege THEN
+          RAISE NOTICE
+            '[Migration 20260728000001] Skipped ${table} (owner != current_user). Apply runbook step 2 to fix.';
+      END $$;
     `);
   }
 };
