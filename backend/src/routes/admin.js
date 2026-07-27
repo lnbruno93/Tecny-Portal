@@ -288,7 +288,10 @@ router.post('/restore-producto', async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const { rows: pre } = await client.query(
       'SELECT * FROM productos WHERE id = $1 FOR UPDATE', [id]
     );
@@ -389,7 +392,10 @@ router.post('/orphan-movs/apply', backfillLimiter, async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     // Lockeo + listado dentro de la TX para que nadie pueda crear nuevos
     // huérfanos mientras procesamos. Sin LIMIT — queremos cleanup completo.
     const { rows: movs } = await client.query(

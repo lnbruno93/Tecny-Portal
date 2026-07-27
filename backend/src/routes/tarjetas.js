@@ -399,7 +399,10 @@ router.post('/cobros-iniciales', requireCapability('tarjetas.cobro_previo'), val
     const { metodo_pago_id, fecha, monto_bruto, pct, comentarios } = req.body;
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const mp = await client.query(
       'SELECT moneda, comision_pct FROM metodos_pago WHERE id = $1 AND es_tarjeta = true AND deleted_at IS NULL',
       [metodo_pago_id]
@@ -457,7 +460,10 @@ router.post('/liquidaciones', validate(createLiquidacionSchema), async (req, res
     const { metodo_pago_id, fecha, monto, caja_id, comentarios } = req.body;
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     // Idempotency replay antes de tocar cajas/tarjeta.
     if (idem.key) {
@@ -545,7 +551,10 @@ router.post('/liquidaciones-multiples', validate(createLiquidacionMultipleSchema
     } = req.body;
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     // 1. Validar caja destino.
     const caja = await client.query(
@@ -732,7 +741,10 @@ router.patch('/movimientos/:id', validate(updateMovimientoSchema), async (req, r
   try {
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const { rows: before } = await client.query(
       `SELECT m.*, mp.comision_pct AS metodo_comision_pct, mp.moneda AS metodo_moneda
          FROM tarjeta_movimientos m
@@ -945,7 +957,10 @@ router.delete('/movimientos/:id', async (req, res, next) => {
   try {
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const { rows: before } = await client.query('SELECT tipo, venta_id FROM tarjeta_movimientos WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]);
     if (!before[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Movimiento no encontrado' }); }
     // Los cobros que provienen de una venta NO se borran a mano (desincronizaría

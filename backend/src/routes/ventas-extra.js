@@ -112,7 +112,10 @@ router.post('/garantias', validate(garantiaSchema), async (req, res, next) => {
     const { nombre, texto, es_default } = req.body;
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     if (es_default) await client.query('UPDATE plantillas_garantia SET es_default = false WHERE es_default = true');
     const { rows } = await client.query(
       'INSERT INTO plantillas_garantia (nombre, texto, es_default) VALUES ($1,$2,$3) RETURNING id, nombre, texto, es_default',
@@ -135,7 +138,10 @@ router.put('/garantias/:id', validate(updateGarantiaSchema), async (req, res, ne
   try {
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const { rows: before } = await client.query('SELECT * FROM plantillas_garantia WHERE id = $1 AND deleted_at IS NULL', [id]);
     if (!before[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Garantía no encontrada' }); }
     const { nombre, texto, es_default } = req.body;
@@ -181,7 +187,10 @@ router.post('/:id/comprobantes', validate(comprobanteVentaSchema), async (req, r
   try {
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const ventaRes = await client.query(
       'SELECT id, estado FROM ventas WHERE id = $1 AND deleted_at IS NULL', [id]
     );

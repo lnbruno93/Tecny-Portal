@@ -88,7 +88,10 @@ router.put('/bulk', requireCapability('usados.agregar_equipo'), validate(bulkUpd
     const client = await db.connect();
     try {
       await client.query('BEGIN');
-      await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+      await client.query(
+        `SELECT set_config('app.current_tenant', $1::text, true)`,
+        [String(req.tenantId)]
+      );
       let count = 0;
       for (const u of updates) {
         const { rowCount } = await client.query(

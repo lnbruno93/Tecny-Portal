@@ -59,7 +59,10 @@ router.post('/', validate(createUsuarioSchema), async (req, res, next) => {
     const client = await db.connect();
     try {
       await client.query('BEGIN');
-      await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+      await client.query(
+        `SELECT set_config('app.current_tenant', $1::text, true)`,
+        [String(req.tenantId)]
+      );
       const { rows } = await client.query(
         'INSERT INTO users (nombre, username, email, password_hash, role) VALUES ($1,$2,$3,$4,$5) RETURNING id, nombre, username, email, role',
         [nombre, username, email, hash, role]
@@ -167,7 +170,10 @@ router.put('/:id', validate(updateUsuarioSchema), async (req, res, next) => {
     const client = await db.connect();
     try {
       await client.query('BEGIN');
-      await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+      await client.query(
+        `SELECT set_config('app.current_tenant', $1::text, true)`,
+        [String(req.tenantId)]
+      );
       // H3 auditoría 2026-06: si el admin cambia la password (`hash` no null),
       // bumpear también `password_changed_at = NOW()`. El middleware de auth
       // compara `jwt.iat_ms` con `password_changed_at` y rechaza tokens viejos

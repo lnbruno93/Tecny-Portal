@@ -66,7 +66,10 @@ router.post('/deudas', requireCapability('cajas.crear'), validate(createDeudaSch
     const { fecha, contacto_id, contacto_nuevo, tipo, monto_ars, monto_usd, concepto } = req.body;
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     // Resolver contacto: usar el id existente, o crear uno nuevo en la misma tx.
     let cid = contacto_id;
@@ -159,7 +162,10 @@ router.post('/inversiones', requireCapability('cajas.crear'), validate(createInv
     const { fecha, contacto_id, contacto_nuevo, monto, tasa } = req.body;
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     let cid = contacto_id;
     if (contacto_nuevo) {
@@ -264,7 +270,10 @@ router.post('/cajas', requireCapability('cajas.crear'), validate(cajaSchema), as
     assertMonedaValidaParaPais(moneda, req.tenantPais, 'moneda');
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     if (es_financiera) await client.query('UPDATE metodos_pago SET es_financiera = false WHERE es_financiera = true');
     // Cast explícito de saldo_inicial (2026-07-05): el `COALESCE($5, 0)` sin
     // cast infería `$5` como int4 (por el literal `0`), lo que:
@@ -315,7 +324,10 @@ router.put('/cajas/:id', requireCapability('cajas.crear'), validate(updateCajaSc
   try {
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const before = await client.query('SELECT * FROM metodos_pago WHERE id = $1 AND deleted_at IS NULL', [id]);
     if (!before.rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Caja no encontrada' }); }
 
