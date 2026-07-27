@@ -7,6 +7,11 @@ const parseId = require('../lib/parseId');
 const audit  = require('../lib/audit');
 const { postCajaMovimiento, reverseCajaMovimientos, grupoMoneda } = require('../lib/cajaLedger');
 const { postCajaMovimientoFinanciera } = require('../lib/financiera');
+// 2026-07-27 (audit 07-25 Track A P2-2): invalidateCajas post-mutación
+// caja_movimientos. Antes cada POST/DELETE dejaba la lista de cajas
+// (getCajasList TTL 15s) stale hasta que expiraba naturalmente.
+const { invalidateCajas } = require('../lib/cajasCache');
+const logger = require('../lib/logger');
 
 // 2026-07-12 (auditoría TOTAL Financiero P3-6): removida versión local
 // (drift) — ahora importamos el canónico de cajaLedger que soporta UYU
@@ -150,6 +155,8 @@ router.post('/', validate(createPagoSchema), async (req, res, next) => {
       despues: rows[0], user_id: req.user.id,
     });
     await client.query('COMMIT');
+    invalidateCajas(req.tenantId).catch(err =>
+      logger.warn({ err: err.message }, 'pagos POST: invalidateCajas falló'));
     res.status(201).json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -193,6 +200,8 @@ router.delete('/:id', async (req, res, next) => {
     );
     await audit(client, 'pagos', 'DELETE', id, { antes: before[0], user_id: req.user.id });
     await client.query('COMMIT');
+    invalidateCajas(req.tenantId).catch(err =>
+      logger.warn({ err: err.message }, 'pagos DELETE: invalidateCajas falló'));
     res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK');

@@ -12,6 +12,10 @@ const { postCajaMovimientoFinanciera } = require('../lib/financiera');
 const { reverseCajaMovimientos } = require('../lib/cajaLedger');
 const fileStore = require('../lib/fileStore');
 const storageFlags = require('../lib/storageFlags');
+// 2026-07-27 (audit 07-25 Track A P2-2): invalidateCajas — los 4 endpoints
+// que crean/modifican comprobantes mueven caja FV.
+const { invalidateCajas } = require('../lib/cajasCache');
+const logger = require('../lib/logger');
 const {
   createComprobanteSchema, queryComprobantesSchema,
   createManualComprobanteSchema, updateManualComprobanteSchema,
@@ -212,6 +216,8 @@ router.post('/', validate(createComprobanteSchema), async (req, res, next) => {
     const { archivo_data: _blob, ...comprobante } = rows[0];
     await audit(client, 'comprobantes', 'INSERT', compId, { despues: comprobante, user_id: req.user.id });
     await client.query('COMMIT');
+    invalidateCajas(req.tenantId).catch(err =>
+      logger.warn({ err: err.message }, 'comprobantes POST: invalidateCajas falló'));
     res.status(201).json(comprobante);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -267,6 +273,8 @@ router.post('/manuales', validate(createManualComprobanteSchema), async (req, re
       user_id: req.user.id,
     });
     await client.query('COMMIT');
+    invalidateCajas(req.tenantId).catch(err =>
+      logger.warn({ err: err.message }, 'comprobantes POST /manuales: invalidateCajas falló'));
     res.status(201).json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -358,6 +366,13 @@ router.patch('/manuales/:id', validate(updateManualComprobanteSchema), async (re
       antes: cur, despues: rows[0], pct_aplicado: pctFinal, user_id: req.user.id,
     });
     await client.query('COMMIT');
+    // Solo invalidar cache si hubo cambio material en caja (netoCambio ||
+    // fechaCambio). Si sólo cambió metadata, la caja no se tocó y el cache
+    // sigue coherente.
+    if (netoCambio || fechaCambio) {
+      invalidateCajas(req.tenantId).catch(err =>
+        logger.warn({ err: err.message }, 'comprobantes PATCH /manuales: invalidateCajas falló'));
+    }
     res.json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -401,6 +416,8 @@ router.delete('/:id', async (req, res, next) => {
     const { archivo_data: _blob, ...comprobante } = rows[0];
     await audit(client, 'comprobantes', 'DELETE', id, { antes: comprobante, user_id: req.user.id });
     await client.query('COMMIT');
+    invalidateCajas(req.tenantId).catch(err =>
+      logger.warn({ err: err.message }, 'comprobantes DELETE: invalidateCajas falló'));
     res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK');

@@ -90,12 +90,25 @@ export function useLandingPricing() {
       .then((data) => {
         const p = data?.prices;
         if (!p || typeof p !== 'object') return;
-        // Validación defensiva: solo actualizamos si los campos críticos son
-        // números >= 0. Si llega algo raro (NULL, string, negativo) mantenemos
-        // el fallback hardcoded.
+        // 2026-07-27 (audit 07-25 Track D P2-5): iteración dinámica sobre las
+        // keys que devuelve el backend, en vez de hardcodear starter/pro.
+        // Antes: solo se copiaban starter y pro — si el backend agregaba un
+        // plan nuevo (ej. 'enterprise') el frontend lo silenciaba sin señal.
+        // Ahora: cualquier key numérica >= 0 del response se copia; también
+        // reportamos si el shape es raro para diagnosticar drift.
         const next = { ...FALLBACK_PRICES };
-        if (typeof p.starter === 'number' && p.starter >= 0) next.starter = p.starter;
-        if (typeof p.pro === 'number' && p.pro >= 0) next.pro = p.pro;
+        for (const [key, val] of Object.entries(p)) {
+          if (typeof val === 'number' && val >= 0) {
+            next[key] = val;
+          } else {
+            // Log to Sentry-via-reportLandingError como warn — un plan nuevo
+            // con precio inválido es signal de drift schema, no crash.
+            reportLandingError(
+              new Error(`useLandingPricing: campo ${key} inválido (${typeof val}, val=${val})`),
+              { section: 'pricing_schema_drift', key }
+            );
+          }
+        }
         setPrices(next);
       })
       .catch((err) => reportLandingError(err, { section: 'pricing' }))
