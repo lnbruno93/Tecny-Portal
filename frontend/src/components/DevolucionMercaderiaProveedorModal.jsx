@@ -191,10 +191,13 @@ export default function DevolucionMercaderiaProveedorModal({ proveedor, onClose,
         </div>
 
         <div className="modal-body">
-          {/* ── Cabecera: fecha + motivo + detalle ────────────────── */}
-          <div className="form-grid u-mb-12">
-            <label className="form-field">
-              <span className="form-label">Fecha</span>
+          {/* ── Cabecera: fecha + motivo + detalle ─────────────────
+              Usa las mismas clases (`.row`, `.field`, `.field-label`) que
+              el modal de Pago (justo al lado en la misma pantalla) para
+              mantener consistencia visual. */}
+          <div className="row">
+            <div className="field u-flex-0-0-150">
+              <label className="field-label">Fecha</label>
               <input
                 type="date"
                 className="input"
@@ -202,9 +205,9 @@ export default function DevolucionMercaderiaProveedorModal({ proveedor, onClose,
                 onChange={(e) => setFecha(e.target.value)}
                 disabled={saving}
               />
-            </label>
-            <label className="form-field">
-              <span className="form-label">Motivo</span>
+            </div>
+            <div className="field u-flex-1">
+              <label className="field-label">Motivo</label>
               <select
                 className="input"
                 value={motivo}
@@ -218,13 +221,13 @@ export default function DevolucionMercaderiaProveedorModal({ proveedor, onClose,
               {motivoActual?.hint && (
                 <span className="muted tiny">{motivoActual.hint}</span>
               )}
-            </label>
+            </div>
           </div>
 
-          <label className="form-field u-mb-12">
-            <span className="form-label">
-              Detalle <span className="muted">(opcional, máx. 500 chars)</span>
-            </span>
+          <div className="field u-mt-12">
+            <label className="field-label">
+              Detalle <span className="muted">(opcional)</span>
+            </label>
             <textarea
               className="input"
               rows={2}
@@ -234,7 +237,7 @@ export default function DevolucionMercaderiaProveedorModal({ proveedor, onClose,
               onChange={(e) => setDetalle(e.target.value)}
               disabled={saving}
             />
-          </label>
+          </div>
 
           {/* ── Selector de productos ───────────────────────────── */}
           <div className="u-mb-8">
