@@ -128,7 +128,10 @@ router.post('/', conciliacionPostLimiter, validate(createConciliacionSchema), as
   const client = await db.connect();
   try {
     await client.query('BEGIN');
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     // Validar caja existe.
     const { rows: c } = await client.query(
@@ -325,7 +328,10 @@ router.put('/:id/lineas/:lineaId', validate(updateLineaSchema), async (req, res,
   const client = await db.connect();
   try {
     await client.query('BEGIN');
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     // La conciliación debe existir y no estar cerrada/borrada.
     const { rows: c } = await client.query(
@@ -427,7 +433,10 @@ router.post('/:id/cerrar', async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const { rows: c } = await client.query(
       'SELECT id, cerrado_en FROM conciliaciones WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
       [id]
@@ -519,7 +528,10 @@ router.delete('/:id', async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const { rows: c } = await client.query(
       'SELECT id FROM conciliaciones WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
       [id]

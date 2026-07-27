@@ -82,7 +82,10 @@ jobs:
       - name: Check backend patterns vs baseline
         run: npm run check:backend-anti-regression
 
-      - name: Check cross-tenant SELECT pattern (audit 07-25 Fix)
+      - name: Cross-tenant SELECT self-tests (regex sanity)
+        run: node scripts/security/cross-tenant-select-check.mjs --self-test
+
+      - name: Check cross-tenant SELECT pattern (audit 07-25 Fix + PR B extension)
         run: node scripts/security/cross-tenant-select-check.mjs
 
   test:
