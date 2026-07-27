@@ -58,4 +58,49 @@ function isClientErrorNoise(message) {
   return NOISE_PATTERNS.some((p) => p.test(msg));
 }
 
-module.exports = { isClientErrorNoise, NOISE_PATTERNS };
+// 2026-07-27 (Sentry hotfix post Sprint 4): filtro por user-agent para
+// crawlers y bots. Los bots (AhrefsBot, GoogleBot, BingBot, etc.) no
+// renderean el DOM completo — muchos disparan `img.onError` sobre
+// `<img loading="lazy">` porque no ejecutan el intersection observer.
+// La Landing tiene `onError` handlers legítimos para logos del carrusel
+// TrustedCompanies + otros assets: cuando un bot los "fallea", el
+// frontend reporta a /api/client-errors con `message:
+// 'trusted_company_logo_failed'` (u otros genéricos). Sentry recibe
+// ruido de bots que ningún user real vio.
+//
+// Regex insensitive a case, cubre los crawlers más comunes:
+//   - AhrefsBot (SEO)         - GoogleBot                - BingBot
+//   - YandexBot               - DuckDuckBot              - facebookexternalhit
+//   - LinkedInBot             - TwitterBot               - Slackbot
+//   - Semrush/DotBot/MJ12Bot  - AmazonBot                - PetalBot
+//   - Applebot/Baiduspider    - genérico *bot* al final del UA
+//
+// NO filtramos por "spider" o "crawler" en general porque hay UAs
+// legítimos que contienen esas palabras (ej. testing frameworks). El
+// pattern es explícito por nombre.
+const BOT_UA_PATTERNS = [
+  /AhrefsBot/i,
+  /GoogleBot/i,
+  /BingBot/i,
+  /YandexBot/i,
+  /DuckDuckBot/i,
+  /facebookexternalhit/i,
+  /LinkedInBot/i,
+  /TwitterBot/i,
+  /Slackbot/i,
+  /Semrush/i,
+  /DotBot/i,
+  /MJ12Bot/i,
+  /AmazonBot/i,
+  /PetalBot/i,
+  /Applebot/i,
+  /Baiduspider/i,
+];
+
+function isBotUserAgent(ua) {
+  if (!ua) return false;
+  const s = String(ua);
+  return BOT_UA_PATTERNS.some((p) => p.test(s));
+}
+
+module.exports = { isClientErrorNoise, isBotUserAgent, NOISE_PATTERNS, BOT_UA_PATTERNS };
