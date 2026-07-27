@@ -111,9 +111,14 @@ const updateProductoSchema = baseProducto.strict().partial(); // partial → coh
 const productoEnBulk = baseProducto
   .omit({ foto_data: true, foto_nombre: true, foto_tipo: true })
   .extend({
-    // Solo 'disponible' o 'reservado' — 'vendido'/'en_tecnico' requieren flow
-    // dedicado (venta / servicio técnico) que NO puede saltarse via bulk.
-    estado: z.enum(['disponible', 'reservado']).default('disponible'),
+    // 2026-07-27 (audit 07-25 Track B P2-6): estado restringido a
+    // 'disponible' solamente. El bulk XLSX es SIEMPRE alta de stock nuevo
+    // — reservar viene DESPUÉS via UI. Antes aceptaba 'reservado' → un
+    // cliente malicioso podía importar 500 productos como reservado
+    // (bypass del hold flow, congelamiento indefinido de stock).
+    // Post-fix P2-6 audit 07-12 se había reducido de 4→2 valores; este
+    // completa la reducción a 1 valor.
+    estado: z.literal('disponible').default('disponible'),
   })
   .strict();
 const bulkProductoSchema = z.object({
@@ -240,6 +245,14 @@ const queryUsadosSchema = z.object({
   // retornaba vacío. Rechazar temprano evita confusión del operador.
   d => !(d.solo_canjes === true && d.solo_manual === true),
   { message: 'solo_canjes y solo_manual son mutuamente excluyentes', path: ['solo_canjes'] }
+).refine(
+  // 2026-07-27 (audit 07-25 Track B P2-5): rechazar rango invertido
+  // (desde > hasta). Antes: query devolvía [] silenciosamente porque el
+  // WHERE `created_at BETWEEN 'hasta' AND 'desde'` (invertido) no matchea
+  // nada. El operador veía "Sin resultados" sin señal → sospechaba data
+  // vacía en vez del bug de UX.
+  d => !d.desde || !d.hasta || d.desde <= d.hasta,
+  { message: 'La fecha "desde" debe ser anterior o igual a "hasta"', path: ['desde'] }
 );
 
 module.exports = {

@@ -178,6 +178,20 @@ function _captureCallerStack() {
 // vs re-implementar el diagnostic bajo presión de incident.
 const DB_INT_CAST_DEBUG = process.env.DB_INT_CAST_DEBUG === '1';
 
+// 2026-07-27 (audit 07-25 Track E P2-2): expiry warning para el debug flag.
+// La env var lleva activa desde el bug de staging 2026-06-17 y no ha sido
+// removida aunque el bug se resolvió hace meses. Si sigue activa después
+// de esta fecha, hay que preguntarse por qué — o quitarla, o documentar
+// por qué persiste.
+const DB_INT_CAST_DEBUG_EXPIRY = '2026-09-01';
+if (DB_INT_CAST_DEBUG && new Date() > new Date(DB_INT_CAST_DEBUG_EXPIRY)) {
+  logger.warn({
+    expiry: DB_INT_CAST_DEBUG_EXPIRY,
+    active_since: '2026-06-17',
+    source: 'db_int_cast_debug_expired',
+  }, `⚠️  DB_INT_CAST_DEBUG=1 sigue activo después de ${DB_INT_CAST_DEBUG_EXPIRY}. Revisar si el bug pg_strtoint reincidió o si la env se dejó por olvido. Ver comment en database.js:172.`);
+}
+
 if (DB_INT_CAST_DEBUG) {
   const _originalQuery = pool.query.bind(pool);
   pool.query = async function instrumentedQuery(...args) {
