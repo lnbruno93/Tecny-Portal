@@ -27,6 +27,10 @@ const audit    = require('../lib/audit');
 const parseId  = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { postCajaMovimiento, reverseCajaMovimientos, grupoMoneda } = require('../lib/cajaLedger');
+// 2026-07-27 (audit 07-25 Track A P2-2): invalidateCajas — POST + DELETE
+// mueven 2 cajas cada uno (origen + destino).
+const { invalidateCajas } = require('../lib/cajasCache');
+const logger = require('../lib/logger');
 const { createTransferenciaSchema } = require('../schemas/cajaTransferencias');
 
 // GET /api/caja-transferencias — listar con paginación (más recientes primero).
@@ -204,6 +208,8 @@ router.post('/', validate(createTransferenciaSchema), async (req, res, next) => 
 
     await audit(client, 'caja_transferencias', 'INSERT', nuevo.id, { despues: nuevo, user_id: req.user.id });
     await client.query('COMMIT');
+    invalidateCajas(req.tenantId).catch(err =>
+      logger.warn({ err: err.message }, 'caja-transferencias POST: invalidateCajas falló'));
     res.status(201).json(nuevo);
   } catch (err) {
     try { await client.query('ROLLBACK'); } catch (_) { /* swallow */ }
@@ -246,6 +252,8 @@ router.delete('/:id', async (req, res, next) => {
     await reverseCajaMovimientos(client, 'caja_transferencias', id);
     await audit(client, 'caja_transferencias', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
+    invalidateCajas(req.tenantId).catch(err =>
+      logger.warn({ err: err.message }, 'caja-transferencias DELETE: invalidateCajas falló'));
     res.json({ ok: true });
   } catch (err) {
     try { await client.query('ROLLBACK'); } catch (_) { /* swallow */ }
