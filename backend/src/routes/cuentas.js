@@ -228,7 +228,10 @@ router.post('/clientes', validate(createClienteCCSchema), async (req, res, next)
   try {
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const { rows } = await client.query(
       `INSERT INTO clientes_cc
          (nombre, apellido, contacto, marca_redes, provincia, localidad, direccion, categoria, notas)
@@ -279,7 +282,10 @@ router.put('/clientes/:id', validate(updateClienteCCSchema), async (req, res, ne
 
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const { rows: before } = await client.query(
       'SELECT * FROM clientes_cc WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]
     );
@@ -393,7 +399,10 @@ router.delete('/clientes/:id', async (req, res, next) => {
   try {
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     // 1. Lockear cliente.
     const { rows: cliRows } = await client.query(
@@ -582,7 +591,10 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
 
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     // Idempotency replay: si el caller ya intentó con esta key y triunfó,
     // devolvemos el movimiento original SIN reejecutar caja + stock.
@@ -1027,7 +1039,10 @@ router.delete('/movimientos/:id', async (req, res, next) => {
   try {
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     // Ownership check (auditoría #B-07): un user con permiso `cuentas` solo
     // puede borrar movimientos que él mismo creó. Los admins pueden borrar
     // cualquiera. Movimientos legacy (created_by_user_id IS NULL, anteriores
@@ -1102,7 +1117,10 @@ router.post('/movimientos/:movId/items/:itemId/devolver', async (req, res, next)
   try {
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     // 1. Lock del movimiento padre + validación.
     const { rows: movs } = await client.query(
@@ -1272,7 +1290,10 @@ router.post('/cobranzas-masivas', requireCapability('b2b.cobranza_masiva'), cobr
     const { cobranzas } = req.body;
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     // Idempotency replay antes de tocar clientes + cajas. Si el batch ya
     // se procesó, reconstruimos el response desde la primera fila +

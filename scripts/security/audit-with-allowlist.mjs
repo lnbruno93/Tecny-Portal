@@ -86,13 +86,42 @@ function today() {
 // Verificar allowlist antes de correr audit — enforce expiry.
 const expired = ALLOWLIST.filter((e) => e.expiresAt && e.expiresAt < today());
 if (expired.length > 0) {
-  console.error('[audit-allowlist] ENTRIES EXPIRADAS — re-evaluar y remover/renovar:');
+  // 2026-07-27 (audit 07-25 Track E P2-8): grito más fuerte que un
+  // console.error suelto. El banner de asteriscos hace que sea impossible
+  // ignorar en la salida de CI o local (antes se perdía entre el ruido
+  // del stdout de npm audit).
+  console.error('\n' + '━'.repeat(78));
+  console.error('  🚨  [audit-allowlist] ENTRIES EXPIRADAS  🚨');
+  console.error('━'.repeat(78));
   for (const e of expired) {
     console.error(`  · ${e.advisoryId} (expiró ${e.expiresAt}) — ${e.title}`);
   }
-  console.error('\nEditar scripts/security/audit-with-allowlist.mjs y decidir: (a) ya no ' +
-    'aplica el reasoning → remover, (b) sigue aplicando → renovar expiresAt.');
+  console.error('━'.repeat(78));
+  console.error('  Editar scripts/security/audit-with-allowlist.mjs y decidir:');
+  console.error('    (a) ya no aplica el reasoning → remover');
+  console.error('    (b) sigue aplicando → renovar expiresAt con justificación');
+  console.error('━'.repeat(78) + '\n');
   process.exit(1);
+}
+
+// 2026-07-27 (audit 07-25 Track E P2-8): warning proactivo — entries que
+// expiran en los próximos 14 días. Sirve para no dejar el enforce para el
+// último día (cuando ya es hotfix vs decisión planificada).
+const soonExpiring = ALLOWLIST.filter((e) => {
+  if (!e.expiresAt) return false;
+  const daysUntilExpiry = Math.floor((new Date(e.expiresAt) - new Date()) / (1000 * 60 * 60 * 24));
+  return daysUntilExpiry >= 0 && daysUntilExpiry <= 14;
+});
+if (soonExpiring.length > 0) {
+  console.warn('\n' + '─'.repeat(78));
+  console.warn('  ⚠️   [audit-allowlist] ENTRIES POR EXPIRAR (próximos 14 días)  ⚠️');
+  console.warn('─'.repeat(78));
+  for (const e of soonExpiring) {
+    const daysLeft = Math.floor((new Date(e.expiresAt) - new Date()) / (1000 * 60 * 60 * 24));
+    console.warn(`  · ${e.advisoryId} (${daysLeft} días — expira ${e.expiresAt}) — ${e.title}`);
+  }
+  console.warn('  Planificar remoción/renovación antes de que el CI falle.');
+  console.warn('─'.repeat(78) + '\n');
 }
 
 const result = spawnSync(

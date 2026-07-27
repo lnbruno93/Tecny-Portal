@@ -7,6 +7,11 @@ const parseId = require('../lib/parseId');
 const audit  = require('../lib/audit');
 const { postCajaMovimiento, reverseCajaMovimientos, grupoMoneda } = require('../lib/cajaLedger');
 const { postCajaMovimientoFinanciera } = require('../lib/financiera');
+// 2026-07-27 (audit 07-25 Track A P2-2): invalidateCajas post-mutación
+// caja_movimientos. Antes cada POST/DELETE dejaba la lista de cajas
+// (getCajasList TTL 15s) stale hasta que expiraba naturalmente.
+const { invalidateCajas } = require('../lib/cajasCache');
+const logger = require('../lib/logger');
 
 // 2026-07-12 (auditoría TOTAL Financiero P3-6): removida versión local
 // (drift) — ahora importamos el canónico de cajaLedger que soporta UYU
@@ -79,7 +84,10 @@ router.post('/', validate(createPagoSchema), async (req, res, next) => {
   try {
     const { fecha, monto, referencia, caja_id, convertir_usd, tc, monto_usd } = req.body;
     await client.query('BEGIN');
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     // 1. Validar caja destino (existe + no eliminada).
     const cajaRes = await client.query(
@@ -150,6 +158,8 @@ router.post('/', validate(createPagoSchema), async (req, res, next) => {
       despues: rows[0], user_id: req.user.id,
     });
     await client.query('COMMIT');
+    invalidateCajas(req.tenantId).catch(err =>
+      logger.warn({ err: err.message }, 'pagos POST: invalidateCajas falló'));
     res.status(201).json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -174,7 +184,10 @@ router.delete('/:id', async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const { rows: before } = await client.query(
       'SELECT * FROM pagos WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]
     );
@@ -193,6 +206,8 @@ router.delete('/:id', async (req, res, next) => {
     );
     await audit(client, 'pagos', 'DELETE', id, { antes: before[0], user_id: req.user.id });
     await client.query('COMMIT');
+    invalidateCajas(req.tenantId).catch(err =>
+      logger.warn({ err: err.message }, 'pagos DELETE: invalidateCajas falló'));
     res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK');

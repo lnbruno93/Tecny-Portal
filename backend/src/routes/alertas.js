@@ -82,7 +82,10 @@ router.put('/config/:tipo', validate(updateAlertaConfigSchema), async (req, res,
   const client = await db.connect();
   try {
     await client.query('BEGIN');
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const { rows: before } = await client.query(
       'SELECT tipo, activa, parametros FROM alertas_config WHERE tipo = $1', [tipo]
     );

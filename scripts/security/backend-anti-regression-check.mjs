@@ -85,45 +85,41 @@ const MODE = process.argv[2] === 'update' ? 'update' : 'check';
 const PATTERNS = [
   {
     name: 'SET_LOCAL_UNSAFE_INTERPOLATION',
-    // Match: `SET LOCAL <algo> = ${...}` en línea (comentario o SQL) donde el
-    // interpolado NO es exactamente `req.tenantId`.
+    // Match: `SET LOCAL <algo> = ${...}` en línea (comentario o SQL) —
+    // CUALQUIER interpolación.
     //
-    // Rationale del allowlist de `${req.tenantId}` específicamente:
-    //   El middleware `auth.js:132` valida `Number.isInteger(tenant_id) > 0`
-    //   ANTES de setear `req.tenantId`. Cualquier request que llega a un
-    //   endpoint tiene el shape garantizado — la interpolación es tan segura
-    //   como un bind param. Migrar los ~100 sites a `set_config` sería
-    //   ceremonia sin ganancia real (y agregaría 100 líneas de churn).
+    // 2026-07-27 (Cleanup batch C):
+    //   Pre-Cleanup C teníamos allowlist para `${req.tenantId}` porque
+    //   el middleware `auth.js:132` validaba `Number.isInteger(tenant_id)
+    //   > 0` ANTES de setear `req.tenantId`, así que ese caso era "tan
+    //   seguro como un bind param". Ese allowlist se justificó cuando
+    //   había ~100 sites con la interpolación y migrar todos era ceremonia.
     //
-    // Lo que SÍ queremos cazar (Sentry #17):
-    //   - `${Number(tenantId)}`  → si `tenantId` viene de otro lado y no
-    //     está guardado en middleware, `Number(garbage)` = NaN → SQL syntax
-    //     error → connection poisoning.
-    //   - `${tenantId}`          → variable arbitraria de un helper, no
-    //     validada.
-    //   - `${something.tenantId}` → propiedad de un objeto sin guard.
-    //   - Cualquier variante que no sea literalmente `${req.tenantId}`.
+    //   Post-Cleanup C: los 72 usages residuales migraron a `set_config(
+    //   'app.current_tenant', $1::text, true)` con bind param. El
+    //   codebase ahora está 100% al pattern seguro. Cero razón para
+    //   permitir ninguna interpolación en SET LOCAL — endurezcemos el
+    //   check a cero.
+    //
+    // Lo que cazamos (Sentry #17 pattern + evolución):
+    //   - `${Number(tenantId)}`  → NaN → SQL syntax error → connection poisoning.
+    //   - `${tenantId}`          → variable de helper sin guard.
+    //   - `${req.tenantId}`      → previamente allowlisted, ahora NO.
+    //   - Cualquier variante.
     regex: /SET\s+LOCAL\s+[a-zA-Z_.]+\s*=\s*\$\{/i,
     rationale:
       'SQL injection + connection poisoning (Sentry TECNY-PORTAL-BACKEND-17). ' +
-      'Solo `${req.tenantId}` está permitido (validado en middleware auth.js:132). ' +
-      'Cualquier otra interpolación: usar `set_config(\'<var>\', $1::text, true)` ' +
-      'con bind param, como redB2bEmail.js:87.',
+      'Post-Cleanup C (2026-07-27) CERO interpolaciones permitidas en SET LOCAL. ' +
+      'Todo set de GUC debe ir por `set_config(\'<var>\', $1::text, true)` con ' +
+      'bind param.',
     isAllowlisted: (line) => {
       const trimmed = line.trim();
-      // Comments no ejecutan SQL.
+      // Comments no ejecutan SQL — única excepción legítima.
       if (
         trimmed.startsWith('//') ||
         trimmed.startsWith('*') ||
         trimmed.startsWith('/*')
       ) return true;
-      // Allowlist: exactamente `${req.tenantId}` — validado en middleware.
-      // El regex es estricto: no matchea `${Number(req.tenantId)}` u otras
-      // envolturas (que serían sospechosas — el guard de middleware ya
-      // devuelve number, no hace falta re-wrappear).
-      if (/SET\s+LOCAL\s+[a-zA-Z_.]+\s*=\s*\$\{\s*req\.tenantId\s*\}/i.test(line)) {
-        return true;
-      }
       return false;
     },
   },
