@@ -21,6 +21,11 @@ const { round2, computeNeto } = require('../lib/money');
 const { postCajaMovimiento, reverseCajaMovimientos, grupoMoneda } = require('../lib/cajaLedger');
 const { postCajaMovimientoTarjeta } = require('../lib/tarjetas');
 const { saldoNetoCase } = require('../lib/tarjetasSaldo');
+// 2026-07-27 (cleanup post audit 07-25): invalidateCajas — tarjetas no
+// estaba en el batch del Sprint 4 Fix 2 pero POST/PATCH/DELETE de
+// liquidaciones y cobros mueven caja destino. Fire-and-forget.
+const { invalidateCajas } = require('../lib/cajasCache');
+const logger = require('../lib/logger');
 const { createLiquidacionSchema, createLiquidacionMultipleSchema, createCobroInicialSchema, updateMovimientoSchema } = require('../schemas/tarjetas');
 const {
   parseIdempotencyKey,
@@ -394,7 +399,10 @@ router.post('/cobros-iniciales', requireCapability('tarjetas.cobro_previo'), val
     const { metodo_pago_id, fecha, monto_bruto, pct, comentarios } = req.body;
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const mp = await client.query(
       'SELECT moneda, comision_pct FROM metodos_pago WHERE id = $1 AND es_tarjeta = true AND deleted_at IS NULL',
       [metodo_pago_id]
@@ -429,6 +437,8 @@ router.post('/cobros-iniciales', requireCapability('tarjetas.cobro_previo'), val
       despues: rows[0], tipo: 'cobro_inicial', user_id: req.user.id,
     });
     await client.query('COMMIT');
+    invalidateCajas(req.tenantId).catch(err =>
+      logger.warn({ err: err.message }, 'tarjetas cobro_inicial: invalidateCajas falló'));
     res.status(201).json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -450,7 +460,10 @@ router.post('/liquidaciones', validate(createLiquidacionSchema), async (req, res
     const { metodo_pago_id, fecha, monto, caja_id, comentarios } = req.body;
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     // Idempotency replay antes de tocar cajas/tarjeta.
     if (idem.key) {
@@ -492,6 +505,8 @@ router.post('/liquidaciones', validate(createLiquidacionSchema), async (req, res
     });
     await audit(client, 'tarjeta_movimientos', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
+    invalidateCajas(req.tenantId).catch(err =>
+      logger.warn({ err: err.message }, 'tarjetas liquidación POST: invalidateCajas falló'));
     res.status(201).json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -536,7 +551,10 @@ router.post('/liquidaciones-multiples', validate(createLiquidacionMultipleSchema
     } = req.body;
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     // 1. Validar caja destino.
     const caja = await client.query(
@@ -681,6 +699,8 @@ router.post('/liquidaciones-multiples', validate(createLiquidacionMultipleSchema
     }
 
     await client.query('COMMIT');
+    invalidateCajas(req.tenantId).catch(err =>
+      logger.warn({ err: err.message }, 'tarjetas liquidación múltiple POST: invalidateCajas falló'));
     const total = created.reduce((a, r) => a + Number(r.monto_neto), 0);
     res.status(201).json({
       movimientos: created,
@@ -721,7 +741,10 @@ router.patch('/movimientos/:id', validate(updateMovimientoSchema), async (req, r
   try {
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const { rows: before } = await client.query(
       `SELECT m.*, mp.comision_pct AS metodo_comision_pct, mp.moneda AS metodo_moneda
          FROM tarjeta_movimientos m
@@ -899,6 +922,8 @@ router.patch('/movimientos/:id', validate(updateMovimientoSchema), async (req, r
     delete movClean.metodo_moneda;
     await audit(client, 'tarjeta_movimientos', 'UPDATE', id, { antes: movClean, despues: updated, user_id: req.user.id });
     await client.query('COMMIT');
+    invalidateCajas(req.tenantId).catch(err =>
+      logger.warn({ err: err.message }, 'tarjetas PATCH: invalidateCajas falló'));
     res.json(updated);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -932,7 +957,10 @@ router.delete('/movimientos/:id', async (req, res, next) => {
   try {
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const { rows: before } = await client.query('SELECT tipo, venta_id FROM tarjeta_movimientos WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]);
     if (!before[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Movimiento no encontrado' }); }
     // Los cobros que provienen de una venta NO se borran a mano (desincronizaría
@@ -953,6 +981,8 @@ router.delete('/movimientos/:id', async (req, res, next) => {
     // Patrón ya aplicado al resto de tarjetas.js y al resto del módulo.
     await audit(client, 'tarjeta_movimientos', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
+    invalidateCajas(req.tenantId).catch(err =>
+      logger.warn({ err: err.message }, 'tarjetas DELETE: invalidateCajas falló'));
     res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK');
