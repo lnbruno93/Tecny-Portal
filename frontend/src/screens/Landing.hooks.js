@@ -94,11 +94,20 @@ export function useLandingPricing() {
         // keys que devuelve el backend, en vez de hardcodear starter/pro.
         // Antes: solo se copiaban starter y pro — si el backend agregaba un
         // plan nuevo (ej. 'enterprise') el frontend lo silenciaba sin señal.
-        // Ahora: cualquier key numérica >= 0 del response se copia; también
-        // reportamos si el shape es raro para diagnosticar drift.
+        //
+        // 2026-07-27 hotfix (Sentry TECNY-PORTAL-BACKEND self-inflicted del
+        // Sprint 4): `null` es shape LEGÍTIMO documentado — indica plan sin
+        // precio publicado (backend/src/lib/planPricing.js declara
+        // `enterprise: null` explícitamente en getPlanPrices()). Aceptar
+        // null como "sin precio pero shape válido" en vez de reportar drift.
+        // Solo reportamos cuando el shape es GENUINAMENTE raro (string,
+        // undefined, negativo, boolean, etc.).
         const next = { ...FALLBACK_PRICES };
         for (const [key, val] of Object.entries(p)) {
-          if (typeof val === 'number' && val >= 0) {
+          if (val === null) {
+            // Precio no publicado — shape válido, copiamos null explícito.
+            next[key] = null;
+          } else if (typeof val === 'number' && val >= 0) {
             next[key] = val;
           } else {
             // Log to Sentry-via-reportLandingError como warn — un plan nuevo
