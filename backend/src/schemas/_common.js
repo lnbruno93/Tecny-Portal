@@ -57,4 +57,29 @@ const fechaNoFutura = z.string()
     return d >= '2000-01-01' && d <= todayUTC;
   }, 'La fecha no puede ser futura ni anterior al año 2000');
 
-module.exports = { fechaNoFutura, MonedaEnum, MONEDAS_PERMITIDAS, MONEDAS_CON_TC, requiereTc };
+// ── Límites numéricos de Postgres ─────────────────────────────────────────
+//
+// 2026-07-27 (audit 07-25 Track A P2-5/P2-6): centralización del techo para
+// NUMERIC(14,2) — 999_999_999_999.99 (~$1 billón). El límite es del schema
+// de Postgres, no de negocio — usarlo como max defensive en cada campo que
+// va a NUMERIC(14,2) evita el 500 crudo `value overflows numeric format`
+// que sale al Sentry sin contexto útil.
+//
+// Antes estaba solo en schemas/cajas.js. Los schemas de tarjetas y
+// cambio_movimientos no lo tenían — un `monto: 1e18` o `tc: 1e15` rompía
+// silenciosamente en el INSERT.
+//
+// Ejemplo:
+//   z.coerce.number().positive().max(NUMERIC_14_2_MAX, 'Monto absurdo').optional()
+const NUMERIC_14_2_MAX = 999_999_999_999.99;
+const NUMERIC_OVERFLOW_MSG = `Monto absurdo (>${NUMERIC_14_2_MAX.toLocaleString('en-US')}). Revisá si escribiste bien.`;
+
+module.exports = {
+  fechaNoFutura,
+  MonedaEnum,
+  MONEDAS_PERMITIDAS,
+  MONEDAS_CON_TC,
+  requiereTc,
+  NUMERIC_14_2_MAX,
+  NUMERIC_OVERFLOW_MSG,
+};

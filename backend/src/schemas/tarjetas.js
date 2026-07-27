@@ -1,5 +1,5 @@
 const { z } = require('zod');
-const { fechaNoFutura } = require('./_common');
+const { fechaNoFutura, NUMERIC_14_2_MAX, NUMERIC_OVERFLOW_MSG } = require('./_common');
 
 // Usamos `fechaNoFutura` del módulo compartido — antes el local `fecha` permitía
 // fechas futuras (solo validaba >= 2000-01-01), incluyendo año 2099. Para
@@ -12,7 +12,10 @@ const fecha = fechaNoFutura;
 const createLiquidacionSchema = z.object({
   metodo_pago_id: z.coerce.number().int().positive('Elegí la tarjeta'),
   fecha,
-  monto:          z.coerce.number().positive('El monto debe ser mayor a 0'),
+  // 2026-07-27 (audit 07-25 Track A P2-5): .max() defensive vs overflow
+  // NUMERIC(14,2).
+  monto:          z.coerce.number().positive('El monto debe ser mayor a 0')
+                    .max(NUMERIC_14_2_MAX, NUMERIC_OVERFLOW_MSG),
   caja_id:        z.coerce.number().int().positive('Elegí la caja donde entra'),
   comentarios:    z.string().trim().max(1000).optional().nullable(),
 }).strict();
@@ -25,7 +28,9 @@ const createLiquidacionSchema = z.object({
 const createCobroInicialSchema = z.object({
   metodo_pago_id: z.coerce.number().int().positive('Elegí la tarjeta'),
   fecha,
-  monto_bruto:    z.coerce.number().positive('El bruto debe ser mayor a 0'),
+  // Fix audit 07-25 P2-5: .max() defensive.
+  monto_bruto:    z.coerce.number().positive('El bruto debe ser mayor a 0')
+                    .max(NUMERIC_14_2_MAX, NUMERIC_OVERFLOW_MSG),
   pct:            z.coerce.number().min(0).max(100).optional().nullable(),
   comentarios:    z.string().trim().max(1000).optional().nullable(),
 }).strict();
@@ -39,9 +44,12 @@ const createCobroInicialSchema = z.object({
 // Schema laxo a propósito — el dispatch real está en el route handler.
 const updateMovimientoSchema = z.object({
   fecha:        fecha.optional(),
-  monto_bruto:  z.coerce.number().positive('El bruto debe ser mayor a 0').optional(),
+  // Fix audit 07-25 P2-5: .max() en montos que van a NUMERIC(14,2).
+  monto_bruto:  z.coerce.number().positive('El bruto debe ser mayor a 0')
+                  .max(NUMERIC_14_2_MAX, NUMERIC_OVERFLOW_MSG).optional(),
   pct:          z.coerce.number().min(0).max(100).optional().nullable(),
-  monto:        z.coerce.number().positive('El monto debe ser mayor a 0').optional(),
+  monto:        z.coerce.number().positive('El monto debe ser mayor a 0')
+                  .max(NUMERIC_14_2_MAX, NUMERIC_OVERFLOW_MSG).optional(),
   caja_id:      z.coerce.number().int().positive('Elegí la caja donde entra').optional(),
   // #444: campos USD para edición de liquidaciones con conversión. El handler
   // los lee solo cuando mov.tc IS NOT NULL — sino son no-op (ignorados).
