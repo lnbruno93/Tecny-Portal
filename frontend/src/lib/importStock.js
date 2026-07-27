@@ -447,14 +447,42 @@ export function buildBulkMovimientosPayload({
     }
     const items = g.rows.map(r => {
       const body = { ...r.body };
-      // Reconcilia clase_id si era una Categoría nueva (caso ya manejado
-      // upstream en el caso normal, pero defensivo por si llega sin id).
+      // 2026-07-26 (audit 07-25 Track B P1-4): reconciliación fallida ya NO
+      // se silencia. Antes: `.get() || null` → si `bulkClases` o
+      // `bulkDepositos` (backend) devolvían un mapping incompleto (nombre
+      // >80 chars post-trim, colisión con soft-deleted que evita el resolve,
+      // constraint violation en un caso edge), el producto se persistía
+      // SIN categoría/depósito y sin error visible al operador. El operador
+      // veía "N productos importados" y descubría el bug días después.
+      //
+      // Fix: throw ruidoso con nombre del catálogo faltante. El operador
+      // ve inmediatamente qué grupo/nombre no se pudo resolver y puede
+      // reintentar (típicamente truncar el nombre, o crear la categoría
+      // manualmente antes del import).
+      //
+      // Reconcilia clase_id si era una Categoría nueva.
       if (r._claseNueva && !body.clase_id) {
-        body.clase_id = newClaseByName.get(r._claseNueva.toLowerCase()) || null;
+        const resolved = newClaseByName.get(r._claseNueva.toLowerCase());
+        if (!resolved) {
+          throw new Error(
+            `No se pudo crear la categoría "${r._claseNueva}" en el backend ` +
+            `(quizá el nombre es demasiado largo o hay una colisión). ` +
+            `Editá el XLSX y reintentá.`
+          );
+        }
+        body.clase_id = resolved;
       }
       // Reconcilia deposito_id si era un Depósito nuevo (auto-create).
       if (r._depositoNuevo && !body.deposito_id) {
-        body.deposito_id = newDepositoByName.get(r._depositoNuevo.toLowerCase()) || null;
+        const resolved = newDepositoByName.get(r._depositoNuevo.toLowerCase());
+        if (!resolved) {
+          throw new Error(
+            `No se pudo crear el depósito "${r._depositoNuevo}" en el backend ` +
+            `(quizá el nombre es demasiado largo o hay una colisión). ` +
+            `Editá el XLSX y reintentá.`
+          );
+        }
+        body.deposito_id = resolved;
       }
       // El backend (#H-06) rellena producto.proveedor con el nombre del
       // proveedor del movimiento. Quitamos el campo del producto_stock para
