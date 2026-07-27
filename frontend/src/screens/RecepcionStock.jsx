@@ -67,6 +67,12 @@ export default function RecepcionStock() {
   const [cats,    setCats]    = useState([]);
   const [deps,    setDeps]    = useState([]);
   const [provs,   setProvs]   = useState([]);
+  // 2026-07-26 (audit 07-25 Track B P1-3): traemos clases del tenant para
+  // resolver el clase_id de "Celulares" (o fallback razonable). Antes se
+  // mandaba `clase: 'celular'` string legacy que el backend IGNORABA
+  // (columna `productos.clase` dropeada en F3.d-3 migration 20260709000001),
+  // dejando los productos scaneados con clase_id=NULL → "Sin categoría".
+  const [clases, setClases] = useState([]);
   const [loadingCats, setLoadingCats] = useState(true);
 
   // Datos comunes de la sesión.
@@ -98,14 +104,32 @@ export default function RecepcionStock() {
       inventario.categorias().catch(() => []),
       inventario.depositos().catch(() => []),
       proveedoresApi.list({ limit: 500 }).then(r => r.data || r).catch(() => []),
-    ]).then(([c, d, p]) => {
+      // Fix P1-3: fetch clases_producto para resolver "Celulares".
+      inventario.clases().catch(() => []),
+    ]).then(([c, d, p, cl]) => {
       if (cancelado) return;
       setCats(c || []);
       setDeps(d || []);
       setProvs(Array.isArray(p) ? p : (p?.data || []));
+      setClases(Array.isArray(cl) ? cl : (cl?.data || []));
     }).finally(() => { if (!cancelado) setLoadingCats(false); });
     return () => { cancelado = true; };
   }, []);
+
+  // Resolver clase_id de "Celulares". Estrategia (fallback en cascada):
+  //   1. slug_legacy = 'celulares' (para tenants pre-F3 que tenían la clase
+  //      auto-derivada desde la columna vieja productos.clase VARCHAR).
+  //   2. nombre coincide "celular" case-insensitive.
+  //   3. null → el backend persiste sin categoría (compat con tenants que
+  //      renombraron la clase o crearon el catálogo desde cero sin
+  //      "Celulares").
+  const claseIdCelulares = (() => {
+    if (!clases.length) return null;
+    const bySlug = clases.find(c => c.slug_legacy === 'celulares');
+    if (bySlug) return bySlug.id;
+    const byNombre = clases.find(c => String(c.nombre || '').toLowerCase().includes('celular'));
+    return byNombre?.id || null;
+  })();
 
   // Validación del modelo activo (sin esto no podés scanear).
   const modeloListo = mNombre.trim() && mCategoria;
@@ -188,12 +212,19 @@ export default function RecepcionStock() {
 
     setGuardando(true);
     try {
+      // 2026-07-26 (audit 07-25 Track B P1-3): mandar `clase_id` (nuevo modelo
+      // F3) resuelto desde clases_producto. El backend ignora la key `clase`
+      // legacy (columna dropeada en 20260709000001) — sin clase_id, los
+      // productos entran con "Sin categoría" y fallan el filtro por defecto.
+      // Si el tenant no tiene ninguna clase que matchee "Celulares", enviamos
+      // null y el operador puede reclasificar desde Inventario (mejor UX
+      // que fallar el lote entero).
       const productos = items.map(it => ({
         ...it,
         deposito_id: deposito_id ? Number(deposito_id) : null,
         proveedor:   proveedor_str,
-        clase:      'celular',     // recepción es siempre celulares (los accesorios van por XLSX)
-        tipo_carga: 'unitario',    // 1 producto = 1 IMEI
+        clase_id:   claseIdCelulares, // F3: usar clase_id, no la key legacy
+        tipo_carga: 'unitario',       // 1 producto = 1 IMEI
         cantidad:   1,
       }));
       const r = await inventario.bulkProductos(productos);
