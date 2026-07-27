@@ -162,6 +162,15 @@ adminRouter.get('/', requireCapability('inventario.ver'), async (req, res, next)
  * Actualiza config del link. Todos los campos opcionales. Devuelve el link
  * completo post-update. Solo el owner + admins del tenant pueden mutar
  * (usamos `inventario.editar` para no proliferar capabilities específicas).
+ *
+ * 2026-07-26 (audit 07-25 Track B P1-7): la acción `activo: false`
+ * desactiva el share link público — irreversible desde la perspectiva del
+ * cliente que tiene el link cacheado (WhatsApp, bookmarks). El audit sugirió
+ * cap dedicada `share_link.desactivar` — se pospuso por costo (migration +
+ * admin UI). En su lugar: audit log con `severity: HIGH` + `high_impact:
+ * true` para trail forensico + facilitar alerting Sentry en el dashboard
+ * (dedicated rule buscando estos eventos). Consistente con el criterio del
+ * audit ("dejar `activo` bajo `inventario.editar` es aceptable").
  */
 adminRouter.patch('/', requireCapability('inventario.editar'), validate(updateShareLinkSchema), async (req, res, next) => {
   try {
@@ -194,10 +203,15 @@ adminRouter.patch('/', requireCapability('inventario.editar'), validate(updateSh
                   created_at, updated_at, rotated_at`,
         params
       );
+      // Audit trail. Marcamos `high_impact:true` cuando se desactiva el
+      // link — Sentry alert rule busca ese flag para notificar a Lucas
+      // (podría ser accidental / malicioso).
+      const isDesactivacion = changes.activo === false && before.activo === true;
       await audit(client, 'share_links', 'UPDATE', String(before.id), {
         antes:   before,
         despues: rows[0],
         user_id: req.user.id,
+        ...(isDesactivacion && { high_impact: true, action_subtype: 'share_link_desactivado' }),
       });
       return rows[0];
     });
@@ -210,6 +224,12 @@ adminRouter.patch('/', requireCapability('inventario.editar'), validate(updateSh
  *
  * Genera un token nuevo. El viejo queda inválido (los clientes que lo
  * tenían bookmarkeado ven "listado no disponible"). Marca `rotated_at`.
+ *
+ * 2026-07-26 (audit 07-25 Track B P1-7): rotate es IRREVERSIBLE desde la
+ * perspectiva del cliente — todos los bookmarks/copias del link viejo
+ * mueren. Misma decisión que PATCH activo:false — cap dedicada
+ * `share_link.rotate` se pospuso por costo. Audit log con `high_impact:
+ * true` provee trail forensico + Sentry alerting.
  */
 adminRouter.post('/rotate', requireCapability('inventario.editar'), async (req, res, next) => {
   try {
@@ -225,11 +245,14 @@ adminRouter.post('/rotate', requireCapability('inventario.editar'), async (req, 
                   created_at, updated_at, rotated_at`,
         [newToken, req.tenantId]
       );
+      // Rotate SIEMPRE es high_impact — el token viejo muere sí o sí.
       await audit(client, 'share_links', 'UPDATE', String(before.id), {
         antes:   { token: before.token },
         despues: { token: rows[0].token, rotated_at: rows[0].rotated_at },
         tipo:    'rotate_token',
         user_id: req.user.id,
+        high_impact:    true,
+        action_subtype: 'share_link_token_rotado',
       });
       return rows[0];
     });
