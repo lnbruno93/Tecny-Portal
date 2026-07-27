@@ -26,7 +26,7 @@ const validate = require('../lib/validate');
 const audit    = require('../lib/audit');
 const parseId  = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
-const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
+const { postCajaMovimiento, reverseCajaMovimientos, grupoMoneda } = require('../lib/cajaLedger');
 const { createTransferenciaSchema } = require('../schemas/cajaTransferencias');
 
 // GET /api/caja-transferencias — listar con paginación (más recientes primero).
@@ -104,35 +104,36 @@ router.post('/', validate(createTransferenciaSchema), async (req, res, next) => 
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'La caja de destino no existe o fue eliminada.' });
     }
-    // grupoMoneda: USD y USDT son 1:1 (mismo grupo); ARS y UYU son grupos
-    // separados.
-    const grupo = (m) => (m === 'ARS' ? 'ARS' : m === 'UYU' ? 'UYU' : 'USD');
+    // 2026-07-27 (audit 07-25 Track A P2-1): usar grupoMoneda canónico de
+    // cajaLedger.js. Antes había una copia local `grupo = (m) => ...` que
+    // funcionaba pero era drift a mantener. Sprint 10 audit 07-12 ya había
+    // removido copias en pagos.js/tarjetas.js — este archivo se perdió.
     if (isCross) {
       // Cross-currency: origen debe matchear con `moneda`, destino con
       // `moneda_destino`. Deben ser grupos DISTINTOS (sino no tiene sentido
       // el TC — el operador está haciendo lo mismo que same-currency).
-      if (grupo(origen.moneda) !== grupo(moneda)) {
+      if (grupoMoneda(origen.moneda) !== grupoMoneda(moneda)) {
         await client.query('ROLLBACK');
         return res.status(400).json({
           error: `La caja de origen es ${origen.moneda}, no coincide con la moneda de origen declarada (${moneda}).`,
         });
       }
-      if (grupo(destino.moneda) !== grupo(moneda_destino)) {
+      if (grupoMoneda(destino.moneda) !== grupoMoneda(moneda_destino)) {
         await client.query('ROLLBACK');
         return res.status(400).json({
           error: `La caja de destino es ${destino.moneda}, no coincide con la moneda de destino declarada (${moneda_destino}).`,
         });
       }
-      if (grupo(origen.moneda) === grupo(destino.moneda)) {
+      if (grupoMoneda(origen.moneda) === grupoMoneda(destino.moneda)) {
         await client.query('ROLLBACK');
         return res.status(400).json({
-          error: `Ambas cajas son ${grupo(origen.moneda)}. Para transferencia sin TC no cargues los campos de moneda destino.`,
+          error: `Ambas cajas son ${grupoMoneda(origen.moneda)}. Para transferencia sin TC no cargues los campos de moneda destino.`,
         });
       }
     } else {
       // Same-currency (comportamiento pre-feature): moneda declarada coincide
       // con las 2 cajas.
-      if (grupo(origen.moneda) !== grupo(moneda) || grupo(destino.moneda) !== grupo(moneda)) {
+      if (grupoMoneda(origen.moneda) !== grupoMoneda(moneda) || grupoMoneda(destino.moneda) !== grupoMoneda(moneda)) {
         await client.query('ROLLBACK');
         return res.status(400).json({
           error: `La moneda del movimiento (${moneda}) debe coincidir con las cajas ` +
