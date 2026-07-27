@@ -85,10 +85,23 @@ const migrationsSeen = [];
 // Corremos node-pg-migrate exactamente como el script npm original:
 //   node-pg-migrate -m migrations up
 // Path relativo al backend/ (donde corre en Railway).
+//
+// 2026-07-27 hotfix: stderr también en 'pipe' (era 'inherit'). node-pg-migrate
+// emite un warning por cada migration file con timestamp no-Unix ("Can't
+// determine timestamp for 20260527000002") — nuestras 100+ migrations usan
+// el formato YYYYMMDDhhmmss que ese lib no reconoce como timestamp. En
+// 'inherit', los ~150 warnings se cuelan directo a Railway logs y hitean
+// el rate limit de 500 logs/sec, matando el container ("Stopping Container")
+// antes de que la migration siquiera empiece. Los 3 deploys anteriores en
+// staging fallaron por esto (48fc66da, fb128bbc, 928d1970 — email a Lucas).
+//
+// Fix: capturar stderr, filtrar los warnings inocuos línea por línea, y
+// escribir solo lo que NO es noise. Cualquier stderr no filtrado pasa
+// intacto (queremos ver errores reales).
 const child = spawn(
   path.resolve(__dirname, '..', 'node_modules', '.bin', 'node-pg-migrate'),
   ['-m', 'migrations', 'up'],
-  { stdio: ['inherit', 'pipe', 'inherit'], env: process.env }
+  { stdio: ['inherit', 'pipe', 'pipe'], env: process.env }
 );
 
 // Passthrough stdout + capturar nombres de migrations aplicadas para incluir
@@ -104,6 +117,40 @@ child.stdout.on('data', (chunk) => {
   }
 });
 
+// Filtrar stderr para eliminar los warnings inocuos de node-pg-migrate.
+// Buffer partial-lines para manejar chunks que cortan en medio de una línea.
+let stderrBuffer = '';
+let filteredWarningsCount = 0;
+const NOISE_PATTERNS = [
+  // node-pg-migrate escanea migrations/*.js y warns por cada file cuyo
+  // filename no matchea Unix timestamp o ISO. Nuestros filenames usan
+  // formato YYYYMMDDhhmmss_name.js — inocuo, ordenamiento cronológico funciona.
+  /^Can't determine timestamp for \d+/,
+];
+function isNoise(line) {
+  return NOISE_PATTERNS.some((re) => re.test(line));
+}
+child.stderr.on('data', (chunk) => {
+  stderrBuffer += String(chunk);
+  const lines = stderrBuffer.split('\n');
+  // La última entry puede ser una línea parcial (no termina en \n). La
+  // dejamos en el buffer para procesarla cuando llegue el resto.
+  stderrBuffer = lines.pop() || '';
+  for (const line of lines) {
+    if (isNoise(line)) {
+      filteredWarningsCount += 1;
+      continue;
+    }
+    process.stderr.write(line + '\n');
+  }
+});
+// Al cerrar el process, flush cualquier partial-line que quede en el buffer.
+child.stderr.on('end', () => {
+  if (stderrBuffer && !isNoise(stderrBuffer)) {
+    process.stderr.write(stderrBuffer);
+  }
+});
+
 child.on('close', (code) => {
   const durationMs = Number((process.hrtime.bigint() - start) / 1000000n);
   const durationSec = durationMs / 1000;
@@ -116,6 +163,7 @@ child.on('close', (code) => {
     exit_code: code,
     migrations_applied: migrationsSeen.length,
     migration_names: migrationsSeen,
+    filtered_stderr_warnings: filteredWarningsCount,
   };
   console.log(JSON.stringify(structured));
 
