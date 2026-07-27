@@ -539,7 +539,21 @@ app.use((req, res, next) => {
 // del proceso, no tiene sentido recalcularlos en cada /health (UptimeRobot
 // pings cada 5 min × N años). Se invalidan solo en restart.
 let CACHED_COMMIT_SHA = null;
+// 2026-07-27 (audit 07-25 Track E P1-3): migration count con TTL. Antes:
+// cache forever hasta restart. Si Lucas corría migrations manualmente en
+// Railway console (como el follow-up del PR #874) contra el pod prod vivo,
+// `/health.migrations` seguía reportando el count anterior a la migration
+// manual — observabilidad desalineada del reality. TTL 60s: consulta 1
+// query trivial contra `pgmigrations` no más de una vez por minuto, refleja
+// migrations manuales dentro de 60s. Trade-off aceptable (health endpoint
+// no está en hot path; el cost extra es cero para el resto del sistema).
+//
+// `getCommitSha` se mantiene cache-forever — el commit SHA sí es
+// efectivamente inmutable per-proceso (Railway inyecta como env al start).
 let CACHED_MIGRATION_COUNT = null;
+let CACHED_MIGRATION_COUNT_AT = 0;
+const MIGRATION_COUNT_TTL_MS = 60_000;
+
 function getCommitSha() {
   if (CACHED_COMMIT_SHA !== null) return CACHED_COMMIT_SHA;
   // Railway expone RAILWAY_GIT_COMMIT_SHA automáticamente.
@@ -551,12 +565,17 @@ function getCommitSha() {
   return CACHED_COMMIT_SHA;
 }
 async function getMigrationCount() {
-  if (CACHED_MIGRATION_COUNT !== null) return CACHED_MIGRATION_COUNT;
+  const now = Date.now();
+  if (CACHED_MIGRATION_COUNT !== null && (now - CACHED_MIGRATION_COUNT_AT) < MIGRATION_COUNT_TTL_MS) {
+    return CACHED_MIGRATION_COUNT;
+  }
   try {
     const { rows } = await db.query('SELECT COUNT(*)::int AS n FROM pgmigrations');
     CACHED_MIGRATION_COUNT = rows[0]?.n ?? null;
+    CACHED_MIGRATION_COUNT_AT = now;
   } catch {
     CACHED_MIGRATION_COUNT = null; // no rompe el endpoint si la tabla no existe
+    CACHED_MIGRATION_COUNT_AT = now; // igual respeta TTL para no reintentar en loop
   }
   return CACHED_MIGRATION_COUNT;
 }
