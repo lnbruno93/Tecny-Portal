@@ -54,8 +54,20 @@ const NOISE_PATTERNS = [
   /NetworkError when attempting to fetch/i,     // Firefox
   /Load failed/i,                               // Safari
   /Network request failed/i,                    // misc
-  /The operation was aborted/i,                 // user navegó/cerró
-  /AbortError/i,                                // user navegó/cerró
+  /The operation was aborted/i,                 // user navegó/cerró (Firefox)
+  /AbortError/i,                                // user navegó/cerró (Chrome clásico / Node)
+  // 2026-07-27 (audit 07-25 Plataforma P2-9 fix): sync 3 patterns adicionales
+  // del portal que faltaban acá. El portal tiene el filter más completo
+  // (evoluciona más rápido por volumen de usuarios). El admin puede recibir
+  // los mismos noise events y sin estos patterns el ratio noise/signal se
+  // degrada — hoy no era crítico porque el admin tiene 1 usuario (Lucas),
+  // pero cerrado preventivo antes de que otros super-admins usen el admin.
+  //
+  // 2026-07-25 Sentry TECNY-PORTAL-BACKEND-19 (heredado del portal): Safari
+  // + Chrome moderno usan "Fetch is/was aborted" — pattern SEPARADO de los
+  // "AbortError" / "operation was aborted" clásicos. Este noise se colaba
+  // al backend y de ahí a Sentry hasta que se agregó el pattern.
+  /[Ff]etch (is|was) aborted/,                  // Safari / Chrome moderno / WebKit iOS
   // Chunk load failures — mismo listado que portal (bundle stale post-deploy).
   /valid JavaScript MIME type/i,
   /dynamically imported module/i,
@@ -63,6 +75,8 @@ const NOISE_PATTERNS = [
   /Loading chunk\s+\S+\s+failed/i,
   /Failed to fetch dynamically imported/i,
   /Cannot read properties of undefined \(reading 'default'\)/i,
+  /_result\.default/i,                          // Safari — mod undefined (TECNY-PORTAL-BACKEND-4)
+  /Dynamic import resolved to invalid module/i, // guard sintético de lazyWithRetry
 ];
 
 function isNoise(error) {
