@@ -280,15 +280,30 @@ async function createSellerVenta(client, sellerTenantId, args) {
   }
 
   // ── 2. Validar productos pertenecen al seller (defensa en depth) ──────────
-  // RLS de productos ya filtra por tenant_id = app.current_tenant, pero
-  // chequeamos explícito para devolver 404 limpio si alguno no existe.
+  //
+  // 2026-07-26 (audit 07-25 Track C P1-4): filtro `tenant_id = $2`
+  // EXPLÍCITO. El comment original decía "RLS ya filtra por tenant_id"
+  // pero MENTÍA: el helper corre bajo `db.adminQuery` (BYPASSRLS) — RLS
+  // no aplica. Sin este filtro, si un `producto_id` de OTRO tenant
+  // aparece en `items` (frontend malicioso, bug del caller), el SELECT
+  // devuelve el row con nombre/observaciones → luego el UPDATE de stock
+  // sí falla porque su WHERE (línea 333) filtra tenant, pero el error
+  // `stock_insufficient` incluía el `p.nombre` del producto ajeno →
+  // info leak de nombres de productos de otro tenant al buyer.
+  //
+  // Fix: filtro AND tenant_id = $2 en el SELECT. Si el ID no pertenece
+  // al seller, `prodMap.get()` devuelve undefined → error
+  // `producto_not_found` (sin leak de info) en vez de `stock_insufficient`
+  // con nombre.
   const prodIds = items.map((it) => Number(it.producto_id));
   const prodsQ = await client.query(
     `SELECT id, nombre, observaciones, cantidad, costo, costo_moneda
        FROM productos
-      WHERE id = ANY($1::int[]) AND deleted_at IS NULL
+      WHERE id = ANY($1::int[])
+        AND tenant_id = $2
+        AND deleted_at IS NULL
       ORDER BY id`,
-    [prodIds]
+    [prodIds, sellerTenantId]
   );
   const prodMap = new Map(prodsQ.rows.map((p) => [Number(p.id), p]));
   for (const it of items) {

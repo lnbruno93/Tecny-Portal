@@ -111,11 +111,18 @@ router.get('/', async (req, res, next) => {
       if (!t) return { notFound: true };
       let caja = null;
       if (t.red_b2b_caja_default_id) {
+        // 2026-07-26 (audit 07-25 Track C P1-5): defense-in-depth cross-tenant.
+        // Corre bajo `adminQuery` (BYPASSRLS). En el flow normal, el `id` viene
+        // de `tenants.red_b2b_caja_default_id` seteado por el mismo tenant, así
+        // que no explota — pero si el value se corrompiera (DB manual edit,
+        // migration bug, race con update de otro tenant), este SELECT devolvería
+        // caja de OTRO tenant y el response del GET expondría nombre/moneda.
+        // Fix: `AND tenant_id = $2` explícito.
         const cQ = await client.query(
           `SELECT id, nombre, moneda, activo
              FROM metodos_pago
-             WHERE id = $1 AND deleted_at IS NULL`,
-          [t.red_b2b_caja_default_id]
+             WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+          [t.red_b2b_caja_default_id, myTenantId]
         );
         caja = cQ.rows[0] || null;
       }

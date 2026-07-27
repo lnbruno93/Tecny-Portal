@@ -16,10 +16,20 @@ async function syncFinancieraComprobante(client, ventaId, estado) {
   let pagoFin = null;
   let file = null;
   if (estado !== 'cancelado') {
+    // 2026-07-26 (audit 07-25 Track A P1-4): ORDER BY vp.id explícito.
+    // Antes: LIMIT 1 sin ORDER BY → si por bug del sync/edit una venta tenía
+    // 2 pagos con caja financiera (edge case pero posible con edit doble),
+    // la elección del monto para el comprobante quedaba indeterminística y
+    // podía cambiar entre ediciones o entre réplicas de Postgres. Consistente
+    // ahora con las otras queries del archivo (línea 34 ya ordena) y con
+    // comisionesMetodos.js:92. Ya estaba flageado como P2-5 en audit 07-12
+    // — no se cerró en el cierre (backlog "P2 residual"); se sube a P1 en
+    // audit 07-25 por reincidencia.
     const fin = await client.query(
       `SELECT vp.monto FROM venta_pagos vp
          JOIN metodos_pago mp ON mp.id = vp.metodo_pago_id
         WHERE vp.venta_id = $1 AND mp.es_financiera = true AND mp.deleted_at IS NULL
+        ORDER BY vp.id
         LIMIT 1`, [ventaId]
     );
     // P-03 Fase 5 (2026-06-13): el SELECT tiene que traer también archivo_key
@@ -215,7 +225,17 @@ async function postCajaMovimientoFinanciera(client, {
   ref_id,
   concepto,
   user_id,
-}) {
+  // 2026-07-26 (audit 07-25 Track A P1-5, refactor signature): tc explícito
+  // desde el caller. Cada caller resuelve el TC contextualmente:
+  //   - Auto (syncFinancieraComprobante): TC del venta_pagos.tc origen.
+  //   - Manual (POST/PUT /comprobantes/manuales): del req.body si está, o
+  //     null si la caja es USD-USD.
+  //   - Pago (routes/pagos.js): del pago origen si convertir_usd, sino null.
+  // Default `null` preserva backward compat (comportamiento pre-fix). Los
+  // callers UY con caja Financiera UYU DEBEN pasar el TC para que el ledger
+  // cross-moneda quede correcto. Ver comment del audit debajo.
+  tc = null,
+} = {}) {
   const { rows } = await client.query(
     `SELECT id, moneda FROM metodos_pago
       WHERE es_financiera = true AND deleted_at IS NULL
@@ -236,25 +256,21 @@ async function postCajaMovimientoFinanciera(client, {
     tipo,
     monto,
     moneda: fv.moneda, // la moneda del movimiento es la de la caja (grupoMoneda check delegado)
-    // 2026-07-12 (auditoría TOTAL Financiero P2-1, Pattern B multi-país UYU):
-    // tc: null — hoy en prod solo hay cajas Financieras ARS con TC snapshot en
-    // los pagos que originan estos movimientos (venta_pagos.tc). El monto_usd
-    // se calcula en postCajaMovimiento con toUsd(monto, moneda, tc); para ARS/UYU
-    // con tc=null retorna 0 → asiento incorrecto en el ledger cross-moneda.
+    // Sprint 2 audit 07-25 · Fix 4 (2026-07-26): tc viene del caller ahora.
+    // El fix estructural cierra el DEBT documentado en audit 07-12 P2-1
+    // (Pattern B multi-país UYU) — antes era `tc: null` hardcodeado y el
+    // ledger cross-moneda subestimaba cada egreso ARS/UYU. El caller
+    // `syncFinancieraComprobante` (comprobantes.js:201) YA pasa el TC del
+    // venta_pagos.tc origen. Los otros callers (manuales, pagos) siguen
+    // pasando null hasta que aparezca el primer tenant con Financiera UY.
     //
-    // DEBT: cuando el primer tenant configure Financiera en caja UYU (o USDT
-    // con TC≠1), este helper necesita recibir el TC del contexto (venta_pagos
-    // origen del comprobante) o del TC default del país. Requiere refactor
-    // del caller para pasar ese context — fuera de scope del Sprint 3 multi-país.
-    // Ver: routes/comprobantes.js POST /manuales (caller principal) — hay que
-    // resolver el TC ahí y pasarlo explícito acá.
-    //
-    // Attempt de fix en Sprint 3 (2026-07-12): probé leer TC del último
+    // Attempt histórico de fix Sprint 3 07-12: probé leer TC del último
     // movimiento de la caja + fallback a getTcDefaultPais con tenantPais.
-    // Bloqueado por: (a) `caja_movimientos` NO persiste tc (solo monto/monto_usd),
-    // y (b) el helper no tiene acceso a req.tenantPais. Rollback + follow-up
-    // en Sprint 5 con el refactor de caller signature.
-    tc: null,
+    // Bloqueado por: (a) `caja_movimientos` NO persiste tc (solo monto/
+    // monto_usd), y (b) el helper no tenía acceso a req.tenantPais. Este
+    // Sprint 2 audit 07-25 lo resolvió con la ruta más simple: TC explícito
+    // por caller, sin dependencias globales.
+    tc,
     origen: 'financiera',
     ref_tabla,
     ref_id,

@@ -70,7 +70,18 @@ async function resolveOwnerEmail(tenantId) {
       payment_received:     true,
     };
 
-    // tenant_users tiene FORCE RLS — necesitamos SET LOCAL.
+    // 2026-07-26 (audit 07-25 Track C P1-3): SET LOCAL es DEFENSE-IN-DEPTH
+    // acá, NO source-of-truth. Corremos bajo `db.adminQuery` (BYPASSRLS),
+    // así que el rol IGNORA las RLS policies. El aislamiento real viene
+    // del filtro EXPLÍCITO `WHERE tu.tenant_id = $1` en el SELECT de abajo.
+    //
+    // ⚠️  NO REMOVER `WHERE tu.tenant_id = $1` "porque ya SET LOCAL" ⚠️
+    // Bajo BYPASSRLS el SET LOCAL no hace nada — sin el WHERE explícito,
+    // el JOIN devuelve TODOS los tenant_users que matchean rol/email +
+    // limitando por LIMIT 1 devuelve UN owner cualquiera (cross-tenant
+    // info leak inmediato). Mantenemos el set_config para que si algún
+    // día se retira BYPASSRLS del rol admin (poco probable pero
+    // ideológicamente correcto), el helper siga funcionando.
     //
     // 2026-07-24 (Sentry TECNY-PORTAL-BACKEND-17 investigación): migrado
     // de `SET LOCAL app.current_tenant = ${Number(tenantId)}` (interpolación
@@ -78,12 +89,12 @@ async function resolveOwnerEmail(tenantId) {
     // que withTenant() usa en config/database.js:258-260 (fixeado en
     // auditoría TOTAL Plataforma P0-1, 2026-07-12). Este file quedó atrás.
     //
-    // Impacto: si tenantId era garbage (undefined, "abc", null), `Number()`
-    // retornaba NaN → SQL literal `SET LOCAL app.current_tenant = NaN` →
-    // syntax error a nivel statement. El conector no queda del todo limpio
-    // — el pool eventualmente lo cierra y devuelve "Connection terminated"
-    // al próximo consumer. Con bind param, un valor inválido falla temprano
-    // en el driver sin envenenar la conexión.
+    // Impacto histórico: si tenantId era garbage (undefined, "abc", null),
+    // `Number()` retornaba NaN → SQL literal `SET LOCAL app.current_tenant
+    // = NaN` → syntax error a nivel statement. El conector no queda del
+    // todo limpio — el pool eventualmente lo cierra y devuelve "Connection
+    // terminated" al próximo consumer. Con bind param, un valor inválido
+    // falla temprano en el driver sin envenenar la conexión.
     await client.query(
       `SELECT set_config('app.current_tenant', $1::text, true)`,
       [String(tenantId)]
