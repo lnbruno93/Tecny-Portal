@@ -236,6 +236,21 @@ function createTenantScopedCache({ keyPrefix, ttlMs, maxFetchers = 256, fetcher 
     throw new Error('createTenantScopedCache: fetcher requerido');
   }
   const fetchers = new Map();
+  // 2026-07-27 (audit 07-25 Track E P1-7): instrumentación para diagnóstico
+  // del hit rate del Map local. El audit recomienda: no fixear cross-instance
+  // hoy (generation counter en Redis es 30% del module reescrito, payoff
+  // bajo dado TTL corto de 30s dashboard), pero MEDIR el hit rate para saber
+  // cuándo escalar.
+  //
+  // Si `invalidatePrefixCalls > 0` pero `invalidatePrefixKeysHit === 0`
+  // consistentemente, es señal de que las mutations vienen a réplicas SIN el
+  // cache local → la otra réplica sirve stale. Log ese ratio en la respuesta
+  // de `getStats()` que el health endpoint puede polear.
+  const stats = {
+    invalidatePrefixCalls:    0,
+    invalidatePrefixKeysHit:  0, // suma de keys locales invalidadas en cada call
+    invalidatePrefixLocalMap: 0, // último snapshot del map size en call
+  };
 
   function getFetcherForScope(scopeKey) {
     const sk = String(scopeKey);
@@ -320,15 +335,45 @@ function createTenantScopedCache({ keyPrefix, ttlMs, maxFetchers = 256, fetcher 
       for (const sk of fetchers.keys()) {
         if (sk.startsWith(prefix)) toInvalidate.push(sk);
       }
+      // Instrumentación P1-7: registrar el call + cuántos keys locales tenía
+      // el Map + cuántos hicieron match con el prefix. Sirve para calcular
+      // el hit rate off-line (con los datos de `getStats()`) y decidir si
+      // vale la pena el generation counter en Redis.
+      stats.invalidatePrefixCalls += 1;
+      stats.invalidatePrefixKeysHit  += toInvalidate.length;
+      stats.invalidatePrefixLocalMap  = fetchers.size;
       // Fire-and-forget en paralelo — cada invalidate() ya cataloga sus
       // propios errores internamente vía el catch del método invalidate().
       await Promise.all(toInvalidate.map((sk) => this.invalidate(sk)));
     },
 
+    // 2026-07-27 (audit 07-25 Track E P1-7): expone stats del cache local
+    // para que el health endpoint / observabilidad calculen hit rate del
+    // Map local en producción. Ver comment del constructor.
+    getStats() {
+      return {
+        keyPrefix,
+        maxFetchers,
+        currentMapSize: fetchers.size,
+        ...stats,
+        // hit rate del Map local en invalidatePrefix. Si <90% en prod
+        // sostenido, gatillar reactivación del fix cross-instance (generation
+        // counter Redis). Ver audit 07-25 Track E P1-7.
+        invalidatePrefixHitRate: stats.invalidatePrefixCalls > 0
+          ? Number((stats.invalidatePrefixKeysHit / stats.invalidatePrefixCalls).toFixed(2))
+          : null,
+      };
+    },
+
     // Solo para tests: limpia el Map. Las entries del wrapper interno y de
     // Redis (si hay client real) no se tocan — necesario porque Jest comparte
     // módulos entre describes.
-    _resetForTest() { fetchers.clear(); },
+    _resetForTest() {
+      fetchers.clear();
+      stats.invalidatePrefixCalls = 0;
+      stats.invalidatePrefixKeysHit = 0;
+      stats.invalidatePrefixLocalMap = 0;
+    },
   };
 }
 
