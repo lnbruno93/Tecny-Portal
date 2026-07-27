@@ -229,7 +229,7 @@ export default function DevolucionMercaderiaProveedorModal({ proveedor, onClose,
               Detalle <span className="muted">(opcional)</span>
             </label>
             <textarea
-              className="input"
+              className="input u-text-center"
               rows={2}
               maxLength={500}
               placeholder="Ej: 3 unidades llegaron con pantalla rota, batería <70%..."
