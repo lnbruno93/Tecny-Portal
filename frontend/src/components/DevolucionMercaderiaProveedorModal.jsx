@@ -26,6 +26,7 @@ import { proveedores as provApi } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from './ConfirmModal';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
+import { fmtFecha } from '../lib/format';
 
 const fmtUSD = (n) =>
   `USD ${Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -284,6 +285,7 @@ export default function DevolucionMercaderiaProveedorModal({ proveedor, onClose,
                     <col className="u-w-130px" />{/* imei */}
                     <col className="u-w-76" />  {/* color */}
                     <col className="u-w-66" />  {/* gb */}
+                    <col className="u-w-88" />  {/* fecha compra */}
                     <col className="u-w-94" />  {/* costo */}
                   </colgroup>
                   <thead>
@@ -293,6 +295,7 @@ export default function DevolucionMercaderiaProveedorModal({ proveedor, onClose,
                       <th className="u-provs-th u-text-left">IMEI</th>
                       <th className="u-provs-th u-text-left">Color</th>
                       <th className="u-provs-th u-text-left">Cap.</th>
+                      <th className="u-provs-th u-text-left">Comprado</th>
                       <th className="u-provs-th u-text-right">Costo USD</th>
                     </tr>
                   </thead>
@@ -323,6 +326,9 @@ export default function DevolucionMercaderiaProveedorModal({ proveedor, onClose,
                           <td className="cell u-color-text-2">
                             {p.gb || <span className="dim">—</span>}
                           </td>
+                          <td className="cell u-color-text-2 mono">
+                            {fmtFecha(p.fecha_compra)}
+                          </td>
                           <td className="cell u-td-right-fw-700 mono">
                             {fmtUSD(p.costo)}
                           </td>
@@ -331,7 +337,7 @@ export default function DevolucionMercaderiaProveedorModal({ proveedor, onClose,
                     })}
                     {filtered.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="u-empty-p-24-16">
+                        <td colSpan={7} className="u-empty-p-24-16">
                           Sin coincidencias para "{dSearch}".
                         </td>
                       </tr>
