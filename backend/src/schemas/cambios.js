@@ -1,5 +1,5 @@
 const { z } = require('zod');
-const { fechaNoFutura } = require('./_common');
+const { fechaNoFutura, NUMERIC_14_2_MAX, NUMERIC_OVERFLOW_MSG } = require('./_common');
 
 // 2026-06-11 S-18: reusar el helper fechaNoFutura compartido. Antes el schema
 // permitía fechas futuras (solo bloqueaba <2000), que el operador podía meter
@@ -49,9 +49,15 @@ const createMovimientoSchema = z.object({
   entidad_id:  z.coerce.number().int().positive('entidad_id requerido'),
   fecha,
   tipo:        z.enum(TIPOS_TODOS),
-  monto_ars:   z.coerce.number().min(0).optional().default(0),
-  tc:          z.coerce.number().positive().optional().nullable(),
-  monto_usd:   z.coerce.number().min(0).optional().default(0),
+  // 2026-07-27 (audit 07-25 Track A P2-6): .max() defensive vs overflow
+  // NUMERIC(14,2). Un `entrega_usd_por_ars` con `monto_usd=1000` y
+  // `tc=1e15` calculaba `local = 1000 × 1e15 = 1e18` → overflow silencioso
+  // en el INSERT. Techo mismo tope que updateMovimientoSchema tarjetas
+  // (.max(1e6)) — TC más alto no tiene sentido económico y sí explota
+  // matemáticamente.
+  monto_ars:   z.coerce.number().min(0).max(NUMERIC_14_2_MAX, NUMERIC_OVERFLOW_MSG).optional().default(0),
+  tc:          z.coerce.number().positive().max(1e6, 'TC absurdamente alto').optional().nullable(),
+  monto_usd:   z.coerce.number().min(0).max(NUMERIC_14_2_MAX, NUMERIC_OVERFLOW_MSG).optional().default(0),
   caja_id:     z.coerce.number().int().positive('Elegí la caja'),
   comentarios: z.string().trim().max(1000).optional().nullable(),
 }).strict().superRefine((d, ctx) => {

@@ -431,7 +431,7 @@ const clientErrorLimiter = rateLimit({
   standardHeaders: false, legacyHeaders: false,
   message: { error: 'rate-limit' },
 });
-const { isClientErrorNoise } = require('./lib/clientErrorNoise');
+const { isClientErrorNoise, isBotUserAgent } = require('./lib/clientErrorNoise');
 app.post('/api/client-errors', clientErrorLimiter, express.json({ limit: '16kb' }), (req, res) => {
   const { message, stack, url, userAgent, source, timestamp,
           build_commit: buildCommit, build_version: buildVersion } = req.body || {};
@@ -450,6 +450,15 @@ app.post('/api/client-errors', clientErrorLimiter, express.json({ limit: '16kb' 
   // regresaba en Sentry cada vez que un user viejo cargaba el portal.
   // Aún logueamos con logger.warn arriba — solo NO reportamos a Sentry.
   if (isClientErrorNoise(message)) {
+    return res.status(204).end();
+  }
+  // 2026-07-27 hotfix (Sentry ruido post Sprint 4): filtro por user-agent.
+  // Bots (AhrefsBot, GoogleBot, etc.) disparan `img.onError` sobre
+  // `<img loading="lazy">` porque no ejecutan intersection observer. La
+  // Landing reporta esos fails al /api/client-errors → Sentry se llena
+  // de ruido de crawlers que ningún user real vio. `logger.warn` arriba
+  // deja trail si necesitamos diagnosticar; solo skippeamos Sentry.
+  if (isBotUserAgent(userAgent) || isBotUserAgent(req.headers['user-agent'])) {
     return res.status(204).end();
   }
   try {
@@ -666,6 +675,28 @@ app.get('/health', async (_req, res) => {
       heap_total_mb: Math.round(mem.heapTotal  / 1024 / 1024),
     },
   });
+});
+
+// 2026-07-27 (cleanup post audit 07-25 Sprint 3 Fix 5 follow-up):
+// /health/cache-stats — enumera todos los caches registrados y devuelve
+// su getStats(). Sirve para diagnosticar hit rate del Map local en cada
+// réplica (audit 07-25 Track E P1-7 abrió la métrica, este endpoint
+// la expone). Sin auth: los stats son agregados (counters + prefixes),
+// no expone data del negocio.
+app.get('/health/cache-stats', (_req, res) => {
+  try {
+    const { getAllCacheStats } = require('./lib/cacheTtl');
+    const stats = getAllCacheStats();
+    // total_caches: cuántos módulos registraron caches. Debería estabilizarse
+    // post-boot (~10 caches actualmente). Si crece constante = leak.
+    res.json({
+      total_caches: stats.length,
+      caches: stats,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // /ready — readiness probe separado del /health.

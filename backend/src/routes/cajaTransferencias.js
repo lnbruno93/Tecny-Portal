@@ -26,7 +26,11 @@ const validate = require('../lib/validate');
 const audit    = require('../lib/audit');
 const parseId  = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
-const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
+const { postCajaMovimiento, reverseCajaMovimientos, grupoMoneda } = require('../lib/cajaLedger');
+// 2026-07-27 (audit 07-25 Track A P2-2): invalidateCajas — POST + DELETE
+// mueven 2 cajas cada uno (origen + destino).
+const { invalidateCajas } = require('../lib/cajasCache');
+const logger = require('../lib/logger');
 const { createTransferenciaSchema } = require('../schemas/cajaTransferencias');
 
 // GET /api/caja-transferencias — listar con paginación (más recientes primero).
@@ -86,7 +90,10 @@ router.post('/', validate(createTransferenciaSchema), async (req, res, next) => 
     const isCross = !!(moneda_destino && monto_destino && tc);
     await client.query('BEGIN');
     // multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     // Validar que ambas cajas existen, no están eliminadas.
     const { rows: cajas } = await client.query(
@@ -104,35 +111,36 @@ router.post('/', validate(createTransferenciaSchema), async (req, res, next) => 
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'La caja de destino no existe o fue eliminada.' });
     }
-    // grupoMoneda: USD y USDT son 1:1 (mismo grupo); ARS y UYU son grupos
-    // separados.
-    const grupo = (m) => (m === 'ARS' ? 'ARS' : m === 'UYU' ? 'UYU' : 'USD');
+    // 2026-07-27 (audit 07-25 Track A P2-1): usar grupoMoneda canónico de
+    // cajaLedger.js. Antes había una copia local `grupo = (m) => ...` que
+    // funcionaba pero era drift a mantener. Sprint 10 audit 07-12 ya había
+    // removido copias en pagos.js/tarjetas.js — este archivo se perdió.
     if (isCross) {
       // Cross-currency: origen debe matchear con `moneda`, destino con
       // `moneda_destino`. Deben ser grupos DISTINTOS (sino no tiene sentido
       // el TC — el operador está haciendo lo mismo que same-currency).
-      if (grupo(origen.moneda) !== grupo(moneda)) {
+      if (grupoMoneda(origen.moneda) !== grupoMoneda(moneda)) {
         await client.query('ROLLBACK');
         return res.status(400).json({
           error: `La caja de origen es ${origen.moneda}, no coincide con la moneda de origen declarada (${moneda}).`,
         });
       }
-      if (grupo(destino.moneda) !== grupo(moneda_destino)) {
+      if (grupoMoneda(destino.moneda) !== grupoMoneda(moneda_destino)) {
         await client.query('ROLLBACK');
         return res.status(400).json({
           error: `La caja de destino es ${destino.moneda}, no coincide con la moneda de destino declarada (${moneda_destino}).`,
         });
       }
-      if (grupo(origen.moneda) === grupo(destino.moneda)) {
+      if (grupoMoneda(origen.moneda) === grupoMoneda(destino.moneda)) {
         await client.query('ROLLBACK');
         return res.status(400).json({
-          error: `Ambas cajas son ${grupo(origen.moneda)}. Para transferencia sin TC no cargues los campos de moneda destino.`,
+          error: `Ambas cajas son ${grupoMoneda(origen.moneda)}. Para transferencia sin TC no cargues los campos de moneda destino.`,
         });
       }
     } else {
       // Same-currency (comportamiento pre-feature): moneda declarada coincide
       // con las 2 cajas.
-      if (grupo(origen.moneda) !== grupo(moneda) || grupo(destino.moneda) !== grupo(moneda)) {
+      if (grupoMoneda(origen.moneda) !== grupoMoneda(moneda) || grupoMoneda(destino.moneda) !== grupoMoneda(moneda)) {
         await client.query('ROLLBACK');
         return res.status(400).json({
           error: `La moneda del movimiento (${moneda}) debe coincidir con las cajas ` +
@@ -203,6 +211,8 @@ router.post('/', validate(createTransferenciaSchema), async (req, res, next) => 
 
     await audit(client, 'caja_transferencias', 'INSERT', nuevo.id, { despues: nuevo, user_id: req.user.id });
     await client.query('COMMIT');
+    invalidateCajas(req.tenantId).catch(err =>
+      logger.warn({ err: err.message }, 'caja-transferencias POST: invalidateCajas falló'));
     res.status(201).json(nuevo);
   } catch (err) {
     try { await client.query('ROLLBACK'); } catch (_) { /* swallow */ }
@@ -226,7 +236,10 @@ router.delete('/:id', async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     const { rows } = await client.query(
       `UPDATE caja_transferencias SET deleted_at = NOW()
@@ -245,6 +258,8 @@ router.delete('/:id', async (req, res, next) => {
     await reverseCajaMovimientos(client, 'caja_transferencias', id);
     await audit(client, 'caja_transferencias', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
+    invalidateCajas(req.tenantId).catch(err =>
+      logger.warn({ err: err.message }, 'caja-transferencias DELETE: invalidateCajas falló'));
     res.json({ ok: true });
   } catch (err) {
     try { await client.query('ROLLBACK'); } catch (_) { /* swallow */ }

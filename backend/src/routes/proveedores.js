@@ -131,7 +131,10 @@ router.post('/bulk', validate(nombresBulkProveedoresSchema), async (req, res, ne
 
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const lowers = inputDedup.map(n => n.toLowerCase());
     // Filtrar nombres que YA existen (case-insensitive).
     const { rows: existentes } = await client.query(
@@ -175,7 +178,10 @@ router.post('/', validate(createProveedorSchema), async (req, res, next) => {
     const { nombre, contacto_nombre, contacto_apellido, whatsapp, ubicacion, notas, saldo_inicial } = req.body;
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const { rows } = await client.query(
       `INSERT INTO proveedores (nombre, contacto_nombre, contacto_apellido, whatsapp, ubicacion, notas)
        VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
@@ -216,7 +222,10 @@ router.put('/:id', validate(updateProveedorSchema), async (req, res, next) => {
   try {
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     const before = await client.query('SELECT * FROM proveedores WHERE id = $1 AND deleted_at IS NULL', [id]);
     if (!before.rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Proveedor no encontrado' }); }
 
@@ -313,7 +322,10 @@ router.post('/bulk-delete-all', adminOnly, async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     // 1. Lockear movimientos vivos del tenant.
     const { rows: movs } = await client.query(
@@ -478,7 +490,10 @@ router.post('/movimientos', compraMovimientoLimiter, validate(createMovimientoPr
 
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     // Idempotency replay: si el caller ya intentó con esta key, devolvemos el
     // movimiento original SIN reejecutar caja + productos.
@@ -715,7 +730,10 @@ router.post('/movimientos/bulk', compraMovimientoLimiter, validate(bulkCreateMov
 
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
 
     // Choque con stock existente (1 sola query global para todos los IMEIs)
     if (todosImeis.length > 0) {
@@ -867,7 +885,10 @@ router.delete('/movimientos/:id', requireCapability('proveedores.eliminar_compra
   try {
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
-    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(req.tenantId)]
+    );
     // Ownership check (auditoría #B-07) — defensa en depth además de la cap.
     const { rows: pre } = await client.query(
       'SELECT id, created_by_user_id FROM proveedor_movimientos WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
