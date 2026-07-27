@@ -18,6 +18,13 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { publico } from '../lib/api';
+// 2026-07-27 (audit 07-25 Externa P2-4 fix): PublicoUsados es la superficie
+// PÚBLICA más expuesta (link sin auth). Antes NO reportaba errores al backend
+// (0 grep matches de Sentry/reportError). Si el fetch al share link fallaba
+// por CSP violation, CORS drift o 5xx del backend, se perdía silencioso — cero
+// visibilidad. La landing pública ya tiene esta instrumentación (Sprint 1 H3
+// del audit landing 07-19). Ahora PublicoUsados también.
+import { reportError } from '../lib/reportError';
 // Sprint 104 CSP hardening: los estilos vivían en un template string
 // PUB_STYLES renderizado como un elemento style con contenido dinámico
 // en 3 lugares. Cada uno de esos bloques es un CSP `style-src 'unsafe-inline'`
@@ -198,6 +205,19 @@ export default function PublicoUsados() {
           mensaje: err.message,
         });
         setLoading(false);
+        // Reportar SOLO errores no-esperados a Sentry. 404, 410 y 429 son
+        // outcomes de UX legítimos (link expirado, no encontrado, rate limit)
+        // y no aportan señal — solo agregan ruido. 4xx restantes y 5xx sí
+        // interesan: reflejan bugs backend / infra / CSP violation.
+        const status = err.status || 0;
+        const isExpectedUxOutcome = status === 404 || status === 410 || status === 429;
+        if (!isExpectedUxOutcome) {
+          reportError(err, {
+            source: 'PublicoUsados.fetch',
+            token_hash: typeof token === 'string' ? token.slice(0, 8) : null,
+            status,
+          });
+        }
       });
     return () => { cancelled = true; };
   }, [token]);
