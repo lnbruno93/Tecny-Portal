@@ -50,6 +50,27 @@ TABLE OWNER.
 
 Ejecutar en **prod primero**, después en **staging** (mismo procedimiento).
 
+### ⚠️ Postgres tiene instancias SEPARADAS por environment
+
+2026-07-27 lesson learned: cuando cerramos el drift la primera vez (#903),
+asumimos que prod + staging compartían la misma DB porque el hostname
+interno era el mismo (`postgres-auep.railway.internal`). **Es incorrecto**:
+cada environment tiene su propia instancia del service `Postgres-AueP` con
+su propio storage. El hostname `.railway.internal` resuelve distinto según
+el env desde el que se accede.
+
+Consecuencia: el runbook debe aplicarse **en cada environment por separado**
+(prod, staging, y cualquier preview/branch env con DB propia).
+
+### Connect strings por environment
+
+- **Prod**: usar `railway variables --service Postgres-AueP --environment production --json` para obtener `DATABASE_PUBLIC_URL` (user=postgres superuser).
+- **Staging**: `Postgres-AueP` tiene TCP proxy en `zephyr.proxy.rlwy.net:52791`. Connect string:
+  ```
+  postgresql://postgres:${PGPASSWORD}@zephyr.proxy.rlwy.net:52791/railway
+  ```
+  El `PGPASSWORD` se obtiene con `railway variables --service Postgres-AueP --environment Staging --json | jq -r .PGPASSWORD`.
+
 ### Step 1 — Diagnostic query PRE-fix
 
 Corré el diagnostic script para confirmar el estado actual:
