@@ -161,6 +161,77 @@ describe('normalizeGoogleReview', () => {
     });
     expect(n.id).toBe('google:REVIEW123');
   });
+
+  // 2026-07-27 (audit 07-25 Externa P3-7): defensive sanitize de URLs.
+  // Google authorAttribution.photoUri y .uri vienen del API pero pasarlos
+  // raw al frontend abre superficie XSS si mañana la landing renderiza como
+  // <a href>. Whitelist estricta: solo https:// pasa, resto → null.
+  describe('sanitize URL fields (photo_url + author_url)', () => {
+    it('javascript: schema en photoUri → null', () => {
+      const n = normalizeGoogleReview({
+        name: 'places/X/reviews/Y',
+        authorAttribution: {
+          displayName: 'X',
+          // eslint-disable-next-line no-script-url
+          photoUri: 'javascript:alert(1)',
+          uri: 'https://ok.example.com',
+        },
+        text: { text: 'x' },
+      });
+      expect(n.photo_url).toBeNull();
+      expect(n.author_url).toBe('https://ok.example.com');
+    });
+
+    it('data: schema en photoUri → null', () => {
+      const n = normalizeGoogleReview({
+        name: 'places/X/reviews/Y',
+        authorAttribution: {
+          displayName: 'X',
+          photoUri: 'data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+',
+        },
+        text: { text: 'x' },
+      });
+      expect(n.photo_url).toBeNull();
+    });
+
+    it('http:// (no HTTPS) en uri → null', () => {
+      const n = normalizeGoogleReview({
+        name: 'places/X/reviews/Y',
+        authorAttribution: {
+          displayName: 'X',
+          uri: 'http://insecure.example.com',
+        },
+        text: { text: 'x' },
+      });
+      expect(n.author_url).toBeNull();
+    });
+
+    it('https:// pasa como está (happy path)', () => {
+      const n = normalizeGoogleReview({
+        name: 'places/X/reviews/Y',
+        authorAttribution: {
+          displayName: 'X',
+          photoUri: 'https://lh3.googleusercontent.com/a/photo.jpg',
+          uri: 'https://www.google.com/maps/contrib/123/reviews',
+        },
+        text: { text: 'x' },
+      });
+      expect(n.photo_url).toBe('https://lh3.googleusercontent.com/a/photo.jpg');
+      expect(n.author_url).toBe('https://www.google.com/maps/contrib/123/reviews');
+    });
+
+    it('non-string photoUri (bug del API) → null (defense in depth)', () => {
+      const n = normalizeGoogleReview({
+        name: 'places/X/reviews/Y',
+        authorAttribution: {
+          displayName: 'X',
+          photoUri: { unexpected: 'object' },
+        },
+        text: { text: 'x' },
+      });
+      expect(n.photo_url).toBeNull();
+    });
+  });
 });
 
 // ══════════════════════════════════════════════════════════════════════════
