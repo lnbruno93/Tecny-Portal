@@ -64,11 +64,32 @@ const logger = pino({
     censor: '[REDACTED]',
   },
 
-  // Auto-format en local, JSON en producción. Ver razón del doble check
-  // (TTY && !production) en el JSDoc de arriba.
-  transport: (process.stdout.isTTY && process.env.NODE_ENV !== 'production')
-    ? { target: 'pino-pretty', options: { colorize: true, translateTime: 'SYS:HH:MM:ss' } }
-    : undefined,
+  // Auto-format en local, JSON en producción.
+  //
+  // 2026-07-27 (audit 07-25 Plataforma P2-1 fix): antes el check era
+  // `process.stdout.isTTY && NODE_ENV !== 'production'`. En Railway hoy
+  // NODE_ENV=production en TODOS los envs (prod + staging), así que el
+  // check funciona por accidente feliz. Pero si algún día alguien setea
+  // NODE_ENV=staging en Railway staging (razonable), pino intentaría
+  // cargar pino-pretty en un container donde NO está instalado (es
+  // devDependency) y throwaría al boot.
+  //
+  // El check nuevo es más robusto: solo activa pino-pretty si el módulo
+  // está disponible (`require.resolve` sin throw). En prod pino-pretty
+  // NO está instalado → resolve throwea → transport=undefined → JSON
+  // logs, independiente del valor de NODE_ENV.
+  //
+  // Bonus: en local (dev con devDeps instaladas) sigue funcionando igual
+  // porque require.resolve succeeds → sale pino-pretty.
+  transport: (() => {
+    if (!process.stdout.isTTY) return undefined;
+    try {
+      require.resolve('pino-pretty');
+      return { target: 'pino-pretty', options: { colorize: true, translateTime: 'SYS:HH:MM:ss' } };
+    } catch {
+      return undefined;
+    }
+  })(),
 });
 
 module.exports = logger;
