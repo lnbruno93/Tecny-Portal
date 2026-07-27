@@ -21,6 +21,11 @@ const { round2, computeNeto } = require('../lib/money');
 const { postCajaMovimiento, reverseCajaMovimientos, grupoMoneda } = require('../lib/cajaLedger');
 const { postCajaMovimientoTarjeta } = require('../lib/tarjetas');
 const { saldoNetoCase } = require('../lib/tarjetasSaldo');
+// 2026-07-27 (cleanup post audit 07-25): invalidateCajas — tarjetas no
+// estaba en el batch del Sprint 4 Fix 2 pero POST/PATCH/DELETE de
+// liquidaciones y cobros mueven caja destino. Fire-and-forget.
+const { invalidateCajas } = require('../lib/cajasCache');
+const logger = require('../lib/logger');
 const { createLiquidacionSchema, createLiquidacionMultipleSchema, createCobroInicialSchema, updateMovimientoSchema } = require('../schemas/tarjetas');
 const {
   parseIdempotencyKey,
@@ -432,6 +437,8 @@ router.post('/cobros-iniciales', requireCapability('tarjetas.cobro_previo'), val
       despues: rows[0], tipo: 'cobro_inicial', user_id: req.user.id,
     });
     await client.query('COMMIT');
+    invalidateCajas(req.tenantId).catch(err =>
+      logger.warn({ err: err.message }, 'tarjetas cobro_inicial: invalidateCajas falló'));
     res.status(201).json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -498,6 +505,8 @@ router.post('/liquidaciones', validate(createLiquidacionSchema), async (req, res
     });
     await audit(client, 'tarjeta_movimientos', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
+    invalidateCajas(req.tenantId).catch(err =>
+      logger.warn({ err: err.message }, 'tarjetas liquidación POST: invalidateCajas falló'));
     res.status(201).json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -690,6 +699,8 @@ router.post('/liquidaciones-multiples', validate(createLiquidacionMultipleSchema
     }
 
     await client.query('COMMIT');
+    invalidateCajas(req.tenantId).catch(err =>
+      logger.warn({ err: err.message }, 'tarjetas liquidación múltiple POST: invalidateCajas falló'));
     const total = created.reduce((a, r) => a + Number(r.monto_neto), 0);
     res.status(201).json({
       movimientos: created,
@@ -911,6 +922,8 @@ router.patch('/movimientos/:id', validate(updateMovimientoSchema), async (req, r
     delete movClean.metodo_moneda;
     await audit(client, 'tarjeta_movimientos', 'UPDATE', id, { antes: movClean, despues: updated, user_id: req.user.id });
     await client.query('COMMIT');
+    invalidateCajas(req.tenantId).catch(err =>
+      logger.warn({ err: err.message }, 'tarjetas PATCH: invalidateCajas falló'));
     res.json(updated);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -968,6 +981,8 @@ router.delete('/movimientos/:id', async (req, res, next) => {
     // Patrón ya aplicado al resto de tarjetas.js y al resto del módulo.
     await audit(client, 'tarjeta_movimientos', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
+    invalidateCajas(req.tenantId).catch(err =>
+      logger.warn({ err: err.message }, 'tarjetas DELETE: invalidateCajas falló'));
     res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK');

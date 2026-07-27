@@ -677,6 +677,28 @@ app.get('/health', async (_req, res) => {
   });
 });
 
+// 2026-07-27 (cleanup post audit 07-25 Sprint 3 Fix 5 follow-up):
+// /health/cache-stats — enumera todos los caches registrados y devuelve
+// su getStats(). Sirve para diagnosticar hit rate del Map local en cada
+// réplica (audit 07-25 Track E P1-7 abrió la métrica, este endpoint
+// la expone). Sin auth: los stats son agregados (counters + prefixes),
+// no expone data del negocio.
+app.get('/health/cache-stats', (_req, res) => {
+  try {
+    const { getAllCacheStats } = require('./lib/cacheTtl');
+    const stats = getAllCacheStats();
+    // total_caches: cuántos módulos registraron caches. Debería estabilizarse
+    // post-boot (~10 caches actualmente). Si crece constante = leak.
+    res.json({
+      total_caches: stats.length,
+      caches: stats,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // /ready — readiness probe separado del /health.
 // Diferencia conceptual:
 //   /health = "el proceso está vivo" (memory, DB conectable). Si responde 503,
