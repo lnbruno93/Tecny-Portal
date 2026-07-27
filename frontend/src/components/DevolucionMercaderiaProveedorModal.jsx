@@ -175,7 +175,7 @@ export default function DevolucionMercaderiaProveedorModal({ proveedor, onClose,
   return (
     <div ref={overlayRef} className="modal-overlay"
          onClick={(e) => e.target === e.currentTarget && !saving && onClose()}>
-      <div className="modal u-mw-720">
+      <div className="modal u-mw-920">
         {/* ── Header ─────────────────────────────────────────────── */}
         <div className="modal-hd">
           <div>
