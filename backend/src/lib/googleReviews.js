@@ -106,6 +106,23 @@ function nameToInitial(name) {
  * texto original sin traducción. En cualquier caso, `text.text` es lo
  * correcto para mostrar en la landing.
  */
+// 2026-07-27 (audit 07-25 Externa P3-7 fix): defensive URL sanitizer.
+//
+// Google `authorAttribution.photoUri` y `.uri` vienen del API — teoréticamente
+// confiables — pero pasamos raw al frontend en `photo_url` / `author_url`. Si
+// en el futuro la landing renderiza esos values como `<a href>` o `<img src>`,
+// un value con schema `javascript:` / `data:` / `vbscript:` (poco probable pero
+// posible en un API compromise) sería XSS.
+//
+// Este helper aplica whitelist estricta: solo devuelve la URL si comienza con
+// `https://`. Cualquier otro schema → null (fail-closed, mismo pattern que el
+// resto de la codebase para superficies "confiables externas").
+function sanitizeHttpsUrl(url) {
+  if (typeof url !== 'string' || !url) return null;
+  if (!url.startsWith('https://')) return null;
+  return url;
+}
+
 function normalizeGoogleReview(gReview) {
   const author = gReview.authorAttribution || {};
   const displayName = author.displayName || 'Anónimo';
@@ -123,10 +140,10 @@ function normalizeGoogleReview(gReview) {
     // Extras específicos de Google:
     rating:           typeof gReview.rating === 'number' ? gReview.rating : null,
     source:           'google',
-    photo_url:        author.photoUri || null,
+    photo_url:        sanitizeHttpsUrl(author.photoUri),
     // Link al perfil del reviewer en Maps — útil si en el futuro querés
     // linkear "leer reseña original" desde la landing.
-    author_url:       author.uri || null,
+    author_url:       sanitizeHttpsUrl(author.uri),
   };
 }
 
