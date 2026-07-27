@@ -4,6 +4,12 @@ const Sentry = require('@sentry/node');
 // reemplazar `getUserAuth` desde tests sin gimnasia de jest.mock. Acceso
 // late-binding via `userAuthCache.getUserAuth(...)` en cada request.
 const userAuthCache = require('../lib/userAuthCache');
+// 2026-07-27 (audit 07-25 Track E P1-4): fast-path para reusar el jwt.verify
+// que el rate limiter global YA hizo. Sin esto, cada request con JWT paga
+// 2 jwt.verify (limiter + requireAuth) — a 100 req/s sostenidos son ~100ms/s
+// CPU sumada innecesaria. Con getVerifiedJwtDecoded, requireAuth reusa el
+// decoded del rate limiter si ya está en el request.
+const { getVerifiedJwtDecoded } = require('../lib/jwtVerify');
 
 module.exports = async function requireAuth(req, res, next) {
   const header = req.headers.authorization || '';
@@ -11,12 +17,17 @@ module.exports = async function requireAuth(req, res, next) {
 
   if (!token) return res.status(401).json({ error: 'No autorizado' });
 
-  let decoded;
-  try {
-    // algorithms explícito previene algorithm confusion attacks (none, RS256, etc.)
-    decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
-  } catch {
-    return res.status(401).json({ error: 'Token inválido' });
+  // Fast-path: si el rate limiter YA verificó el token en este request, reusar
+  // el decoded en vez de re-verificar. `getVerifiedJwtDecoded` devuelve el
+  // payload completo del cache per-request seteado por `validateAndGetJwtUserId`.
+  let decoded = getVerifiedJwtDecoded(req);
+  if (decoded == null) {
+    try {
+      // algorithms explícito previene algorithm confusion attacks (none, RS256, etc.)
+      decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+    } catch {
+      return res.status(401).json({ error: 'Token inválido' });
+    }
   }
 
   // Verificar que el token no fue emitido antes de un cambio de contraseña
