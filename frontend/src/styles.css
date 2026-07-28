@@ -4453,6 +4453,12 @@ body.modal-open { overflow: hidden; }
 .u-ventas-item-grid           { --cols: 1fr 60px 90px 78px auto; gap: 6px; align-items: center; }
 .u-ventas-canje-card          { padding: 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; }
 .u-ventas-canje-check         { gap: 6px; font-size: 12px; cursor: pointer; }
+/* Task #238: mini-form "Crear también en Inventario" debajo del item manual.
+   Toggle compacto (sin borde) + mini-card colapsable con inputs de producto.
+   Reutiliza el look del .u-ventas-canje-card pero más compacto (padding 10 vs 12)
+   y con margin-left para desmarcar visualmente que es un sub-form del item. */
+.u-ventas-item-add-stock-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 0 4px; cursor: pointer; user-select: none; }
+.u-ventas-item-stock-form     { padding: 10px; margin-left: 4px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; }
 .u-cursor-not-allowed         { cursor: not-allowed; }
 .u-ventas-cc-pago-grid        { display: grid; grid-template-columns: 1fr 90px 78px 78px auto; gap: 6px; align-items: center; }
 .u-ventas-vuelto-tc-grid      { margin-top: 8px; display: grid; grid-template-columns: 1fr 2fr; gap: 8px; align-items: center; }
