@@ -45,7 +45,11 @@ export default function CategoriasProductoModal({
   const [error, setError] = useState('');
   const [editing, setEditing] = useState(null); // null | {} (nuevo) | { id, ... } (editar)
   const overlayRef = useRef(null);
-  const { confirm } = useConfirm();
+  // useConfirm() retorna DIRECTAMENTE la función confirm (no un objeto). El
+  // destructuring `const { confirm } = useConfirm()` daba undefined → click
+  // en 🗑 fallaba silencioso (throw "confirm is not a function" en catch de
+  // handleDelete). Ver ConfirmModal.jsx línea 58.
+  const confirm = useConfirm();
 
   useModal({ open, onClose, overlayRef });
 

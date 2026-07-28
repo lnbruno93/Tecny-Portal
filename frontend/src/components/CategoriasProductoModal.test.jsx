@@ -34,7 +34,11 @@ vi.mock('../lib/api', () => ({
 
 const mockConfirm = vi.fn();
 vi.mock('./ConfirmModal', () => ({
-  useConfirm: () => ({ confirm: (...a) => mockConfirm(...a) }),
+  // useConfirm retorna DIRECTAMENTE la función confirm (ver ConfirmModal.jsx:58).
+  // Antes el mock retornaba { confirm: fn } y el componente destructuraba
+  // { confirm } — ambos wrong pero se compensaban. Fix del componente destapó
+  // el bug del mock. Ahora ambos alineados con el contrato real.
+  useConfirm: () => (...a) => mockConfirm(...a),
 }));
 
 vi.mock('../lib/useModal', () => ({
