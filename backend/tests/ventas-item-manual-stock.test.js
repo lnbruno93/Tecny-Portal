@@ -288,6 +288,81 @@ describe('Ventas — ítem manual crea stock (task #238)', () => {
     expect(safeguardProd.estado).toBe('vendido');
   });
 
+  it('agregar_stock con TODOS los campos completos (proveedor, observaciones, monedas separadas)', async () => {
+    // 2026-07-28 v2 (feedback Lucas): el mini-form del ítem manual debe
+    // permitir la MISMA info que el form de Inventario. Este test verifica
+    // que TODOS los campos aterrizan correctamente en el producto creado
+    // (incluyendo los agregados en v2: proveedor, observaciones, costo_moneda
+    // y precio_moneda separados del `moneda` del item).
+    const imei = makeImei('929');
+    const res = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      items: [{
+        descripcion: 'iPhone 16 Pro Max 512',
+        cantidad: 1, precio_vendido: 1800, costo: 1400, moneda: 'USD',
+        agregar_stock: true,
+        nombre: 'iPhone 16 Pro Max',
+        imei,
+        gb: '512', color: 'Desert Titanium', bateria: 100,
+        categoria_id: catBase, condicion: 'nuevo', tipo_carga: 'unitario',
+        // v2: nuevos campos
+        proveedor: 'Distribuidor Miami LLC',
+        observaciones: 'Caja sellada. Compra de urgencia — 3 unidades del mismo lote.',
+        costo_moneda: 'USD',
+        precio_moneda: 'USD',
+      }],
+      pagos: [{ metodo_nombre: 'USD | Efectivo', monto: 1800, moneda: 'USD' }],
+    });
+    expect(res.status).toBe(201);
+
+    const inv = await request(app)
+      .get(`/api/inventario/productos?buscar=${imei}&estado=vendido`)
+      .set(auth());
+    expect(inv.body.data).toHaveLength(1);
+    const p = inv.body.data[0];
+    expect(p.nombre).toBe('iPhone 16 Pro Max');
+    expect(p.gb).toBe('512');
+    expect(p.color).toBe('Desert Titanium');
+    expect(Number(p.bateria)).toBe(100);
+    expect(p.condicion).toBe('nuevo');
+    expect(p.tipo_carga).toBe('unitario');
+    expect(Number(p.costo)).toBe(1400);
+    expect(Number(p.precio_venta)).toBe(1800);
+    expect(p.costo_moneda).toBe('USD');
+    expect(p.precio_moneda).toBe('USD');
+    // v2: los nuevos campos deben persistir tal cual.
+    expect(p.proveedor).toBe('Distribuidor Miami LLC');
+    expect(p.observaciones).toContain('Caja sellada');
+    expect(p.observaciones).toContain('Compra de urgencia');
+  });
+
+  it('costo_moneda/precio_moneda default al moneda del item si no vienen (compat)', async () => {
+    // Backwards compat: si el frontend viejo no manda costo_moneda/precio_moneda,
+    // el backend debe usar `moneda` del item (comportamiento pre-v2).
+    const imei = makeImei('930');
+    const res = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      tc_venta: 1500,
+      items: [{
+        descripcion: 'iPhone 14',
+        cantidad: 1, precio_vendido: 1200000, costo: 900000, moneda: 'ARS',
+        agregar_stock: true,
+        nombre: 'iPhone 14',
+        imei,
+        condicion: 'nuevo',
+        // Sin costo_moneda / precio_moneda — deben caer en 'ARS' (moneda del item).
+      }],
+    });
+    expect(res.status).toBe(201);
+
+    const inv = await request(app)
+      .get(`/api/inventario/productos?buscar=${imei}&estado=vendido`)
+      .set(auth());
+    expect(inv.body.data).toHaveLength(1);
+    expect(inv.body.data[0].costo_moneda).toBe('ARS');
+    expect(inv.body.data[0].precio_moneda).toBe('ARS');
+  });
+
   it('item sin IMEI + agregar_stock=true → OK (accesorio/repuesto sin serie)', async () => {
     // Accesorios sin serie: pueden crearse en stock sin IMEI y no colisionan.
     const res = await request(app).post('/api/ventas').set(auth()).send({

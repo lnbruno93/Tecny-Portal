@@ -38,6 +38,9 @@ vi.mock('../lib/api', () => {
       // categorias sigue mockeado por si otras vistas lo usan (Colecciones
       // legacy en Inventario, etc.). Post-#554 Ventas ya no lo consume.
       categorias: vi.fn().mockResolvedValue([]),
+      // 2026-07-28 v2 task #238: depósitos cargados en loadCatalogos para
+      // el mini-form "Crear en Inventario" desde ítem manual.
+      depositos: vi.fn().mockResolvedValue([]),
     },
     vendedores: { list: vi.fn().mockResolvedValue([]) },
     cuentas: { clientes: vi.fn().mockResolvedValue(paginated) },

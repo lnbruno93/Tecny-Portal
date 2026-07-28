@@ -287,24 +287,34 @@ async function insertarDetalle(client, venta, b, ctx = {}) {
       // Nombre: si viene explícito lo usamos; sino cae a la descripción (ya
       // requerida por el schema).
       const nombreProducto = (it.nombre && it.nombre.trim()) || it.descripcion;
+      // 2026-07-28 v2 (feedback Lucas): agregamos proveedor + observaciones al
+      // INSERT para que el mini-form del ítem manual capture la misma info que
+      // el form de Inventario. `costo_moneda` y `precio_moneda` opcionales
+      // (default al `moneda` del item si no vienen — mantiene compat).
+      const costoMoneda = it.costo_moneda || it.moneda;
+      const precioMoneda = it.precio_moneda || it.moneda;
       const { rows: pr } = await client.query(
         `INSERT INTO productos (
             tipo_carga, clase_id, nombre, imei, gb, color, bateria,
             categoria_id, deposito_id, condicion,
             costo, costo_moneda, precio_venta, precio_moneda,
+            proveedor, observaciones,
             estado, cantidad
          ) VALUES (
             $1, $2, $3, $4, $5, $6, $7,
             $8, $9, $10,
-            $11, $12, $13, $12,
-            'vendido', $14
+            $11, $12, $13, $14,
+            $15, $16,
+            'vendido', $17
          ) RETURNING id`,
         [
           it.tipo_carga || 'unitario',
           claseIdItem,
           nombreProducto, it.imei || null, it.gb || null, it.color || null, it.bateria ?? null,
           it.categoria_id ?? null, it.deposito_id ?? null, it.condicion || 'nuevo',
-          it.costo, it.moneda, it.precio_vendido,
+          it.costo, costoMoneda, it.precio_vendido, precioMoneda,
+          (it.proveedor && it.proveedor.trim()) || null,
+          (it.observaciones && it.observaciones.trim()) || null,
           it.cantidad || 1,
         ]
       );

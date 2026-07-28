@@ -186,6 +186,10 @@ export default function Ventas() {
   // colecciones creadas y no era la dimensión semánticamente correcta
   // post-F3.
   const [clasesInv, setClasesInv] = useState([]);
+  // 2026-07-28 v2 (feedback Lucas task #238): depósitos para el mini-form
+  // "Crear en Inventario" desde ítem manual. Cargado en loadCatalogos junto
+  // con clases_producto (misma API `inventario.*`).
+  const [depositos, setDepositos] = useState([]);
   const [metodos, setMetodos] = useState([]);
   // Tema C en-vivo (2026-06-13): porcentaje global de Financiera (`config.pct_financiera`).
   // Lo usamos en el preview de ganancia real para descontar comisión de pagos por
@@ -271,10 +275,11 @@ export default function Ventas() {
     // con pct_financiera, lo tratamos como 0 y el preview de ganancia real
     // simplemente no descuenta Financiera (igual que pre-Tema C).
     const safeCfg = (p) => p.then(r => r).catch(() => ({}));
-    const [v, e, m, g, cc, ct, cls, cfg] = await Promise.all([
+    const [v, e, m, g, cc, ct, cls, dep, cfg] = await Promise.all([
       safe(vendedoresApi.list()), safe(ventas.etiquetas()), safe(ventas.metodosPago()), safe(ventas.garantias()), safe(cuentasApi.clientes()), safe(contactosApi.list()),
-      safe(inventario.clases()), // clases_producto para el picker del canje (F3 real)
-      safeCfg(configApi.get()),  // pct_financiera para el preview Tema C
+      safe(inventario.clases()),    // clases_producto para el picker del canje (F3 real)
+      safe(inventario.depositos()), // 2026-07-28 v2 task #238: depósitos para "Crear en Inventario"
+      safeCfg(configApi.get()),     // pct_financiera para el preview Tema C
     ]);
     // Los endpoints paginados devuelven { data, pagination }. Usamos un
     // unwrap defensivo: si vino array (endpoint no-paginado o vacío), tomar
@@ -286,6 +291,7 @@ export default function Ventas() {
     // Filtramos: solo activas y no "Sin categoría" (esa es fallback interno del
     // import XLSX, no una opción real para el operador).
     setClasesInv(unwrap(cls).filter(c => c.activa && !c.es_sin_categoria));
+    setDepositos(unwrap(dep));
     setPctFinanciera(Number(cfg?.pct_financiera) || 0);
   }, []);
 
@@ -516,8 +522,13 @@ export default function Ventas() {
     // Feature: crear en stock (default off).
     agregar_stock: false,
     // Campos extras solo relevantes cuando agregar_stock=true.
+    // 2026-07-28 v2 (feedback Lucas): mini-form pide MISMA info que
+    // Inventario > Agregar producto: incluye tipo_carga, deposito, proveedor,
+    // observaciones + moneda propia del costo/precio.
     nombre: '', gb: '', color: '', bateria: '',
-    clase_id: '', condicion: 'nuevo',
+    clase_id: '', condicion: 'nuevo', tipo_carga: 'unitario',
+    deposito_id: '', proveedor: '', observaciones: '',
+    costo_moneda: 'USD', precio_moneda: 'USD',
   }]);
   const setItem = (id, k, v) => setCart(c => c.map(it => it._id === id ? { ...it, [k]: (k === 'cantidad' || k === 'precio_vendido' || k === 'costo') ? (v === '' ? '' : Number(v)) : v } : it));
   const rmItem = (id) => setCart(c => c.filter(it => it._id !== id));
@@ -875,15 +886,20 @@ export default function Ventas() {
       // producto_id del pick de Inventario).
       if (it.agregar_stock && !it.producto_id) {
         base.agregar_stock = true;
-        if (it.nombre && it.nombre.trim())  base.nombre    = it.nombre.trim();
-        if (it.gb && String(it.gb).trim())  base.gb        = String(it.gb).trim();
-        if (it.color && it.color.trim())    base.color     = it.color.trim();
-        if (it.bateria !== '' && it.bateria != null) base.bateria = Number(it.bateria);
-        if (it.clase_id)                    base.clase_id  = String(it.clase_id);
-        if (it.condicion)                   base.condicion = it.condicion;
-        // tipo_carga fijo en 'unitario' — items manuales no soportan lote
-        // (no tiene sentido: un lote se carga desde Inventario, no punto-de-venta).
-        base.tipo_carga = 'unitario';
+        if (it.nombre && it.nombre.trim())        base.nombre        = it.nombre.trim();
+        if (it.gb && String(it.gb).trim())        base.gb            = String(it.gb).trim();
+        if (it.color && it.color.trim())          base.color         = it.color.trim();
+        if (it.bateria !== '' && it.bateria != null) base.bateria    = Number(it.bateria);
+        if (it.clase_id)                          base.clase_id      = String(it.clase_id);
+        if (it.condicion)                         base.condicion     = it.condicion;
+        if (it.tipo_carga)                        base.tipo_carga    = it.tipo_carga;
+        if (it.deposito_id)                       base.deposito_id   = Number(it.deposito_id);
+        // 2026-07-28 v2 (feedback Lucas): nuevos campos para paridad con
+        // Inventario > Agregar producto.
+        if (it.proveedor && it.proveedor.trim()) base.proveedor      = it.proveedor.trim();
+        if (it.observaciones && it.observaciones.trim()) base.observaciones = it.observaciones.trim();
+        if (it.costo_moneda)                      base.costo_moneda  = it.costo_moneda;
+        if (it.precio_moneda)                     base.precio_moneda = it.precio_moneda;
       }
       return base;
     });
@@ -1630,7 +1646,39 @@ export default function Ventas() {
                                 <span className="muted tiny">Crear también en Inventario</span>
                               </label>
                               {it.agregar_stock && (
+                                // 2026-07-28 v2 (feedback Lucas task #238): mini-form
+                                // extendido para paridad con el form de Inventario >
+                                // Agregar producto. Cubre: tipo carga, categoría,
+                                // nombre, IMEI, GB, color, batería, depósito,
+                                // condición, costo (con moneda), precio (con moneda),
+                                // proveedor, observaciones. Precio_venta y cantidad
+                                // se toman del row de arriba del item (los mismos
+                                // valores que usa la venta).
                                 <div className="u-ventas-item-stock-form">
+                                  {/* Fila 1: tipo de carga + categoría */}
+                                  <div className="row u-mb-6">
+                                    <div className="field u-flex-1">
+                                      <label className="field-label">Tipo de carga</label>
+                                      <select className="input" value={it.tipo_carga || 'unitario'}
+                                              onChange={e => setItem(it._id, 'tipo_carga', e.target.value)}>
+                                        <option value="unitario">Unitario (ej. celulares)</option>
+                                        <option value="lote">Con stock / lote</option>
+                                      </select>
+                                    </div>
+                                    <div className="field u-flex-1">
+                                      <label className="field-label">Categoría</label>
+                                      <select className="input" value={it.clase_id}
+                                              onChange={e => setItem(it._id, 'clase_id', e.target.value)}>
+                                        <option value="">— auto por condición —</option>
+                                        {clasesInv.map(cat => (
+                                          <option key={cat.id} value={cat.id}>
+                                            {cat.emoji ? `${cat.emoji} ${cat.nombre}` : cat.nombre}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                  </div>
+                                  {/* Fila 2: nombre + IMEI */}
                                   <div className="row u-mb-6">
                                     <div className="field u-flex-2">
                                       <label className="field-label">Nombre del producto</label>
@@ -1645,6 +1693,7 @@ export default function Ventas() {
                                              onChange={e => setItem(it._id, 'imei', e.target.value)} />
                                     </div>
                                   </div>
+                                  {/* Fila 3: GB + color + batería + condición */}
                                   <div className="row u-mb-6">
                                     <div className="field u-flex-07">
                                       <label className="field-label">GB</label>
@@ -1674,26 +1723,44 @@ export default function Ventas() {
                                       </select>
                                     </div>
                                   </div>
-                                  <div className="row">
+                                  {/* Fila 4: depósito + costo (con moneda separada) */}
+                                  <div className="row u-mb-6">
                                     <div className="field u-flex-1">
-                                      <label className="field-label">Categoría</label>
-                                      <select className="input" value={it.clase_id}
-                                              onChange={e => setItem(it._id, 'clase_id', e.target.value)}>
-                                        <option value="">— auto por condición —</option>
-                                        {clasesInv.map(cat => (
-                                          <option key={cat.id} value={cat.id}>
-                                            {cat.emoji ? `${cat.emoji} ${cat.nombre}` : cat.nombre}
-                                          </option>
-                                        ))}
+                                      <label className="field-label">Depósito</label>
+                                      <select className="input" value={it.deposito_id}
+                                              onChange={e => setItem(it._id, 'deposito_id', e.target.value)}>
+                                        <option value="">Sin depósito</option>
+                                        {depositos.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}
                                       </select>
                                     </div>
                                     <div className="field u-flex-1">
-                                      <label className="field-label">Costo (USD)</label>
-                                      <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono"
-                                             placeholder="0"
-                                             value={it.costo}
-                                             onChange={e => setItem(it._id, 'costo', e.target.value)} />
+                                      <label className="field-label">Costo</label>
+                                      <div className="flex-row u-gap-6">
+                                        <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono u-flex-1"
+                                               placeholder="0"
+                                               value={it.costo}
+                                               onChange={e => setItem(it._id, 'costo', e.target.value)} />
+                                        <select className="input u-w-80px" value={it.costo_moneda || 'USD'}
+                                                onChange={e => setItem(it._id, 'costo_moneda', e.target.value)}>
+                                          {Array.from(new Set(['USD', monedaLocal, it.costo_moneda].filter(Boolean)))
+                                            .map(m => <option key={m} value={m}>{m}</option>)}
+                                        </select>
+                                      </div>
                                     </div>
+                                  </div>
+                                  {/* Fila 5: proveedor */}
+                                  <div className="field u-mb-6">
+                                    <label className="field-label">Proveedor</label>
+                                    <input className="input" placeholder="ej. Juan Distribuidor"
+                                           value={it.proveedor}
+                                           onChange={e => setItem(it._id, 'proveedor', e.target.value)} />
+                                  </div>
+                                  {/* Fila 6: observaciones */}
+                                  <div className="field">
+                                    <label className="field-label">Observaciones</label>
+                                    <input className="input" placeholder="ej. caja original, batería al 87%, pantalla sin raspones…"
+                                           value={it.observaciones}
+                                           onChange={e => setItem(it._id, 'observaciones', e.target.value)} />
                                   </div>
                                 </div>
                               )}
