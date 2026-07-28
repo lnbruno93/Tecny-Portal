@@ -283,22 +283,25 @@ export default function DevolucionMercaderiaProveedorModal({ proveedor, onClose,
               <div className="u-flex-1-overflow-mh-0 u-devolucion-picker">
                 <table className="u-provs-table">
                   <colgroup>
-                    <col className="u-w-30" />{/* checkbox */}
-                    <col />                     {/* nombre */}
-                    <col className="u-w-130px" />{/* imei */}
-                    <col className="u-w-76" />  {/* color */}
-                    <col className="u-w-66" />  {/* gb */}
-                    <col className="u-w-88" />  {/* fecha compra */}
-                    <col className="u-w-94" />  {/* costo */}
+                    {/* Widths en % (Opción A mockup, PR post-#919): las 7 columnas
+                        entran en 920px sin scroll horizontal.
+                        Suman 100 = 4+32+18+10+8+12+16 */}
+                    <col className="u-w-pct-4"  />{/* checkbox */}
+                    <col className="u-w-pct-32" />{/* nombre */}
+                    <col className="u-w-pct-18" />{/* imei */}
+                    <col className="u-w-pct-10" />{/* color */}
+                    <col className="u-w-pct-8"  />{/* cap. */}
+                    <col className="u-w-pct-12" />{/* fecha compra */}
+                    <col className="u-w-pct-16" />{/* costo */}
                   </colgroup>
                   <thead>
                     <tr className="u-sticky-header-bar">
                       <th className="u-provs-th u-text-center">✓</th>
                       <th className="u-provs-th u-text-left">Producto</th>
                       <th className="u-provs-th u-text-left">IMEI</th>
-                      <th className="u-provs-th u-text-left">Color</th>
-                      <th className="u-provs-th u-text-left">Cap.</th>
-                      <th className="u-provs-th u-text-left">Comprado</th>
+                      <th className="u-provs-th u-text-center">Color</th>
+                      <th className="u-provs-th u-text-center">Cap.</th>
+                      <th className="u-provs-th u-text-center">Comprado</th>
                       <th className="u-provs-th u-text-right">Costo USD</th>
                     </tr>
                   </thead>
@@ -323,13 +326,13 @@ export default function DevolucionMercaderiaProveedorModal({ proveedor, onClose,
                           <td className="cell u-mono u-fs-12">
                             {p.imei || <span className="dim">—</span>}
                           </td>
-                          <td className="cell u-color-text-2">
+                          <td className="cell u-color-text-2 u-text-center">
                             {p.color || <span className="dim">—</span>}
                           </td>
-                          <td className="cell u-color-text-2">
+                          <td className="cell u-color-text-2 u-text-center">
                             {p.gb || <span className="dim">—</span>}
                           </td>
-                          <td className="cell u-color-text-2 mono">
+                          <td className="cell u-color-text-2 mono u-text-center">
                             {fmtFecha(p.fecha_compra)}
                           </td>
                           <td className="cell u-td-right-fw-700 mono">

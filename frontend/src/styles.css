@@ -4322,10 +4322,15 @@ body.modal-open { overflow: hidden; }
    Fixed layout las respeta exactamente sin importar el contenido de las celdas. */
 .u-w-pct-2                    { width: 2%; }
 .u-w-pct-3                    { width: 3%; }
+.u-w-pct-4                    { width: 4%; }
 .u-w-pct-6                    { width: 6%; }
 .u-w-pct-8                    { width: 8%; }
 .u-w-pct-10                   { width: 10%; }
+.u-w-pct-12                   { width: 12%; }
 .u-w-pct-15                   { width: 15%; }
+.u-w-pct-16                   { width: 16%; }
+.u-w-pct-18                   { width: 18%; }
+.u-w-pct-32                   { width: 32%; }
 .u-provs-th                   { padding: 7px 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); border-bottom: 1px solid var(--border); }
 .u-text-left                  { text-align: left; }
 .u-provs-row                  { border-bottom: 1px solid var(--hairline); }
