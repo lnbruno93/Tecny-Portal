@@ -487,16 +487,21 @@ export default function Proveedores() {
             <div className="u-flex-1-overflow-mh-0">
               <table className="u-provs-table">
                 <colgroup>
-                  <col className="u-w-88" />{/* Fecha        */}
-                  <col className="u-w-108" />{/* Tipo         */}
-                  <col className="u-w-90px" />{/* Producto     */}
-                  <col className="u-w-130px" />{/* Modelo       */}
-                  <col className="u-w-66" />{/* Cap.         */}
-                  <col className="u-w-76" />{/* Color        */}
-                  <col className="u-w-130px" />{/* IMEI/Serial  */}
-                  <col className="u-w-94" />{/* Monto USD    */}
-                  <col className="u-w-30" />{/* ✓            */}
-                  <col className="u-w-48" />{/* Acción       */}
+                  {/* Widths en % (post-#918 → PR nuevo): distribuyen exactamente
+                      el 100% del ancho de la tabla sin espacio muerto. Suman
+                      100 = 8+10+15+15+6+8+15+8+10+3+2. Bug histórico corregido:
+                      antes faltaba la <col> de Caja (10 <col> vs 11 <th>). */}
+                  <col className="u-w-pct-8"  />{/* Fecha        */}
+                  <col className="u-w-pct-10" />{/* Tipo         */}
+                  <col className="u-w-pct-15" />{/* Producto     */}
+                  <col className="u-w-pct-15" />{/* Modelo       */}
+                  <col className="u-w-pct-6"  />{/* Cap.         */}
+                  <col className="u-w-pct-8"  />{/* Color        */}
+                  <col className="u-w-pct-15" />{/* IMEI/Serial  */}
+                  <col className="u-w-pct-8"  />{/* Caja         */}
+                  <col className="u-w-pct-10" />{/* Monto USD    */}
+                  <col className="u-w-pct-3"  />{/* ✓            */}
+                  <col className="u-w-pct-2"  />{/* Acción       */}
                 </colgroup>
 
                 <thead>

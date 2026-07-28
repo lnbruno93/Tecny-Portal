@@ -4316,7 +4316,16 @@ body.modal-open { overflow: hidden; }
 .u-provs-item-name            { font-weight: 600; font-size: 13px; margin-bottom: 3px; }
 .u-provs-saldo                { font-size: 13px; font-weight: 700; }
 .u-flex-gap-8-mt-10-end       { gap: 8px; margin-top: 10px; justify-content: flex-end; }
-.u-provs-table                { width: 100%; border-collapse: collapse; table-layout: auto; min-width: 860px; font-size: 13px; }
+.u-provs-table                { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 860px; font-size: 13px; }
+/* Column-width percentages para la tabla Proveedores | Compras (task tweak
+   post-#918). Suman 100% distribuyendo proporcionalmente sin espacio muerto.
+   Fixed layout las respeta exactamente sin importar el contenido de las celdas. */
+.u-w-pct-2                    { width: 2%; }
+.u-w-pct-3                    { width: 3%; }
+.u-w-pct-6                    { width: 6%; }
+.u-w-pct-8                    { width: 8%; }
+.u-w-pct-10                   { width: 10%; }
+.u-w-pct-15                   { width: 15%; }
 .u-provs-th                   { padding: 7px 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); border-bottom: 1px solid var(--border); }
 .u-text-left                  { text-align: left; }
 .u-provs-row                  { border-bottom: 1px solid var(--hairline); }
