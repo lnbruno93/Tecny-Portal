@@ -1276,12 +1276,14 @@ router.post('/:id(\\d+)/devoluciones',
         [producto_ids]
       );
 
-      // 8. Audit log.
-      await audit(client, req, {
-        accion: 'devolucion_mercaderia_proveedor',
-        entidad: 'proveedor_movimientos',
-        registro_id: String(mov.id),
-        datos: {
+      // 8. Audit log — firma canónica: audit(client, tabla, accion, registro_id, opts).
+      //    (Hotfix Sentry 2026-07-28: la llamada anterior pasaba `req` como
+      //    `tabla` y un objeto como `accion`, lo que hacía que PG intentara
+      //    serializar el Socket circular → TypeError. Ver Sentry #20.)
+      await audit(client, 'proveedor_movimientos', 'devolucion_mercaderia_proveedor', String(mov.id), {
+        req,
+        user_id: req.user.id,
+        despues: {
           proveedor_id: proveedorId,
           proveedor_nombre: prov.rows[0].nombre,
           motivo,
