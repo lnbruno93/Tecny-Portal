@@ -1489,7 +1489,7 @@ export default function Ventas() {
             aria-modal="true"
             aria-labelledby="venta-modal-title"
           >
-            <div className="modal-hd icon-btn"><h3 id="venta-modal-title">{editId ? 'Editar venta' : procRapidaId ? 'Procesar venta rápida' : 'Nueva venta'}</h3><button type="button" onClick={() => setShowVenta(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button></div>
+            <div className="modal-hd"><h3 id="venta-modal-title">{editId ? 'Editar venta' : procRapidaId ? 'Procesar venta rápida' : 'Nueva venta'}</h3><button type="button" className="icon-btn" onClick={() => setShowVenta(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button></div>
             {/* 2026-07-11: form como flex-column con flex:1 + minHeight:0 para
                 que la cadena flex del .modal (display:flex column + max-height:
                 calc(100svh - 48px) + overflow:hidden) se propague al .modal-body.
@@ -2328,7 +2328,7 @@ Pago: Efectivo + Transferencia`}
       {showGarantias && (
         <div ref={garantiasModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowGarantias(false)}>
           <div className="modal u-mw-720" onClick={e => e.stopPropagation()}>
-            <div className="modal-hd icon-btn"><h3>Plantillas de garantía</h3><button type="button" onClick={() => setShowGarantias(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button></div>
+            <div className="modal-hd"><h3>Plantillas de garantía</h3><button type="button" className="icon-btn" onClick={() => setShowGarantias(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button></div>
             {/* 2026-07-11: removido maxHeight:74vh + overflowY:auto — el .modal
                 ya es flex column con max-height calc(100svh - 48px), y el
                 .modal-body base tiene flex:1 + overflow-y:auto. El body es hijo
@@ -2380,7 +2380,7 @@ Pago: Efectivo + Transferencia`}
       {showEtiquetas && (
         <div ref={etiquetasModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowEtiquetas(false)} role="dialog" aria-modal="true" aria-labelledby="etiquetas-modal-title">
           <div className="modal u-mw-420" onClick={e => e.stopPropagation()}>
-            <div className="modal-hd icon-btn"><h3 id="etiquetas-modal-title">Etiquetas de venta</h3><button title="Cerrar" aria-label="Cerrar" onClick={() => setShowEtiquetas(false)}><Icons.X size={16} /></button></div>
+            <div className="modal-hd"><h3 id="etiquetas-modal-title">Etiquetas de venta</h3><button type="button" className="icon-btn" title="Cerrar" aria-label="Cerrar" onClick={() => setShowEtiquetas(false)}><Icons.X size={16} /></button></div>
             <div className="modal-body">
               <div className="flex-row u-gap-6-mb-10">
                 <input className="input" placeholder="Nueva etiqueta (ej. Mayorista)" value={nuevaEtiqueta} onChange={e => setNuevaEtiqueta(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addEtiqueta(); } }} />
@@ -2414,7 +2414,7 @@ Pago: Efectivo + Transferencia`}
       {showComprob != null && (
         <div ref={comprobModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowComprob(null)} role="dialog" aria-modal="true" aria-labelledby="comprob-modal-title">
           <div className="modal u-mw-440" onClick={e => e.stopPropagation()}>
-            <div className="modal-hd icon-btn"><h3 id="comprob-modal-title">Comprobantes de la venta</h3><button title="Cerrar" aria-label="Cerrar" onClick={() => setShowComprob(null)}><Icons.X size={16} /></button></div>
+            <div className="modal-hd"><h3 id="comprob-modal-title">Comprobantes de la venta</h3><button type="button" className="icon-btn" title="Cerrar" aria-label="Cerrar" onClick={() => setShowComprob(null)}><Icons.X size={16} /></button></div>
             <div className="modal-body">
               {comprobList == null ? <div className="muted empty">Cargando…</div> : comprobList.length === 0 ? <div>Sin comprobantes</div> : (
                 comprobList.map(c => (
