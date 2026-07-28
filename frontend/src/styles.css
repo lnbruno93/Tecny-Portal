@@ -4458,6 +4458,11 @@ body.modal-open { overflow: hidden; }
    Reutiliza el look del .u-ventas-canje-card pero más compacto (padding 10 vs 12)
    y con margin-left para desmarcar visualmente que es un sub-form del item. */
 .u-ventas-item-add-stock-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 0 4px; cursor: pointer; user-select: none; }
+/* Chevron indicativo del disclosure (v3 feedback Lucas): rota ▸ → ⌄ al abrir.
+   Sin esto la gente creía que era un flag on/off y no descubría los campos. */
+.u-ventas-item-add-stock-chevron { display: inline-flex; align-items: center; color: var(--text-muted); transition: transform 120ms ease; }
+.u-ventas-item-add-stock-toggle.is-open .u-ventas-item-add-stock-chevron { transform: rotate(90deg); color: var(--accent); }
+.u-ventas-item-add-stock-hint { opacity: 0.72; font-style: italic; }
 .u-ventas-item-stock-form     { padding: 10px; margin-left: 4px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; }
 .u-cursor-not-allowed         { cursor: not-allowed; }
 .u-ventas-cc-pago-grid        { display: grid; grid-template-columns: 1fr 90px 78px 78px auto; gap: 6px; align-items: center; }
