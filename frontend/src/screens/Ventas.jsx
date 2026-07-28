@@ -1639,11 +1639,25 @@ export default function Ventas() {
                               estado='vendido' en la misma tx atómica. */}
                           {!it.producto_id && (
                             <>
-                              <label className="u-ventas-item-add-stock-toggle">
+                              {/* 2026-07-28 v3 (feedback Lucas): agregado
+                                  chevron indicativo + copy más accionable para
+                                  que se entienda que al tildar se despliegan
+                                  más campos (no es un flag on/off, es un
+                                  disclosure). Chevron rota de ▸ (colapsado)
+                                  a ⌄ (expandido) al marcar el checkbox. */}
+                              <label className={'u-ventas-item-add-stock-toggle' + (it.agregar_stock ? ' is-open' : '')}>
                                 <input type="checkbox"
                                        checked={!!it.agregar_stock}
                                        onChange={e => setItem(it._id, 'agregar_stock', e.target.checked)} />
-                                <span className="muted tiny">Crear también en Inventario</span>
+                                <span className="u-ventas-item-add-stock-chevron" aria-hidden="true">
+                                  <Icons.ChevronRight size={12} />
+                                </span>
+                                <span className="muted tiny">
+                                  Crear también en Inventario
+                                  {!it.agregar_stock && (
+                                    <span className="u-ventas-item-add-stock-hint"> — tocá para cargar datos del producto</span>
+                                  )}
+                                </span>
                               </label>
                               {it.agregar_stock && (
                                 // 2026-07-28 v2 (feedback Lucas task #238): mini-form
