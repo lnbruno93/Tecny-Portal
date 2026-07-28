@@ -3207,6 +3207,7 @@ body.modal-open { overflow: hidden; }
 .u-mw-720                   { max-width: 720px; }
 .u-mw-760                   { max-width: 760px; }
 .u-mw-920                   { max-width: 920px; }
+.u-mw-960                   { max-width: 960px; }
 .u-mw-1080                  { max-width: 1080px; }
 .u-mt-20                    { margin-top: 20px; }
 .u-fs-16                    { font-size: 16px; }
@@ -4330,6 +4331,9 @@ body.modal-open { overflow: hidden; }
 .u-w-pct-15                   { width: 15%; }
 .u-w-pct-16                   { width: 16%; }
 .u-w-pct-18                   { width: 18%; }
+.u-w-pct-24                   { width: 24%; }
+.u-w-pct-26                   { width: 26%; }
+.u-w-pct-28                   { width: 28%; }
 .u-w-pct-32                   { width: 32%; }
 .u-provs-th                   { padding: 7px 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); border-bottom: 1px solid var(--border); }
 .u-text-left                  { text-align: left; }
