@@ -175,7 +175,7 @@ export default function DevolucionMercaderiaProveedorModal({ proveedor, onClose,
   return (
     <div ref={overlayRef} className="modal-overlay"
          onClick={(e) => e.target === e.currentTarget && !saving && onClose()}>
-      <div className="modal u-mw-960">
+      <div className="modal u-mw-720">
         {/* ── Header ─────────────────────────────────────────────── */}
         <div className="modal-hd">
           <div>
@@ -283,26 +283,20 @@ export default function DevolucionMercaderiaProveedorModal({ proveedor, onClose,
               <div className="u-flex-1-overflow-mh-0 u-devolucion-picker">
                 <table className="u-provs-table">
                   <colgroup>
-                    {/* Widths en % — modal 960px (Lucas viewport <1080).
-                        Redistribuido: Nombre 28 (era 32), Costo 26 (era 16).
-                        Costo con más peso para que siempre sea visible.
-                        Suman 100 = 4+28+16+8+6+12+26 */}
-                    <col className="u-w-pct-4"  />{/* checkbox */}
-                    <col className="u-w-pct-28" />{/* nombre */}
-                    <col className="u-w-pct-16" />{/* imei */}
-                    <col className="u-w-pct-8"  />{/* color */}
-                    <col className="u-w-pct-6"  />{/* cap. */}
-                    <col className="u-w-pct-12" />{/* fecha compra */}
-                    <col className="u-w-pct-26" />{/* costo */}
+                    {/* Opción A mockup v2: 4 columnas visibles (checkbox +
+                        producto + IMEI + costo). Color/Cap/Fecha van como
+                        subline debajo del nombre — misma info, mejor densidad,
+                        cero riesgo de scroll horizontal en viewports chicos. */}
+                    <col className="u-w-pct-6"  />{/* checkbox */}
+                    <col                          />{/* nombre (auto = resto) */}
+                    <col className="u-w-pct-24" />{/* imei */}
+                    <col className="u-w-pct-22" />{/* costo */}
                   </colgroup>
                   <thead>
                     <tr className="u-sticky-header-bar">
                       <th className="u-provs-th u-text-center">✓</th>
                       <th className="u-provs-th u-text-left">Producto</th>
                       <th className="u-provs-th u-text-left">IMEI</th>
-                      <th className="u-provs-th u-text-center">Color</th>
-                      <th className="u-provs-th u-text-center">Cap.</th>
-                      <th className="u-provs-th u-text-center">Comprado</th>
                       <th className="u-provs-th u-text-right">Costo USD</th>
                     </tr>
                   </thead>
@@ -323,18 +317,19 @@ export default function DevolucionMercaderiaProveedorModal({ proveedor, onClose,
                               aria-label={`Seleccionar ${p.nombre}`}
                             />
                           </td>
-                          <td className="cell">{p.nombre || <span className="dim">—</span>}</td>
+                          <td className="cell">
+                            {p.nombre || <span className="dim">—</span>}
+                            {/* Subline: color · cap · fecha (info que antes eran
+                                columnas separadas). Se omiten segmentos vacíos. */}
+                            {(p.color || p.gb || p.fecha_compra) && (
+                              <div className="muted tiny u-mt-4">
+                                {[p.color, p.gb && `${p.gb} GB`, p.fecha_compra && `comprado ${fmtFecha(p.fecha_compra)}`]
+                                  .filter(Boolean).join(' · ')}
+                              </div>
+                            )}
+                          </td>
                           <td className="cell u-mono u-fs-12">
                             {p.imei || <span className="dim">—</span>}
-                          </td>
-                          <td className="cell u-color-text-2 u-text-center">
-                            {p.color || <span className="dim">—</span>}
-                          </td>
-                          <td className="cell u-color-text-2 u-text-center">
-                            {p.gb || <span className="dim">—</span>}
-                          </td>
-                          <td className="cell u-color-text-2 mono u-text-center">
-                            {fmtFecha(p.fecha_compra)}
                           </td>
                           <td className="cell u-td-right-fw-700 mono">
                             {fmtUSD(p.costo)}
@@ -344,7 +339,7 @@ export default function DevolucionMercaderiaProveedorModal({ proveedor, onClose,
                     })}
                     {filtered.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="u-empty-p-24-16">
+                        <td colSpan={4} className="u-empty-p-24-16">
                           Sin coincidencias para "{dSearch}".
                         </td>
                       </tr>
