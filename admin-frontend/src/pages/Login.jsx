@@ -62,10 +62,14 @@ export default function Login() {
         username.trim(),
         password,
         twofaRequired ? code.trim() : undefined,
-        // hCaptcha token — solo en step 1. En step 2 (2FA) el backend skippea
-        // el gate captcha, y además el token es single-use (re-enviarlo tira
-        // "duplicate" en hCaptcha).
-        twofaRequired ? undefined : (captchaToken || undefined),
+        // hCaptcha token — mandado en AMBOS steps (Sprint 0 audit 07-25
+        // Track D P1-3, ver auth.js:230). Antes el backend skippeaba el
+        // captcha en step 2 (code presente), lo que abría bypass mandando
+        // `code:'000000'` fake para saltar el gate. Fix: el backend SIEMPRE
+        // verifica captcha. En step 2 tolera `duplicate` (esperado — es el
+        // mismo token del step 1 re-enviado, hCaptcha marca reuse). Sin el
+        // token en step 2 → `invalid_token` → 400 "Verificación inválida".
+        captchaToken || undefined,
       );
       // Gate cliente: el endpoint /api/auth/login es público (portal), y
       // devuelve token+user para CUALQUIER user válido. Acá filtramos por
