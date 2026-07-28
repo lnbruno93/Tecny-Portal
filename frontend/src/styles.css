@@ -451,8 +451,11 @@ body {
   /* UX H2 auditoría 2026-06-06: padding fluido — el contenido respira en
      desktop (32px) y se ajusta en mobile (16px) sin necesitar @media en
      cada wrapper. clamp(min, ideal-vw, max). Las @media siguen aplicando
-     overrides específicos por viewport (1100/880/640px). */
-  padding: clamp(16px, 2.4vw, 28px) clamp(14px, 2.6vw, 32px) clamp(24px, 4vw, 48px);
+     overrides específicos por viewport (1100/880/640px).
+     2026-07-28 (feedback Lucas Inicio "demasiado pegado"): bumps de padding
+     ~30% arriba (28→40 max) y lados (32→44 max) para dar más aire al
+     contenido en desktop sin romper mobile. */
+  padding: clamp(20px, 3vw, 40px) clamp(18px, 3.2vw, 44px) clamp(28px, 4.5vw, 56px);
   min-height: 0;
 }
 .content-narrow { max-width: min(1280px, 100%); margin: 0 auto; }
@@ -1196,7 +1199,9 @@ input[type="number"] {
 /* Greeting */
 .hello {
   display: flex; align-items: flex-end; justify-content: space-between;
-  margin-bottom: 24px; gap: 24px;
+  /* 2026-07-28: margin-bottom 24 → 32 para más aire entre saludo y
+     sección "Herramientas" en Inicio (feedback Lucas). */
+  margin-bottom: 32px; gap: 24px;
 }
 .hello .greet h1 {
   font-size: 30px;
