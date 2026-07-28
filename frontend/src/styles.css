@@ -4342,6 +4342,11 @@ body.modal-open { overflow: hidden; }
 .u-provs-footer-td            { padding: 12px 16px; text-align: center; border-top: 1px dashed var(--border); }
 /* Devolución mercadería modal (task #236) — CSP-safe class utilities. */
 .u-devolucion-picker          { max-height: 480px; }
+/* Override el min-width:860px del .u-provs-table para este picker.
+   Con solo 4 columnas (post-#922) la tabla debe ocupar el 100% del modal
+   (720px - padding = ~680px), sin forzar overflow horizontal que oculte
+   la col ✓ del inicio. */
+.u-devolucion-picker .u-provs-table { min-width: 0; }
 /* Filas más compactas para el picker (más productos visibles sin scroll).
    Overrides los 7px 8px default de `.cell` solo dentro del picker. */
 .u-devolucion-picker .cell    { padding: 5px 8px; }
