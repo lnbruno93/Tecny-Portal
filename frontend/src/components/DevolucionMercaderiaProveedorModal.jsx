@@ -175,7 +175,7 @@ export default function DevolucionMercaderiaProveedorModal({ proveedor, onClose,
   return (
     <div ref={overlayRef} className="modal-overlay"
          onClick={(e) => e.target === e.currentTarget && !saving && onClose()}>
-      <div className="modal u-mw-1080">
+      <div className="modal u-mw-960">
         {/* ── Header ─────────────────────────────────────────────── */}
         <div className="modal-hd">
           <div>
@@ -283,16 +283,17 @@ export default function DevolucionMercaderiaProveedorModal({ proveedor, onClose,
               <div className="u-flex-1-overflow-mh-0 u-devolucion-picker">
                 <table className="u-provs-table">
                   <colgroup>
-                    {/* Widths en % (Opción A mockup, PR post-#919): las 7 columnas
-                        entran en 920px sin scroll horizontal.
-                        Suman 100 = 4+32+18+10+8+12+16 */}
+                    {/* Widths en % — modal 960px (Lucas viewport <1080).
+                        Redistribuido: Nombre 28 (era 32), Costo 26 (era 16).
+                        Costo con más peso para que siempre sea visible.
+                        Suman 100 = 4+28+16+8+6+12+26 */}
                     <col className="u-w-pct-4"  />{/* checkbox */}
-                    <col className="u-w-pct-32" />{/* nombre */}
-                    <col className="u-w-pct-18" />{/* imei */}
-                    <col className="u-w-pct-10" />{/* color */}
-                    <col className="u-w-pct-8"  />{/* cap. */}
+                    <col className="u-w-pct-28" />{/* nombre */}
+                    <col className="u-w-pct-16" />{/* imei */}
+                    <col className="u-w-pct-8"  />{/* color */}
+                    <col className="u-w-pct-6"  />{/* cap. */}
                     <col className="u-w-pct-12" />{/* fecha compra */}
-                    <col className="u-w-pct-16" />{/* costo */}
+                    <col className="u-w-pct-26" />{/* costo */}
                   </colgroup>
                   <thead>
                     <tr className="u-sticky-header-bar">
