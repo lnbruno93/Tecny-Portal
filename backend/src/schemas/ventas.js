@@ -37,6 +37,11 @@ const ventaItemSchema = z.object({
   agregar_stock:   z.boolean().default(false),
   // Campos extra (procesados solo si agregar_stock=true + producto_id null).
   // Ignorados silenciosamente en cualquier otro caso — no rompe clientes viejos.
+  //
+  // 2026-07-28 v2 (feedback Lucas): agregados `proveedor`, `observaciones`,
+  // `costo_moneda`, `precio_moneda` para que el mini-form del ítem manual
+  // pida TODA la info que pide el form de Inventario > Agregar producto.
+  // `costo_moneda`/`precio_moneda` default = `moneda` del item si no vienen.
   nombre:          z.string().trim().max(120).optional().nullable(),
   gb:              z.string().trim().max(20).optional().nullable(),
   color:           z.string().trim().max(60).optional().nullable(),
@@ -46,6 +51,10 @@ const ventaItemSchema = z.object({
   deposito_id:     z.coerce.number().int().positive().optional().nullable(),
   condicion:       z.enum(['nuevo', 'usado']).optional().nullable(),
   tipo_carga:      z.enum(['unitario', 'lote']).optional().nullable(),
+  proveedor:       z.string().trim().max(120).optional().nullable(),
+  observaciones:   z.string().trim().max(500).optional().nullable(),
+  costo_moneda:    MonedaEnum.optional().nullable(),
+  precio_moneda:   MonedaEnum.optional().nullable(),
 });
 
 const ventaPagoSchema = z.object({
