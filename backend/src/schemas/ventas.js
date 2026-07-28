@@ -6,7 +6,22 @@ const { MonedaEnum } = require('./_common');
 
 const HORA_RE = /^\d{2}:\d{2}(:\d{2})?$/;
 
+// 2026-07-11: clase_id (F3.a — categoría real por tenant). Usado en canjeSchema
+// y ventaItemSchema (feature #238 crear stock desde ítem manual). Movido arriba
+// para que sea accesible por ambos schemas.
+const uuidLoose = z.string().regex(
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+  'clase_id inválido'
+);
+
 /* ── Sub-objetos de una venta ── */
+// 2026-07-28 (feature task #238): agregado `agregar_stock` + campos opcionales
+// (nombre, gb, color, bateria, categoria_id, clase_id, deposito_id, condicion,
+// tipo_carga). Cuando `agregar_stock=true` y el item es manual (producto_id
+// null), el handler INSERT-a el producto en `productos` con estado='vendido'
+// en la misma tx atómica, linkeando el producto_id al venta_item.
+// Mismo pattern que canjeSchema (más abajo). Ítems sin agregar_stock siguen
+// funcionando idénticos al comportamiento anterior — compat total.
 const ventaItemSchema = z.object({
   producto_id:     z.coerce.number().int().positive().optional().nullable(),
   vendedor_id:     z.coerce.number().int().positive().optional().nullable(),
@@ -18,6 +33,19 @@ const ventaItemSchema = z.object({
   costo:           z.coerce.number().min(0).default(0),
   moneda:          MonedaEnum.default('USD'),
   comision:        z.coerce.number().min(0).default(0),
+  // ─── Feature "crear producto en Inventario desde ítem manual" ──────────
+  agregar_stock:   z.boolean().default(false),
+  // Campos extra (procesados solo si agregar_stock=true + producto_id null).
+  // Ignorados silenciosamente en cualquier otro caso — no rompe clientes viejos.
+  nombre:          z.string().trim().max(120).optional().nullable(),
+  gb:              z.string().trim().max(20).optional().nullable(),
+  color:           z.string().trim().max(60).optional().nullable(),
+  bateria:         z.coerce.number().int().min(0).max(100).optional().nullable(),
+  categoria_id:    z.coerce.number().int().positive().optional().nullable(),
+  clase_id:        uuidLoose.optional().nullable(),
+  deposito_id:     z.coerce.number().int().positive().optional().nullable(),
+  condicion:       z.enum(['nuevo', 'usado']).optional().nullable(),
+  tipo_carga:      z.enum(['unitario', 'lote']).optional().nullable(),
 });
 
 const ventaPagoSchema = z.object({
@@ -41,10 +69,7 @@ const ventaPagoSchema = z.object({
 // hasta ahora, preservando compat). `categoria_id` (Colección legacy) sigue
 // aceptado como opcional para no romper clientes viejos, pero el frontend ya
 // no lo envía (Colección se sunseteó de la UI en PR #554).
-const uuidLoose = z.string().regex(
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
-  'clase_id inválido'
-);
+// `uuidLoose` está definido arriba del archivo (compartido con ventaItemSchema).
 
 const canjeSchema = z.object({
   descripcion:    z.string().trim().min(1, 'Descripción del canje requerida').max(300),

@@ -209,6 +209,110 @@ async function insertarDetalle(client, venta, b, ctx = {}) {
   // 2026-07-09 F3.d-3: `ctx.tenantId` requerido si el body incluye canjes con
   // `agregar_stock=true` — necesitamos resolver `clase_id` desde el catálogo
   // por-tenant. Callers pasan `{ tenantId: req.tenantId }`.
+
+  // 2026-07-28 (task #238): pre-procesar items con `agregar_stock=true` (ítem
+  // manual con datos completos que crea producto en Inventario marcado como
+  // vendido). Se hace ANTES del bulk INSERT de venta_items para poder linkear
+  // el producto_id recién creado en la misma tx.
+  //
+  // Validación IMEI:
+  //   - Dentro del payload: los IMEIs de items con agregar_stock deben ser
+  //     únicos entre sí (dos items nuevos con el mismo IMEI = duplicado).
+  //   - Contra stock vivo: no puede colisionar con productos.imei existentes
+  //     (no soft-deleted). El CHECK UNIQUE de la DB lo garantiza en el INSERT,
+  //     pero pre-validamos para dar mensaje amigable en vez de "23505".
+  const stockItems = (b.items || []).filter(it => it.agregar_stock && !it.producto_id);
+  if (stockItems.length > 0) {
+    if (!ctx.tenantId) {
+      throw new Error('ctx.tenantId requerido para procesar items con agregar_stock');
+    }
+    // Validar IMEIs cross-payload + contra vivos.
+    const imeisConValor = stockItems
+      .map(it => it.imei && String(it.imei).trim())
+      .filter(Boolean);
+    if (imeisConValor.length > 0) {
+      // Dup en el payload.
+      const seen = new Set();
+      const dupPayload = imeisConValor.filter(im => {
+        if (seen.has(im)) return true;
+        seen.add(im);
+        return false;
+      });
+      if (dupPayload.length > 0) {
+        const err = new Error(`IMEI duplicado dentro del mismo pedido: ${[...new Set(dupPayload)].join(', ')}`);
+        err.code = 'IMEI_DUP_PAYLOAD';
+        throw err;
+      }
+      // Colisión con stock vivo (productos no soft-deleted).
+      const { rows: colisiones } = await client.query(
+        `SELECT imei FROM productos
+          WHERE imei = ANY($1::text[]) AND deleted_at IS NULL`,
+        [imeisConValor]
+      );
+      if (colisiones.length > 0) {
+        const err = new Error(
+          `IMEI ya existe en Inventario: ${colisiones.map(r => r.imei).join(', ')}. ` +
+          `Buscalo en Inventario y agregalo por nombre en vez de crear uno nuevo.`
+        );
+        err.code = 'IMEI_DUP_STOCK';
+        throw err;
+      }
+    }
+    // Crear cada producto (INSERT + RETURNING id) y setear it.producto_id in-place.
+    for (const it of stockItems) {
+      // Resolver clase_id: si viene explícito, validar que exista para el tenant;
+      // sino, derivar por condición (nuevo → 'celular_sellado', usado → 'celular_usado').
+      let claseIdItem = null;
+      if (it.clase_id) {
+        const { rows: explicit } = await client.query(
+          `SELECT id FROM clases_producto
+            WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+            LIMIT 1`,
+          [it.clase_id, ctx.tenantId]
+        );
+        if (explicit[0]) claseIdItem = explicit[0].id;
+      }
+      if (!claseIdItem) {
+        const cond = it.condicion || 'nuevo';
+        const slug = cond === 'usado' ? 'celular_usado' : 'celular_sellado';
+        const { rows: claseRows } = await client.query(
+          `SELECT id FROM clases_producto
+            WHERE tenant_id = $1 AND slug_legacy = $2 AND es_base = true
+              AND deleted_at IS NULL
+            LIMIT 1`,
+          [ctx.tenantId, slug]
+        );
+        claseIdItem = claseRows[0]?.id ?? null;
+      }
+      // Nombre: si viene explícito lo usamos; sino cae a la descripción (ya
+      // requerida por el schema).
+      const nombreProducto = (it.nombre && it.nombre.trim()) || it.descripcion;
+      const { rows: pr } = await client.query(
+        `INSERT INTO productos (
+            tipo_carga, clase_id, nombre, imei, gb, color, bateria,
+            categoria_id, deposito_id, condicion,
+            costo, costo_moneda, precio_venta, precio_moneda,
+            estado, cantidad
+         ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7,
+            $8, $9, $10,
+            $11, $12, $13, $12,
+            'vendido', $14
+         ) RETURNING id`,
+        [
+          it.tipo_carga || 'unitario',
+          claseIdItem,
+          nombreProducto, it.imei || null, it.gb || null, it.color || null, it.bateria ?? null,
+          it.categoria_id ?? null, it.deposito_id ?? null, it.condicion || 'nuevo',
+          it.costo, it.moneda, it.precio_vendido,
+          it.cantidad || 1,
+        ]
+      );
+      // Setear producto_id in-place para que el bulk INSERT posterior lo linkee.
+      it.producto_id = pr[0].id;
+    }
+  }
+
   // Items: bulk INSERT con UNNEST.
   if (b.items && b.items.length > 0) {
     await client.query(
@@ -1464,6 +1568,11 @@ router.post('/', validate(createVentaSchema), async (req, res, next) => {
         error: 'Otro request con la misma Idempotency-Key está en curso. Reintentá en un instante.',
         reason: 'idempotency_conflict',
       });
+    }
+    // 2026-07-28 (task #238): errores amigables del pre-procesamiento de items
+    // con agregar_stock. Sin este handling caerían al next(err) genérico → 500.
+    if (err.code === 'IMEI_DUP_PAYLOAD' || err.code === 'IMEI_DUP_STOCK') {
+      return res.status(409).json({ error: err.message, reason: err.code.toLowerCase() });
     }
     // 2026-07-13 (feature vuelto): postCajaMovimiento del vuelto puede
     // throwear 400 si la caja no existe, moneda no matchea, o el saldo

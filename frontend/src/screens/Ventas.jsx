@@ -502,7 +502,23 @@ export default function Ventas() {
   // Auditoría 2026-06-30 F-13/14: cart, pagos y canjes usan _id estable como
   // React key. setItem/rmItem operan por id (no por índice) — quitar un ítem
   // del medio no afecta el draft de los inputs de los siguientes.
-  const addItemManual = () => setCart(c => [...c, { _id: newItemId(), producto_id: null, descripcion: '', imei: '', cantidad: 1, precio_vendido: 0, costo: 0, moneda: 'USD' }]);
+  //
+  // 2026-07-28 (task #238): agregado shape extendido para "Crear en stock desde
+  // ítem manual". `agregar_stock=false` por default: si el operador nunca abre
+  // el mini-form, el comportamiento es idéntico al anterior (item suelto en la
+  // venta, sin tocar Inventario). Cuando marca el checkbox el mini-form aparece
+  // colapsable con nombre/imei/gb/color/batería/condición/categoría; el backend
+  // valida IMEI dup y crea el producto en `productos` con estado='vendido'.
+  const addItemManual = () => setCart(c => [...c, {
+    _id: newItemId(),
+    producto_id: null, descripcion: '', imei: '',
+    cantidad: 1, precio_vendido: 0, costo: 0, moneda: 'USD',
+    // Feature: crear en stock (default off).
+    agregar_stock: false,
+    // Campos extras solo relevantes cuando agregar_stock=true.
+    nombre: '', gb: '', color: '', bateria: '',
+    clase_id: '', condicion: 'nuevo',
+  }]);
   const setItem = (id, k, v) => setCart(c => c.map(it => it._id === id ? { ...it, [k]: (k === 'cantidad' || k === 'precio_vendido' || k === 'costo') ? (v === '' ? '' : Number(v)) : v } : it));
   const rmItem = (id) => setCart(c => c.filter(it => it._id !== id));
 
@@ -839,17 +855,38 @@ export default function Ventas() {
   async function handleSaveVenta(e) {
     e.preventDefault();
     setVentaError('');
-    const items = cart.filter(it => String(it.descripcion).trim()).map((it, idx) => ({
-      producto_id: it.producto_id || null,
-      vendedor_id: vForm.vendedor_id || null,
-      descripcion: String(it.descripcion).trim(),
-      imei: it.imei ? String(it.imei).trim() : null,
-      cantidad: Number(it.cantidad) || 1,
-      precio_vendido: Number(it.precio_vendido) || 0,
-      costo: Number(it.costo) || 0,
-      moneda: it.moneda || 'USD',
-      comision: idx === 0 ? (Number(vForm.comision) || 0) : 0,
-    }));
+    const items = cart.filter(it => String(it.descripcion).trim()).map((it, idx) => {
+      const base = {
+        producto_id: it.producto_id || null,
+        vendedor_id: vForm.vendedor_id || null,
+        descripcion: String(it.descripcion).trim(),
+        imei: it.imei ? String(it.imei).trim() : null,
+        cantidad: Number(it.cantidad) || 1,
+        precio_vendido: Number(it.precio_vendido) || 0,
+        costo: Number(it.costo) || 0,
+        moneda: it.moneda || 'USD',
+        comision: idx === 0 ? (Number(vForm.comision) || 0) : 0,
+      };
+      // 2026-07-28 (task #238): si el item es manual (sin producto_id) y el
+      // operador marcó "Agregar a Inventario", agregamos los campos extra al
+      // payload — el backend valida IMEI dup y crea el producto en `productos`
+      // con estado='vendido' en la misma tx. Fuera de ese caso, ignoramos el
+      // flag y campos extras (safeguard: no re-crear producto si ya viene por
+      // producto_id del pick de Inventario).
+      if (it.agregar_stock && !it.producto_id) {
+        base.agregar_stock = true;
+        if (it.nombre && it.nombre.trim())  base.nombre    = it.nombre.trim();
+        if (it.gb && String(it.gb).trim())  base.gb        = String(it.gb).trim();
+        if (it.color && it.color.trim())    base.color     = it.color.trim();
+        if (it.bateria !== '' && it.bateria != null) base.bateria = Number(it.bateria);
+        if (it.clase_id)                    base.clase_id  = String(it.clase_id);
+        if (it.condicion)                   base.condicion = it.condicion;
+        // tipo_carga fijo en 'unitario' — items manuales no soportan lote
+        // (no tiene sentido: un lote se carga desde Inventario, no punto-de-venta).
+        base.tipo_carga = 'unitario';
+      }
+      return base;
+    });
     if (!items.length) { setVentaError('Agregá al menos un producto con descripción.'); return; }
     const pagosPayload = pagos.filter(p => p.metodo_nombre && (Number(p.monto) || 0) > 0).map(p => ({
       metodo_pago_id: p.metodo_pago_id ?? null,
@@ -1536,37 +1573,132 @@ export default function Ventas() {
                         // hace que en <=520px todas las columnas colapsen a 1fr
                         // (stack vertical, delete right-aligned). Desktop sin cambios.
                         // Auditoría 2026-06-30 F-13/14: key={_id} en vez de index.
-                        <div key={it._id} data-testid="venta-item-row" className="item-grid u-ventas-item-grid">
-                          {/* 2026-07-07 (Lucas #525): wrapper vertical en la
-                              1ra columna para mostrar la chip "IMEI · Bat X%"
-                              debajo del input cuando el ítem vino de un pick
-                              del inventario. La chip solo se muestra si hay
-                              IMEI o (batería + condicion=usado) — items
-                              manuales quedan como antes (solo input). No
-                              rompe layout: el <div> hereda el grid-cell 1fr
-                              y el input adentro estira al 100%. */}
-                          <div className="u-flex-col-gap-2-mw-0">
-                            <input className="input" placeholder="Producto" value={it.descripcion} onChange={e => setItem(it._id, 'descripcion', e.target.value)} />
-                            {(it.imei || (it.condicion === 'usado' && it.bateria != null)) && (
-                              <div className="u-fs-11-muted-pl-4-ellipsis">
-                                {it.imei ? 'IMEI ' + fmtImei(it.imei) : ''}
-                                {it.imei && it.condicion === 'usado' && it.bateria != null ? ' · ' : ''}
-                                {it.condicion === 'usado' && it.bateria != null ? 'Bat ' + it.bateria + '%' : ''}
-                              </div>
-                            )}
+                        //
+                        // 2026-07-28 (task #238): wrapper que envuelve el item-grid
+                        // ORIGINAL + el mini-form "Crear en stock" colapsable debajo.
+                        // El item-grid queda idéntico (misma clase, mismo data-testid,
+                        // misma estructura de inputs) — compat con E2E existentes.
+                        <div key={it._id} className="u-flex-col-gap-2">
+                          <div data-testid="venta-item-row" className="item-grid u-ventas-item-grid">
+                            {/* 2026-07-07 (Lucas #525): wrapper vertical en la
+                                1ra columna para mostrar la chip "IMEI · Bat X%"
+                                debajo del input cuando el ítem vino de un pick
+                                del inventario. La chip solo se muestra si hay
+                                IMEI o (batería + condicion=usado) — items
+                                manuales quedan como antes (solo input). No
+                                rompe layout: el <div> hereda el grid-cell 1fr
+                                y el input adentro estira al 100%. */}
+                            <div className="u-flex-col-gap-2-mw-0">
+                              <input className="input" placeholder="Producto" value={it.descripcion} onChange={e => setItem(it._id, 'descripcion', e.target.value)} />
+                              {(it.imei || (it.condicion === 'usado' && it.bateria != null)) && (
+                                <div className="u-fs-11-muted-pl-4-ellipsis">
+                                  {it.imei ? 'IMEI ' + fmtImei(it.imei) : ''}
+                                  {it.imei && it.condicion === 'usado' && it.bateria != null ? ' · ' : ''}
+                                  {it.condicion === 'usado' && it.bateria != null ? 'Bat ' + it.bateria + '%' : ''}
+                                </div>
+                              )}
+                            </div>
+                            <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="1" value={it.cantidad} onChange={e => setItem(it._id, 'cantidad', e.target.value)} />
+                            <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Precio" value={it.precio_vendido} onChange={e => setItem(it._id, 'precio_vendido', e.target.value)} />
+                            {/* Items de venta retail: USD o moneda local del tenant (no
+                                USDT, que es medio de pago, no precio de góndola). Si el
+                                record tiene un valor legacy fuera del set (ej. venta
+                                vieja ARS en un tenant que hoy es UY), lo conservamos
+                                para no romper edits. */}
+                            <select className="input" value={it.moneda} onChange={e => setItem(it._id, 'moneda', e.target.value)}>
+                              {Array.from(new Set(['USD', monedaLocal, it.moneda].filter(Boolean)))
+                                .map(m => <option key={m} value={m}>{m}</option>)}
+                            </select>
+                            <button type="button" className="icon-btn" title="Quitar ítem" aria-label="Quitar ítem" onClick={() => rmItem(it._id)}><Icons.X size={14} /></button>
                           </div>
-                          <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="1" value={it.cantidad} onChange={e => setItem(it._id, 'cantidad', e.target.value)} />
-                          <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Precio" value={it.precio_vendido} onChange={e => setItem(it._id, 'precio_vendido', e.target.value)} />
-                          {/* Items de venta retail: USD o moneda local del tenant (no
-                              USDT, que es medio de pago, no precio de góndola). Si el
-                              record tiene un valor legacy fuera del set (ej. venta
-                              vieja ARS en un tenant que hoy es UY), lo conservamos
-                              para no romper edits. */}
-                          <select className="input" value={it.moneda} onChange={e => setItem(it._id, 'moneda', e.target.value)}>
-                            {Array.from(new Set(['USD', monedaLocal, it.moneda].filter(Boolean)))
-                              .map(m => <option key={m} value={m}>{m}</option>)}
-                          </select>
-                          <button type="button" className="icon-btn" title="Quitar ítem" aria-label="Quitar ítem" onClick={() => rmItem(it._id)}><Icons.X size={14} /></button>
+
+                          {/* ─── Ítem manual + crear stock (task #238) ─────────
+                              Solo aparece para items sin producto_id (manuales).
+                              Los items que vinieron del pick de Inventario ya
+                              tienen su ficha, no tiene sentido "crearlos de nuevo".
+                              El checkbox default OFF: comportamiento anterior
+                              intacto para users que solo quieren un item suelto.
+                              Cuando ON, mostramos mini-form con datos de producto.
+                              El backend valida IMEI dup y crea la ficha con
+                              estado='vendido' en la misma tx atómica. */}
+                          {!it.producto_id && (
+                            <>
+                              <label className="u-ventas-item-add-stock-toggle">
+                                <input type="checkbox"
+                                       checked={!!it.agregar_stock}
+                                       onChange={e => setItem(it._id, 'agregar_stock', e.target.checked)} />
+                                <span className="muted tiny">Crear también en Inventario</span>
+                              </label>
+                              {it.agregar_stock && (
+                                <div className="u-ventas-item-stock-form">
+                                  <div className="row u-mb-6">
+                                    <div className="field u-flex-2">
+                                      <label className="field-label">Nombre del producto</label>
+                                      <input className="input" placeholder="iPhone 15 Pro (si vacío usa la descripción)"
+                                             value={it.nombre}
+                                             onChange={e => setItem(it._id, 'nombre', e.target.value)} />
+                                    </div>
+                                    <div className="field u-flex-15">
+                                      <label className="field-label">IMEI / Nº serie</label>
+                                      <input className="input mono" placeholder="35..."
+                                             value={it.imei}
+                                             onChange={e => setItem(it._id, 'imei', e.target.value)} />
+                                    </div>
+                                  </div>
+                                  <div className="row u-mb-6">
+                                    <div className="field u-flex-07">
+                                      <label className="field-label">GB</label>
+                                      <input className="input" placeholder="256"
+                                             value={it.gb}
+                                             onChange={e => setItem(it._id, 'gb', e.target.value)} />
+                                    </div>
+                                    <div className="field u-flex-1">
+                                      <label className="field-label">Color</label>
+                                      <input className="input" placeholder="Titanium"
+                                             value={it.color}
+                                             onChange={e => setItem(it._id, 'color', e.target.value)} />
+                                    </div>
+                                    <div className="field u-flex-07">
+                                      <label className="field-label">% Batería</label>
+                                      <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono"
+                                             min="0" max="100" placeholder="100"
+                                             value={it.bateria}
+                                             onChange={e => setItem(it._id, 'bateria', e.target.value)} />
+                                    </div>
+                                    <div className="field u-flex-08">
+                                      <label className="field-label">Condición</label>
+                                      <select className="input" value={it.condicion}
+                                              onChange={e => setItem(it._id, 'condicion', e.target.value)}>
+                                        <option value="nuevo">Nuevo</option>
+                                        <option value="usado">Usado</option>
+                                      </select>
+                                    </div>
+                                  </div>
+                                  <div className="row">
+                                    <div className="field u-flex-1">
+                                      <label className="field-label">Categoría</label>
+                                      <select className="input" value={it.clase_id}
+                                              onChange={e => setItem(it._id, 'clase_id', e.target.value)}>
+                                        <option value="">— auto por condición —</option>
+                                        {clasesInv.map(cat => (
+                                          <option key={cat.id} value={cat.id}>
+                                            {cat.emoji ? `${cat.emoji} ${cat.nombre}` : cat.nombre}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <div className="field u-flex-1">
+                                      <label className="field-label">Costo (USD)</label>
+                                      <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono"
+                                             placeholder="0"
+                                             value={it.costo}
+                                             onChange={e => setItem(it._id, 'costo', e.target.value)} />
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </>
+                          )}
                         </div>
                       ))}
                     </div>
