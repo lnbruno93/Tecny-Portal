@@ -278,9 +278,12 @@ export default function Inicio() {
           (lectura/vendedor sin la cap), el split-2 dejaba whitespace muerto
           a la derecha. Detectamos el caso y caemos a layout single-col
           full-width — la grilla de tools ocupa todo el ancho disponible. */}
+      {/* 2026-07-28: bug de doble `className` — React aplicaba solo el último
+          (`u-mt-var-gap`) e ignoraba el condicional `split-2`. Sin split-2, la
+          Activity card quedaba stackeada abajo del tool-grid con solo 16px de
+          gap (feedback Lucas: "sigue apoyado"). Consolidado en 1 sola prop. */}
       <div
-        className={userHasCap(user, 'inicio.actividad_reciente') ? 'split-2' : ''}
-        className="u-mt-var-gap"
+        className={`${userHasCap(user, 'inicio.actividad_reciente') ? 'split-2' : ''} u-mt-var-gap`.trim()}
       >
         {/* Tools column */}
         <div className="col">
