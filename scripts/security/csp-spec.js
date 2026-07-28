@@ -164,13 +164,23 @@ function expectedCspFor(site, context) {
   if (!backendUrls) throw new Error(`context desconocido para backend URLs: ${context}`);
   return {
     ...COMMON_DIRECTIVES,
-    // connect-src: 'self' + backend(s) del contexto + hCaptcha.
+    // connect-src: 'self' + backend(s) del contexto + hCaptcha + Google Fonts.
     // Sprint 1 audit 07-25 · Fix 10: se compone por contexto (antes era
     // COMMON con prod+staging siempre).
+    //
+    // 2026-07-28 (Sentry noise fix TECNY-PORTAL-BACKEND-1B, 378 events/14d):
+    // el Service Worker de Vite PWA hace `fetch()` a fonts.googleapis.com
+    // para pre-cachear el CSS de Inter/JetBrains Mono. `style-src` ya lo
+    // permitía, pero `fetch()` va contra `connect-src`. Sin este dominio,
+    // el SW disparaba una CSP violation por cada usuario en cada primer
+    // load (~800 events/mes solo por eso). Efecto colateral silencioso:
+    // el CSS de Google Fonts NO se pre-cacheaba, primer load de cada user
+    // era más lento (~200ms extra en 3G).
     'connect-src': [
       "'self'",
       ...backendUrls,
       'https://*.hcaptcha.com',
+      'https://fonts.googleapis.com',
     ],
     // img-src: base del site (self, data:, opcional blob:) + backend(s) del contexto.
     'img-src': [
