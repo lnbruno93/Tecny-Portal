@@ -162,4 +162,120 @@ describe('POST /api/public/super-admin-invite/:token/accept', () => {
       .send({ password: 'ClaveFuerte1' });
     expect(r.status).toBe(404);
   });
+
+  // 2026-07-28 (bug reportado por Lucas — hermano matiashbruno98):
+  // Cuando el email invitado ya tiene un user activo (creado antes de la
+  // invitación, ej. signup normal al portal cliente), el flow ahora hace
+  // UPSERT en vez de rechazar con 409 "email_taken". Efecto:
+  //   - Promociona is_super_admin=false → true
+  //   - Resetea password_hash + password_changed_at (invalida JWTs stale)
+  //   - Preserva email_verified_at si ya estaba, sino lo setea a NOW()
+  //   - Preserva tenant_users existentes (ON CONFLICT DO NOTHING)
+  //   - Devuelve JWT firmado — el user queda logueado al admin
+  // Seguridad: el invite fue enviado al email → prueba de propiedad (mismo
+  // trust que forgot-password) + captcha antes + super-admin invitador
+  // aprobó explícitamente.
+  it('user existente NO-super-admin es PROMOVIDO al aceptar invite (UPSERT)', async () => {
+    // 1. Pre-crear user existente (simula que matiashbruno98 ya tenía cuenta
+    //    desde antes por un flow previo — signup casual, invite a tenant, etc.)
+    const email = 'existing@test.local';
+    const { rows: [existingUser] } = await pool.query(
+      `INSERT INTO users
+         (nombre, username, email, password_hash, role, is_super_admin, email_verified_at)
+       VALUES ('Existing User', 'existing_user', $1,
+               '$2b$12$dummy.hash.replaced.by.accept.flow.abcdefghij',
+               'op', false, NOW() - INTERVAL '30 days')
+       RETURNING id, password_hash, email_verified_at`,
+      [email]
+    );
+    // También tiene su propio tenant como owner (simula "Mi empresa SA" del hermano).
+    const { rows: [tenant] } = await pool.query(
+      `INSERT INTO tenants (nombre, slug, pais)
+       VALUES ('User Own Tenant', 'user-own-tenant-' || $1, 'AR')
+       RETURNING id`,
+      [crypto.randomBytes(4).toString('hex')]
+    );
+    await pool.query(
+      `INSERT INTO tenant_users (tenant_id, user_id, rol) VALUES ($1, $2, 'owner')`,
+      [tenant.id, existingUser.id]
+    );
+
+    // 2. Super-admin lo invita a ser co-super-admin.
+    const { plaintext, id: inviteId } = await insertInvite({
+      email,
+      nombre: 'Existing User (promoted)',
+    });
+
+    // 3. User acepta invite — antes rebotaba con 409, ahora hace UPSERT.
+    const r = await request(app)
+      .post(`/api/public/super-admin-invite/${plaintext}/accept`)
+      .send({ password: 'NuevaClave1' });
+    expect(r.status).toBe(200);
+    expect(r.body.token).toBeDefined();
+    expect(r.body.user.id).toBe(existingUser.id);  // MISMO id, no crea otro
+    expect(r.body.user.email).toBe(email);
+    expect(r.body.user.is_super_admin).toBe(true);
+
+    // 4. DB state: user promovido, password bumpeada, invite aceptada.
+    const { rows: [after] } = await pool.query(
+      `SELECT is_super_admin, password_hash, password_changed_at, email_verified_at
+         FROM users WHERE id = $1`,
+      [existingUser.id]
+    );
+    expect(after.is_super_admin).toBe(true);
+    expect(after.password_hash).not.toBe(existingUser.password_hash); // reset
+    expect(after.password_changed_at).not.toBeNull(); // bumpeada
+    // email_verified_at preservado (era hace 30 días, no lo pisamos con NOW()).
+    expect(after.email_verified_at.getTime()).toBe(existingUser.email_verified_at.getTime());
+
+    // 5. tenant_users preservado (SU tenant propio) + agregado el home tenant.
+    const { rows: tuRows } = await pool.query(
+      `SELECT tenant_id, rol FROM tenant_users WHERE user_id = $1 ORDER BY tenant_id`,
+      [existingUser.id]
+    );
+    expect(tuRows.length).toBe(2);
+    expect(tuRows.find(r => r.tenant_id === 1)).toEqual({ tenant_id: 1, rol: 'member' }); // home
+    expect(tuRows.find(r => r.tenant_id === tenant.id)).toEqual({ tenant_id: tenant.id, rol: 'owner' }); // preserva propio
+
+    // 6. Invite marcada aceptada apuntando al user existente.
+    const { rows: [inviteAfter] } = await pool.query(
+      `SELECT accepted_at, accepted_user_id FROM super_admin_invites WHERE id = $1`,
+      [inviteId]
+    );
+    expect(inviteAfter.accepted_at).not.toBeNull();
+    expect(inviteAfter.accepted_user_id).toBe(existingUser.id);
+
+    // 7. Audit trail refleja path='promoted_existing' + password_reset=true.
+    const { rows: [audit] } = await pool.query(
+      `SELECT after_state FROM tenant_admin_actions
+        WHERE action = 'super_admin_invite_accepted'
+          AND (after_state->>'new_user_id')::int = $1
+        ORDER BY id DESC LIMIT 1`,
+      [existingUser.id]
+    );
+    expect(audit.after_state.path).toBe('promoted_existing');
+    expect(audit.after_state.password_reset).toBe(true);
+  });
+
+  it('audit trail marca path=created para user NUEVO (regresión check del audit shape)', async () => {
+    const { plaintext } = await insertInvite({
+      email: 'brandnew@test.local',
+      nombre: 'Brand New',
+    });
+
+    const r = await request(app)
+      .post(`/api/public/super-admin-invite/${plaintext}/accept`)
+      .send({ password: 'ClaveFuerte1' });
+    expect(r.status).toBe(200);
+
+    const { rows: [audit] } = await pool.query(
+      `SELECT after_state FROM tenant_admin_actions
+        WHERE action = 'super_admin_invite_accepted'
+          AND (after_state->>'new_user_id')::int = $1
+        ORDER BY id DESC LIMIT 1`,
+      [r.body.user.id]
+    );
+    expect(audit.after_state.path).toBe('created');
+    expect(audit.after_state.password_reset).toBe(false);
+  });
 });

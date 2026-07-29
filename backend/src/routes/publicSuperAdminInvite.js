@@ -227,44 +227,79 @@ router.post('/:token/accept', validate(acceptSchema), async (req, res, next) => 
           return { invalid: true };
         }
 
-        // Anti-race: si el email ya existe (creado en otro flow entre el
-        // GET y el POST — muy raro pero posible), devolvemos 409 explícito.
-        // Semánticamente distinto del "invite inválida" — no ocultamos con
-        // el mensaje ambiguo porque el user ya tiene sesión potencial en
-        // otro lado.
+        // 2026-07-28 (bug reportado por Lucas: hermano matiashbruno98 no
+        // podía aceptar invite porque ya tenía user en Tecny desde jun-18).
+        // Antes: si el email ya existía, devolvíamos 409 "email_taken" con
+        // mensaje "usá login normal" — pero eso NO promovía el user a
+        // super-admin, solo lo autenticaba con el flag `is_super_admin=false`.
+        // Dead-end total para cualquier user existente invitado.
+        //
+        // Ahora: soportamos UPSERT-style. Si el email ya tiene user activo,
+        // en vez de rechazar, actualizamos:
+        //   - is_super_admin = true (promoción a super-admin)
+        //   - password_hash = $new (el invite al email es prueba de propiedad,
+        //     mismo trust level que forgot-password + hay captcha antes)
+        //   - password_changed_at = NOW() (invalida JWTs stale del user)
+        //   - email_verified_at = COALESCE(existing, NOW()) (no lo sobreescribimos
+        //     si ya estaba verificado, pero lo seteamos si nunca lo estuvo)
+        // Y aseguramos tenant_users + tenant_user_roles con ON CONFLICT DO NOTHING
+        // (el user existente puede ya tener rows en su propio tenant).
+        //
+        // Seguridad: el invite fue enviado al email → prueba de propiedad
+        // (mismo trust que un reset password). Además el super-admin que
+        // invitó aprobó explícitamente ese email + hay captcha antes de este
+        // punto. Cambiar la password del user existente es acceptable en
+        // este contexto.
         const { rows: existing } = await client.query(
-          `SELECT id FROM users
+          `SELECT id, email_verified_at FROM users
             WHERE LOWER(email) = LOWER($1)
               AND deleted_at IS NULL
             LIMIT 1`,
           [invite.email]
         );
-        if (existing[0]) {
-          await client.query('ROLLBACK');
-          return { emailTaken: true };
-        }
-
-        // 1. Crear user con is_super_admin=true + email_verified_at=NOW()
-        //    (aceptar el invite vía email es prueba de propiedad del email).
         const pwHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-        const username = await uniqueUsername(client, deriveUsername(invite.email));
-        const { rows: newUserRows } = await client.query(
-          `INSERT INTO users
-             (nombre, username, email, password_hash, role, is_super_admin, email_verified_at)
-           VALUES ($1, $2, $3, $4, 'op', true, NOW())
-           RETURNING id, nombre, username, email, role, is_super_admin, email_verified_at`,
-          [invite.nombre, username, invite.email, pwHash]
-        );
-        const newUser = newUserRows[0];
+        let newUser;
+        let promotedExisting = false;
+        if (existing[0]) {
+          // Path A — user existente: UPSERT (promoción + reset password).
+          promotedExisting = true;
+          const { rows: updatedRows } = await client.query(
+            `UPDATE users
+                SET is_super_admin = true,
+                    password_hash = $1,
+                    password_changed_at = NOW(),
+                    email_verified_at = COALESCE(email_verified_at, NOW())
+              WHERE id = $2
+              RETURNING id, nombre, username, email, role, is_super_admin, email_verified_at`,
+            [pwHash, existing[0].id]
+          );
+          newUser = updatedRows[0];
+        } else {
+          // Path B — user nuevo: INSERT (comportamiento histórico).
+          const username = await uniqueUsername(client, deriveUsername(invite.email));
+          const { rows: newUserRows } = await client.query(
+            `INSERT INTO users
+               (nombre, username, email, password_hash, role, is_super_admin, email_verified_at)
+             VALUES ($1, $2, $3, $4, 'op', true, NOW())
+             RETURNING id, nombre, username, email, role, is_super_admin, email_verified_at`,
+            [invite.nombre, username, invite.email, pwHash]
+          );
+          newUser = newUserRows[0];
+        }
 
         // 2. Vincular al "home tenant" (Tecny, id=1) como member. Sin esto,
         //    resolveUserTenant devuelve NO_TENANT y el login sigue rebotando
         //    con 401 aún con el JWT válido. El super-admin real trabaja
         //    cross-tenant vía is_super_admin, NO desde este tenant_users
         //    row — es solo el "hogar" mínimo para pasar el guard NO_TENANT.
+        //
+        // 2026-07-28: ON CONFLICT DO NOTHING — el user existente puede ya
+        // tener rows en su propio tenant (path A). Si es user nuevo (path B),
+        // no hay conflicto y el INSERT persiste normal.
         await client.query(
           `INSERT INTO tenant_users (tenant_id, user_id, rol)
-             VALUES ($1, $2, 'member')`,
+             VALUES ($1, $2, 'member')
+             ON CONFLICT (tenant_id, user_id) DO NOTHING`,
           [HOME_TENANT_ID, newUser.id]
         );
         // Idem para tenant_user_roles (capability-based, post-F4 cutover).
@@ -273,7 +308,8 @@ router.post('/:token/accept', validate(acceptSchema), async (req, res, next) => 
         // back office.
         await client.query(
           `INSERT INTO tenant_user_roles (tenant_id, user_id, rol)
-             VALUES ($1, $2, 'custom')`,
+             VALUES ($1, $2, 'custom')
+             ON CONFLICT (tenant_id, user_id) DO NOTHING`,
           [HOME_TENANT_ID, newUser.id]
         );
 
@@ -303,7 +339,14 @@ router.post('/:token/accept', validate(acceptSchema), async (req, res, next) => 
               newUser.id,
               'super_admin_invite_accepted',
               JSON.stringify({ invite_id: invite.id, invited_by: invite.invited_by }),
-              JSON.stringify({ new_user_id: newUser.id, username: newUser.username }),
+              // 2026-07-28: after_state incluye `path` (created|promoted_existing)
+              // + `password_reset` flag para trail explícito de qué pasó.
+              JSON.stringify({
+                new_user_id: newUser.id,
+                username: newUser.username,
+                path: promotedExisting ? 'promoted_existing' : 'created',
+                password_reset: promotedExisting,
+              }),
             ]
           );
           await client.query('RELEASE SAVEPOINT sp_audit');
@@ -320,7 +363,7 @@ router.post('/:token/accept', validate(acceptSchema), async (req, res, next) => 
         }
 
         await client.query('COMMIT');
-        return { ok: true, user: newUser };
+        return { ok: true, user: newUser, promotedExisting };
       } catch (err) {
         try { await client.query('ROLLBACK'); } catch (_) { /* swallow */ }
         throw err;
@@ -329,12 +372,6 @@ router.post('/:token/accept', validate(acceptSchema), async (req, res, next) => 
 
     if (result.invalid) {
       return respondInvalid(res);
-    }
-    if (result.emailTaken) {
-      return res.status(409).json({
-        error: 'Este email ya está registrado. Usá el flow normal de login o de reset de contraseña.',
-        code:  'email_taken',
-      });
     }
 
     // Firmar JWT con el user recién creado. Usamos el `makeToken` canónico
@@ -352,8 +389,14 @@ router.post('/:token/accept', validate(acceptSchema), async (req, res, next) => 
     );
 
     logger.info(
-      { new_user_id: result.user.id, email: result.user.email },
-      '[public/super-admin-invite] invite aceptada — user creado como super-admin'
+      {
+        new_user_id: result.user.id,
+        email: result.user.email,
+        path: result.promotedExisting ? 'promoted_existing' : 'created',
+      },
+      result.promotedExisting
+        ? '[public/super-admin-invite] invite aceptada — user existente PROMOVIDO a super-admin (password reseteada)'
+        : '[public/super-admin-invite] invite aceptada — user NUEVO creado como super-admin'
     );
 
     res.json({
