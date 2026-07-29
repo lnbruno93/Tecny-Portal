@@ -1,0 +1,225 @@
+---
+/**
+ * Precios.astro — sección "Precios" con 4 planes (Trial/Starter/Pro/Enterprise).
+ *
+ * Port de `frontend/src/screens/Landing.jsx:504-612`.
+ *
+ * Precios dinámicos: en la versión SPA, `useLandingPricing()` hace fetch a
+ * /api/public/pricing y actualiza el state. Acá renderizamos los FALLBACKS
+ * estáticos (Starter $39, Pro $189) y el script inline abajo hidrata desde
+ * el backend si los valores cambiaron — el usuario ve los defaults al
+ * milisegundo 0 y el override aparece con delay <500ms si difiere.
+ *
+ * Los precios editables desde admin.tecnyapp.com/planes se reflejan en la
+ * landing sin rebuild — pattern SPA-like sin islands React.
+ */
+import { calendlyHref } from '../lib/calendly';
+
+// Mismos valores que FALLBACK_PRICES en Landing.hooks.js. Si Lucas cambió
+// los defaults en el admin, el fetch client-side los actualiza al mount.
+const FALLBACK_PRICES = { starter: 39, pro: 189 };
+---
+
+<section class="s" id="precios">
+  <div class="wrap">
+    <div class="s-head center">
+      <div class="s-kicker">Precios</div>
+      <h2 class="s-title">Planes que crecen con tu equipo</h2>
+      <p class="s-sub">Probá gratis 14 días. Sin tarjeta, sin compromiso. Cancelás cuando quieras.</p>
+    </div>
+
+    <div class="plans plans-4col">
+      {/* Trial — precio 0 fijo, no necesita hidratación. */}
+      <div class="plan">
+        <div class="pname">Trial</div>
+        <div class="pdesc">Probá Tecny completo antes de elegir plan.</div>
+        <div class="price">
+          <span class="cur">USD </span>
+          <span class="num">0</span>
+          <span class="per">/14 días</span>
+        </div>
+        <div class="pnote">Sin tarjeta requerida</div>
+        <ul>
+          <li>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Incluido">
+              <path d="M5 12.5 10 17.5 20 7" />
+            </svg>
+            Acceso completo
+          </li>
+          <li>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Incluido">
+              <path d="M5 12.5 10 17.5 20 7" />
+            </svg>
+            Cotizador + Usados
+          </li>
+          <li>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Incluido">
+              <path d="M5 12.5 10 17.5 20 7" />
+            </svg>
+            Sin compromiso
+          </li>
+          <li>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Incluido">
+              <path d="M5 12.5 10 17.5 20 7" />
+            </svg>
+            Cancelás cuando quieras
+          </li>
+        </ul>
+        <a href="/signup" class="btn" data-cta="pricing:signup" data-plan="trial">Empezar gratis</a>
+      </div>
+
+      {/* Starter — precio dinámico (id="price-starter" para el hydrator). */}
+      <div class="plan">
+        <div class="pname">Starter</div>
+        <div class="pdesc">Para el revendedor independiente que arranca a ordenarse.</div>
+        <div class="price">
+          <span class="cur">USD </span>
+          <span class="num" id="price-starter">{FALLBACK_PRICES.starter}</span>
+          <span class="per">/mes</span>
+        </div>
+        <div class="pnote">14 días de prueba gratis</div>
+        <ul>
+          <li>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Incluido">
+              <path d="M5 12.5 10 17.5 20 7" />
+            </svg>
+            1 usuario
+          </li>
+          <li>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Incluido">
+              <path d="M5 12.5 10 17.5 20 7" />
+            </svg>
+            Cotizador + Usados
+          </li>
+          <li>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Incluido">
+              <path d="M5 12.5 10 17.5 20 7" />
+            </svg>
+            Financiera básica
+          </li>
+          <li>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Incluido">
+              <path d="M5 12.5 10 17.5 20 7" />
+            </svg>
+            50 OCR / mes
+          </li>
+        </ul>
+        <a href="/signup" class="btn" data-cta="pricing:signup" data-plan="starter">Empezar gratis</a>
+      </div>
+
+      {/* Pro — featured, precio dinámico (id="price-pro"). */}
+      <div class="plan featured">
+        <div class="tag-pop">Más elegido</div>
+        <div class="pname">Pro</div>
+        <div class="pdesc">Para el negocio con vendedores y cuentas corrientes activas.</div>
+        <div class="price">
+          <span class="cur">USD </span>
+          <span class="num" id="price-pro">{FALLBACK_PRICES.pro}</span>
+          <span class="per">/mes</span>
+        </div>
+        <div class="pnote">14 días de prueba gratis</div>
+        <ul>
+          <li>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Incluido">
+              <path d="M5 12.5 10 17.5 20 7" />
+            </svg>
+            Hasta 10 usuarios
+          </li>
+          <li>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Incluido">
+              <path d="M5 12.5 10 17.5 20 7" />
+            </svg>
+            Los 7 módulos completos
+          </li>
+          <li>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Incluido">
+              <path d="M5 12.5 10 17.5 20 7" />
+            </svg>
+            Permisos por usuario
+          </li>
+          <li>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Incluido">
+              <path d="M5 12.5 10 17.5 20 7" />
+            </svg>
+            OCR ilimitado + Historial
+          </li>
+        </ul>
+        <a href="/signup" class="btn btn-primary" data-cta="pricing:signup" data-plan="pro">Empezar gratis</a>
+      </div>
+
+      {/* Enterprise — "A medida" hardcoded, CTA a Calendly. */}
+      <div class="plan">
+        <div class="pname">Enterprise</div>
+        <div class="pdesc">Para cadenas con varias sucursales y administración central.</div>
+        <div class="price"><span class="num u-fs-30">A medida</span></div>
+        <div class="pnote">Hablemos de tu operación</div>
+        <ul>
+          <li>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Incluido">
+              <path d="M5 12.5 10 17.5 20 7" />
+            </svg>
+            Usuarios ilimitados
+          </li>
+          <li>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Incluido">
+              <path d="M5 12.5 10 17.5 20 7" />
+            </svg>
+            Multi-equipo / multi-local
+          </li>
+          <li>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Incluido">
+              <path d="M5 12.5 10 17.5 20 7" />
+            </svg>
+            Soporte prioritario
+          </li>
+          <li>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Incluido">
+              <path d="M5 12.5 10 17.5 20 7" />
+            </svg>
+            Onboarding dedicado
+          </li>
+        </ul>
+        <a
+          href={calendlyHref('plan-multi-local')}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="btn"
+          data-cta="pricing:demo"
+          data-plan="multi-local"
+        >Contactar ventas</a>
+      </div>
+    </div>
+
+    <div class="price-note">Todos los planes incluyen actualizaciones, backups y soporte en español.</div>
+  </div>
+</section>
+
+<script>
+  // Hidratación client-side de los precios desde /api/public/pricing.
+  // AbortController + 8s timeout — mismo patrón que useLandingPricing.
+  // Fail silent: si el fetch falla, quedan los fallbacks del server render.
+  import { apiUrl } from '../lib/api';
+  import { reportLandingError } from '../lib/analytics';
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+
+  fetch(apiUrl('/api/public/pricing'), { signal: controller.signal })
+    .then((res) => {
+      if (!res.ok) throw new Error('http ' + res.status);
+      return res.json();
+    })
+    .then((data) => {
+      const prices = data?.prices;
+      if (!prices || typeof prices !== 'object') return;
+      for (const key of ['starter', 'pro'] as const) {
+        const val = prices[key];
+        if (typeof val === 'number' && val >= 0) {
+          const el = document.getElementById(`price-${key}`);
+          if (el) el.textContent = String(val);
+        }
+      }
+    })
+    .catch((err) => reportLandingError(err, { section: 'pricing' }))
+    .finally(() => clearTimeout(timer));
+</script>

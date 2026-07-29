@@ -1,0 +1,76 @@
+---
+/**
+ * ComoFunciona.astro — sección "Cómo funciona" con 4 steps.
+ *
+ * Port de `frontend/src/screens/Landing.jsx:301-356`.
+ * Contenido puramente estático — 100% SSG-friendly.
+ */
+
+const STEPS = [
+  {
+    n: '01',
+    title: 'Creá tu equipo',
+    body: 'Sumá a tus vendedores y administradores con permisos por módulo. Cada uno ve lo que le toca.',
+    icon: 'creaTuEquipo',
+  },
+  {
+    n: '02',
+    title: 'Cargá la operación',
+    body: 'Cotizá con un clic, subí comprobantes con foto y el OCR detecta el monto solo. Despachá envíos.',
+    icon: 'cargaLaOperacion',
+  },
+  {
+    n: '03',
+    title: 'Seguí los saldos',
+    body: 'Cuentas corrientes, deudas, inversiones y caja se actualizan en vivo. Sabés siempre quién te debe.',
+    icon: 'seguiSaldos',
+  },
+  {
+    n: '04',
+    title: 'Controlá todo',
+    body: 'Historial de auditoría con cada cambio. Quién hizo qué, cuándo y cuánto — sin sorpresas.',
+    icon: 'controlaTodo',
+  },
+] as const;
+---
+
+<section class="s" id="como">
+  <div class="wrap">
+    <div class="s-head center">
+      <div class="s-kicker">Cómo funciona</div>
+      <h2 class="s-title">De Excel al control total en cuatro pasos</h2>
+      <p class="s-sub">Sin migración dolorosa. Empezás a cargar y el portal arma la foto del negocio sola.</p>
+    </div>
+    <div class="steps">
+      {STEPS.map((step) => (
+        <div class="step">
+          <div class="n">{step.n}</div>
+          <div class="ico">
+            {step.icon === 'creaTuEquipo' && (
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M16 3h5v5"/><path d="M21 3 11 13"/><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/>
+              </svg>
+            )}
+            {step.icon === 'cargaLaOperacion' && (
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 7h8M8 11h8M8 15h5"/>
+              </svg>
+            )}
+            {step.icon === 'seguiSaldos' && (
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 17 9 11l4 4 8-9"/><path d="M14 6h7v7"/>
+              </svg>
+            )}
+            {step.icon === 'controlaTodo' && (
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6Z"/>
+              </svg>
+            )}
+          </div>
+          <h3>{step.title}</h3>
+          <p>{step.body}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>

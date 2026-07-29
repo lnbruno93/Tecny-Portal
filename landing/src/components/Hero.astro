@@ -1,0 +1,180 @@
+---
+/**
+ * Hero.astro — sección hero con headline, blurb, CTAs y mockup del portal.
+ *
+ * Port de `frontend/src/screens/Landing.jsx:203-284`.
+ *
+ * ── COPY (Fase 3, 2026-07-29) ─────────────────────────────────────────
+ * El copy default vive en `src/lib/heroVariants.ts` (DEFAULT_HERO). El
+ * server render usa el default — que es LO QUE INDEXA GOOGLE + LO QUE VEN
+ * los visitantes orgánicos sin UTM.
+ *
+ * Message match para Meta ADS: cuando el URL trae `?utm_campaign=starter|
+ * pro|enterprise`, un script client-side reemplaza el eyebrow + headline
+ * + blurb con la variante correspondiente (ver HERO_VARIANTS en el lib).
+ * Cliente 3-en-1 (Starter/Pro/Enterprise) con copy segment-specific.
+ *
+ * ── CTA HÍBRIDO (Fase 3) ──────────────────────────────────────────────
+ * Lucas eligió híbrido: "Empezá gratis" primary + "Ver demo" secondary,
+ * en HERO y en CTA-FINAL. Consistencia: mismo par de CTAs en los 2
+ * puntos de conversión.
+ *
+ * NOTA sobre el descartado "Ver cómo funciona" (scroll a #como): había
+ * argumento para dejarlo como discovery path para cold traffic de ADS.
+ * Trade-off perdido: el visitor cold puede querer explorar antes de
+ * convertir. Pero Meta ADS usualmente segmenta bien la audiencia — los
+ * que ven el ad ya tienen algún signal de intent (industria, comportamiento).
+ * Y "Ver demo" con Calendly es un lead capture concreto para Meta,
+ * mientras que un scroll interno no. Si CTR baja mucho vs baseline,
+ * evaluar volver al secondary "Ver cómo funciona" en el hero.
+ *
+ * ── CMS backend override ──────────────────────────────────────────────
+ * REMOVIDO en F3. El CMS del SPA (via useLandingCMS) permitía a Lucas
+ * editar hero desde admin.tecnyapp.com. En Astro:
+ *   1. Con variantes UTM en juego, un CMS override cross-cutting confunde
+ *      (¿qué gana, el CMS o el variant?). Complejidad no justificada
+ *      hasta que Lucas edite mucho.
+ *   2. El copy de Fase 3 está diseñado con investigación (los 4 problemas
+ *      del cliente + segmentación). Cambios ad-hoc pueden degradar CTR.
+ *   3. Si Lucas necesita editar, edita `heroVariants.ts` con commit +
+ *      push → rebuild Netlify automático. Auditable en git.
+ *
+ * NOTA sobre el mockup: hardcoded 1:1 con la landing actual (no vino ninguna
+ * refactor request). Es SVG + text inline — 0 JS, cero fetch.
+ */
+import { DEFAULT_HERO } from '../lib/heroVariants';
+import { calendlyHref } from '../lib/calendly';
+---
+
+<header class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <div class="eyebrow" id="hero-eyebrow">
+        <span class="dot"></span> {DEFAULT_HERO.eyebrow}
+      </div>
+
+      <h1 class="hero-h" id="hero-headline">{DEFAULT_HERO.headline}</h1>
+
+      <p
+        class="hero-sub u-landing-hero-sub"
+        id="hero-subheadline"
+        hidden={DEFAULT_HERO.subheadline === null}
+      >
+        {DEFAULT_HERO.subheadline}
+      </p>
+      <p class="hero-sub" id="hero-blurb">{DEFAULT_HERO.blurb}</p>
+
+      <div class="hero-actions">
+        <a href="/signup" class="btn btn-primary btn-lg" data-cta="hero:signup">
+          Empezá gratis
+        </a>
+        <a
+          href={calendlyHref('hero')}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="btn btn-lg"
+          data-cta="hero:demo"
+        >Agendá una demo</a>
+      </div>
+
+      <div class="hero-note">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 12.5 10 17.5 20 7" />
+        </svg>
+        Sin tarjeta · listo en minutos · soporte en español
+      </div>
+    </div>
+
+    {/* Product window — mockup del portal, idéntico al SPA */}
+    <div class="product-shot">
+      <div class="shot-chrome">
+        <span></span><span></span><span></span>
+        <div class="shot-url">app.tecnyapp.com/inicio</div>
+      </div>
+      <div class="shot-body">
+        <div class="shot-side">
+          <div class="sb"><span class="m">T</span> Tecny</div>
+          <div class="sh">Herramientas</div>
+          <div class="si on"><span class="d"></span>Inicio</div>
+          <div class="si"><span class="d"></span>Cotizador</div>
+          <div class="si"><span class="d"></span>Financiera</div>
+          <div class="si"><span class="d"></span>Cajas</div>
+          <div class="si"><span class="d"></span>Envíos</div>
+          <div class="si"><span class="d"></span>Cuentas CC</div>
+        </div>
+        <div class="shot-main">
+          <div class="shot-h">Buen día, Lucas</div>
+          <div class="shot-hsub">Martes 23 de mayo · 18 comprobantes hoy</div>
+          <div class="shot-kpis">
+            <div class="shot-kpi"><div class="l">Comprobantes</div><div class="v">18</div><div class="t">↗ +6</div></div>
+            <div class="shot-kpi"><div class="l">Cobrado neto</div><div class="v">13,06M</div><div class="t">↗ +12.4%</div></div>
+            <div class="shot-kpi"><div class="l">Saldo CC</div><div class="v">14,28M</div><div class="t u-color-muted">−3.1%</div></div>
+            <div class="shot-kpi"><div class="l">Envíos</div><div class="v">7</div><div class="t">↗ +1</div></div>
+          </div>
+          <div class="shot-row">
+            <div><div class="nm">Mac Center · #F-0421</div><div class="meta">Camila R. · Transferencia</div></div>
+            <div class="u-text-right"><div class="amt">ARS 4.280.000</div><span class="pill pill-pos">OCR 96%</span></div>
+          </div>
+          <div class="shot-row">
+            <div><div class="nm">Celular Express · #F-0420</div><div class="meta">Sofía P. · Depósito</div></div>
+            <div class="u-text-right"><div class="amt">ARS 1.840.000</div><span class="pill pill-amber">Pendiente</span></div>
+          </div>
+          <div class="shot-row">
+            <div><div class="nm">iStore Norte · #F-0419</div><div class="meta">Lucas I. · USD efectivo</div></div>
+            <div class="u-text-right"><div class="amt">USD 12.500</div><span class="pill pill-pos">OCR 95%</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<script>
+  /**
+   * Aplica variante del hero desde `?utm_campaign=starter|pro|enterprise`.
+   *
+   * Race condition tolerada: si el script corre después del initial paint
+   * (~50-100ms), el user ve el default por un instante y luego el swap.
+   * Aceptable para Meta ADS — LCP importa, flicker menor del h1 no impacta
+   * conversion measurable. Ver comentario del lib para el trade-off.
+   *
+   * Si el usuario no vino de una URL con UTM (visitante orgánico, referral
+   * directo), no ocurre nada — el default queda intacto. SEO OK.
+   */
+  import { getVariantFromUrl } from '../lib/heroVariants';
+  import { trackEvent } from '../lib/analytics';
+
+  const match = getVariantFromUrl(window.location.href);
+  if (match) {
+    const { hero } = match;
+    const eyebrow = document.getElementById('hero-eyebrow');
+    const headline = document.getElementById('hero-headline');
+    const subheadline = document.getElementById('hero-subheadline');
+    const blurb = document.getElementById('hero-blurb');
+
+    if (eyebrow) {
+      // Preservamos el <span class="dot"> — solo swap del texto que le sigue.
+      const dot = eyebrow.querySelector('.dot');
+      eyebrow.innerHTML = '';
+      if (dot) eyebrow.appendChild(dot);
+      eyebrow.appendChild(document.createTextNode(' ' + hero.eyebrow));
+    }
+    if (headline) headline.textContent = hero.headline;
+    if (subheadline) {
+      if (hero.subheadline) {
+        subheadline.textContent = hero.subheadline;
+        subheadline.hidden = false;
+      } else {
+        subheadline.hidden = true;
+      }
+    }
+    if (blurb) blurb.textContent = hero.blurb;
+
+    // Track para saber qué variante convierte más — Meta Events Manager
+    // consume esto via el dataLayer que instala en F4.
+    trackEvent('hero_variant_applied', {
+      variant: new URLSearchParams(window.location.search).get('utm_campaign') || 'none',
+    });
+  }
+</script>

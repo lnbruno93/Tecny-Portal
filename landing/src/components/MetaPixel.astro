@@ -1,0 +1,58 @@
+---
+/**
+ * MetaPixel.astro — instala Meta Pixel + track PageView + noscript fallback.
+ *
+ * Se monta en BaseLayout.astro dentro del <head>. Renderiza:
+ *   1. Un <meta> con el Pixel ID (leído por el <script> siguiente).
+ *   2. Un <script> bundleado que checa consent + inicializa Pixel + PageView.
+ *   3. Un <noscript><img> con el tracking pixel para browsers sin JS
+ *      (Meta lo recomienda oficial — mejor coverage aunque marginal).
+ *
+ * Si `PUBLIC_META_PIXEL_ID` no está seteado en env, no renderiza nada
+ * (dev local sin .env, por ejemplo). No rompe el build.
+ *
+ * Consent: el script verifica `isTrackingAllowed()` antes de instalar el
+ * Pixel. Si el usuario opt-out en el banner, Pixel NO se carga.
+ */
+const PIXEL_ID = import.meta.env.PUBLIC_META_PIXEL_ID;
+---
+
+{
+  PIXEL_ID && (
+    <>
+      <meta name="tecny:pixel-id" content={PIXEL_ID} />
+
+      <script>
+        {`
+          // Wrap en script tag como texto — Astro lo bundlea al asset externo.
+          // Le decimos qué hacer:
+        `}
+      </script>
+
+      <script>
+        import { isTrackingAllowed } from '../lib/consent';
+        import { pixelInit, pixelTrack } from '../lib/pixel';
+
+        const pixelIdMeta = document.querySelector<HTMLMetaElement>(
+          'meta[name="tecny:pixel-id"]'
+        );
+        const pixelId = pixelIdMeta?.content;
+
+        if (pixelId && isTrackingAllowed()) {
+          pixelInit(pixelId);
+          pixelTrack('PageView');
+        }
+      </script>
+
+      <noscript>
+        <img
+          height="1"
+          width="1"
+          style="display:none"
+          src={`https://www.facebook.com/tr?id=${PIXEL_ID}&ev=PageView&noscript=1`}
+          alt=""
+        />
+      </noscript>
+    </>
+  )
+}

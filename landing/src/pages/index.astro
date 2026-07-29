@@ -1,0 +1,269 @@
+---
+/**
+ * Home de tecnyapp.com — landing pública.
+ *
+ * Ensambla las 10 secciones portadas de `frontend/src/screens/Landing.jsx`
+ * a componentes Astro:
+ *   1. Nav (sticky con brand + links internos + CTAs)
+ *   2. Hero (headline + blurb + mockup del portal)
+ *   3. ComoFunciona (4 steps)
+ *   4. Modulos (6 features del producto)
+ *   5. FeatureHighlight (Cotizador con calculadora mock)
+ *   6. Precios (4 planes, fetch dinámico)
+ *   7. TrustedCompanies (carrusel, oculto si vacío)
+ *   8. Faq (6 defaults + hidratable desde CMS)
+ *   9. CtaFinal (CTA final antes del footer, texto editable)
+ *  10. Contacto (WhatsApp + Email + IG + address editables)
+ *  11. Footer
+ *
+ * TODO tiene que estar envuelto en <div class="tecny-landing"> — los
+ * selectores de `landing.css` están scoped a esa clase (var(--accent),
+ * var(--muted), etc. viven ahí). Fuera de ese scope el look se rompe.
+ *
+ * Analytics: cada CTA lleva `data-cta="location:target"` y hay UN listener
+ * global que hace `trackEvent('cta_click', {location, target})`. Cero
+ * handlers inline (CSP-friendly).
+ */
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Nav from '../components/Nav.astro';
+import Hero from '../components/Hero.astro';
+import ComoFunciona from '../components/ComoFunciona.astro';
+import Modulos from '../components/Modulos.astro';
+import FeatureHighlight from '../components/FeatureHighlight.astro';
+import Precios from '../components/Precios.astro';
+import TrustedCompanies from '../components/TrustedCompanies.astro';
+import Faq from '../components/Faq.astro';
+import CtaFinal from '../components/CtaFinal.astro';
+import Contacto from '../components/Contacto.astro';
+import Footer from '../components/Footer.astro';
+import { BACKEND_BASE } from '../lib/api';
+
+/**
+ * JSON-LD SoftwareApplication schema.
+ *
+ * Google Search Console lo consume para Rich Results (precio + moneda + rating
+ * en la SERP). Requiere que los datos SEAN estáticos en el HTML — el crawler
+ * NO ejecuta JS antes de indexar, así que un fetch client-side no sirve.
+ *
+ * Estrategia para evitar drift con el CMS backend:
+ *   1. Build-time fetch a /api/public/pricing (Astro top-level await).
+ *   2. Si el backend está caído al build, fallback a FALLBACK_PRICES (mismos
+ *      valores que Precios.astro renderiza).
+ *   3. Cuando Lucas cambia un precio desde admin.tecnyapp.com/planes, un
+ *      rebuild Netlify (via webhook — F6) refresca este JSON-LD.
+ *
+ * priceValidUntil: campo REQUERIDO por Google para offers. Usamos 30 días
+ * en el futuro (soft rolling window). Al rebuild se re-calcula. Sin este
+ * campo Google puede skippear la offer del rich result.
+ */
+
+// Fallbacks matcheados con FALLBACK_PRICES en Precios.astro.
+const FALLBACK_PRICES = { starter: 39, pro: 189 };
+let prices = FALLBACK_PRICES;
+try {
+  // Timeout ~5s — si el build no puede fetch en ese lapso, sigue con fallbacks.
+  // No queremos que un backend degradado rompa el deploy de la landing.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  const res = await fetch(`${BACKEND_BASE}/api/public/pricing`, {
+    signal: controller.signal,
+  });
+  clearTimeout(timer);
+  if (res.ok) {
+    const data = (await res.json()) as { prices?: { starter?: number; pro?: number } };
+    if (data?.prices && typeof data.prices.starter === 'number' && typeof data.prices.pro === 'number') {
+      prices = { starter: data.prices.starter, pro: data.prices.pro };
+    }
+  }
+} catch {
+  // Silent fallback — build sigue con FALLBACK_PRICES.
+}
+
+// priceValidUntil: 30 días desde el build. En cada rebuild se refresca.
+const priceValidUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+  .toISOString()
+  .split('T')[0];
+
+const softwareApplicationJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'Tecny',
+  description:
+    'Sistema operativo para revendedores de tecnología: cotizador, cuentas corrientes, cajas, envíos, comprobantes con OCR e inventario en una sola pantalla.',
+  applicationCategory: 'BusinessApplication',
+  operatingSystem: 'Web',
+  url: 'https://tecnyapp.com',
+  offers: [
+    {
+      '@type': 'Offer',
+      name: 'Starter',
+      price: String(prices.starter),
+      priceCurrency: 'USD',
+      priceValidUntil,
+      availability: 'https://schema.org/InStock',
+      description: 'Plan para revendedor independiente. 1 usuario, cotizador + usados, financiera básica, 50 OCR/mes.',
+    },
+    {
+      '@type': 'Offer',
+      name: 'Pro',
+      price: String(prices.pro),
+      priceCurrency: 'USD',
+      priceValidUntil,
+      availability: 'https://schema.org/InStock',
+      description: 'Plan para equipos con vendedores. Hasta 10 usuarios, los 7 módulos completos, permisos por usuario, OCR ilimitado.',
+    },
+  ],
+  publisher: {
+    '@type': 'Organization',
+    name: 'Tecny',
+    url: 'https://tecnyapp.com',
+    // sameAs pending: agregar cuando IG/LinkedIn oficiales estén activos.
+  },
+};
+---
+
+<BaseLayout>
+  <Fragment slot="head">
+    <script
+      type="application/ld+json"
+      is:inline
+      set:html={JSON.stringify(softwareApplicationJsonLd)}
+    />
+  </Fragment>
+  <div class="tecny-landing">
+    <Nav />
+    <Hero />
+    <ComoFunciona />
+    <Modulos />
+    <FeatureHighlight />
+    <Precios />
+    <TrustedCompanies />
+    <Faq />
+    <CtaFinal />
+    <Contacto />
+    <Footer />
+  </div>
+</BaseLayout>
+
+<script>
+  /**
+   * Analytics globales de la landing.
+   *
+   * ── DUAL PIPELINE ─────────────────────────────────────────────────
+   *   1. dataLayer (provider-agnóstico) — emite TODOS los eventos con
+   *      nombres estables. Consumible por GTM/GA4/PostHog cuando se
+   *      instalen (F4b/futuro).
+   *   2. Meta Pixel — mapea los eventos "de conversión" a Standard Events
+   *      de Meta (Lead, Contact, Schedule, ViewContent, PageView). Meta
+   *      optimiza campañas de ADS sobre estos eventos.
+   *
+   * ── DEDUP con CAPI ────────────────────────────────────────────────
+   *   Cada llamada a `pixelTrack()` devuelve un `event_id`. Cuando F4b
+   *   (backend CAPI) esté listo, el mismo `event_id` se enviará al backend
+   *   → Meta dedupea automáticamente por (event_name, event_id). Doble
+   *   cobertura sin doble counting.
+   *
+   * ── MAPPING dataLayer → Pixel ─────────────────────────────────────
+   *   cta_click hero:signup           → Lead
+   *   cta_click cta-final:signup      → Lead
+   *   cta_click pricing:signup        → Lead (con plan como content_name)
+   *   cta_click nav:demo              → Schedule
+   *   cta_click hero:demo             → Schedule
+   *   cta_click cta-final:demo        → Schedule
+   *   cta_click pricing:demo          → Schedule (Enterprise)
+   *   cta_click contacto:whatsapp     → Contact
+   *   cta_click contacto:email        → Contact
+   *   50% scroll                      → ViewContent
+   *   PageView                        → auto en MetaPixel.astro
+   */
+  import { trackEvent, markPerformance, measurePerformance } from '../lib/analytics';
+  import { pixelTrack, pixelTrackCustom } from '../lib/pixel';
+  import { ga4Track } from '../lib/ga4';
+  import { isTrackingAllowed } from '../lib/consent';
+
+  trackEvent('landing_view', { url: window.location.href });
+  markPerformance('landing-mount');
+
+  window.addEventListener('load', () => {
+    markPerformance('landing-content-ready');
+    measurePerformance('landing-content-time', 'landing-mount', 'landing-content-ready');
+    trackEvent('landing_content_ready');
+  });
+
+  // ── Wire CTAs → dataLayer + Meta Pixel ──────────────────────────────
+  document.querySelectorAll<HTMLElement>('[data-cta]').forEach((el) => {
+    el.addEventListener('click', () => {
+      const raw = el.dataset.cta || '';
+      const [location, target] = raw.split(':');
+      const plan = el.dataset.plan;
+
+      // 1. Emit al dataLayer (provider-agnóstico)
+      trackEvent('cta_click', { location, target, ...(plan ? { plan } : {}) });
+
+      // 2. Emit al Pixel + GA4 — SOLO si consent OK y evento mapea a Standard.
+      if (!isTrackingAllowed()) return;
+
+      // Mapping a Standard Events. Los nombres difieren entre Meta y GA4
+      // (Lead vs generate_lead, Schedule vs schedule, Contact vs contact)
+      // pero semántica idéntica. Cada plataforma optimiza sobre los suyos.
+      if (target === 'signup') {
+        pixelTrack('Lead', {
+          content_name: plan || 'landing',
+          content_category: location,
+        });
+        ga4Track('generate_lead', {
+          method: 'landing_cta',
+          content_name: plan || 'landing',
+          content_location: location,
+        });
+      } else if (target === 'demo') {
+        pixelTrack('Schedule', {
+          content_name: plan || 'demo',
+          content_category: location,
+        });
+        ga4Track('schedule', {
+          content_name: plan || 'demo',
+          content_location: location,
+        });
+      } else if (target === 'whatsapp' || target === 'email') {
+        pixelTrack('Contact', {
+          content_name: target,
+          content_category: location,
+        });
+        ga4Track('contact', {
+          method: target,
+          content_location: location,
+        });
+      } else {
+        // Otros CTAs (login, crear cuenta, instagram, scroll-como) los
+        // trackeamos como CustomEvent — no son conversion signals fuertes.
+        pixelTrackCustom('CTAClick', { location, target });
+        ga4Track('cta_click_secondary', { location, target });
+      }
+    });
+  });
+
+  // ── ViewContent al 50% scroll (F4) ──────────────────────────────────
+  // Meta ViewContent + GA4 view_item. Signal de intent — el usuario leyó
+  // al menos la mitad. Meta lo usa para audiencias custom (retargeting).
+  //
+  // Emit 1 vez por page load — no repite si el user hace scroll up/down.
+  if (isTrackingAllowed()) {
+    let viewContentEmitted = false;
+    window.addEventListener(
+      'scroll',
+      () => {
+        if (viewContentEmitted) return;
+        const scrolled = window.scrollY + window.innerHeight;
+        const total = document.documentElement.scrollHeight;
+        if (scrolled / total >= 0.5) {
+          viewContentEmitted = true;
+          pixelTrack('ViewContent', { content_name: 'landing_scroll_50' });
+          ga4Track('view_item', { item_id: 'landing_scroll_50' });
+          trackEvent('landing_scroll_50');
+        }
+      },
+      { passive: true }
+    );
+  }
+</script>

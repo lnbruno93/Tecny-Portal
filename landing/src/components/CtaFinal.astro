@@ -1,0 +1,66 @@
+---
+/**
+ * CtaFinal.astro — sección CTA final antes del footer.
+ *
+ * Port de `frontend/src/screens/Landing.jsx:711-739` + rewrite Fase 3.
+ *
+ * ── COPY Fase 3 ──────────────────────────────────────────────────────
+ * Default: DEFAULT_CTA de `src/lib/heroVariants.ts` — matcheado tonalmente
+ * con DEFAULT_HERO. Cliente-céntrico ("Empezá gratis. Sin tarjeta") en vez
+ * del anterior "Ordená tu negocio hoy" (verb pattern imperativo genérico).
+ *
+ * ── Variantes UTM ────────────────────────────────────────────────────
+ * Mismo pattern que Hero: script client-side lee `?utm_campaign=X` y
+ * reemplaza headline + body si matchea starter|pro|enterprise. Copy por
+ * variante en CTA_VARIANTS del lib.
+ *
+ * ── CTA híbrido ──────────────────────────────────────────────────────
+ * "Empezá gratis" primary (a /signup) + "Agendá una demo" secondary
+ * (Calendly con utm_campaign=cta-final). Este es el momento de conversion
+ * — el visitor scrolleó todo, está en pico de intent, dos caminos válidos:
+ * self-service o high-touch.
+ *
+ * ── CMS backend override ─────────────────────────────────────────────
+ * REMOVIDO en F3 — mismo criterio que Hero (ver comentario allí).
+ */
+import { calendlyHref } from '../lib/calendly';
+import { DEFAULT_CTA } from '../lib/heroVariants';
+---
+
+<section class="s">
+  <div class="wrap">
+    <div class="cta-final">
+      <h2 id="cta-final-headline">{DEFAULT_CTA.headline}</h2>
+      <p id="cta-final-body">{DEFAULT_CTA.body}</p>
+      <div class="hero-actions">
+        <a href="/signup" class="btn btn-primary btn-lg" data-cta="cta-final:signup">
+          Empezá gratis
+        </a>
+        <a
+          href={calendlyHref('cta-final')}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="btn btn-lg"
+          data-cta="cta-final:demo"
+        >Agendá una demo</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  /**
+   * Aplica variante del cta-final desde `?utm_campaign=X`. Mismo pattern
+   * que Hero — race condition tolerada, solo texto (no cambia CTA layout).
+   */
+  import { getVariantFromUrl } from '../lib/heroVariants';
+
+  const match = getVariantFromUrl(window.location.href);
+  if (match) {
+    const { cta } = match;
+    const h = document.getElementById('cta-final-headline');
+    const b = document.getElementById('cta-final-body');
+    if (h) h.textContent = cta.headline;
+    if (b) b.textContent = cta.body;
+  }
+</script>

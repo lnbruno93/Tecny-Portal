@@ -1,0 +1,40 @@
+/* Global styles for tecnyapp.com landing.
+ *
+ * Tailwind v4: import "tailwindcss" reemplaza el trio legacy
+ * @tailwind base/components/utilities. Config vive en el mismo CSS via
+ * @theme (custom colors, fonts, breakpoints) — sin tailwind.config.js.
+ *
+ * Dark theme replicando la landing actual (Landing.css:1-40) — mismos
+ * tokens de color para que la migración visual sea 1:1.
+ */
+@import "tailwindcss";
+
+@theme {
+  /* Colores base — matching Landing.css var(--bg), var(--fg), etc. */
+  --color-tecny-bg: #0a0e18;
+  --color-tecny-surface: #10162a;
+  --color-tecny-surface-2: #0d1324;
+  --color-tecny-border: #1e2846;
+  --color-tecny-fg: #e6ecff;
+  --color-tecny-fg-muted: #94a3d6;
+  --color-tecny-accent: #7c9dff;
+  --color-tecny-accent-2: #a78bfa;
+
+  /* Fonts — Inter (UI) + JetBrains Mono (code/data) — mismos que SPA actual. */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* Reset selectivo: heredamos font-sans + bg oscuro globalmente para que
+ * cualquier page dentro de src/pages arranque con el look correcto. */
+html {
+  background-color: var(--color-tecny-bg);
+  color: var(--color-tecny-fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  scroll-behavior: smooth;
+}
+
+body {
+  overflow-x: hidden; /* defensivo — mismo motivo que Landing.css */
+}

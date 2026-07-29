@@ -1,0 +1,27 @@
+# robots.txt para tecnyapp.com landing.
+#
+# Reglas de rastreo:
+#   1. Todo el resto: permitido (bots indexan la landing).
+#   2. Rutas de la app SaaS (/login, /signup, /verify-email, /forgot-password,
+#      /reset-password, /publico/*): DISALLOW porque son parte del portal
+#      auth. NO queremos que Google indexee páginas de login o de tokens
+#      públicos que expiran. Match pattern coincide con el proxy Netlify
+#      que armamos en F6 (esas rutas se rewritean al site tecny-portal).
+#   3. /api/*: DISALLOW por si Netlify hace passthrough al backend.
+#      Los endpoints públicos igual devuelven JSON (Google ignora).
+#
+# Sitemap: referenciado explícitamente para maximizar chances de discovery
+# (Google Search Console también acepta sitemap-index.xml pero robots.txt
+# es el estándar cross-buscador).
+
+User-agent: *
+Allow: /
+Disallow: /login
+Disallow: /signup
+Disallow: /verify-email
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /publico/
+Disallow: /api/
+
+Sitemap: https://tecnyapp.com/sitemap-index.xml

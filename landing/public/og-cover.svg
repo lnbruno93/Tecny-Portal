@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <!--
+    OG image para tecnyapp.com — se sirve como og-cover.png (convertido via
+    scripts/generate-og.mjs). Meta ADS y previews sociales lo consumen.
+
+    Diseño: dark theme matcheando la landing. Radial gradient decorativo en
+    esquina + brand logo T + headline "Tu negocio en una pantalla" + sub +
+    URL. 1200×630px = 1.91:1 aspect ratio (spec recomendada Facebook/Twitter/
+    LinkedIn/WhatsApp).
+
+    Fonts: Inter Bold/Semibold. SVG usa font-family con fallbacks — resvg
+    resolve las que el sistema tenga. Al build en Netlify (Linux), Inter
+    debe estar en el sistema o se cae a system-ui. Aceptable para OG image
+    porque el rendering es one-shot (no dinámico).
+  -->
+
+  <defs>
+    <radialGradient id="glow" cx="70%" cy="30%" r="60%">
+      <stop offset="0%" stop-color="#0ea5e9" stop-opacity="0.25" />
+      <stop offset="60%" stop-color="#0ea5e9" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="logoBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0ea5e9" />
+      <stop offset="100%" stop-color="#38bdf8" />
+    </linearGradient>
+  </defs>
+
+  <!-- Fondo dark base -->
+  <rect width="1200" height="630" fill="#0a0e18" />
+
+  <!-- Glow decorativo -->
+  <rect width="1200" height="630" fill="url(#glow)" />
+
+  <!-- Brand logo top-left: T box + "Tecny" -->
+  <g transform="translate(80, 80)">
+    <rect x="0" y="0" width="72" height="72" rx="16" fill="url(#logoBg)" />
+    <text x="36" y="52" text-anchor="middle" font-family="Inter, system-ui, sans-serif"
+          font-size="42" font-weight="800" fill="#04253a" letter-spacing="-2">T</text>
+    <text x="100" y="52" font-family="Inter, system-ui, sans-serif"
+          font-size="34" font-weight="700" fill="#e8ecf6" letter-spacing="-1">Tecny</text>
+  </g>
+
+  <!-- Eyebrow chip -->
+  <g transform="translate(80, 260)">
+    <rect x="0" y="0" width="480" height="46" rx="23" fill="rgba(14,165,233,0.15)" stroke="rgba(14,165,233,0.35)" stroke-width="1.5"/>
+    <circle cx="26" cy="23" r="5" fill="#0ea5e9"/>
+    <text x="45" y="30" font-family="Inter, system-ui, sans-serif"
+          font-size="17" font-weight="600" fill="#38bdf8" letter-spacing="0.5">
+      El sistema para revendedores de tecnología
+    </text>
+  </g>
+
+  <!-- Headline principal -->
+  <text x="80" y="380" font-family="Inter, system-ui, sans-serif"
+        font-size="64" font-weight="800" fill="#e8ecf6" letter-spacing="-2.5">
+    Tu negocio en una pantalla.
+  </text>
+  <text x="80" y="450" font-family="Inter, system-ui, sans-serif"
+        font-size="64" font-weight="800" fill="#0ea5e9" letter-spacing="-2.5">
+    Sin planillas ni WhatsApp caótico.
+  </text>
+
+  <!-- Bullets valor -->
+  <g transform="translate(80, 510)">
+    <g transform="translate(0, 0)">
+      <circle cx="10" cy="10" r="4" fill="#4ade80"/>
+      <text x="26" y="15" font-family="Inter, system-ui, sans-serif"
+            font-size="18" font-weight="500" fill="#b8c1d6">
+        Cotizador
+      </text>
+    </g>
+    <g transform="translate(150, 0)">
+      <circle cx="10" cy="10" r="4" fill="#4ade80"/>
+      <text x="26" y="15" font-family="Inter, system-ui, sans-serif"
+            font-size="18" font-weight="500" fill="#b8c1d6">
+        OCR de comprobantes
+      </text>
+    </g>
+    <g transform="translate(400, 0)">
+      <circle cx="10" cy="10" r="4" fill="#4ade80"/>
+      <text x="26" y="15" font-family="Inter, system-ui, sans-serif"
+            font-size="18" font-weight="500" fill="#b8c1d6">
+        Cuentas corrientes
+      </text>
+    </g>
+    <g transform="translate(650, 0)">
+      <circle cx="10" cy="10" r="4" fill="#4ade80"/>
+      <text x="26" y="15" font-family="Inter, system-ui, sans-serif"
+            font-size="18" font-weight="500" fill="#b8c1d6">
+        Envíos + cajas
+      </text>
+    </g>
+  </g>
+
+  <!-- URL bottom-right -->
+  <text x="1120" y="590" text-anchor="end" font-family="Inter, system-ui, sans-serif"
+        font-size="22" font-weight="600" fill="#7c87a5" letter-spacing="0.5">
+    tecnyapp.com
+  </text>
+
+  <!-- CTA badge bottom-left -->
+  <g transform="translate(80, 560)">
+    <rect x="0" y="0" width="240" height="42" rx="10" fill="#0ea5e9"/>
+    <text x="120" y="27" text-anchor="middle" font-family="Inter, system-ui, sans-serif"
+          font-size="16" font-weight="700" fill="#04253a">
+      Empezá gratis 14 días
+    </text>
+  </g>
+</svg>

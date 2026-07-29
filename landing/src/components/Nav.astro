@@ -1,0 +1,56 @@
+---
+/**
+ * Nav.astro — barra de navegación sticky con brand + links internos + CTAs.
+ *
+ * Port de la sección NAV de `frontend/src/screens/Landing.jsx:166-201`.
+ *
+ * CTAs:
+ *   - "Iniciar sesión" / "Crear cuenta" → rutas de la app SPA (siguen viviendo
+ *     en tecny-portal Netlify, proxyeadas desde acá en F6).
+ *   - "Solicitá una demo" → Calendly con utm_campaign=nav.
+ *
+ * Eventos: `cta_click` con `{location: 'nav', target: 'login'|'signup'|'demo'}`.
+ * El script inline al final del componente wire-ea los click handlers para
+ * pushear al dataLayer sin necesidad de islands React.
+ */
+import { calendlyHref } from '../lib/calendly';
+---
+
+<nav class="nav">
+  <div class="nav-inner">
+    <div class="brand"><span class="mk">T</span> Tecny</div>
+    <div class="nav-links">
+      <a href="#como">Cómo funciona</a>
+      <a href="#modulos">Módulos</a>
+      <a href="#precios">Precios</a>
+      <a href="#faq">FAQ</a>
+    </div>
+    <div class="nav-cta">
+      <a href="/login" class="btn btn-ghost" data-cta="nav:login">Iniciar sesión</a>
+      <a href="/signup" class="btn btn-ghost" data-cta="nav:signup">Crear cuenta</a>
+      <a
+        href={calendlyHref('nav')}
+        target="_blank"
+        rel="noopener noreferrer"
+        class="btn btn-primary"
+        data-cta="nav:demo"
+      >Solicitá una demo</a>
+    </div>
+  </div>
+</nav>
+
+<script>
+  // Wire de CTAs vía delegación de eventos — 1 listener global para todos los
+  // botones con `data-cta="location:target"`. Cero handlers inline en HTML
+  // (CSP-friendly: no `onclick=""`). Import estático de trackEvent, que
+  // Astro bundlea al asset final.
+  import { trackEvent } from '../lib/analytics';
+
+  document.querySelectorAll<HTMLElement>('[data-cta]').forEach((el) => {
+    el.addEventListener('click', () => {
+      const raw = el.dataset.cta || '';
+      const [location, target] = raw.split(':');
+      trackEvent('cta_click', { location, target });
+    });
+  });
+</script>
