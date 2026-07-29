@@ -164,23 +164,32 @@ function expectedCspFor(site, context) {
   if (!backendUrls) throw new Error(`context desconocido para backend URLs: ${context}`);
   return {
     ...COMMON_DIRECTIVES,
-    // connect-src: 'self' + backend(s) del contexto + hCaptcha + Google Fonts.
+    // connect-src: 'self' + backend(s) del contexto + hCaptcha + Google Fonts (2 dominios).
     // Sprint 1 audit 07-25 · Fix 10: se compone por contexto (antes era
     // COMMON con prod+staging siempre).
     //
     // 2026-07-28 (Sentry noise fix TECNY-PORTAL-BACKEND-1B, 378 events/14d):
-    // el Service Worker de Vite PWA hace `fetch()` a fonts.googleapis.com
-    // para pre-cachear el CSS de Inter/JetBrains Mono. `style-src` ya lo
-    // permitía, pero `fetch()` va contra `connect-src`. Sin este dominio,
-    // el SW disparaba una CSP violation por cada usuario en cada primer
-    // load (~800 events/mes solo por eso). Efecto colateral silencioso:
-    // el CSS de Google Fonts NO se pre-cacheaba, primer load de cada user
-    // era más lento (~200ms extra en 3G).
+    // el Service Worker de Vite PWA hace `fetch()` a Google Fonts para
+    // pre-cachear Inter/JetBrains Mono. Necesita AMBOS dominios:
+    //   · fonts.googleapis.com → CSS con @font-face declarations
+    //   · fonts.gstatic.com    → binarios .woff2 reales
+    // `style-src`/`font-src` ya los permitían para el browser cargando fonts
+    // normalmente, pero `fetch()` del SW va contra `connect-src`.
+    //
+    // 2026-07-29 (regression del fix parcial anterior): el commit del 07-28
+    // agregó SOLO fonts.googleapis.com pensando que era suficiente. Sentry
+    // marcó el issue como regressed ~3h después con blocked_uri de una .woff2
+    // de fonts.gstatic.com → SW pre-cachea PRIMERO el CSS (googleapis) y
+    // DESPUÉS los binarios (gstatic). Los dos dominios son necesarios en
+    // connect-src. Sin gstatic el SW falla en pre-cachear las fuentes → primer
+    // load sigue siendo ~200ms más lento en 3G (efecto colateral silencioso
+    // que el fix inicial pretendía eliminar).
     'connect-src': [
       "'self'",
       ...backendUrls,
       'https://*.hcaptcha.com',
       'https://fonts.googleapis.com',
+      'https://fonts.gstatic.com',
     ],
     // img-src: base del site (self, data:, opcional blob:) + backend(s) del contexto.
     'img-src': [
