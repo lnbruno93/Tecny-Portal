@@ -31,20 +31,45 @@
 
 [build.environment]
   NODE_VERSION = "22"
-  # VITE_API_URL no aplica acá — Astro no consume backend en build. El
-  # fetch client-side de precios/CMS lee la URL desde una variable pública
-  # (PUBLIC_API_URL) que se setea abajo por contexto.
+  # PUBLIC_API_URL: leída por src/lib/api.ts al build (import.meta.env.
+  # PUBLIC_API_URL) para armar fetches del CMS backend. Env por contexto.
   PUBLIC_API_URL = "https://tecny-backend-production.up.railway.app"
+  # PUBLIC_META_PIXEL_ID (F4, 2026-07-29): ID del Meta Pixel de Lucas.
+  # Consumido por src/components/MetaPixel.astro. Es PÚBLICO por design
+  # de Meta (cualquiera lo lee en el HTML) — safe commitear en el TOML.
+  # Si Lucas rota el pixel, cambiar acá + rebuild.
+  PUBLIC_META_PIXEL_ID = "2418492122007058"
+  # PUBLIC_GA4_MEASUREMENT_ID (F4, 2026-07-29): Google Analytics 4.
+  # También PÚBLICO por design (aparece en el <script> gtag). Cambio =
+  # rebuild. Property GA4 de Lucas: G-GVJR5D9VSP.
+  PUBLIC_GA4_MEASUREMENT_ID = "G-GVJR5D9VSP"
 
 [context.branch-deploy.environment]
   PUBLIC_API_URL = "https://tecny-backend-staging.up.railway.app"
+  # Staging comparte el mismo Pixel + GA4 prod. Si a futuro querés
+  # separación (evitar mezclar traffic sintético con real), agregar
+  # IDs staging acá. Meta y GA4 ambos permiten multi-property.
+  PUBLIC_META_PIXEL_ID = "2418492122007058"
+  PUBLIC_GA4_MEASUREMENT_ID = "G-GVJR5D9VSP"
 
 [context.deploy-preview.environment]
   PUBLIC_API_URL = "https://tecny-backend-staging.up.railway.app"
+  PUBLIC_META_PIXEL_ID = "2418492122007058"
+  PUBLIC_GA4_MEASUREMENT_ID = "G-GVJR5D9VSP"
 
-# Headers globales — mismos que el site portal (root netlify.toml) menos CSP.
-# CSP se define en Fase 4 (Meta Pixel + CAPI) porque cambia la superficie
-# permitida (facebook.net, facebook.com, google-analytics.com).
+# Headers globales.
+#
+# CSP (F4): permite Meta Pixel (script + img + connect a facebook.net/.com)
+# y Google Fonts (style-src, font-src). NO Google Analytics todavía —
+# se agrega cuando Lucas comparta measurement ID (F4b).
+#
+# script-src 'unsafe-inline' temporal (F4 MVP): el snippet oficial de Meta
+# es inline con IIFE — no bundleable sin modificar. F4b HARDENING: calcular
+# SHA256 del snippet exacto y reemplazar 'unsafe-inline' por 'sha256-XXX='.
+# Tech debt tracked, no bloquea F4.
+#
+# frame-ancestors 'none' + X-Frame-Options DENY: protección clickjacking
+# doble (defense in depth — mismo pattern que root netlify.toml).
 [[headers]]
   for = "/*"
   [headers.values]
@@ -53,6 +78,7 @@
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
     Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https://connect.facebook.net https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://www.facebook.com https://*.facebook.com https://www.google-analytics.com https://*.google-analytics.com https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app https://www.facebook.com https://*.facebook.com https://www.google-analytics.com https://*.google-analytics.com https://www.googletagmanager.com; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
 
 # Static assets cacheados agresivamente — Astro genera hash-based filenames
 # para JS/CSS/imgs procesados, safe para immutable.

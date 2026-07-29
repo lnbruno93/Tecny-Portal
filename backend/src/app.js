@@ -162,6 +162,8 @@ const superAdminTeamRoutes       = require('./routes/superAdminTeam');
 // 2026-07-01 #499: público. Verificar + aceptar la invitación via el link
 // del email (SIN auth previa — el invitado todavía no tiene cuenta).
 const publicSuperAdminInviteRoutes = require('./routes/publicSuperAdminInvite');
+// 2026-07-29 F4 Landing Astro: Meta Conversions API (CAPI) proxy.
+const publicPixelCapiRoutes = require('./routes/publicPixelCapi');
 const publicRoutes       = require('./routes/public');
 
 const requireAuth       = require('./middleware/auth');
@@ -1038,6 +1040,14 @@ app.use('/api/public',        publicRoutes);
 // cubierto por el globalLimiter existente. Los endpoints tienen sus propios
 // checks de token TTL/revocado/aceptado.
 app.use('/api/public/super-admin-invite', signupLimiter, publicSuperAdminInviteRoutes);
+
+// 2026-07-29 F4 Landing Astro: Meta Conversions API proxy.
+// Endpoint POST /api/public/pixel-capi recibe eventos del Pixel client-side
+// (landing tecnyapp.com) y los forwardea a Meta Graph API con el token
+// server-side. Cubre iOS ATT + adblock gaps del Pixel client (~30% más
+// events capturados). El propio route tiene rate limit (60/min/IP) y
+// silent-fail si CAPI_TOKEN no está seteado — safe deploy antes de config.
+app.use('/api/public/pixel-capi', publicPixelCapiRoutes);
 
 // Feature flags (M-08 GRAN auditoría 2026-06-10). Sistema minimalista on/off
 // global. GET / es accesible a cualquier user logueado (lo lee el frontend

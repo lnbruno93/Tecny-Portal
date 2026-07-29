@@ -1,0 +1,130 @@
+---
+/**
+ * ConsentBanner.astro — banner discreto abajo-derecha con opt-out de tracking.
+ *
+ * Modelo LEGÍTIMO INTERÉS (ver src/lib/consent.ts):
+ *   - Tracking activo por default.
+ *   - Banner solo aparece la 1ra vez que el user visita (hasSeenBanner()).
+ *   - "Entendido" → marca seen, banner desaparece, tracking sigue activo.
+ *   - "Rechazar" → opt-out + marca seen + recarga para desactivar Pixel.
+ *
+ * Estilos inline mínimos (no vive en landing.css por scope diferente —
+ * ConsentBanner puede aparecer fuera de .tecny-landing en el futuro si
+ * agregamos más pages, ej /precios). Design tokens matcheados a la landing.
+ *
+ * A11y:
+ *   - role="dialog" + aria-live="polite" para screen readers.
+ *   - Buttons con labels descriptivos.
+ *   - Contraste 4.5:1 verificado en fondos oscuros.
+ */
+---
+
+<div
+  id="consent-banner"
+  role="dialog"
+  aria-live="polite"
+  aria-labelledby="consent-banner-text"
+  hidden
+  data-consent-banner
+>
+  <p id="consent-banner-text">
+    Usamos cookies para mejorar tu experiencia y medir el uso de la landing.
+    <a href="/privacy" data-consent-link>Ver política</a>.
+  </p>
+  <div class="consent-actions">
+    <button type="button" data-consent-reject class="consent-btn consent-btn-ghost">
+      Rechazar
+    </button>
+    <button type="button" data-consent-accept class="consent-btn consent-btn-primary">
+      Entendido
+    </button>
+  </div>
+</div>
+
+<style>
+  #consent-banner {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    max-width: 380px;
+    padding: 16px 18px;
+    background: #131a2b;
+    border: 1px solid #2c3656;
+    border-radius: 12px;
+    box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.5);
+    color: #e8ecf6;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 13.5px;
+    line-height: 1.5;
+    z-index: 9999;
+  }
+  #consent-banner p {
+    margin: 0 0 12px;
+    color: #b8c1d6;
+  }
+  #consent-banner a {
+    color: #38bdf8;
+    text-decoration: underline;
+  }
+  .consent-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+  .consent-btn {
+    padding: 8px 14px;
+    border-radius: 8px;
+    font: 600 13px/1 'Inter', sans-serif;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: 0.14s;
+  }
+  .consent-btn-ghost {
+    background: transparent;
+    color: #b8c1d6;
+    border-color: #2c3656;
+  }
+  .consent-btn-ghost:hover {
+    background: #1a2238;
+    color: #e8ecf6;
+  }
+  .consent-btn-primary {
+    background: #0ea5e9;
+    color: #04253a;
+  }
+  .consent-btn-primary:hover {
+    background: #38bdf8;
+  }
+  /* Mobile: full-width bottom */
+  @media (max-width: 480px) {
+    #consent-banner {
+      bottom: 12px;
+      right: 12px;
+      left: 12px;
+      max-width: none;
+    }
+  }
+</style>
+
+<script>
+  import { hasSeenBanner, markBannerSeen, optOut } from '../lib/consent';
+
+  const banner = document.querySelector<HTMLElement>('[data-consent-banner]');
+  if (banner && !hasSeenBanner()) {
+    banner.hidden = false;
+  }
+
+  document.querySelector<HTMLButtonElement>('[data-consent-accept]')?.addEventListener('click', () => {
+    markBannerSeen();
+    if (banner) banner.hidden = true;
+  });
+
+  document.querySelector<HTMLButtonElement>('[data-consent-reject]')?.addEventListener('click', () => {
+    optOut();
+    markBannerSeen();
+    if (banner) banner.hidden = true;
+    // Reload para desinstalar el Pixel + GA4 que ya se hayan cargado en
+    // esta sesión (el opt-out solo afecta próximos loads sin reload).
+    window.location.reload();
+  });
+</script>

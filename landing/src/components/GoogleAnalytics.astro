@@ -1,0 +1,37 @@
+---
+/**
+ * GoogleAnalytics.astro — instala GA4 (gtag) + config del measurement ID.
+ *
+ * Similar pattern a MetaPixel.astro:
+ *   - Se monta en BaseLayout dentro del <head>.
+ *   - Script bundleado verifica consent + inicializa GA4.
+ *   - Si `PUBLIC_GA4_MEASUREMENT_ID` no está seteado, no renderiza.
+ *
+ * Comparte `window.dataLayer` con Meta Pixel — mismo array, no conflicto.
+ * Los eventos custom del dataLayer NO se envían auto a GA4 (GA4 solo lee
+ * eventos gtag). Nuestro mapping explícito en index.astro dispara ambos.
+ */
+const GA4_ID = import.meta.env.PUBLIC_GA4_MEASUREMENT_ID;
+---
+
+{
+  GA4_ID && (
+    <>
+      <meta name="tecny:ga4-id" content={GA4_ID} />
+
+      <script>
+        import { isTrackingAllowed } from '../lib/consent';
+        import { ga4Init } from '../lib/ga4';
+
+        const ga4IdMeta = document.querySelector<HTMLMetaElement>(
+          'meta[name="tecny:ga4-id"]'
+        );
+        const ga4Id = ga4IdMeta?.content;
+
+        if (ga4Id && isTrackingAllowed()) {
+          ga4Init(ga4Id);
+        }
+      </script>
+    </>
+  )
+}

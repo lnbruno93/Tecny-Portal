@@ -16,6 +16,9 @@
  */
 import '../styles/global.css';
 import '../styles/landing.css';
+import MetaPixel from '../components/MetaPixel.astro';
+import GoogleAnalytics from '../components/GoogleAnalytics.astro';
+import ConsentBanner from '../components/ConsentBanner.astro';
 
 interface Props {
   title?: string;
@@ -90,10 +93,24 @@ const canonical = new URL(Astro.url.pathname, Astro.site).toString();
       window.dataLayer = window.dataLayer || [];
     </script>
 
+    {/* Meta Pixel (F4) — carga el snippet oficial + track PageView si
+        consent OK. Va ANTES del slot head para que otros scripts puedan
+        depender de window.fbq si lo necesitan. */}
+    <MetaPixel />
+
+    {/* Google Analytics 4 (F4) — gtag config + auto page_view. Mismo
+        pattern condicional a consent. Comparte window.dataLayer con Pixel. */}
+    <GoogleAnalytics />
+
     {/* Slot para <head> extra por page: JSON-LD, meta overrides, etc. */}
     <slot name="head" />
   </head>
   <body>
     <slot />
+
+    {/* Consent banner (F4) — se renderea al final del body para que aparezca
+        DESPUÉS del contenido principal. Solo visible la 1ra vez que el user
+        entra al site (o cuando hace opt-in después de reset). */}
+    <ConsentBanner />
   </body>
 </html>

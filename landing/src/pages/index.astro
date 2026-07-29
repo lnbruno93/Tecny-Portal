@@ -146,15 +146,40 @@ const softwareApplicationJsonLd = {
 </BaseLayout>
 
 <script>
-  // Analytics globales de la landing — mismo patrón que la versión SPA
-  // (Landing.jsx useEffect):
-  //   1. landing_view al load + performance mark 'landing-mount'
-  //   2. landing_content_ready cuando window.load dispara (proxy para
-  //      "todo hidratado" — más simple que trackear 3 fetches paralelos).
-  //
-  // NOTA: este script vive en la page y se ejecuta 1 vez por page load.
-  // En F4 se enriquece con Pixel + GA4 consumiendo los mismos eventos.
+  /**
+   * Analytics globales de la landing.
+   *
+   * ── DUAL PIPELINE ─────────────────────────────────────────────────
+   *   1. dataLayer (provider-agnóstico) — emite TODOS los eventos con
+   *      nombres estables. Consumible por GTM/GA4/PostHog cuando se
+   *      instalen (F4b/futuro).
+   *   2. Meta Pixel — mapea los eventos "de conversión" a Standard Events
+   *      de Meta (Lead, Contact, Schedule, ViewContent, PageView). Meta
+   *      optimiza campañas de ADS sobre estos eventos.
+   *
+   * ── DEDUP con CAPI ────────────────────────────────────────────────
+   *   Cada llamada a `pixelTrack()` devuelve un `event_id`. Cuando F4b
+   *   (backend CAPI) esté listo, el mismo `event_id` se enviará al backend
+   *   → Meta dedupea automáticamente por (event_name, event_id). Doble
+   *   cobertura sin doble counting.
+   *
+   * ── MAPPING dataLayer → Pixel ─────────────────────────────────────
+   *   cta_click hero:signup           → Lead
+   *   cta_click cta-final:signup      → Lead
+   *   cta_click pricing:signup        → Lead (con plan como content_name)
+   *   cta_click nav:demo              → Schedule
+   *   cta_click hero:demo             → Schedule
+   *   cta_click cta-final:demo        → Schedule
+   *   cta_click pricing:demo          → Schedule (Enterprise)
+   *   cta_click contacto:whatsapp     → Contact
+   *   cta_click contacto:email        → Contact
+   *   50% scroll                      → ViewContent
+   *   PageView                        → auto en MetaPixel.astro
+   */
   import { trackEvent, markPerformance, measurePerformance } from '../lib/analytics';
+  import { pixelTrack, pixelTrackCustom } from '../lib/pixel';
+  import { ga4Track } from '../lib/ga4';
+  import { isTrackingAllowed } from '../lib/consent';
 
   trackEvent('landing_view', { url: window.location.href });
   markPerformance('landing-mount');
@@ -165,16 +190,80 @@ const softwareApplicationJsonLd = {
     trackEvent('landing_content_ready');
   });
 
-  // Wire de CTAs vía delegación global. Todos los <a data-cta="X:Y"> emiten
-  // el evento sin necesidad de componentes React. Formato: "location:target"
-  // (nav:login, hero:signup, pricing:demo, ...). Optional data-plan para
-  // el cta de precios (trial/starter/pro/multi-local).
+  // ── Wire CTAs → dataLayer + Meta Pixel ──────────────────────────────
   document.querySelectorAll<HTMLElement>('[data-cta]').forEach((el) => {
     el.addEventListener('click', () => {
       const raw = el.dataset.cta || '';
       const [location, target] = raw.split(':');
       const plan = el.dataset.plan;
+
+      // 1. Emit al dataLayer (provider-agnóstico)
       trackEvent('cta_click', { location, target, ...(plan ? { plan } : {}) });
+
+      // 2. Emit al Pixel + GA4 — SOLO si consent OK y evento mapea a Standard.
+      if (!isTrackingAllowed()) return;
+
+      // Mapping a Standard Events. Los nombres difieren entre Meta y GA4
+      // (Lead vs generate_lead, Schedule vs schedule, Contact vs contact)
+      // pero semántica idéntica. Cada plataforma optimiza sobre los suyos.
+      if (target === 'signup') {
+        pixelTrack('Lead', {
+          content_name: plan || 'landing',
+          content_category: location,
+        });
+        ga4Track('generate_lead', {
+          method: 'landing_cta',
+          content_name: plan || 'landing',
+          content_location: location,
+        });
+      } else if (target === 'demo') {
+        pixelTrack('Schedule', {
+          content_name: plan || 'demo',
+          content_category: location,
+        });
+        ga4Track('schedule', {
+          content_name: plan || 'demo',
+          content_location: location,
+        });
+      } else if (target === 'whatsapp' || target === 'email') {
+        pixelTrack('Contact', {
+          content_name: target,
+          content_category: location,
+        });
+        ga4Track('contact', {
+          method: target,
+          content_location: location,
+        });
+      } else {
+        // Otros CTAs (login, crear cuenta, instagram, scroll-como) los
+        // trackeamos como CustomEvent — no son conversion signals fuertes.
+        pixelTrackCustom('CTAClick', { location, target });
+        ga4Track('cta_click_secondary', { location, target });
+      }
     });
   });
+
+  // ── ViewContent al 50% scroll (F4) ──────────────────────────────────
+  // Meta ViewContent + GA4 view_item. Signal de intent — el usuario leyó
+  // al menos la mitad. Meta lo usa para audiencias custom (retargeting).
+  //
+  // Emit 1 vez por page load — no repite si el user hace scroll up/down.
+  if (isTrackingAllowed()) {
+    let viewContentEmitted = false;
+    window.addEventListener(
+      'scroll',
+      () => {
+        if (viewContentEmitted) return;
+        const scrolled = window.scrollY + window.innerHeight;
+        const total = document.documentElement.scrollHeight;
+        if (scrolled / total >= 0.5) {
+          viewContentEmitted = true;
+          pixelTrack('ViewContent', { content_name: 'landing_scroll_50' });
+          ga4Track('view_item', { item_id: 'landing_scroll_50' });
+          trackEvent('landing_scroll_50');
+        }
+      },
+      { passive: true }
+    );
+  }
 </script>
