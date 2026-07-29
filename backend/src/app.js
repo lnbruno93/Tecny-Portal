@@ -386,6 +386,7 @@ app.post('/api/csp-report', cspReportLimiter, express.json({ type: ['application
   try {
     if (!process.env.SENTRY_DSN || process.env.NODE_ENV === 'test') return res.status(204).end();
     const blockedUri = report?.['blocked-uri'] || report?.blockedURL || '';
+    const violatedDirective = report?.['violated-directive'] || report?.effectiveDirective || '';
     // Filtro anti-noise: extensiones del browser (AdBlock, Grammarly, etc.)
     // triggerean cientos de violations por día que no son actionable.
     const isExtensionNoise = typeof blockedUri === 'string' &&
@@ -393,7 +394,17 @@ app.post('/api/csp-report', cspReportLimiter, express.json({ type: ['application
        blockedUri.startsWith('moz-extension://') ||
        blockedUri.startsWith('safari-extension://') ||
        blockedUri.startsWith('safari-web-extension://'));
-    if (!isExtensionNoise) {
+    // 2026-07-28 (Sentry noise Fix TECNY-PORTAL-BACKEND-1A):
+    // El header `Content-Security-Policy-Report-Only: require-trusted-types-for`
+    // está activo desde Sprint 106 (2026-07-24) como monitoreo pasivo — nos dice
+    // qué se rompería si activáramos Trusted Types en enforce. Los reports
+    // cumplieron su función: sabemos que hay mucho JS inline que violaría.
+    // Con 6353 events/14d (~13k/mes) se comía el free tier completo. El logger.warn
+    // de arriba mantiene trail en Railway logs para consulta on-demand si algún día
+    // decidimos migrar a Trusted Types enforce. Sin reporte a Sentry.
+    const isTrustedTypesReport = typeof violatedDirective === 'string' &&
+      violatedDirective.startsWith('require-trusted-types-for');
+    if (!isExtensionNoise && !isTrustedTypesReport) {
       const Sentry = require('@sentry/node');
       if (process.env.SENTRY_DSN) {
         const directive = report?.['violated-directive'] || report?.effectiveDirective || 'unknown';
