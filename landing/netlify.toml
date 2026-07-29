@@ -11,9 +11,7 @@
 #   rewrite desde acá — rutas de app (/login, /signup, /inicio, /ventas...)
 #   se rewritean status=200 al portal site. El browser nunca ve dos dominios.
 #
-#   Los rewrites concretos se agregan en la Fase 6 (cutover). Ahora este
-#   file cubre solo el build + headers mínimos de seguridad. CSP con Pixel
-#   se activa en Fase 4.
+#   Los proxy rewrites concretos están al final de este file (Fase 6).
 #
 # CONVENCIÓN de contexts (misma que root netlify.toml):
 #   [build.environment]                    → production
@@ -93,3 +91,67 @@
   [headers.values]
     Content-Type = "application/xml"
     Cache-Control = "public, max-age=3600"
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PROXY REWRITES a tecny-portal (F6 cutover DNS).
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Modelo: DENYLIST implícito con catch-all + `force = false` (default).
+# Netlify prioriza static files del build SOBRE los redirects → si el path
+# existe en `dist/` (index.html, _astro/*, robots.txt, sitemap-*, favicon,
+# og-cover.png), se sirve directo. Todo lo demás cae al catch-all abajo
+# y se proxea al site tecny-portal.
+#
+# EJEMPLOS de resolución:
+#   /                          → dist/index.html (landing, estático)
+#   /_astro/index.abc.css      → dist/_astro/index.abc.css (estático)
+#   /robots.txt                → dist/robots.txt (estático)
+#   /og-cover.png              → dist/og-cover.png (estático)
+#   /login                     → NO existe en dist/ → proxy a tecny-portal
+#   /signup                    → NO existe → proxy
+#   /inicio, /ventas, /cajas   → NO existen → proxy (SPA routes)
+#   /publico/usados/:token     → NO existe → proxy (public share links)
+#
+# COOKIES/AUTH:
+#   Cuando DNS de tecnyapp.com apunte a este site, el browser ve tecnyapp.com
+#   uniformemente — cookies auth (accessToken, refreshToken) se setean con
+#   Domain=tecnyapp.com y se envían en TODAS las requests, incluyendo las
+#   proxeadas a /login o /inicio. tecny-portal ya sirve el SPA con esas
+#   cookies presentes. Cero CORS, cero re-login.
+#
+# ASSETS DEL SPA:
+#   El SPA de tecny-portal referencia `/assets/*.js` (path relativo). Cuando
+#   el browser pide tecnyapp.com/assets/xxx.js, ese path tampoco existe en
+#   `dist/` de landing → cae al catch-all → proxy al portal → sirve el JS
+#   real. Todo transparente.
+#
+# API BACKEND:
+#   Los fetches de la landing y del SPA usan URL absoluta a Railway
+#   (https://tecny-backend-production.up.railway.app/api/...). NO pasan
+#   por este proxy — van directo. Cero overhead.
+#
+# ORDEN CRÍTICO: el catch-all `/*` debe ir ÚLTIMO. Netlify aplica la primera
+# regla que matchea; un `/*` arriba consumiría todo (incluyendo assets del
+# build, rompiendo la landing).
+
+# Rutas históricas conocidas del portal — enumeradas explícitamente para
+# audit trail. NO son necesarias funcionalmente (el catch-all abajo las
+# captura), pero dejan constancia de QUÉ paths asumimos que el portal
+# maneja. Si alguna aparece en Sentry con 404, actualizar acá.
+#
+# Comentado por ahora — solo el catch-all activo. Descomentar si necesitamos
+# rewrites custom (ej. redirect permanente de /precios-viejos → /precios).
+#
+# [[redirects]]
+#   from   = "/login"
+#   to     = "https://tecny-portal.netlify.app/login"
+#   status = 200
+
+# CATCH-ALL: todo path no matcheado por static files ni redirects anteriores
+# se proxea al site tecny-portal. `force = false` (default) preserva la
+# prioridad de static files del build.
+[[redirects]]
+  from   = "/*"
+  to     = "https://tecny-portal.netlify.app/:splat"
+  status = 200
+  force  = false
