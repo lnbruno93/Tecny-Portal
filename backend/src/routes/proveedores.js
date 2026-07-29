@@ -1280,10 +1280,21 @@ router.post('/:id(\\d+)/devoluciones',
       //    (Hotfix Sentry 2026-07-28: la llamada anterior pasaba `req` como
       //    `tabla` y un objeto como `accion`, lo que hacía que PG intentara
       //    serializar el Socket circular → TypeError. Ver Sentry #20.)
-      await audit(client, 'proveedor_movimientos', 'devolucion_mercaderia_proveedor', String(mov.id), {
+      //
+      //    Hotfix Sentry 2026-07-29 (regression latente desde PR #236 merge):
+      //    `accion` DEBE ser uno de INSERT|UPDATE|DELETE|LOGIN|LOGIN_FAILED|
+      //    LOCKOUT|LOGOUT|PASSWORD_RESET_REQUESTED (CHECK constraint
+      //    `audit_logs_accion_check`). El semantic name
+      //    "devolucion_mercaderia_proveedor" va al JSON `despues.accion_negocio`
+      //    para trazabilidad, no como columna `accion`. Sin este fix la
+      //    violation del CHECK rompía toda la request → user recibía 500 y
+      //    la devolución no persistía (feature #236 quebrada desde el merge,
+      //    ~2 semanas).
+      await audit(client, 'proveedor_movimientos', 'INSERT', String(mov.id), {
         req,
         user_id: req.user.id,
         despues: {
+          accion_negocio: 'devolucion_mercaderia_proveedor',
           proveedor_id: proveedorId,
           proveedor_nombre: prov.rows[0].nombre,
           motivo,
