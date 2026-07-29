@@ -4,55 +4,77 @@
  *
  * Port de `frontend/src/screens/Landing.jsx:203-284`.
  *
- * Copy dinámico: hero.headline/subheadline/blurb vienen del CMS backend en
- * la versión SPA. En Astro SSG NO tenemos ese fetch al build (sería SSR).
- * Estrategia F2: renderizamos los fallbacks estáticos + hidratamos client-side
- * con un fetch al mount si el CMS backend tiene overrides.
+ * ── COPY (Fase 3, 2026-07-29) ─────────────────────────────────────────
+ * El copy default vive en `src/lib/heroVariants.ts` (DEFAULT_HERO). El
+ * server render usa el default — que es LO QUE INDEXA GOOGLE + LO QUE VEN
+ * los visitantes orgánicos sin UTM.
  *
- * Trade-off: la primera vista (LCP) usa el fallback estático — que en 99% de
- * los casos es lo que Lucas quiere mostrar. Si edita desde admin, el override
- * aparece con delay <500ms (fetch backend). Aceptable para F2 — en F5 podemos
- * mover a build-time fetch con webhook Netlify si Lucas cambia copy seguido.
+ * Message match para Meta ADS: cuando el URL trae `?utm_campaign=starter|
+ * pro|enterprise`, un script client-side reemplaza el eyebrow + headline
+ * + blurb con la variante correspondiente (ver HERO_VARIANTS en el lib).
+ * Cliente 3-en-1 (Starter/Pro/Enterprise) con copy segment-specific.
  *
- * Los CTAs del hero — "Empezá gratis" (a /signup) y "Ver cómo funciona" (scroll
- * anchor) — mantienen el pattern data-cta que wire-ea el listener global.
+ * ── CTA HÍBRIDO (Fase 3) ──────────────────────────────────────────────
+ * Lucas eligió híbrido: "Empezá gratis" primary + "Ver demo" secondary,
+ * en HERO y en CTA-FINAL. Consistencia: mismo par de CTAs en los 2
+ * puntos de conversión.
+ *
+ * NOTA sobre el descartado "Ver cómo funciona" (scroll a #como): había
+ * argumento para dejarlo como discovery path para cold traffic de ADS.
+ * Trade-off perdido: el visitor cold puede querer explorar antes de
+ * convertir. Pero Meta ADS usualmente segmenta bien la audiencia — los
+ * que ven el ad ya tienen algún signal de intent (industria, comportamiento).
+ * Y "Ver demo" con Calendly es un lead capture concreto para Meta,
+ * mientras que un scroll interno no. Si CTR baja mucho vs baseline,
+ * evaluar volver al secondary "Ver cómo funciona" en el hero.
+ *
+ * ── CMS backend override ──────────────────────────────────────────────
+ * REMOVIDO en F3. El CMS del SPA (via useLandingCMS) permitía a Lucas
+ * editar hero desde admin.tecnyapp.com. En Astro:
+ *   1. Con variantes UTM en juego, un CMS override cross-cutting confunde
+ *      (¿qué gana, el CMS o el variant?). Complejidad no justificada
+ *      hasta que Lucas edite mucho.
+ *   2. El copy de Fase 3 está diseñado con investigación (los 4 problemas
+ *      del cliente + segmentación). Cambios ad-hoc pueden degradar CTR.
+ *   3. Si Lucas necesita editar, edita `heroVariants.ts` con commit +
+ *      push → rebuild Netlify automático. Auditable en git.
  *
  * NOTA sobre el mockup: hardcoded 1:1 con la landing actual (no vino ninguna
  * refactor request). Es SVG + text inline — 0 JS, cero fetch.
  */
-
-// Fallbacks — mismos que FALLBACK_HERO de Landing.hooks.js
-const HERO_FALLBACK = {
-  headline: 'Todo tu negocio, en una sola pantalla.',
-  blurb:
-    'Cotizaciones, comprobantes, cuentas corrientes, envíos y caja — para equipos que venden tecnología. Dejá las planillas sueltas y los grupos de WhatsApp: Tecny ordena la operación de toda tu mesa de trabajo.',
-};
+import { DEFAULT_HERO } from '../lib/heroVariants';
+import { calendlyHref } from '../lib/calendly';
 ---
 
 <header class="hero">
   <div class="wrap hero-grid">
     <div>
-      <div class="eyebrow">
-        <span class="dot"></span> El portal operativo para revendedores
+      <div class="eyebrow" id="hero-eyebrow">
+        <span class="dot"></span> {DEFAULT_HERO.eyebrow}
       </div>
 
-      {/* Headline con el highlight en la segunda parte — matchea el markup del
-          SPA. El fetch client-side abajo puede reemplazar el innerHTML del h1
-          si el CMS tiene override. */}
-      <h1 class="hero-h" id="hero-headline">
-        Todo tu negocio,<br /><span class="hl">en una sola pantalla.</span>
-      </h1>
+      <h1 class="hero-h" id="hero-headline">{DEFAULT_HERO.headline}</h1>
 
-      <p class="hero-sub u-landing-hero-sub" id="hero-subheadline" hidden></p>
-      <p class="hero-sub" id="hero-blurb">{HERO_FALLBACK.blurb}</p>
+      <p
+        class="hero-sub u-landing-hero-sub"
+        id="hero-subheadline"
+        hidden={DEFAULT_HERO.subheadline === null}
+      >
+        {DEFAULT_HERO.subheadline}
+      </p>
+      <p class="hero-sub" id="hero-blurb">{DEFAULT_HERO.blurb}</p>
 
       <div class="hero-actions">
         <a href="/signup" class="btn btn-primary btn-lg" data-cta="hero:signup">
           Empezá gratis
         </a>
-        <a href="#como" class="btn btn-lg" data-cta="hero:scroll-como">
-          Ver cómo funciona
-        </a>
+        <a
+          href={calendlyHref('hero')}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="btn btn-lg"
+          data-cta="hero:demo"
+        >Agendá una demo</a>
       </div>
 
       <div class="hero-note">
@@ -107,3 +129,52 @@ const HERO_FALLBACK = {
     </div>
   </div>
 </header>
+
+<script>
+  /**
+   * Aplica variante del hero desde `?utm_campaign=starter|pro|enterprise`.
+   *
+   * Race condition tolerada: si el script corre después del initial paint
+   * (~50-100ms), el user ve el default por un instante y luego el swap.
+   * Aceptable para Meta ADS — LCP importa, flicker menor del h1 no impacta
+   * conversion measurable. Ver comentario del lib para el trade-off.
+   *
+   * Si el usuario no vino de una URL con UTM (visitante orgánico, referral
+   * directo), no ocurre nada — el default queda intacto. SEO OK.
+   */
+  import { getVariantFromUrl } from '../lib/heroVariants';
+  import { trackEvent } from '../lib/analytics';
+
+  const match = getVariantFromUrl(window.location.href);
+  if (match) {
+    const { hero } = match;
+    const eyebrow = document.getElementById('hero-eyebrow');
+    const headline = document.getElementById('hero-headline');
+    const subheadline = document.getElementById('hero-subheadline');
+    const blurb = document.getElementById('hero-blurb');
+
+    if (eyebrow) {
+      // Preservamos el <span class="dot"> — solo swap del texto que le sigue.
+      const dot = eyebrow.querySelector('.dot');
+      eyebrow.innerHTML = '';
+      if (dot) eyebrow.appendChild(dot);
+      eyebrow.appendChild(document.createTextNode(' ' + hero.eyebrow));
+    }
+    if (headline) headline.textContent = hero.headline;
+    if (subheadline) {
+      if (hero.subheadline) {
+        subheadline.textContent = hero.subheadline;
+        subheadline.hidden = false;
+      } else {
+        subheadline.hidden = true;
+      }
+    }
+    if (blurb) blurb.textContent = hero.blurb;
+
+    // Track para saber qué variante convierte más — Meta Events Manager
+    // consume esto via el dataLayer que instala en F4.
+    trackEvent('hero_variant_applied', {
+      variant: new URLSearchParams(window.location.search).get('utm_campaign') || 'none',
+    });
+  }
+</script>

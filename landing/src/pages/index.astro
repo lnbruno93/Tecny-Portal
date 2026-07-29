@@ -36,9 +36,100 @@ import Faq from '../components/Faq.astro';
 import CtaFinal from '../components/CtaFinal.astro';
 import Contacto from '../components/Contacto.astro';
 import Footer from '../components/Footer.astro';
+import { BACKEND_BASE } from '../lib/api';
+
+/**
+ * JSON-LD SoftwareApplication schema.
+ *
+ * Google Search Console lo consume para Rich Results (precio + moneda + rating
+ * en la SERP). Requiere que los datos SEAN estáticos en el HTML — el crawler
+ * NO ejecuta JS antes de indexar, así que un fetch client-side no sirve.
+ *
+ * Estrategia para evitar drift con el CMS backend:
+ *   1. Build-time fetch a /api/public/pricing (Astro top-level await).
+ *   2. Si el backend está caído al build, fallback a FALLBACK_PRICES (mismos
+ *      valores que Precios.astro renderiza).
+ *   3. Cuando Lucas cambia un precio desde admin.tecnyapp.com/planes, un
+ *      rebuild Netlify (via webhook — F6) refresca este JSON-LD.
+ *
+ * priceValidUntil: campo REQUERIDO por Google para offers. Usamos 30 días
+ * en el futuro (soft rolling window). Al rebuild se re-calcula. Sin este
+ * campo Google puede skippear la offer del rich result.
+ */
+
+// Fallbacks matcheados con FALLBACK_PRICES en Precios.astro.
+const FALLBACK_PRICES = { starter: 39, pro: 189 };
+let prices = FALLBACK_PRICES;
+try {
+  // Timeout ~5s — si el build no puede fetch en ese lapso, sigue con fallbacks.
+  // No queremos que un backend degradado rompa el deploy de la landing.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  const res = await fetch(`${BACKEND_BASE}/api/public/pricing`, {
+    signal: controller.signal,
+  });
+  clearTimeout(timer);
+  if (res.ok) {
+    const data = (await res.json()) as { prices?: { starter?: number; pro?: number } };
+    if (data?.prices && typeof data.prices.starter === 'number' && typeof data.prices.pro === 'number') {
+      prices = { starter: data.prices.starter, pro: data.prices.pro };
+    }
+  }
+} catch {
+  // Silent fallback — build sigue con FALLBACK_PRICES.
+}
+
+// priceValidUntil: 30 días desde el build. En cada rebuild se refresca.
+const priceValidUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+  .toISOString()
+  .split('T')[0];
+
+const softwareApplicationJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'Tecny',
+  description:
+    'Sistema operativo para revendedores de tecnología: cotizador, cuentas corrientes, cajas, envíos, comprobantes con OCR e inventario en una sola pantalla.',
+  applicationCategory: 'BusinessApplication',
+  operatingSystem: 'Web',
+  url: 'https://tecnyapp.com',
+  offers: [
+    {
+      '@type': 'Offer',
+      name: 'Starter',
+      price: String(prices.starter),
+      priceCurrency: 'USD',
+      priceValidUntil,
+      availability: 'https://schema.org/InStock',
+      description: 'Plan para revendedor independiente. 1 usuario, cotizador + usados, financiera básica, 50 OCR/mes.',
+    },
+    {
+      '@type': 'Offer',
+      name: 'Pro',
+      price: String(prices.pro),
+      priceCurrency: 'USD',
+      priceValidUntil,
+      availability: 'https://schema.org/InStock',
+      description: 'Plan para equipos con vendedores. Hasta 10 usuarios, los 7 módulos completos, permisos por usuario, OCR ilimitado.',
+    },
+  ],
+  publisher: {
+    '@type': 'Organization',
+    name: 'Tecny',
+    url: 'https://tecnyapp.com',
+    // sameAs pending: agregar cuando IG/LinkedIn oficiales estén activos.
+  },
+};
 ---
 
 <BaseLayout>
+  <Fragment slot="head">
+    <script
+      type="application/ld+json"
+      is:inline
+      set:html={JSON.stringify(softwareApplicationJsonLd)}
+    />
+  </Fragment>
   <div class="tecny-landing">
     <Nav />
     <Hero />
