@@ -1,0 +1,69 @@
+---
+/**
+ * Footer.astro — footer con brand + 4 columnas de links + copyright + social.
+ *
+ * Port de `frontend/src/screens/Landing.jsx:843-908`.
+ *
+ * SoonLink: en el SPA es `<span role="link" aria-disabled="true">`. Acá lo
+ * inline como el mismo pattern — no vale un componente dedicado por 6 usages.
+ */
+---
+
+<footer>
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <div class="brand"><span class="mk">T</span> Tecny</div>
+        <p class="foot-brand-blurb">
+          El portal operativo para revendedores. Cotizá, cobrá, despachá y administrá — todo en una sola pantalla.
+        </p>
+      </div>
+
+      <div class="foot-col">
+        <h5>Producto</h5>
+        <a href="#modulos">Módulos</a>
+        <a href="#como">Cómo funciona</a>
+        <a href="#precios">Precios</a>
+        <span role="link" aria-disabled="true" title="Novedades — próximamente" class="u-landing-link-disabled">Novedades</span>
+      </div>
+
+      <div class="foot-col">
+        <h5>Empresa</h5>
+        <span role="link" aria-disabled="true" title="Sobre nosotros — próximamente" class="u-landing-link-disabled">Sobre nosotros</span>
+        <a href="#contacto">Contacto</a>
+        <span role="link" aria-disabled="true" title="Soporte — próximamente" class="u-landing-link-disabled">Soporte</span>
+      </div>
+
+      <div class="foot-col">
+        <h5>Legal</h5>
+        <a href="/terms">Términos</a>
+        <a href="/privacy">Privacidad</a>
+        <a href="/security">Seguridad</a>
+      </div>
+    </div>
+
+    <div class="foot-bottom">
+      <div class="cr">© 2026 Tecny · Buenos Aires, Argentina</div>
+      <div class="soc">
+        <span role="link" aria-disabled="true" title="Instagram — próximamente" class="u-landing-link-disabled">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-label="Instagram">
+            <rect x="3" y="3" width="18" height="18" rx="5"/>
+            <circle cx="12" cy="12" r="4"/>
+            <circle cx="17.5" cy="6.5" r="0.6" fill="currentColor"/>
+          </svg>
+        </span>
+        <span role="link" aria-disabled="true" title="WhatsApp — próximamente" class="u-landing-link-disabled">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-label="WhatsApp">
+            <path d="M3 21l1.7-5A8 8 0 1 1 8 19.3Z"/>
+          </svg>
+        </span>
+        <span role="link" aria-disabled="true" title="LinkedIn — próximamente" class="u-landing-link-disabled">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-label="LinkedIn">
+            <rect x="3" y="3" width="18" height="18" rx="3"/>
+            <path d="M7 10v7M7 7v.01M11 17v-4a2 2 0 0 1 4 0v4"/>
+          </svg>
+        </span>
+      </div>
+    </div>
+  </div>
+</footer>

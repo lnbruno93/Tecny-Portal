@@ -1,0 +1,99 @@
+---
+/**
+ * BaseLayout.astro — shell HTML de todas las páginas de la landing.
+ *
+ * Responsabilidades:
+ *   1. <head> completo (meta, fonts preconnect, dataLayer init).
+ *   2. Import de estilos globales (Tailwind + landing.css portado).
+ *   3. Slot para el contenido de cada page.
+ *
+ * Slots:
+ *   - default: contenido de la página.
+ *   - head: <head> extra opcional (JSON-LD, meta overrides, etc.).
+ *
+ * Meta defaults se pueden overridear por page via props (title, description,
+ * ogImage). Cuando NO se overridean, quedan los defaults de acá.
+ */
+import '../styles/global.css';
+import '../styles/landing.css';
+
+interface Props {
+  title?: string;
+  description?: string;
+  ogImage?: string;
+  /** noindex es útil en preview/dev; en producción queda indexable por default. */
+  noindex?: boolean;
+}
+
+const {
+  title = 'Tecny — El portal operativo para revendedores de tecnología',
+  description = 'Cotizaciones, comprobantes con OCR, cuentas corrientes, envíos y caja en un solo lugar. Probá gratis 14 días.',
+  ogImage = '/og-cover.png',
+  noindex = false,
+} = Astro.props;
+
+const canonical = new URL(Astro.url.pathname, Astro.site).toString();
+---
+
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    {noindex && <meta name="robots" content="noindex, nofollow" />}
+
+    {/* Favicons — placeholders del Astro scaffold; en F5 se generan definitivos. */}
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" href="/favicon.ico" />
+
+    {/* Open Graph (Facebook, LinkedIn) */}
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Tecny" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={new URL(ogImage, Astro.site).toString()} />
+    <meta property="og:locale" content="es_AR" />
+
+    {/* Twitter Card */}
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={new URL(ogImage, Astro.site).toString()} />
+
+    {/* Fonts — preconnect + Google Fonts stylesheet (mismo pattern que SPA
+        actual, `frontend/index.html`). preconnect corta latencia del handshake
+        TLS; el stylesheet trae solo los subsets latin de Inter + JetBrains Mono. */}
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap"
+    />
+
+    {/* dataLayer init — GTM/GA4/Meta Pixel pattern. Crea el array antes de
+        que cualquier evento intente pushear, incluso si nada lo consume
+        (Fase 4 conecta Pixel + GA4). El script inline es imprescindible
+        (pattern estándar de GTM); CSP lo permite via nonce en Fase 4.
+        Por ahora no hay CSP script-src activo así que corre sin problema.
+
+        NOTA: Astro NO inline scripts que declara con <script is:inline> en
+        el <head> del layout — los deja tal cual, sin bundle. Es lo que
+        queremos: es 1 línea, no vale el fetch. */}
+    <script is:inline>
+      // eslint-disable-next-line no-undef
+      window.dataLayer = window.dataLayer || [];
+    </script>
+
+    {/* Slot para <head> extra por page: JSON-LD, meta overrides, etc. */}
+    <slot name="head" />
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>

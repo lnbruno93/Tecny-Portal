@@ -1,0 +1,69 @@
+# Netlify config para el site landing de tecnyapp.com (Astro SSG).
+#
+# Contexto: migración desde SPA React (frontend/) a sitio estático para
+# poder correr Meta ADS con Pixel + CAPI limpio. Ver docs de migración.
+#
+# CONVIVENCIA CON EL SITE PORTAL:
+#   Este site (tecny-landing) servirá `tecnyapp.com/`, `/precios`, `/faq`,
+#   `/legal/*` y todo lo que sea landing marketing.
+#
+#   El site tecny-portal (frontend/) sigue existiendo y se accede vía proxy
+#   rewrite desde acá — rutas de app (/login, /signup, /inicio, /ventas...)
+#   se rewritean status=200 al portal site. El browser nunca ve dos dominios.
+#
+#   Los rewrites concretos se agregan en la Fase 6 (cutover). Ahora este
+#   file cubre solo el build + headers mínimos de seguridad. CSP con Pixel
+#   se activa en Fase 4.
+#
+# CONVENCIÓN de contexts (misma que root netlify.toml):
+#   [build.environment]                    → production
+#   [context.branch-deploy.environment]    → staging + otras branches
+#   [context.deploy-preview.environment]   → PR previews
+
+[build]
+  base    = "landing"
+  # Sin dist/.build-timestamp.txt workaround — Astro genera hash-based
+  # filenames que cambian por content, así que no aplica el bug "Skip
+  # pristine deploys" que sufre el SPA. Si en el futuro se ve el patrón,
+  # replicar como en root netlify.toml.
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+  # VITE_API_URL no aplica acá — Astro no consume backend en build. El
+  # fetch client-side de precios/CMS lee la URL desde una variable pública
+  # (PUBLIC_API_URL) que se setea abajo por contexto.
+  PUBLIC_API_URL = "https://tecny-backend-production.up.railway.app"
+
+[context.branch-deploy.environment]
+  PUBLIC_API_URL = "https://tecny-backend-staging.up.railway.app"
+
+[context.deploy-preview.environment]
+  PUBLIC_API_URL = "https://tecny-backend-staging.up.railway.app"
+
+# Headers globales — mismos que el site portal (root netlify.toml) menos CSP.
+# CSP se define en Fase 4 (Meta Pixel + CAPI) porque cambia la superficie
+# permitida (facebook.net, facebook.com, google-analytics.com).
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
+
+# Static assets cacheados agresivamente — Astro genera hash-based filenames
+# para JS/CSS/imgs procesados, safe para immutable.
+[[headers]]
+  for = "/_astro/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Sitemap generado por @astrojs/sitemap — importante para SEO.
+[[headers]]
+  for = "/sitemap-*.xml"
+  [headers.values]
+    Content-Type = "application/xml"
+    Cache-Control = "public, max-age=3600"

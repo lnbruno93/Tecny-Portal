@@ -1,0 +1,629 @@
+/**
+ * Estilos de la landing comercial de Tecny (en tecnyapp.com root).
+ *
+ * Fuente: paquete entregado por Claude Design (Tecny Landing.html). El HTML
+ * original era autocontenido con <style> inline; lo separé en este archivo
+ * para que el componente React Landing.jsx se mantenga legible y los estilos
+ * sean cacheables como asset estático.
+ *
+ * Scope: los estilos están a propósito sueltos (sin BEM ni CSS Modules) porque
+ * la landing es una pantalla única que NO comparte el resto del portal. Los
+ * tokens (--bg, --accent, etc.) son LOCALES a la landing — no entran en
+ * conflicto con styles.css global del portal porque la landing se monta en
+ * una ruta separada (/) y el browser cascada de :root igual gana en su scope
+ * propio dentro del Landing component.
+ *
+ * Tipografía: Inter (UI) + JetBrains Mono (números). Cargado vía Google Fonts
+ * en el <head> del index.html — agregado allí porque preconnect/stylesheet
+ * tiene que estar ANTES del render para evitar FOUT.
+ */
+
+/* Vars locales — overridean a los globales del portal cuando se está dentro
+   de la landing. Usar el mismo nombre (--accent, --bg, etc.) hace que cualquier
+   componente compartido que use estos tokens herede el look de la landing si
+   se monta acá (no lo hace hoy, pero es defensa por las dudas). */
+/* 2026-06-24 mobile: defensa contra overflow horizontal del wrapper.
+   Si cualquier hijo de la landing (ej. mockup grande, fila de logos,
+   nav-cta con muchos botones) excede el viewport, el body de la página
+   queda con scroll horizontal — UX desastrosa. overflow-x: hidden corta
+   limpio sin afectar layouts internos que ya están bien dimensionados. */
+.tecny-landing { overflow-x: hidden; }
+
+.tecny-landing {
+  --bg:            #0a0e18;
+  --bg-2:          #0d1220;
+  --surface:       #131a2b;
+  --surface-2:     #1a2238;
+  --surface-3:     #232c46;
+  --border:        #1f2740;
+  --border-strong: #2c3656;
+  --hairline:      rgba(255,255,255,0.06);
+
+  --text:          #e8ecf6;
+  --text-2:        #b8c1d6;
+  --muted:         #7c87a5;
+  --dim:           #525c79;
+
+  --accent:        #0ea5e9;
+  --accent-2:      #38bdf8;
+  --accent-soft:   rgba(14,165,233,0.12);
+  --accent-ink:    #04253a;
+
+  --pos:           #4ade80;
+  --info:          #7aa9ff;
+
+  --maxw: 1200px;
+  --pad: 40px;
+
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-feature-settings: "ss01","cv11";
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.5;
+  font-size: 16px;
+  min-height: 100vh;
+}
+.tecny-landing * { box-sizing: border-box; }
+.tecny-landing { scroll-behavior: smooth; }
+.tecny-landing .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+.tecny-landing ::selection { background: var(--accent-soft); color: var(--text); }
+.tecny-landing a { color: inherit; text-decoration: none; }
+
+.tecny-landing .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 var(--pad); }
+
+/* ── Nav ─────────────────────────────────────────────── */
+/* 2026-07-13 (v3): removidos backdrop-filter + bg semi-translúcido — Lucas UX.
+   El `saturate(160%)` del backdrop-filter creaba una línea visual sutil en el
+   borde inferior del nav (donde termina el área filtrada, la saturación baja
+   de golpe → transición perceptible como raya horizontal). Es un artefacto
+   conocido de backdrop-filter.
+   Trade-off: perdemos el efecto glassmorphism al scrollear (nav se ve como
+   bloque sólido sobre el contenido). Aceptable — Lucas priorizó "sin raya"
+   sobre "efecto glass".
+   Solución: nav 100% sólido, mismo color que el body → cero transición
+   visible en el borde inferior. */
+.tecny-landing .nav {
+  position: sticky; top: 0; z-index: 100;
+  background: var(--bg);
+}
+/* 2026-07-14 (v9): align-items baseline en nav-inner — alinea las baselines
+   del texto de "Tecny" con los nav links ("Cómo funciona / Módulos / etc").
+   Antes: center alignment → los centros verticales alineaban pero baselines
+   distintas (texto "Tecny" más arriba porque el .brand container es más alto
+   por el T logo). Ahora: text-to-text alignment perfecta.
+   El T box (dentro de .brand) mantiene su posición vía flex interno. */
+.tecny-landing .nav-inner {
+  max-width: var(--maxw); margin: 0 auto; padding: 14px var(--pad);
+  display: flex; align-items: baseline; gap: 28px;
+}
+/* Excepciones — buttons y brand's .mk necesitan center para no descuadrar */
+.tecny-landing .nav-inner > .nav-cta { align-self: center; }
+.tecny-landing .brand { align-self: baseline; }
+/* 2026-07-14 (v5): defensiva completa contra "la rayita" que Lucas veía en Safari.
+   Overrides con !important porque el CSS del source estaba clean pero Safari
+   renderizaba algo raro. Sí, cerramos que era un bug de Safari (Chrome se ve
+   perfecto), pero dejamos estos !important como defensivos.
+   2026-07-14 (v6): brand agrandado para matchear la altura del btn "Solicitá
+   una demo" (42px) — antes el T box era 28px, se veía chico al lado del CTA. */
+.tecny-landing .brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  /* 2026-07-14 (v8): weight bajado 700 → 600 para matchear el peso visual
+     de los nav links (500 medium). Bold 700 hacía que "Tecny" se viera más
+     grande que "Cómo funciona" aún al mismo font-size (14px). Con 600
+     semibold "Tecny" mantiene identidad de brand (más peso que un link
+     random) pero visualmente se alinea mejor con los links del nav. */
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: -0.02em;
+  /* Nuclear override — defensivo contra cualquier text-decoration heredada */
+  text-decoration: none !important;
+  text-decoration-line: none !important;
+  text-decoration-color: transparent !important;
+  border-bottom: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  background-image: none !important;
+}
+.tecny-landing .brand > * {
+  text-decoration: none !important;
+  text-decoration-line: none !important;
+  border-bottom: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+/* 2026-07-13: removida box-shadow del logo T — Lucas UX. El glow azul
+   (rgba 14,165,233 con 12px blur) se veía como una raya horizontal turquesa
+   justo abajo del cuadrado. El gradiente del cuadrado + el texto adjacente
+   sostienen visualmente al logo sin necesidad de shadow. */
+/* 2026-07-14 (v6): T box agrandado (28→40px) + border-radius (8→10) para
+   matchear la altura del btn "Solicitá una demo" del nav (42px) y el radius
+   de los btns (10px). Consistencia visual entre brand + CTA. */
+.tecny-landing .brand .mk {
+  width: 40px; height: 40px; border-radius: 10px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: var(--accent-ink); display: grid; place-items: center;
+  font-weight: 800; font-size: 18px; letter-spacing: -0.04em;
+}
+.tecny-landing .nav-links { display: flex; gap: 4px; margin-left: 8px; }
+.tecny-landing .nav-links a { color: var(--muted); font-size: 14px; font-weight: 500; padding: 8px 12px; border-radius: 7px; transition: .15s; }
+.tecny-landing .nav-links a:hover { color: var(--text); background: var(--surface); }
+.tecny-landing .nav-cta { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+.tecny-landing .btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  /* 2026-07-19 Sprint 2 M3 a11y: subimos 42px → 44px por WCAG 2.5.5
+     (Target Size — Enhanced): 44×44px CSS mínimo para tap targets. La regla
+     aplica también en desktop porque usuarios con temblor motriz también
+     usan mouse. Diferencia visual: 2px, imperceptible. */
+  height: 44px; padding: 0 20px; border-radius: 10px;
+  font: 600 14.5px/1 'Inter', sans-serif; letter-spacing: -0.005em;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text); cursor: pointer; transition: .14s; white-space: nowrap;
+}
+.tecny-landing .btn:hover { background: var(--surface-2); border-color: var(--border-strong); }
+/* 2026-07-19 Sprint 2 M3 a11y: focus visible para keyboard-only users.
+   Antes ningún botón/link tenía outline en focus → usuarios que navegan por
+   Tab no sabían dónde estaban parados. `:focus-visible` (no `:focus`) solo
+   aparece cuando el foco viene del teclado, no del click — evita el "outline
+   feo" al clickear con mouse.
+   El outline usa var(--accent) (mismo azul de branding) + offset de 2px para
+   no colisionar con el border-radius del botón. */
+.tecny-landing .btn:focus-visible,
+.tecny-landing .nav-links a:focus-visible,
+.tecny-landing .contact-card:focus-visible,
+.tecny-landing .faq summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.tecny-landing .btn-primary {
+  background: var(--accent); color: var(--accent-ink); border-color: transparent;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.25) inset, 0 8px 24px -8px rgba(14,165,233,0.5);
+}
+.tecny-landing .btn-primary:hover { background: var(--accent-2); transform: translateY(-1px); }
+.tecny-landing .btn-lg { height: 50px; padding: 0 26px; font-size: 15.5px; border-radius: 12px; }
+.tecny-landing .btn-ghost { background: transparent; border-color: transparent; color: var(--text-2); }
+.tecny-landing .btn-ghost:hover { background: var(--surface); color: var(--text); }
+
+/* ── Hero ────────────────────────────────────────────── */
+.tecny-landing .hero { position: relative; overflow: hidden; padding: 100px 0 80px; }
+/* 2026-07-13: gradient re-anclado adentro del hero (era `at 70% -5%` — 5%
+   arriba del borde superior → creaba una banda azul tenue justo en el borde
+   nav→hero que se veía como línea horizontal). Nueva posición `at 70% 25%`
+   mantiene el glow decorativo pero lo aleja del borde superior. */
+.tecny-landing .hero::before {
+  content: ""; position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse 800px 500px at 70% 25%, rgba(14,165,233,0.10), transparent 60%),
+    radial-gradient(ellipse 600px 400px at 10% 40%, rgba(122,169,255,0.05), transparent 55%);
+  pointer-events: none;
+}
+.tecny-landing .hero-grid { position: relative; display: grid; grid-template-columns: 1fr; gap: 40px; max-width: 880px; }
+.tecny-landing .eyebrow {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 12.5px; font-weight: 600; letter-spacing: 0.04em;
+  color: var(--accent); background: var(--accent-soft);
+  padding: 6px 12px; border-radius: 999px; margin-bottom: 24px;
+  border: 1px solid rgba(14,165,233,0.25);
+}
+.tecny-landing .eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.tecny-landing h1.hero-h {
+  font-size: clamp(40px, 6.4vw, 76px); line-height: 1.02;
+  letter-spacing: -0.04em; font-weight: 700; margin: 0 0 24px;
+}
+.tecny-landing h1.hero-h .hl { color: var(--accent); }
+.tecny-landing .hero-sub {
+  font-size: clamp(17px, 2vw, 21px); color: var(--text-2);
+  max-width: 620px; line-height: 1.5; margin: 0 0 32px; font-weight: 400;
+}
+.tecny-landing .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.tecny-landing .hero-note { font-size: 13px; color: var(--muted); margin-top: 16px; display: flex; align-items: center; gap: 8px; }
+.tecny-landing .hero-note svg { color: var(--pos); }
+
+/* Product window */
+.tecny-landing .product-shot {
+  margin-top: 64px; position: relative;
+  border-radius: 16px; overflow: hidden;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-2);
+  box-shadow: 0 40px 100px -30px rgba(0,0,0,0.8), 0 0 0 1px var(--hairline) inset;
+}
+.tecny-landing .shot-chrome {
+  display: flex; align-items: center; gap: 8px; padding: 13px 16px;
+  background: var(--bg-2); border-bottom: 1px solid var(--hairline);
+}
+.tecny-landing .shot-chrome span { width: 11px; height: 11px; border-radius: 50%; }
+.tecny-landing .shot-chrome span:nth-child(1){ background:#ff5f57 }
+.tecny-landing .shot-chrome span:nth-child(2){ background:#febc2e }
+.tecny-landing .shot-chrome span:nth-child(3){ background:#28c840 }
+.tecny-landing .shot-url { margin-left: 14px; font-family:'JetBrains Mono',monospace; font-size: 12px; color: var(--muted); padding: 4px 12px; background: var(--surface); border-radius: 6px; }
+.tecny-landing .shot-body { display: grid; grid-template-columns: 220px 1fr; min-height: 460px; }
+.tecny-landing .shot-side { background: var(--bg-2); border-right: 1px solid var(--hairline); padding: 18px 12px; }
+.tecny-landing .shot-side .sb { display:flex; align-items:center; gap:9px; padding: 8px 10px 16px; border-bottom: 1px solid var(--hairline); margin-bottom: 12px; font-weight: 700; font-size: 14px; letter-spacing:-0.01em; }
+.tecny-landing .shot-side .sb .m { width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(135deg,var(--accent),var(--accent-2)); color: var(--accent-ink); display: grid; place-items: center; font-size: 10px; font-weight: 800; }
+.tecny-landing .shot-side .sh { font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); padding: 12px 10px 6px; }
+.tecny-landing .shot-side .si { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 7px; font-size: 13px; color: var(--text-2); font-weight: 500; }
+.tecny-landing .shot-side .si.on { background: var(--surface-2); color: var(--text); }
+.tecny-landing .shot-side .si .d { width: 15px; height: 15px; border-radius: 4px; background: rgba(255,255,255,0.08); flex-shrink: 0; }
+.tecny-landing .shot-side .si.on .d { background: var(--accent-soft); }
+.tecny-landing .shot-main { padding: 24px 26px; }
+.tecny-landing .shot-h { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 4px; }
+.tecny-landing .shot-hsub { font-size: 13px; color: var(--muted); margin-bottom: 20px; }
+.tecny-landing .shot-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
+.tecny-landing .shot-kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+.tecny-landing .shot-kpi .l { font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.tecny-landing .shot-kpi .v { font-family:'JetBrains Mono',monospace; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; margin-top: 6px; }
+.tecny-landing .shot-kpi .t { font-size: 11px; font-weight: 600; margin-top: 4px; color: var(--pos); }
+.tecny-landing .shot-row { display: flex; align-items:center; justify-content: space-between; padding: 11px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 9px; margin-bottom: 8px; }
+.tecny-landing .shot-row .nm { font-weight: 600; font-size: 13px; }
+.tecny-landing .shot-row .meta { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+.tecny-landing .shot-row .amt { font-family:'JetBrains Mono',monospace; font-weight: 600; font-size: 13px; }
+.tecny-landing .pill { display:inline-flex; align-items:center; gap:5px; height:20px; padding:0 8px; font-size:11px; font-weight:600; border-radius:6px; }
+.tecny-landing .pill-pos { background: rgba(74,222,128,0.13); color: var(--pos); }
+.tecny-landing .pill-amber { background: var(--accent-soft); color: var(--accent); }
+
+/* Logo strip (`.strip*`) removido en Sprint 3 L2 (2026-07-19). Antes vivía
+   acá el CSS de la franja "Equipos que ya operan con Tecny" con 6 logos
+   inventados. La sección JSX se quitó en #441 (2026-06-26) y el CSS quedó
+   huérfano — este cleanup lo saca del bundle. Si a futuro volvemos con
+   logos reales, el patrón de carrusel (`.trusted-*` para "Empresas que
+   confiaron") sirve como base. */
+
+/* ── Section frame ───────────────────────────────────── */
+.tecny-landing section.s { padding: 96px 0; }
+.tecny-landing .s-head { max-width: 680px; margin: 0 0 56px; }
+.tecny-landing .s-head.center { margin: 0 auto 56px; text-align: center; }
+.tecny-landing .s-kicker { font-size: 12.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); margin-bottom: 14px; }
+.tecny-landing .s-title { font-size: clamp(30px, 4vw, 46px); line-height: 1.08; letter-spacing: -0.03em; font-weight: 700; margin: 0 0 16px; }
+.tecny-landing .s-sub { font-size: 18px; color: var(--text-2); line-height: 1.55; }
+
+/* ── Steps ───────────────────────────────────────────── */
+.tecny-landing .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; counter-reset: step; }
+.tecny-landing .step { position: relative; padding-top: 28px; }
+.tecny-landing .step .n { font-family:'JetBrains Mono',monospace; font-size: 13px; font-weight: 600; color: var(--accent); margin-bottom: 14px; }
+.tecny-landing .step .ico { width: 48px; height: 48px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border); display: grid; place-items: center; color: var(--accent); margin-bottom: 16px; }
+.tecny-landing .step h3 { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 8px; }
+.tecny-landing .step p { font-size: 14.5px; color: var(--text-2); margin: 0; line-height: 1.5; }
+.tecny-landing .step::before { content:""; position:absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, var(--accent), transparent); border-radius: 2px; }
+
+/* ── Modules ─────────────────────────────────────────── */
+.tecny-landing .mods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.tecny-landing .mod {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  padding: 24px; transition: .16s; position: relative; overflow: hidden;
+}
+.tecny-landing .mod:hover { border-color: var(--border-strong); transform: translateY(-2px); background: var(--surface-2); }
+.tecny-landing .mod .ico { width: 44px; height: 44px; border-radius: 11px; display: grid; place-items: center; margin-bottom: 16px; }
+.tecny-landing .mod h3 { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 8px; }
+.tecny-landing .mod p { font-size: 14px; color: var(--text-2); margin: 0; line-height: 1.5; }
+.tecny-landing .tint-amber{background:rgba(14,165,233,0.13);color:#0ea5e9}
+.tecny-landing .tint-blue{background:rgba(122,169,255,0.14);color:#7aa9ff}
+.tecny-landing .tint-green{background:rgba(74,222,128,0.13);color:#6ee79f}
+.tecny-landing .tint-purple{background:rgba(167,139,250,0.16);color:#c4aeff}
+.tecny-landing .tint-cyan{background:rgba(56,189,248,0.14);color:#6fcef5}
+.tecny-landing .tint-pink{background:rgba(244,114,182,0.14);color:#f4a5cf}
+/* .tint-slate removido en Sprint 3 L2: nunca fue aplicado a ningún módulo
+   (los tints en uso son amber/blue/green/purple/cyan/pink). Si a futuro se
+   necesita un tint neutro, agregar de vuelta. */
+
+/* ── Feature highlight ───────────────────────────────── */
+.tecny-landing .feat { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
+.tecny-landing .feat-list { display: flex; flex-direction: column; gap: 22px; margin-top: 28px; }
+.tecny-landing .feat-item { display: grid; grid-template-columns: 28px 1fr; gap: 14px; }
+.tecny-landing .feat-item .ck { width: 26px; height: 26px; border-radius: 8px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; }
+.tecny-landing .feat-item h4 { margin: 0 0 4px; font-size: 15.5px; font-weight: 600; }
+.tecny-landing .feat-item p { margin: 0; font-size: 14px; color: var(--text-2); line-height: 1.45; }
+.tecny-landing .feat-visual {
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: 16px; padding: 28px;
+  box-shadow: 0 30px 70px -24px rgba(0,0,0,0.7);
+}
+.tecny-landing .calc-row { display:flex; justify-content: space-between; align-items: baseline; padding: 9px 0; font-size: 14px; }
+.tecny-landing .calc-row .l { color: var(--muted); }
+.tecny-landing .calc-row .v { font-family:'JetBrains Mono',monospace; font-weight: 600; }
+.tecny-landing .calc-total { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 14px; display:flex; justify-content: space-between; align-items: baseline; }
+.tecny-landing .calc-total .v { font-family:'JetBrains Mono',monospace; font-size: 24px; font-weight: 700; color: var(--accent); }
+
+/* Testimonios (`.test*`) y BigStat (`.bigstat*`) removidos en Sprint 3 L2
+   (2026-07-19). Contexto: la sección JSX se removió en #441 (2026-06-26)
+   por contenido inventado (nombres/quotes fake + 4 métricas no auditables
+   como "+2.800 reseñas Google" sin perfil real). El CSS quedó huérfano
+   hasta este cleanup. Cuando volvamos con testimonios reales, el patrón
+   de las reseñas Google actuales (`.reviews-*`) sirve como base — o
+   reintroducimos estos selectores. Ver comentario del JSX line ~477. */
+
+/* ── Pricing ─────────────────────────────────────────── */
+.tecny-landing .plans { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; align-items: start; }
+/* 2026-07-20: variante 4-col para el pricing con Trial + Starter + Pro +
+   Enterprise. Grid a 4 columnas en desktop, respondida en el @media abajo
+   (2 columnas ≤940px, 1 columna ≤640px). Padding interno bajamos 30→22
+   para que las cards no queden apretadas horizontalmente. Font-size del
+   `.num` del price bajamos 44→36 por el mismo motivo (había overflow del
+   "1189" en Pro con el layout 4-col).
+
+   `align-items: stretch` fuerza que todas las cards de la row tengan la
+   MISMA altura (la más alta gana). Sin esto, el `align-items: start`
+   del selector base `.plans` (para el layout viejo 3-col) hacía que
+   Enterprise — que tiene "A medida" a font 30px en lugar del num 36px
+   de las otras — quedara más corta y su botón "Contactar ventas" no
+   se alineara con los "Empezar gratis". */
+.tecny-landing .plans.plans-4col { grid-template-columns: repeat(4, 1fr); gap: 14px; align-items: stretch; }
+.tecny-landing .plans.plans-4col .plan { padding: 22px; }
+.tecny-landing .plans.plans-4col .plan .price .num { font-size: 36px; }
+.tecny-landing .plan { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 30px; position: relative;
+  /* 2026-07-20: flex layout para que cards de altura variable (Trial vs los
+     otros) queden alineadas — el <ul> crece con `flex: 1` y empuja el <btn>
+     al bottom uniforme. Sin esto: Trial quedaba visiblemente más alta y el
+     botón de las otras cards flotaba en la mitad — feo. */
+  display: flex; flex-direction: column;
+}
+.tecny-landing .plan ul { flex: 1; }
+.tecny-landing .plan.featured { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 24px 60px -20px rgba(14,165,233,0.25); }
+.tecny-landing .plan .tag-pop { position: absolute; top: -11px; left: 50%; transform: translateX(-50%); background: var(--accent); color: var(--accent-ink); font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; padding: 4px 14px; border-radius: 999px; }
+.tecny-landing .plan .pname { font-size: 15px; font-weight: 600; letter-spacing: 0.02em; }
+.tecny-landing .plan .pdesc { font-size: 13px; color: var(--muted); margin-top: 4px; min-height: 36px; }
+.tecny-landing .plan .price { margin: 20px 0 6px; display: flex; align-items: baseline; gap: 4px; }
+.tecny-landing .plan .price .num { font-size: 44px; font-weight: 700; letter-spacing: -0.03em; font-family:'JetBrains Mono',monospace; }
+.tecny-landing .plan .price .per { font-size: 14px; color: var(--muted); }
+.tecny-landing .plan .price .cur { font-size: 18px; color: var(--text-2); font-weight: 600; align-self: flex-start; margin-top: 6px; }
+.tecny-landing .plan .pnote { font-size: 12px; color: var(--dim); margin-bottom: 22px; }
+.tecny-landing .plan ul { list-style: none; margin: 0 0 26px; padding: 0; display: flex; flex-direction: column; gap: 11px; }
+.tecny-landing .plan li { display: flex; gap: 10px; font-size: 14px; color: var(--text-2); align-items: flex-start; }
+.tecny-landing .plan li svg { color: var(--accent); flex-shrink: 0; margin-top: 1px; }
+.tecny-landing .plan .btn { width: 100%; justify-content: center; }
+.tecny-landing .price-note { text-align: center; margin-top: 26px; font-size: 13.5px; color: var(--muted); }
+
+/* ── FAQ ─────────────────────────────────────────────── */
+.tecny-landing .faq { max-width: 800px; margin: 0 auto; }
+.tecny-landing .qa { border-bottom: 1px solid var(--border); }
+.tecny-landing .qa summary { cursor: pointer; padding: 22px 4px; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.tecny-landing .qa summary::-webkit-details-marker { display: none; }
+.tecny-landing .qa summary .pm { width: 22px; height: 22px; flex-shrink: 0; color: var(--accent); transition: transform .2s; }
+.tecny-landing .qa[open] summary .pm { transform: rotate(45deg); }
+.tecny-landing .qa .a { padding: 0 4px 24px; font-size: 15px; color: var(--text-2); line-height: 1.6; max-width: 680px; }
+
+/* ── CTA final ───────────────────────────────────────── */
+.tecny-landing .cta-final { position: relative; overflow: hidden; border-radius: 24px; padding: 72px 48px; text-align: center; background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%); border: 1px solid var(--border-strong); }
+.tecny-landing .cta-final::before { content:""; position:absolute; inset: 0; background: radial-gradient(ellipse 600px 300px at 50% 0%, rgba(14,165,233,0.12), transparent 60%); pointer-events: none; }
+.tecny-landing .cta-final h2 { position: relative; font-size: clamp(30px, 4.5vw, 52px); line-height: 1.05; letter-spacing: -0.03em; font-weight: 700; margin: 0 0 18px; }
+.tecny-landing .cta-final p { position: relative; font-size: 18px; color: var(--text-2); max-width: 520px; margin: 0 auto 32px; }
+.tecny-landing .cta-final .hero-actions { position: relative; justify-content: center; }
+
+/* ── Footer ──────────────────────────────────────────── */
+.tecny-landing footer { border-top: 1px solid var(--hairline); padding: 56px 0 40px; margin-top: 96px; }
+.tecny-landing .foot-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 40px; margin-bottom: 48px; }
+.tecny-landing .foot-brand-blurb { font-size: 14px; color: var(--muted); max-width: 280px; margin-top: 16px; line-height: 1.5; }
+.tecny-landing .foot-col h5 { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); margin: 0 0 16px; }
+.tecny-landing .foot-col a { display: block; font-size: 14px; color: var(--text-2); padding: 5px 0; transition: .12s; }
+.tecny-landing .foot-col a:hover { color: var(--text); }
+.tecny-landing .foot-bottom { display: flex; justify-content: space-between; align-items: center; padding-top: 28px; border-top: 1px solid var(--hairline); flex-wrap: wrap; gap: 16px; }
+.tecny-landing .foot-bottom .cr { font-size: 13px; color: var(--muted); }
+.tecny-landing .foot-bottom .soc { display: flex; gap: 8px; }
+.tecny-landing .foot-bottom .soc a { width: 34px; height: 34px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border); display: grid; place-items: center; color: var(--muted); transition: .14s; }
+.tecny-landing .foot-bottom .soc a:hover { color: var(--text); border-color: var(--border-strong); }
+
+/* ── SECCIÓN CONTACTO (2026-07-13) ─────────────────────────────
+   Grid 4×1 (desktop) / 2×2 (tablet) / 1×4 (mobile). Cards con hover
+   que sugiere clickeabilidad. .contact-card-info es info-only (address),
+   sin hover-lift. */
+.tecny-landing .contact-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+.tecny-landing .contact-card {
+  display: flex; flex-direction: column; gap: 14px;
+  padding: 22px 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color .18s ease, transform .18s ease, background .18s ease;
+}
+.tecny-landing .contact-card:hover:not(.contact-card-info) {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+}
+.tecny-landing .contact-card-info {
+  /* Card de address: info-only, no clickeable — cursor default y sin hover-lift. */
+  cursor: default;
+}
+.tecny-landing .contact-icon {
+  width: 44px; height: 44px; border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: grid; place-items: center;
+  flex-shrink: 0;
+}
+.tecny-landing .contact-body { display: flex; flex-direction: column; gap: 4px; }
+.tecny-landing .contact-label {
+  font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.tecny-landing .contact-value {
+  font-size: 15px; font-weight: 600; line-height: 1.35;
+  color: var(--text);
+  /* wrap long strings graciosamente en mobile (emails largos, teléfonos con formato) */
+  word-break: break-word;
+}
+.tecny-landing .contact-hint { font-size: 12px; color: var(--muted); }
+
+@media (max-width: 940px) {
+  .tecny-landing { --pad: 24px; }
+  .tecny-landing .steps { grid-template-columns: 1fr 1fr; }
+  .tecny-landing .mods, .tecny-landing .plans { grid-template-columns: 1fr; }
+  /* 4-col variante: en tablet (≤940px) va a 2 columnas (2×2 grid), en mobile
+     (heredado por el fallthrough al selector .plans arriba) a 1 columna. */
+  .tecny-landing .plans.plans-4col { grid-template-columns: repeat(2, 1fr); }
+  .tecny-landing .feat { grid-template-columns: 1fr; gap: 32px; }
+  /* .tests + .bigstat removidos del media query en Sprint 3 L2 — los selectores base también salieron. */
+  .tecny-landing .foot-grid { grid-template-columns: 1fr 1fr; gap: 28px; }
+  .tecny-landing .contact-grid { grid-template-columns: 1fr 1fr; }
+  .tecny-landing .nav-links { display: none; }
+  .tecny-landing .shot-body { grid-template-columns: 1fr; }
+  .tecny-landing .shot-side { display: none; }
+}
+@media (max-width: 640px) {
+  /* 2026-06-24 mobile fix v2: el nav tenía brand + 3 botones (Iniciar
+     sesión, Crear cuenta, Solicitá una demo) + padding generoso del
+     nav-inner (24px lateral × 2 + gap 28 entre brand y cta) que sumaban
+     ~500-560px > 414px viewport iPhone. Resultado: overflow horizontal
+     visible (Solicitá una demo se salía del borde derecho).
+
+     Solución v1 (#previous): oculté "Crear cuenta", compacté gap+padding
+     del .nav-cta. Insuficiente — Lucas reportó que sigue desbordando.
+
+     Solución v2 (esta): además compactamos el contenedor:
+       - .nav-inner padding 24→12 lateral (ahorra 24px)
+       - .nav-inner gap 28→10 (ahorra 18px)
+       - brand font-size 17→14 (ahorra ~12px)
+       - "Solicitá una demo" texto se acorta a "Demo" via CSS
+         text-replacement, NO toca JSX. Ahorra ~80px.
+     Total adicional: ~134px más de espacio en el nav. */
+  .tecny-landing .nav-inner { padding: 14px 12px; gap: 10px; }
+  /* 2026-07-14 (v6): mobile matched to new desktop proportions. */
+  .tecny-landing .brand { font-size: 18px; gap: 8px; }
+  .tecny-landing .brand .mk { width: 32px; height: 32px; font-size: 14px; border-radius: 8px; }
+  .tecny-landing .nav-cta { gap: 6px; }
+  .tecny-landing .nav-cta > :nth-child(2) { display: none; }
+  /* 2026-07-19 Sprint 2 M3 a11y: era height 36px + font 13px, violaba WCAG
+     2.5.5 (44×44px tap target). Subimos a 44px. Font mantenemos en 13px para
+     que "Iniciar sesión" + "Demo" quepan en el nav en 375px viewport. Padding
+     lateral bajamos de 10 a 8 para compensar. Comprobado en Chrome DevTools
+     device toolbar iPhone SE (375×667): entra sin desbordar. */
+  .tecny-landing .nav-cta .btn { padding: 0 8px; font-size: 13px; height: 44px; }
+}
+@media (max-width: 560px) {
+  .tecny-landing .steps { grid-template-columns: 1fr; }
+  /* 4-col variante: en mobile ≤560px queda 1 columna (las 4 cards apiladas
+     verticalmente). El selector .plans-4col tiene mayor especificidad que
+     el .plans genérico, así que necesitamos el override explícito acá. */
+  .tecny-landing .plans.plans-4col { grid-template-columns: 1fr; }
+  /* .bigstat removida — el selector base también salió (Sprint 3 L2). */
+  .tecny-landing .shot-kpis { grid-template-columns: 1fr 1fr; }
+  .tecny-landing .plan .price .num { font-size: 38px; }
+  .tecny-landing .contact-grid { grid-template-columns: 1fr; }
+}
+
+/* ── EMPRESAS QUE CONFIARON (2026-07-19, CMS Fase 4) ────────────────────────
+   Carrusel infinito auto-scroll de logos. El wrap tiene overflow-hidden y
+   un mask-image que fadea los bordes izq/der para que el loop no se corte
+   bruscamente. El track duplica los logos en el DOM (JSX) y translatea de 0
+   a -50% en 30s linear infinite → cuando llega al 50% el segundo set queda
+   exactamente donde estaba el primero, transición seamless.
+
+   Grayscale + brillo bajado + opacidad reducida por default homogenizan
+   logos con paletas dispares. Hover del wrap pausa el marquee (más
+   cómodo para leer un logo específico) y hover del logo individual lo
+   revela en color pleno. */
+@keyframes trustedMarquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.tecny-landing .trusted-track-wrap {
+  overflow: hidden;
+  /* Fade suave en los bordes usando mask-image. Vendors: WebKit (Safari,
+     Chrome viejo) + estándar. */
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 8%, #000 92%, transparent 100%);
+          mask-image: linear-gradient(to right, transparent 0, #000 8%, #000 92%, transparent 100%);
+}
+.tecny-landing .trusted-track {
+  display: flex;
+  align-items: center;
+  gap: 56px;
+  /* width max-content deja que la fila crezca al tamaño total del contenido
+     duplicado (2× la lista original). Sin esto, el flex-container se ceñiría
+     al viewport y el translateX -50% no daría el efecto deseado. */
+  width: max-content;
+  animation: trustedMarquee 30s linear infinite;
+}
+.tecny-landing .trusted-track-wrap:hover .trusted-track {
+  animation-play-state: paused;
+}
+.tecny-landing .trusted-logo {
+  /* Tamaño uniforme por logo — asegura consistencia visual sin que un logo
+     rectangular gigante empuje al resto. object-fit: contain en la <img>
+     evita deformaciones.
+     2026-07-19 tuning post-live: subido de 160×64 → 200×96 para que los
+     logos cuadrados (típicos de marcas tech) no queden achatados. Con
+     64px de alto un logo cuadrado a object-fit contain quedaba de 64×64
+     dentro de un contenedor 160×64 → mucho aire vacío a los lados y
+     sensación de "logos chiquitos". 200×96 da más presencia visual y
+     acepta mejor tanto logos horizontales como cuadrados. */
+  flex-shrink: 0;
+  width: 200px;
+  height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tecny-landing .trusted-logo img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  /* 2026-07-19 tuning post-live: quitado `brightness(0.9)` — oscurecía
+     demasiado los logos con fondo pintado (típico caso: fondo azul + texto
+     blanco) sobre el fondo oscuro de la landing, haciendo que casi no se
+     distinguieran del canvas. Con solo grayscale + opacity 0.85 los logos
+     tienen mejor contraste sobre `--bg` mientras se mantiene el efecto
+     "trusted by" homogeneizado. Opacity subida 0.7 → 0.85 en la misma línea:
+     los logos son proof social, no fondo — merecen más presencia. */
+  filter: grayscale(1);
+  opacity: 0.85;
+  transition: filter 0.3s ease, opacity 0.3s ease;
+}
+.tecny-landing .trusted-logo:hover img {
+  filter: none;
+  opacity: 1;
+}
+/* Mobile: logos un poco más chicos y menos gap para que entren más por
+   viewport y el marquee no se sienta "vacío" en pantallas angostas.
+   2026-07-19: proporcional al desktop tuning (160×48 → 150×72). */
+@media (max-width: 720px) {
+  .tecny-landing .trusted-track { gap: 36px; }
+  .tecny-landing .trusted-logo { width: 150px; height: 72px; }
+}
+/* Respetar prefer-reduced-motion (accesibilidad WCAG 2.3.3): si el user
+   pidió menos movimiento, apagamos el marquee. Los logos quedan estáticos
+   pero visibles — la información de "confían en nosotros" se mantiene. */
+@media (prefers-reduced-motion: reduce) {
+  .tecny-landing .trusted-track {
+    animation: none;
+    /* Sin animación, mostramos solo la primera mitad (set A) para no
+       duplicar visualmente los mismos logos. flex-wrap permite que fluyan
+       en varias filas si son muchos. */
+    flex-wrap: wrap;
+    justify-content: center;
+    width: 100%;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * UTILITY CLASSES portadas de frontend/src/styles.css.
+ *
+ * En el portal (SPA) estas utilities viven en styles.css global. Acá las
+ * incluimos SOLO las que Landing.jsx / componentes .astro usan. Definiciones
+ * 1:1 con las del portal para no divergir.
+ *
+ * Alcance: los selectores heredan vars del scope .tecny-landing (--muted,
+ * --pos, --accent, --hairline, --bg-2). Fuera de ese scope, --var caen a
+ * ninguno (comportamiento no soportado — la landing solo se renderiza
+ * dentro de <div class="tecny-landing">).
+ * ═══════════════════════════════════════════════════════════════════════════ */
+.tecny-landing .u-text-right               { text-align: right; }
+.tecny-landing .u-color-accent             { color: var(--accent); }
+.tecny-landing .u-color-pos                { color: var(--pos); }
+.tecny-landing .u-color-muted              { color: var(--muted); }
+.tecny-landing .u-fw-600-fs-14-mb-4        { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+.tecny-landing .u-bar-y-hairline           { background: var(--bg-2); border-top: 1px solid var(--hairline); border-bottom: 1px solid var(--hairline); }
+.tecny-landing .u-landing-link-disabled    { opacity: 0.45; cursor: not-allowed; }
+.tecny-landing .u-landing-hero-sub         { font-weight: 600; margin-bottom: 8px; }
+.tecny-landing .u-landing-calc-meta        { font-size: 12px; color: var(--muted); margin-bottom: 16px; }
+.tecny-landing .u-landing-calc-total-label { color: var(--muted); font-size: 13px; align-self: flex-end; }
+.tecny-landing .u-fs-30                    { font-size: 30px; }
