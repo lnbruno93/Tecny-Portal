@@ -13,7 +13,7 @@ const { postCajaMovimiento } = require('../lib/cajaLedger');
 const {
   createDeudaSchema, queryDeudasSchema,
   createInversionSchema, queryInversionesSchema,
-  cajaSchema, updateCajaSchema, cajaAjusteSchema, queryLedgerSchema,
+  cajaSchema, updateCajaSchema, cajaAjusteSchema, cajaRelevoSchema, queryLedgerSchema,
 } = require('../schemas/cajas');
 const { requiereTc } = require('../schemas/_common');
 
@@ -562,6 +562,145 @@ router.delete('/cajas/movimientos/:id', requireCapability('cajas.crear'), async 
     if (!row) return res.status(404).json({ error: 'Movimiento de ajuste no encontrado' });
     invalidateCajas(req.tenantId);  // Perf H3: reversión recalcula saldo_actual
     res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// ─── RELEVO ────────────────────────────────────────────────────────
+//
+// POST /cajas/:id/relevo — ajuste manual del saldo real (arqueo).
+//
+// Feature 2026-07-29: el user con capability `cajas.relevar` (owner/admin
+// por default) ajusta el saldo de una caja al valor real. Casos de uso:
+//   - Arqueo físico revela diferencia (más o menos plata que la del sistema).
+//   - Pago olvidado (le pagué al proveedor en efectivo, nunca cargué).
+//   - Gasto fuera del sistema (compré algo, no lo anoté).
+//   - Devolución recibida no registrada.
+//   - Cierre de cuenta con ajuste final.
+//
+// UX: el user ingresa `saldo_nuevo` (lo que ES la caja). El server calcula
+// `delta = saldo_nuevo - saldo_actual`, deriva `tipo` (+/-) y `monto`
+// (abs), y crea un caja_movimientos con `origen='relevo'`.
+//
+// Diferencia con POST /cajas/:id/movimientos (ajuste manual):
+//   - Ajuste manual: user ingresa monto + tipo directamente.
+//   - Relevo: user ingresa saldo_nuevo, server deriva monto + tipo.
+//   - Ajuste: nota opcional. Relevo: nota OBLIGATORIA (min 10 chars).
+//   - Ajuste: capability `cajas.crear`. Relevo: `cajas.relevar` (más
+//     restrictiva — solo owner/admin por default via role bypass).
+//   - Ajuste: cuenta en Dashboard (cobrado/pagado). Relevo: NO
+//     (Dashboard queries filtran `origen <> 'relevo'` — ver el bloque
+//     Dashboard exclusion para queries afectadas).
+//
+// El endpoint NO usa `postCajaMovimiento()`: ese helper tiene guarda
+// "no permitir egreso que deje caja en negativo". Válida para el flujo
+// operacional pero rompe relevos legítimos (ej. adelanto entregado no
+// registrado que legítimamente lleva la caja a negativo). El relevo ES
+// el ajuste — su propósito es aceptar la realidad, no rechazarla por
+// reglas de saldo operacional. INSERT directo con FOR UPDATE lock
+// para prevenir races con movimientos concurrentes.
+//
+// Audit snapshot completo (saldo_anterior, saldo_nuevo, delta, nota,
+// user_id) en `audit_logs.despues` — no requiere columna nueva en la
+// tabla. Ver `backend/src/schemas/cajas.js:cajaRelevoSchema` para
+// validation del body.
+//
+// Reverte: no hay endpoint dedicado. El user hace OTRO relevo con el
+// delta opuesto (input saldo_nuevo = saldo original). El historial
+// muestra ambos relevos con sus notas — trail forense completo.
+router.post('/cajas/:id/relevo', requireCapability('cajas.relevar'),
+  validate(cajaRelevoSchema), async (req, res, next) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
+    const { fecha, saldo_nuevo, nota, tc } = req.body;
+
+    const result = await db.withTenant(req.tenantId, async (client) => {
+      // Postgres no permite `FOR UPDATE` con `GROUP BY` — hay que separar
+      // en 2 queries: primero lock la caja (SELECT FOR UPDATE simple),
+      // después SUM del ledger para calcular saldo_actual. El lock
+      // sigue aplicando para prevenir race conditions con movimientos
+      // concurrentes (mismo pattern que postCajaMovimiento).
+      const { rows: cajaRows } = await client.query(
+        `SELECT id, moneda, saldo_inicial
+           FROM metodos_pago
+          WHERE id = $1 AND deleted_at IS NULL
+          FOR UPDATE`,
+        [id]
+      );
+      if (!cajaRows[0]) return { notFound: true };
+
+      const { rows: sumRows } = await client.query(
+        `SELECT COALESCE(SUM(
+                  CASE WHEN tipo='ingreso' THEN monto ELSE -monto END
+                ), 0) AS delta_movs
+           FROM caja_movimientos
+          WHERE caja_id = $1 AND deleted_at IS NULL`,
+        [id]
+      );
+
+      const moneda      = cajaRows[0].moneda;
+      const saldoInicial = Number(cajaRows[0].saldo_inicial);
+      const deltaMovs   = Number(sumRows[0].delta_movs);
+      const saldoActual = round2(saldoInicial + deltaMovs);
+      const saldoNuevo  = Number(saldo_nuevo);
+
+      // Cajas ARS/UYU necesitan tc para calcular monto_usd equivalente
+      // (mismo criterio multi-país que postCajaMovimiento existente).
+      if (requiereTc(moneda) && !(tc && tc > 0)) {
+        return { badRequest: `Para una caja en ${moneda} se requiere el tipo de cambio (tc).` };
+      }
+
+      const delta = round2(saldoNuevo - saldoActual);
+      if (delta === 0) {
+        return { badRequest: 'El saldo nuevo es igual al actual — no hay ajuste que registrar.' };
+      }
+
+      const tipo     = delta > 0 ? 'ingreso' : 'egreso';
+      const monto    = Math.abs(delta);
+      const montoUsd = requiereTc(moneda) ? round2(monto / tc) : monto;
+
+      // INSERT directo — bypass guardas de postCajaMovimiento (ver comentario
+      // del endpoint arriba). Columnas alineadas con schema real de
+      // caja_movimientos (ver migration original 20260525000005).
+      const { rows: movRows } = await client.query(
+        `INSERT INTO caja_movimientos
+           (caja_id, fecha, tipo, monto, monto_usd, origen, ref_tabla, ref_id, concepto, user_id)
+         VALUES ($1, $2, $3, $4, $5, 'relevo', NULL, NULL, $6, $7)
+         RETURNING *`,
+        [id, fecha, tipo, monto, montoUsd, nota, req.user.id]
+      );
+      const mov = movRows[0];
+
+      // Audit con snapshot completo. El campo `accion_negocio: 'relevo_caja'`
+      // permite distinguir en el historial de auditoría entre INSERT de
+      // relevo vs INSERT de otros tipos (Dashboard actividad reciente lo
+      // renderiza distinto — badge naranja + nota visible).
+      await audit(client, 'caja_movimientos', 'INSERT', mov.id, {
+        despues: {
+          ...mov,
+          accion_negocio: 'relevo_caja',
+          saldo_anterior: saldoActual,
+          saldo_nuevo:    saldoNuevo,
+          delta,
+          nota,
+        },
+        user_id: req.user.id,
+      });
+
+      return { mov, saldo_anterior: saldoActual, saldo_nuevo: saldoNuevo, delta };
+    });
+
+    if (result.notFound)   return res.status(404).json({ error: 'Caja no encontrada' });
+    if (result.badRequest) return res.status(400).json({ error: result.badRequest });
+
+    invalidateCajas(req.tenantId);  // Perf H3: relevo cambia saldo_actual
+    res.status(201).json({
+      ok:              true,
+      movimiento:      result.mov,
+      saldo_anterior:  result.saldo_anterior,
+      saldo_nuevo:     result.saldo_nuevo,
+      delta:           result.delta,
+    });
   } catch (err) { next(err); }
 });
 

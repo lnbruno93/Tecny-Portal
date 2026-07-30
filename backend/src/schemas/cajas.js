@@ -118,8 +118,41 @@ const cajaAjusteSchema = z.object({
   concepto: z.string().trim().max(300).optional().nullable(),
 }).strict();
 
+/**
+ * RELEVO de caja (2026-07-29) — ajuste manual del saldo contra la realidad.
+ *
+ * A diferencia de `cajaAjusteSchema` (donde el user ingresa un ingreso/egreso
+ * puntual con concepto opcional), en el relevo:
+ *   - El user ingresa el `saldo_nuevo` DESEADO (el server calcula el delta).
+ *   - `nota` es OBLIGATORIA (min 10 chars) para audit forense — cada relevo
+ *     tiene que tener justificación escrita (arqueo mensual, pago olvidado,
+ *     etc.). Sin nota, la operación es opaca y peligrosa.
+ *   - El movimiento resultante lleva `origen='relevo'` — Dashboard lo excluye
+ *     para no distorsionar KPIs de "cobrado"/"pagado" operacional.
+ *   - Solo admin/owner puede hacer relevos (capability `cajas.relevar`).
+ *
+ * Ver `backend/src/routes/cajas.js` handler POST /:id/relevo para la lógica
+ * de cálculo del delta + tipo derivado + INSERT del movimiento.
+ */
+const cajaRelevoSchema = z.object({
+  fecha:       z.string().date('Fecha inválida — usar YYYY-MM-DD'),
+  saldo_nuevo: z.coerce.number()
+                 // Sin lower bound: aceptamos negativos legítimos (caja con
+                 // adelanto/deuda). La validación "no-negative por defecto"
+                 // se aplica indirectamente vía postCajaMovimiento — el
+                 // handler override esto explícitamente para permitir el
+                 // relevo (ver diseño en route handler).
+                 .max(NUMERIC_14_2_MAX, numericOverflowMsg)
+                 .min(-NUMERIC_14_2_MAX, numericOverflowMsg),
+  nota:        z.string().trim()
+                 .min(10, 'La nota es obligatoria (mínimo 10 caracteres) — explicá el motivo del relevo')
+                 .max(500, 'Nota demasiado larga (máximo 500 caracteres)'),
+  tc:          z.coerce.number().positive().optional().nullable(),
+}).strict();
+
 // Ledger global: movimientos de todas las cajas con filtros (vista dedicada)
-const ORIGENES_CAJA = ['venta', 'b2b', 'financiera', 'envio', 'egreso', 'proveedor', 'transferencia', 'ajuste', 'cambio', 'tarjeta'];
+// 2026-07-29: agregado 'relevo' — para filtrar en el historial del ledger.
+const ORIGENES_CAJA = ['venta', 'b2b', 'financiera', 'envio', 'egreso', 'proveedor', 'transferencia', 'ajuste', 'cambio', 'tarjeta', 'proyecto', 'relevo'];
 const queryLedgerSchema = z.object({
   caja_id: z.coerce.number().int().positive().optional(),
   desde:   z.string().date().optional(),
@@ -138,5 +171,6 @@ module.exports = {
   cajaSchema,
   updateCajaSchema,
   cajaAjusteSchema,
+  cajaRelevoSchema,
   queryLedgerSchema,
 };
