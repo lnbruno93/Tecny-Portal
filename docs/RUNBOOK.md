@@ -152,6 +152,19 @@ los recovery codes). El audit log queda con el evento DELETE.
 - IP banneada via Cloudflare/proxy (no implementado todavía).
 - Mitigation temporal: subir el límite en `app.js` loginLimiter, redeploy. Volver a bajar después.
 
+### Síntoma: Login falla con "Verificación inválida" y no aparece widget captcha
+
+Widget hCaptcha bloqueado por CSP. Pasó el 2026-07-30 tras la migración del landing a Astro — el CSP del landing wrappea la response del proxy `/login → tecny-portal`, y si le falta `https://*.hcaptcha.com`, el widget no carga.
+
+1. Chequear el CSP en vivo:
+   ```bash
+   curl -sI https://tecnyapp.com/login | grep -i content-security-policy
+   ```
+   Debe incluir `https://*.hcaptcha.com` en `script-src`, `style-src`, `connect-src`, y `frame-src`.
+2. Si falta: correr `npm run verify:landing-csp-hcaptcha` en local para confirmar.
+3. Fix + deploy: ver [docs/runbooks/csp-landing.md](runbooks/csp-landing.md) para el procedimiento completo.
+4. Contract test que corre en CI (`Landing CSP hcaptcha anti-regression`) previene la regresión.
+
 ---
 
 ## Email / Notificaciones (TANDA 2.2)
