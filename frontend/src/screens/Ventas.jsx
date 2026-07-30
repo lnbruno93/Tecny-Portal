@@ -1440,33 +1440,10 @@ export default function Ventas() {
 
       {/* Período + acciones en la misma fila */}
       <div className="flex-between u-mb-14 u-gap-12-flex-wrap u-align-items-center">
-        <div className="flex-row u-gap-12-flex-wrap u-align-items-center">
-          <Seg value={periodo} options={[
-            { value: 'hoy', label: 'Hoy' }, { value: 'ayer', label: 'Ayer' }, { value: 'semana', label: 'Esta semana' },
-            { value: 'mes', label: 'Este mes' }, { value: 'custom', label: 'Personalizado' },
-          ]} onChange={setPeriodoRange} />
-          {/* 2026-07-30 (Lucas): dropdown filtro por etiqueta. Recalcula
-              TODOS los KPIs del dashboard + filtra el listado. Persistido en
-              URL (?etiqueta=<id>) para deep-links. B2B se excluye cuando hay
-              filtro (movimientos_cc no tiene etiqueta — es un canal aparte). */}
-          {etiquetas.length > 0 && (
-            <div className="flex-row u-align-items-center u-gap-6">
-              <label className="muted tiny" htmlFor="filtro-etiqueta">Etiqueta</label>
-              <select
-                id="filtro-etiqueta"
-                className="input u-input-inline-narrow"
-                value={etiquetaFilter}
-                onChange={(e) => setEtiquetaFilter(e.target.value)}
-                title="Filtrar dashboard y listado por etiqueta"
-              >
-                <option value="">— Todas —</option>
-                {etiquetas.map(et => (
-                  <option key={et.id} value={et.id}>{et.nombre}</option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
+        <Seg value={periodo} options={[
+          { value: 'hoy', label: 'Hoy' }, { value: 'ayer', label: 'Ayer' }, { value: 'semana', label: 'Esta semana' },
+          { value: 'mes', label: 'Este mes' }, { value: 'custom', label: 'Personalizado' },
+        ]} onChange={setPeriodoRange} />
         <div className="page-actions">
           <button className="btn" onClick={() => { loadDash(); loadLista(); loadRapidas(); }}><Icons.Refresh size={14} /> Actualizar</button>
           <button className="btn" onClick={() => setShowGarantias(true)}><Icons.Shield size={14} /> Plantillas</button>
@@ -1499,11 +1476,30 @@ export default function Ventas() {
             { key: 'hasta', value: e.target.value, def: _today },
           ])} />
         </div>
-        <div className="flex-row u-gap-8">
+        <div className="flex-row u-gap-8 u-align-items-center">
           <div className="input-group u-w-280">
             <span className="addon addon-l"><Icons.Search size={14} /></span>
             <input className="input" placeholder="Order ID, cliente, producto, IMEI…" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
+          {/* 2026-07-30 (Lucas): dropdown filtro por etiqueta entre búsqueda
+              y Seg de estados. Recalcula TODOS los KPIs del dashboard +
+              filtra el listado. Persistido en URL (?etiqueta=<id>) para
+              deep-links. B2B se excluye cuando hay filtro. */}
+          {etiquetas.length > 0 && (
+            <select
+              id="filtro-etiqueta"
+              className="input u-input-inline-narrow"
+              value={etiquetaFilter}
+              onChange={(e) => setEtiquetaFilter(e.target.value)}
+              title="Filtrar dashboard y listado por etiqueta"
+              aria-label="Filtrar por etiqueta"
+            >
+              <option value="">Todas las etiquetas</option>
+              {etiquetas.map(et => (
+                <option key={et.id} value={et.id}>{et.nombre}</option>
+              ))}
+            </select>
+          )}
           <Seg value={estadoFilter} options={[
             { value: '', label: 'Todos' }, { value: 'acreditado', label: 'Acreditados' }, { value: 'pendiente', label: 'Pendientes' }, { value: 'cancelado', label: 'Cancelados' },
           ]} onChange={setEstadoFilter} />
