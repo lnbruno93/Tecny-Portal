@@ -24,6 +24,7 @@ const {
   createProveedorSchema, updateProveedorSchema, createMovimientoProveedorSchema,
   bulkCreateMovimientosProveedorSchema, nombresBulkProveedoresSchema,
   createDevolucionMercaderiaProveedorSchema,
+  proveedorRelevoSchema,
 } = require('../schemas/proveedores');
 // Fórmula canónica del saldo por proveedor — evita divergencia entre listado,
 // resumen, chat-tools y dashboardMensual (task #150 consolidación).
@@ -964,6 +965,125 @@ router.delete('/movimientos/:id', requireCapability('proveedores.eliminar_compra
     await client.query('ROLLBACK');
     next(err);
   } finally { client.release(); }
+});
+
+// ─── RELEVO (ajuste manual del saldo del proveedor) ─────────────────────
+//
+// POST /proveedores/:id/relevo — ajuste manual del saldo real ("arqueo").
+//
+// Feature 2026-07-29: el user con capability `proveedores.relevar` (owner/admin
+// por default) ajusta el saldo del proveedor al valor REAL. Casos:
+//   - Pago olvidado en efectivo (le dimos plata que no cargamos).
+//   - Compra no cargada (nos mandó mercadería que no anotamos).
+//   - Devolución no registrada.
+//   - Mobiliario intercambiado ("nos dio una silla").
+//   - Cierre de cuenta con ajuste final.
+//
+// UX: user ingresa `saldo_nuevo_usd`. Server calcula
+// `delta = saldo_nuevo - saldo_actual`, deriva el `tipo`:
+//   - delta > 0 → 'relevo_incremento' (aumenta la deuda, monto=delta)
+//   - delta < 0 → 'relevo_reduccion' (reduce la deuda, monto=abs(delta))
+// Ver comentario en `lib/saldoProveedor.js` para el signo en SALDO_CASE.
+//
+// Diferencia con POST /movimientos:
+//   - Movimiento manual: user ingresa monto + tipo (compra/pago) directamente.
+//   - Relevo: user ingresa saldo_nuevo, server deriva tipo + monto.
+//   - Movimiento: nota opcional. Relevo: OBLIGATORIA min 10 chars.
+//   - Movimiento: capability `proveedores.trabajar` (mount-level).
+//     Relevo: además `proveedores.relevar` (route-level, más restrictiva).
+//
+// Audit snapshot completo en `audit_logs.datos_despues`:
+//   { accion_negocio: 'relevo_proveedor', saldo_anterior, saldo_nuevo, delta, nota }
+//
+// Reverte: no hay endpoint dedicado — user hace otro relevo con saldo_nuevo
+// = el saldo original (delta opuesto). Trail forense preservado con notas
+// de ambos relevos ("Revertir el relevo del 29/07 — motivo original: ...").
+//
+// Cross-tenant Red B2B: NO enviamos notificación al otro tenant en este PR.
+// Backlog para siguiente iteración (requiere extender CHECK constraint de
+// cross_tenant_notifications.type con 'relevo_divergent' + partnership lookup
+// desde proveedor.id).
+router.post('/:id(\\d+)/relevo', requireCapability('proveedores.relevar'),
+  validate(proveedorRelevoSchema), async (req, res, next) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
+    const { fecha, saldo_nuevo_usd, nota } = req.body;
+
+    const result = await db.withTenant(req.tenantId, async (client) => {
+      // Lock proveedor (FOR UPDATE simple) + verify existe. Sin GROUP BY
+      // para no chocar con la restricción de Postgres (visto en cajas).
+      const { rows: provRows } = await client.query(
+        `SELECT id, nombre FROM proveedores
+          WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
+        [id]
+      );
+      if (!provRows[0]) return { notFound: true };
+
+      // Saldo actual: usa SALDO_CASE_M (fuente única de verdad).
+      const { rows: saldoRows } = await client.query(
+        `SELECT COALESCE(SUM(${SALDO_CASE_M}), 0) AS saldo_actual
+           FROM proveedor_movimientos m
+          WHERE m.proveedor_id = $1 AND m.deleted_at IS NULL`,
+        [id]
+      );
+      const saldoActual = Number(saldoRows[0].saldo_actual);
+      const saldoNuevo  = Number(saldo_nuevo_usd);
+      const delta = Math.round((saldoNuevo - saldoActual) * 100) / 100;
+
+      if (delta === 0) {
+        return { badRequest: 'El saldo nuevo es igual al actual — no hay ajuste que registrar.' };
+      }
+
+      // Signo → tipo. Ambos tipos tienen monto/monto_usd positivos (el
+      // CHECK del schema exige >=0). El signo se distingue por el `tipo`.
+      const tipo  = delta > 0 ? 'relevo_incremento' : 'relevo_reduccion';
+      const monto = Math.abs(delta);
+
+      const { rows: movRows } = await client.query(
+        `INSERT INTO proveedor_movimientos
+           (proveedor_id, fecha, tipo, descripcion, monto, moneda, tc, monto_usd,
+            caja_id, notas, created_by_user_id)
+         VALUES ($1, $2, $3, $4, $5, 'USD', NULL, $5,
+                 NULL, $6, $7)
+         RETURNING *`,
+        [id, fecha, tipo, `Relevo — ajuste manual del saldo`, monto, nota, req.user.id]
+      );
+      const mov = movRows[0];
+
+      await audit(client, 'proveedor_movimientos', 'INSERT', mov.id, {
+        despues: {
+          ...mov,
+          accion_negocio: 'relevo_proveedor',
+          saldo_anterior: saldoActual,
+          saldo_nuevo:    saldoNuevo,
+          delta,
+          nota,
+        },
+        user_id: req.user.id,
+      });
+
+      return {
+        mov,
+        proveedor_nombre: provRows[0].nombre,
+        saldo_anterior:   saldoActual,
+        saldo_nuevo:      saldoNuevo,
+        delta,
+      };
+    });
+
+    if (result.notFound)   return res.status(404).json({ error: 'Proveedor no encontrado' });
+    if (result.badRequest) return res.status(400).json({ error: result.badRequest });
+
+    res.status(201).json({
+      ok:               true,
+      movimiento:       result.mov,
+      proveedor_nombre: result.proveedor_nombre,
+      saldo_anterior:   result.saldo_anterior,
+      saldo_nuevo:      result.saldo_nuevo,
+      delta:            result.delta,
+    });
+  } catch (err) { next(err); }
 });
 
 // ─── RESUMEN (saldos por proveedor) ─────────────────────────

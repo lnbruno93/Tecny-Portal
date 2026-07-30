@@ -18,12 +18,23 @@
 //   - `compra` sin caja_id               → +monto_usd (deuda real)
 //   - `pago`                             → -monto_usd (reduce deuda)
 //   - `devolucion` (cross-tenant COR-2)  → -monto_usd (reduce deuda)
+//   - `relevo_incremento` (2026-07-29)   → +monto_usd (ajuste manual —
+//     el sistema decía que les debíamos MENOS de lo real; el relevo suma
+//     la diferencia)
+//   - `relevo_reduccion`  (2026-07-29)   → -monto_usd (ajuste manual —
+//     el sistema decía que les debíamos MÁS de lo real; el relevo resta
+//     la diferencia)
 //   - otros                              → 0 (defensivo: si mañana alguien
 //     agrega un tipo al CHECK sin tocar este helper, el saldo NO se corrompe
 //     silenciosamente — se ignora hasta actualizar).
 //
 // Convención: monto positivo = les debemos al proveedor. Monto negativo = el
 // proveedor nos debe (típico cuando adelantamos y aún no recibimos mercadería).
+//
+// Los 2 tipos de relevo existen porque `monto` y `monto_usd` tienen CHECK
+// `>= 0` en el schema — no se puede guardar un monto negativo directamente.
+// El signo del ajuste va en el `tipo` (incremento vs reducción). Ver
+// comentario de migration 20260729210000_proveedor_movimientos_relevo.
 //
 // Exporta dos variantes según el contexto del SQL:
 //   · SALDO_CASE       → queries sin alias (`FROM proveedor_movimientos`).
@@ -36,6 +47,8 @@ const SALDO_CASE = `
     WHEN tipo = 'compra'                               THEN  monto_usd
     WHEN tipo = 'pago'                                 THEN -monto_usd
     WHEN tipo = 'devolucion'                           THEN -monto_usd
+    WHEN tipo = 'relevo_incremento'                    THEN  monto_usd
+    WHEN tipo = 'relevo_reduccion'                     THEN -monto_usd
     ELSE 0
   END
 `;
@@ -47,6 +60,8 @@ const SALDO_CASE_M = `
     WHEN m.tipo = 'compra'                             THEN  m.monto_usd
     WHEN m.tipo = 'pago'                               THEN -m.monto_usd
     WHEN m.tipo = 'devolucion'                         THEN -m.monto_usd
+    WHEN m.tipo = 'relevo_incremento'                  THEN  m.monto_usd
+    WHEN m.tipo = 'relevo_reduccion'                   THEN -m.monto_usd
     ELSE 0
   END
 `;

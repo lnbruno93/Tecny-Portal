@@ -11,6 +11,7 @@ import { isTenantAdmin } from '../lib/userHasCap'; // 2026-06-25 Bug #1 — fix 
 import { fmt, fmtFecha } from '../lib/format';
 import CompraProveedorModal from '../components/CompraProveedorModal';
 import DevolucionMercaderiaProveedorModal from '../components/DevolucionMercaderiaProveedorModal';
+import RelevoProveedorModal from '../components/RelevoProveedorModal';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import CajaSelectHint from '../components/CajaSelectHint';
 import TcWarning from '../components/TcWarning';
@@ -253,6 +254,7 @@ export default function Proveedores() {
   // ── Modal de devolución de mercadería (task #236, 2026-07-27) ──────────
   // Modal maneja su propio focus trap + Esc via useModal internamente.
   const [showDevolucion, setShowDevolucion] = useState(false);
+  const [showRelevo, setShowRelevo] = useState(false);
   // 2026-07-12 (auditoría TOTAL Financiero P1-1, Pattern G): Idempotency-Key
   // regenerado cada vez que se abre el modal de pago. Previene duplicados
   // por doble-click del botón "Guardar pago" o retry por error transient.
@@ -464,6 +466,13 @@ export default function Proveedores() {
                 </div>
               </div>
               <div className="flex-row u-flex-gap-8-mt-10-end">
+                <button
+                  className="btn btn-sm"
+                  onClick={() => setShowRelevo(true)}
+                  title="Ajustar el saldo del proveedor a la realidad (arqueo) — no impacta otras cuentas"
+                >
+                  <Icons.Sliders size={13} /> Relevo
+                </button>
                 <button
                   className="btn btn-sm"
                   onClick={() => setShowDevolucion(true)}
@@ -684,6 +693,15 @@ export default function Proveedores() {
         <DevolucionMercaderiaProveedorModal
           proveedor={selected}
           onClose={() => setShowDevolucion(false)}
+          onSaved={handleCompraSaved /* mismo refresh: recarga movs + lista saldo */}
+        />
+      )}
+
+      {/* ── Modal Relevo (feature 2026-07-29) — ajuste manual del saldo ── */}
+      {showRelevo && selected && (
+        <RelevoProveedorModal
+          proveedor={selected}
+          onClose={() => setShowRelevo(false)}
           onSaved={handleCompraSaved /* mismo refresh: recarga movs + lista saldo */}
         />
       )}

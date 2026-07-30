@@ -145,6 +145,39 @@ const createDevolucionMercaderiaProveedorSchema = z.object({
     .max(200, 'Máximo 200 productos por devolución'),
 }).strict();
 
+/**
+ * RELEVO de proveedor (2026-07-29) — ajuste manual del saldo (deuda) contra
+ * la realidad. Casos: pago olvidado en efectivo, compra no cargada, mobiliario
+ * intercambiado, devolución no registrada.
+ *
+ * A diferencia de crear un movimiento manual (compra/pago suelto), el relevo:
+ *   - El user ingresa `saldo_nuevo_usd` DESEADO (server calcula delta).
+ *   - `nota` es OBLIGATORIA (min 10 chars) para audit forense.
+ *   - Genera un movimiento tipo `relevo_incremento` (delta+) o
+ *     `relevo_reduccion` (delta-) según el signo. Ver comentario en
+ *     `lib/saldoProveedor.js` para la fórmula del signo.
+ *   - Solo owner/admin puede hacer relevos (capability `proveedores.relevar`).
+ *
+ * Convención del saldo:
+ *   - Positivo = les debemos al proveedor.
+ *   - Negativo = el proveedor nos debe (adelanto que aún no recibimos como
+ *     mercadería). Válido — el relevo puede llevar el saldo a negativo si
+ *     esa es la realidad.
+ *
+ * Ver handler en `backend/src/routes/proveedores.js` POST /:id/relevo.
+ */
+const proveedorRelevoSchema = z.object({
+  fecha:           z.string().date('Fecha inválida — usar YYYY-MM-DD'),
+  saldo_nuevo_usd: z.coerce.number()
+                     // Sin lower bound: aceptamos negativos legítimos
+                     // (adelanto entregado no recibido como mercadería).
+                     .max(99_999_999_999_99, 'Monto demasiado grande')
+                     .min(-99_999_999_999_99, 'Monto demasiado grande'),
+  nota:            z.string().trim()
+                     .min(10, 'La nota es obligatoria (mínimo 10 caracteres) — explicá el motivo del relevo')
+                     .max(500, 'Nota demasiado larga (máximo 500 caracteres)'),
+}).strict();
+
 module.exports = {
   createProveedorSchema,
   updateProveedorSchema,
@@ -152,4 +185,5 @@ module.exports = {
   bulkCreateMovimientosProveedorSchema,
   nombresBulkProveedoresSchema,
   createDevolucionMercaderiaProveedorSchema,
+  proveedorRelevoSchema,
 };

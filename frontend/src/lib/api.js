@@ -408,6 +408,11 @@ export const cajas = {
   // Ledger por caja (saldo/historial + ajustes manuales) — respuesta paginada { data, pagination }
   cajaMovimientos: (id, params = {}) => api(`/api/cajas/cajas/${id}/movimientos?` + new URLSearchParams(params)),
   createCajaAjuste: (id, data) => api(`/api/cajas/cajas/${id}/movimientos`, 'POST', data),
+  // 2026-07-29 Feature RELEVO: ajuste manual del saldo contra realidad
+  // (arqueo). Requiere capability `cajas.relevar` (owner/admin por default).
+  // Body: { fecha, saldo_nuevo, nota (>=10 chars obligatoria), tc? (ARS/UYU) }.
+  // Response: { ok, movimiento, saldo_anterior, saldo_nuevo, delta }.
+  relevarCaja: (id, data) => api(`/api/cajas/cajas/${id}/relevo`, 'POST', data),
   deleteCajaMov: (id) => api(`/api/cajas/cajas/movimientos/${id}`, 'DELETE'),
   // Resumen agregado por contacto_id
   resumen: () => api('/api/cajas/resumen'),
@@ -608,6 +613,13 @@ export const proveedores = {
   createDevolucion: (id, data, idempotencyKey = null) =>
     api(`/api/proveedores/${id}/devoluciones`, 'POST', data, 15000,
       idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : null),
+  // ─── Relevo (feature RELEVO 2026-07-29) ─────────────────────────
+  // Ajuste manual del saldo del proveedor contra la realidad. User ingresa
+  // `saldo_nuevo_usd`; server deriva delta + tipo (`relevo_incremento` o
+  // `relevo_reduccion`). Requiere capability `proveedores.relevar` (owner
+  // o admin). Espejo del pattern de cajas.relevarCaja.
+  relevarProveedor: (id, data) =>
+    api(`/api/proveedores/${id}/relevo`, 'POST', data),
 };
 
 export const proyectos = {
