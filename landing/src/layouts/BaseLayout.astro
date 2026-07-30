@@ -91,6 +91,46 @@ const canonical = new URL(Astro.url.pathname, Astro.site).toString();
     <script is:inline>
       // eslint-disable-next-line no-undef
       window.dataLayer = window.dataLayer || [];
+
+      // 2026-07-30 P0 hotfix: cleanup Service Worker residual.
+      //
+      // Contexto: antes de la migración a Astro (PRs #936/#937), tecnyapp.com
+      // servía la SPA React del portal (frontend/) que registraba un Vite PWA
+      // Service Worker via Workbox. Ese SW quedó vivo en los browsers de los
+      // users que visitaron tecnyapp.com pre-migración — intercepta todos los
+      // requests del dominio y devuelve responses cacheados de la SPA, que
+      // ahora son INCOMPATIBLES con la landing Astro (rutas distintas, CSS
+      // hashes distintos, etc.). Síntoma: users ven la landing sin estilos.
+      //
+      // Fix defensive: al cargar cualquier página del landing, desregistrar
+      // TODOS los Service Workers activos + limpiar CacheStorage. Después
+      // recargar la página una vez para que sirva sin SW interfiriendo.
+      // La flag sessionStorage evita loop infinito (si el reload sigue con
+      // SW activo por alguna razón, no volvemos a recargar).
+      //
+      // Long-term: el próximo deploy del portal puede setear un cleanup SW
+      // vacío que se auto-desregistra. Este fix cubre a los que abren
+      // tecnyapp.com/ directamente (landing) sin pasar por el portal.
+      if ('serviceWorker' in navigator && !sessionStorage.getItem('sw_cleaned_v1')) {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+          if (regs.length > 0) {
+            sessionStorage.setItem('sw_cleaned_v1', '1');
+            Promise.all([
+              // Unregister todos los SW existentes.
+              Promise.all(regs.map(function(r) { return r.unregister(); })),
+              // Vaciar todas las cachés del CacheStorage.
+              'caches' in window
+                ? caches.keys().then(function(names) {
+                    return Promise.all(names.map(function(n) { return caches.delete(n); }));
+                  })
+                : Promise.resolve(),
+            ]).then(function() {
+              // Reload para servir la página sin SW interfiriendo.
+              window.location.reload();
+            });
+          }
+        });
+      }
     </script>
 
     {/* Meta Pixel (F4) — carga el snippet oficial + track PageView si

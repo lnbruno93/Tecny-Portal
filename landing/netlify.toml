@@ -157,6 +157,34 @@
 #   to     = "https://tecny-portal.netlify.app/login"
 #   status = 200
 
+# 2026-07-30 P0 hotfix: reglas explícitas ANTES del catch-all para /login,
+# /signup y /forgot-password. Cuando cambió el CSP del landing para permitir
+# hcaptcha, el edge cache del catch-all seguía sirviendo response viejo con
+# CSP sin hcaptcha (fwd=stale indefinido — usuarios no podían loguearse).
+# Al agregar rules NUEVAS con paths específicos, el edge no tiene cache
+# existente para esos paths (via estas rules) → fresh fetch inmediato con
+# el CSP nuevo del landing site (que sí permite hcaptcha).
+# `force = true` asegura que estas rules ganen sobre cualquier cache viejo.
+# Cuando el edge cache del catch-all expire naturalmente, se pueden removar
+# (los 3 paths van a caer al catch-all que también tiene el CSP correcto).
+[[redirects]]
+  from   = "/login"
+  to     = "https://tecny-portal.netlify.app/login"
+  status = 302
+  force  = true
+
+[[redirects]]
+  from   = "/signup"
+  to     = "https://tecny-portal.netlify.app/signup"
+  status = 302
+  force  = true
+
+[[redirects]]
+  from   = "/forgot-password"
+  to     = "https://tecny-portal.netlify.app/forgot-password"
+  status = 302
+  force  = true
+
 # CATCH-ALL: todo path no matcheado por static files ni redirects anteriores
 # se proxea al site tecny-portal. `force = false` (default) preserva la
 # prioridad de static files del build.
