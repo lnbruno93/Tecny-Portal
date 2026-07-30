@@ -115,6 +115,29 @@
 # porque Netlify no hace merge — un context-specific block reemplaza el
 # global para los paths que matchea. Si solo pusiéramos CSP acá, perdiéramos
 # HSTS / X-Frame-Options / etc. en staging.
+# 2026-07-30 (post link tecny-portal-staging al repo): `[context.staging]`
+# explícito. Los `[context.branch-deploy]` de abajo aplican a branches != el
+# primary del site. En el site tecny-portal-staging el primary ES `staging`,
+# entonces branch-deploy NO se aplica y quedaría el default (backend prod)
+# — que rompe el propósito de staging.
+#
+# `[context.<branch-name>]` gana sobre `[build.environment]` cuando el
+# branch matchea, INDEPENDIENTE de si es primary o no. Con esto, cualquier
+# build del branch `staging` apunta al backend staging, en ambos sites.
+[context.staging.environment]
+  VITE_API_URL = "https://tecny-backend-staging.up.railway.app"
+
+[[context.staging.headers]]
+  for = "/*"
+  [context.staging.headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' https://*.hcaptcha.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.hcaptcha.com; img-src 'self' data: https://tecny-backend-staging.up.railway.app; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://tecny-backend-staging.up.railway.app https://*.hcaptcha.com https://fonts.googleapis.com https://fonts.gstatic.com; frame-src 'self' data: https://*.hcaptcha.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests; script-src-attr 'none'; report-uri https://tecny-backend-staging.up.railway.app/api/csp-report"
+    Content-Security-Policy-Report-Only = "require-trusted-types-for 'script'; trusted-types 'allow-duplicates' default; report-uri https://tecny-backend-staging.up.railway.app/api/csp-report"
+
 [context.branch-deploy.environment]
   VITE_API_URL = "https://tecny-backend-staging.up.railway.app"
 
