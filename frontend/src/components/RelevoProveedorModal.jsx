@@ -11,33 +11,28 @@
  *   - Mobiliario intercambiado ("nos dio una silla como parte de pago").
  *   - Cierre de cuenta con ajuste final para reconciliar.
  *
- * UX (espejo de RelevoCajaModal):
- *   1. Muestra saldo actual del proveedor en USD (readonly).
- *   2. User ingresa `saldo_nuevo_usd` deseado.
- *   3. Sistema calcula y muestra el DELTA en vivo (color rojo si -, verde si +).
- *   4. Nota OBLIGATORIA (min 10 chars) — audit forense.
- *   5. Warning explicando que el relevo NO impacta otros proveedores ni
- *      el Dashboard (cobrado/pagado).
- *   6. Confirmar → POST /api/proveedores/:id/relevo.
+ * UX (rediseño 2026-07-30 post feedback Lucas "muy poco estético"):
+ *   1. Card saldo actual en USD (readonly) con hint semántico.
+ *   2. Input saldo nuevo — grande, acepta negativos.
+ *   3. Delta panel tinted según signo de la DEUDA:
+ *      - delta+ = MÁS deuda = rojo (mala noticia)
+ *      - delta- = MENOS deuda = verde (buena noticia)
+ *      OJO: al revés que en cajas (donde + es bueno). En proveedores
+ *      "saldo" = deuda.
+ *   4. Nota obligatoria min 10 chars con contador visible.
+ *   5. Warning banner amber "no impacta otros proveedores ni Dashboard".
+ *
+ * Todo en USD (deuda del proveedor se lleva siempre en USD por fórmula
+ * canónica de saldoProveedor.js — no hay selector de moneda ni TC).
  *
  * Backend: ver `backend/src/routes/proveedores.js` handler POST /:id/relevo,
- * `backend/src/schemas/proveedores.js:proveedorRelevoSchema` y la fórmula
- * canónica en `backend/src/lib/saldoProveedor.js` (SALDO_CASE_M consume los
- * 2 tipos nuevos: relevo_incremento + relevo_reduccion).
+ * `backend/src/schemas/proveedores.js:proveedorRelevoSchema` y helper
+ * `backend/src/lib/saldoProveedor.js` (SALDO_CASE_M consume relevo_incremento
+ * y relevo_reduccion — 2 tipos porque monto tiene CHECK ≥ 0).
  *
  * Convención del saldo:
  *   - Positivo = les debemos al proveedor (deuda pendiente).
- *   - Negativo = el proveedor nos debe (adelanto entregado sin mercadería
- *     recibida aún). El backend NO aplica guardia "no negativo" — el relevo
- *     ES el ajuste, aceptando la realidad tal cual es.
- *
- * Diferencia con proveedor.js (POST /movimientos):
- *   - Movimiento manual: user ingresa monto + tipo (compra/pago).
- *   - Relevo: user ingresa saldo_nuevo, server deriva tipo + monto.
- *   - Movimiento: nota opcional. Relevo: OBLIGATORIA min 10 chars.
- *
- * Todo se hace en USD (moneda funcional del proveedor) — no hay TC porque
- * la deuda del proveedor se lleva siempre en USD (fórmula canónica).
+ *   - Negativo = el proveedor nos debe (adelanto entregado sin mercadería).
  */
 import { useEffect, useRef, useState, useMemo } from 'react';
 import useModal from '../lib/useModal';
@@ -55,6 +50,13 @@ function fmtMoneyUsd(n) {
     maximumFractionDigits: 2,
   });
   return `USD ${val}`;
+}
+
+// Hint semántico del saldo actual — clarifica la convención al operador.
+function saldoActualHint(n) {
+  if (n > 0) return 'Positivo — nosotros le debemos al proveedor.';
+  if (n < 0) return 'Negativo — el proveedor nos debe (adelanto entregado).';
+  return 'Cuenta en cero.';
 }
 
 export default function RelevoProveedorModal({ proveedor, onClose, onSaved }) {
@@ -114,32 +116,42 @@ export default function RelevoProveedorModal({ proveedor, onClose, onSaved }) {
 
   if (!proveedor) return null;
 
-  // Signo semántico del delta para deuda:
-  //   - delta > 0 → aumenta lo que les debemos → color rojo (peor situación).
-  //   - delta < 0 → reduce lo que les debemos → color verde (mejor situación).
-  // OJO: al revés que en cajas (donde + es bueno). Acá `saldo` = deuda.
-  const deltaColorClass = delta === null || delta === 0
-    ? ''
-    : delta > 0 ? 'u-color-neg' : 'u-color-pos';
+  // Semántica INVERTIDA vs cajas (acá "saldo" = deuda):
+  //   - delta > 0 → aumenta la deuda → rojo (mala noticia)
+  //   - delta < 0 → reduce la deuda → verde (buena noticia)
+  const deltaPanelClass = delta === null || delta === 0
+    ? 'relevo-delta-panel'
+    : delta > 0 ? 'relevo-delta-panel is-neg' : 'relevo-delta-panel is-pos';
   const deltaSign = delta === null || delta === 0 ? '' : delta > 0 ? '+' : '';
 
   return (
     <div className="modal-overlay" ref={overlayRef} onMouseDown={(e) => {
       if (e.target === overlayRef.current) onClose();
     }}>
-      <div className="modal modal-md" role="dialog" aria-labelledby="relevo-prov-title">
+      <div className="modal u-mw-520" role="dialog" aria-labelledby="relevo-prov-title">
         <div className="modal-hd">
-          <h3 id="relevo-prov-title" className="u-m-0">Relevo de saldo — {proveedor.nombre}</h3>
-          <button className="icon-btn" onClick={onClose} aria-label="Cerrar">
+          <div>
+            <h3 id="relevo-prov-title">Relevo de saldo</h3>
+            <div className="page-sub">{proveedor.nombre}</div>
+          </div>
+          <button type="button" className="icon-btn" onClick={onClose} aria-label="Cerrar" title="Cerrar">
             <Icons.X size={16} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="modal-bd">
+        <form onSubmit={handleSubmit} className="modal-body relevo-body">
+          {/* Saldo actual */}
+          <div className="relevo-saldo-actual">
+            <div className="relevo-saldo-label">Saldo actual (según sistema)</div>
+            <div className="relevo-saldo-value mono">{fmtMoneyUsd(saldoActual)}</div>
+            <div className="relevo-saldo-hint">{saldoActualHint(saldoActual)}</div>
+          </div>
+
           {/* Fecha */}
-          <div className="form-row">
-            <label className="form-label">Fecha del relevo</label>
+          <div className="field">
+            <label className="field-label" htmlFor="relevo-prov-fecha">Fecha del relevo</label>
             <input
+              id="relevo-prov-fecha"
               type="date"
               className="input"
               value={fecha}
@@ -148,23 +160,10 @@ export default function RelevoProveedorModal({ proveedor, onClose, onSaved }) {
             />
           </div>
 
-          {/* Saldo actual (readonly) */}
-          <div className="form-row">
-            <label className="form-label">Saldo actual (según sistema)</label>
-            <div className="u-fw-600-fs-14-mb-4 mono">
-              {fmtMoneyUsd(saldoActual)}
-            </div>
-            <div className="hint">
-              {saldoActual > 0 && 'Positivo = les debemos.'}
-              {saldoActual < 0 && 'Negativo = el proveedor nos debe (adelanto entregado).'}
-              {saldoActual === 0 && 'Cuenta en cero.'}
-            </div>
-          </div>
-
-          {/* Saldo nuevo (input) */}
-          <div className="form-row">
-            <label className="form-label" htmlFor="relevo-prov-saldo-nuevo">
-              Saldo nuevo (según la realidad) <span className="req">*</span>
+          {/* Saldo nuevo */}
+          <div className="field">
+            <label className="field-label" htmlFor="relevo-prov-saldo-nuevo">
+              Saldo nuevo en USD (según la realidad) <span className="u-color-neg">*</span>
             </label>
             <input
               id="relevo-prov-saldo-nuevo"
@@ -174,65 +173,66 @@ export default function RelevoProveedorModal({ proveedor, onClose, onSaved }) {
               className="input mono"
               value={saldoNuevoStr}
               onChange={(e) => setSaldoNuevoStr(e.target.value)}
-              placeholder={`Ej: ${saldoActual}`}
+              placeholder={String(saldoActual)}
               autoFocus
             />
-            <div className="hint">
-              Ingresá el saldo REAL en USD. Puede ser negativo (adelantos
-              entregados no recibidos como mercadería).
+            <div className="muted tiny">
+              Puede ser negativo (adelantos entregados sin mercadería recibida).
             </div>
           </div>
 
           {/* Delta calculado */}
           {delta !== null && (
-            <div className="form-row relevo-delta-panel">
-              <label className="form-label">Diferencia calculada</label>
-              <div className={`mono ${deltaColorClass} relevo-delta-value`}>
+            <div className={deltaPanelClass}>
+              <div className="relevo-delta-label">Diferencia calculada</div>
+              <div className={`relevo-delta-value mono ${delta > 0 ? 'u-color-neg' : delta < 0 ? 'u-color-pos' : ''}`}>
                 {deltaSign}{fmtMoneyUsd(delta)}
               </div>
-              <div className="hint">
-                {delta > 0 && 'Aumenta lo que les debemos (más deuda).'}
-                {delta < 0 && 'Reduce lo que les debemos (menos deuda).'}
-                {delta === 0 && (
-                  <span className="u-color-warn">
-                    El saldo nuevo es igual al actual. No hay ajuste que registrar.
-                  </span>
-                )}
-              </div>
+              {delta > 0 && (
+                <div className="relevo-delta-hint">Aumenta lo que le debemos al proveedor.</div>
+              )}
+              {delta < 0 && (
+                <div className="relevo-delta-hint">Reduce lo que le debemos al proveedor.</div>
+              )}
+              {delta === 0 && (
+                <div className="relevo-delta-hint u-color-warn">
+                  Sin diferencia — no hay ajuste que registrar.
+                </div>
+              )}
             </div>
           )}
 
-          {/* Nota (obligatoria) */}
-          <div className="form-row">
-            <label className="form-label" htmlFor="relevo-prov-nota">
-              Motivo del relevo <span className="req">*</span>
+          {/* Nota */}
+          <div className="field">
+            <label className="field-label" htmlFor="relevo-prov-nota">
+              Motivo del relevo <span className="u-color-neg">*</span>
             </label>
             <textarea
               id="relevo-prov-nota"
-              className="input"
+              className="input u-textarea-vcenter"
               value={nota}
               onChange={(e) => setNota(e.target.value)}
-              placeholder="Ej: Pago olvidado a Kevin del 20/07 en efectivo por USD 300 / Mercadería recibida sin cargar el 25/07"
+              placeholder="Ej: Pago olvidado a Kevin del 20/07 en efectivo por USD 300"
               rows={3}
               maxLength={500}
               required
             />
-            <div className="hint">
+            <div className="muted tiny">
               Mínimo 10 caracteres. Aparece en el historial y audit trail.
               {' '}
-              <span className={notaTrim.length < 10 ? 'u-color-warn' : 'u-color-muted'}>
+              <span className={notaTrim.length < 10 ? 'u-color-warn' : ''}>
                 ({notaTrim.length}/500)
               </span>
             </div>
           </div>
 
           {/* Warning informativo */}
-          <div className="hint relevo-warning-banner">
+          <div className="relevo-warning-banner">
             <Icons.Alert size={14} />
             <div>
-              Este ajuste <strong>NO impacta otros proveedores</strong>, cajas,
-              ni KPIs del Dashboard (cobrado / pagado del mes). Queda registrado
-              en el historial de esta cuenta con badge distintivo &quot;Relevo&quot;.
+              Este ajuste <strong>no impacta otros proveedores</strong>, cajas ni
+              KPIs del Dashboard (cobrado / pagado del mes). Queda registrado en el
+              historial de esta cuenta con badge distintivo &quot;Relevo&quot;.
             </div>
           </div>
 
@@ -240,17 +240,21 @@ export default function RelevoProveedorModal({ proveedor, onClose, onSaved }) {
           {error && (
             <div className="u-color-neg-fs-13-mt-8">{error}</div>
           )}
-
-          {/* Botones */}
-          <div className="modal-ft">
-            <button type="button" className="btn" onClick={onClose} disabled={saving}>
-              Cancelar
-            </button>
-            <button type="submit" className="btn btn-primary" disabled={!formOk}>
-              {saving ? 'Registrando…' : 'Confirmar relevo'}
-            </button>
-          </div>
         </form>
+
+        <div className="modal-ft">
+          <button type="button" className="btn" onClick={onClose} disabled={saving}>
+            Cancelar
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={!formOk}
+            onClick={handleSubmit}
+          >
+            {saving ? 'Registrando…' : 'Confirmar relevo'}
+          </button>
+        </div>
       </div>
     </div>
   );
