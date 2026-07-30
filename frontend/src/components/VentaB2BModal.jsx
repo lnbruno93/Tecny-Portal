@@ -629,10 +629,13 @@ function ProductoPicker({ value, locked, onPick, onClear, onChange }) {
             <span className="muted tiny u-ml-6">
               {p.gb && `${p.gb}GB`}{p.gb && p.color && ' · '}{p.color}
             </span>
+            {/* 2026-07-30 (Lucas): cantidad `(N)` inline junto al nombre,
+                formato unificado con Ventas retail y Envíos. Antes iba
+                separado como "Stock: N" en la línea de abajo. */}
+            {p.cantidad != null && <span className="muted tiny u-ml-6">({p.cantidad})</span>}
           </div>
           <div className="muted tiny u-flex-gap-10">
             {p.imei && <span className="u-font-mono">IMEI {p.imei}</span>}
-            <span>Stock: {p.cantidad}</span>
             {p.precio_venta != null && <span>Precio sugerido: USD {p.precio_venta}</span>}
           </div>
         </>

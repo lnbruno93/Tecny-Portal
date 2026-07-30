@@ -1391,8 +1391,8 @@ export default function Envios() {
                                       <button type="button" key={p.id}
                                               onClick={() => pickProducto(idx, p)}
                                               className="u-btn-list-item">
-                                        <div className="u-fs-13-fw-600">{[p.nombre, gbLabel(p.gb), p.color].filter(Boolean).join(' · ')}</div>
-                                        <div className="muted tiny mono">{p.imei ? 'IMEI ' + fmtImei(p.imei) : '—'} · cantidad {p.cantidad ?? 0} · ${fmt(p.precio_venta)}</div>
+                                        <div className="u-fs-13-fw-600">{[p.nombre, gbLabel(p.gb), p.color].filter(Boolean).join(' · ')}{p.cantidad != null ? ' (' + p.cantidad + ')' : ''}</div>
+                                        <div className="muted tiny mono">{p.imei ? 'IMEI ' + fmtImei(p.imei) : '—'} · ${fmt(p.precio_venta)}</div>
                                       </button>
                                     ))}
                                   </div>

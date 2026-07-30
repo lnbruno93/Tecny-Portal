@@ -1573,8 +1573,12 @@ export default function Ventas() {
                                   256GB Deep Blue" son indistinguibles en el
                                   dropdown. Batería es el criterio de decisión
                                   del operador para elegir cuál agregar. Nuevos
-                                  no muestran batería porque siempre es 100%. */}
-                              <strong>{p.nombre}</strong>&nbsp;{p.color || ''} {p.gb ? p.gb + 'GB' : ''} · {sym(p.precio_moneda)}{fmt(p.precio_venta)}{p.condicion === 'usado' && p.bateria != null ? ' · Bat ' + p.bateria + '%' : ''}{p.imei ? ' · IMEI ' + fmtImei(p.imei) : ''}
+                                  no muestran batería porque siempre es 100%.
+                                  2026-07-30 (Lucas): mostrar `(N)` cantidad
+                                  disponible al final — evita ir a Inventario
+                                  para saber cuánto stock queda antes de vender.
+                                  Formato consistente con Envios y VentaB2BModal. */}
+                              <strong>{p.nombre}</strong>&nbsp;{p.color || ''} {p.gb ? p.gb + 'GB' : ''} · {sym(p.precio_moneda)}{fmt(p.precio_venta)}{p.condicion === 'usado' && p.bateria != null ? ' · Bat ' + p.bateria + '%' : ''}{p.imei ? ' · IMEI ' + fmtImei(p.imei) : ''}{p.cantidad != null ? ' (' + p.cantidad + ')' : ''}
                             </div>
                           ))}
                         </div>
