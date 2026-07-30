@@ -740,6 +740,7 @@ export default function Proveedores() {
           movimiento={detalleMov}
           proveedor={selected}
           onClose={() => setDetalleMov(null)}
+          onSaved={handleCompraSaved /* Fase B: post-edit refresca movs + saldo + inventario */}
         />
       )}
 
