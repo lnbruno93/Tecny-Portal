@@ -158,6 +158,13 @@ jobs:
           # Idem setEnv.js para tests locales.
           DB_INT_CAST_DEBUG: '1'
           NODE_ENV: test
+          # 2026-07-29: heap bump 4GB→6GB — con ~155 test files + coverage
+          # instrumentación estábamos cerca del cap default y OOMeábamos
+          # intermitentemente (`FATAL ERROR: Ineffective mark-compacts near
+          # heap limit`). Cada nuevo test suite acerca al límite. Con 6GB
+          # tenemos margen para ~40% más de tests antes de bumpear de nuevo.
+          # Long-term: dividir Integration Tests en 2 jobs paralelos.
+          NODE_OPTIONS: --max-old-space-size=6144
         # T4 auditoría 2026-06: corremos con --coverage para que jest gatee
         # los thresholds configurados en jest.config.js. Un PR que baje la
         # cobertura por debajo del baseline rompe CI.
