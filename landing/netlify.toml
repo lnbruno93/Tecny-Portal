@@ -26,6 +26,18 @@
   # replicar como en root netlify.toml.
   command = "npm run build"
   publish = "dist"
+  # 2026-07-30 (post link al repo #246): skip builds cuando el commit no
+  # toca archivos del landing/. Antes de este ignore, cada push a main
+  # que solo tocaba backend/, frontend/, scripts/, .github/, etc.
+  # disparaba un build del landing → dist idéntico al previo → Netlify
+  # cancelaba con "no content change" error (ruido rojo en la UI, sin
+  # impacto real en prod porque el último dist válido sigue sirviendo).
+  #
+  # El comando `git diff --quiet HEAD^ HEAD landing/` returna 0 (exit=0)
+  # cuando NO hay cambios en landing/ → Netlify skip build. Retorna
+  # 1 (exit!=0) cuando SÍ hay cambios → Netlify build normal.
+  # Docs: https://docs.netlify.com/configure-builds/ignore-builds/
+  ignore = "git diff --quiet HEAD^ HEAD landing/"
 
 [build.environment]
   NODE_VERSION = "22"

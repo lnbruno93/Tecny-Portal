@@ -11,6 +11,21 @@
   # nueva. Ver docs/NETLIFY_BUILDS.md para el detalle del bug + fix.
   command = "npm run build && date -u +%FT%TZ > dist/.build-timestamp.txt"
   publish = "dist"
+  # 2026-07-30 (post link tecny-portal-staging #247): skip builds cuando el
+  # commit no toca archivos que puedan afectar el output del portal.
+  #
+  # Watch list:
+  #   · frontend/   → código del SPA
+  #   · netlify.toml → headers, redirects, env vars del site (cambios acá
+  #                    afectan el response HTTP, aunque el dist/ no cambie)
+  #
+  # Ignora: backend/, admin-frontend/, landing/, scripts/, .github/, docs/, etc.
+  # Sin este ignore, cada push a main que toca esos paths dispara build →
+  # Netlify cancela con "no content change" error → status rojo en la UI
+  # sin impacto real (el último build válido sigue sirviendo).
+  #
+  # Docs: https://docs.netlify.com/configure-builds/ignore-builds/
+  ignore = "git diff --quiet HEAD^ HEAD frontend/ netlify.toml"
 
 # VITE_API_URL hardcoded acá (2026-07-04 P0). Antes vivía SOLO en Netlify UI
 # → si alguien la borraba o cambiaba desde ahí, el bundle salía con el
