@@ -157,33 +157,38 @@
 #   to     = "https://tecny-portal.netlify.app/login"
 #   status = 200
 
-# 2026-07-30 P0 hotfix: reglas explícitas ANTES del catch-all para /login,
-# /signup y /forgot-password. Cuando cambió el CSP del landing para permitir
-# hcaptcha, el edge cache del catch-all seguía sirviendo response viejo con
-# CSP sin hcaptcha (fwd=stale indefinido — usuarios no podían loguearse).
-# Al agregar rules NUEVAS con paths específicos, el edge no tiene cache
-# existente para esos paths (via estas rules) → fresh fetch inmediato con
-# el CSP nuevo del landing site (que sí permite hcaptcha).
-# `force = true` asegura que estas rules ganen sobre cualquier cache viejo.
-# Cuando el edge cache del catch-all expire naturalmente, se pueden removar
-# (los 3 paths van a caer al catch-all que también tiene el CSP correcto).
+# 2026-07-30 P0 hotfix: proxy 200 para /login, /signup y /forgot-password
+# con Cache-Control: no-store en el response. Sin no-store, el edge cache
+# del landing sirve responses viejos post cambio de CSP (fwd=stale
+# indefinido — bloqueaba login). Con no-store, cada request va al origen.
+# El SPA del portal ya tiene su propio cache-busting via hash-based
+# filenames, así que no perdemos performance real.
+#
+# NO usar 302: rompe cookies auth (cookies son domain=tecnyapp.com, no las
+# manda a tecny-portal.netlify.app) + rompe UX (URL cambia).
 [[redirects]]
   from   = "/login"
   to     = "https://tecny-portal.netlify.app/login"
-  status = 302
+  status = 200
   force  = true
+  [redirects.headers]
+    Cache-Control = "no-store, no-cache, must-revalidate"
 
 [[redirects]]
   from   = "/signup"
   to     = "https://tecny-portal.netlify.app/signup"
-  status = 302
+  status = 200
   force  = true
+  [redirects.headers]
+    Cache-Control = "no-store, no-cache, must-revalidate"
 
 [[redirects]]
   from   = "/forgot-password"
   to     = "https://tecny-portal.netlify.app/forgot-password"
-  status = 302
+  status = 200
   force  = true
+  [redirects.headers]
+    Cache-Control = "no-store, no-cache, must-revalidate"
 
 # CATCH-ALL: todo path no matcheado por static files ni redirects anteriores
 # se proxea al site tecny-portal. `force = false` (default) preserva la
