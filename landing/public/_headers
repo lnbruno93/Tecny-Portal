@@ -1,0 +1,27 @@
+# _headers file (F0 hotfix 2026-07-30): duplica el CSP de netlify.toml
+# porque Netlify tiene edge cache de headers que a veces no se invalida
+# con purge API. `_headers` se procesa por-request en el edge y garantiza
+# aplicación inmediata post-deploy. Ver LANDING_CSP_HOTFIX.md.
+#
+# CSP debe incluir hcaptcha.com (script-src, style-src, connect-src,
+# frame-src) porque las páginas /login, /signup, /forgot-password del
+# portal se sirven vía proxy y heredan estos headers del landing.
+
+# Paths del portal (proxeados a tecny-portal.netlify.app) — sin edge cache
+# para que cambios de CSP se apliquen inmediato. El portal ya tiene su
+# propio cache-busting via hash-based filenames (Vite).
+/login
+  Cache-Control: no-store, no-cache, must-revalidate
+/signup
+  Cache-Control: no-store, no-cache, must-revalidate
+/forgot-password
+  Cache-Control: no-store, no-cache, must-revalidate
+
+# Headers globales — replican netlify.toml [[headers]] block.
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://connect.facebook.net https://www.googletagmanager.com https://*.hcaptcha.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.hcaptcha.com; img-src 'self' data: https://www.facebook.com https://*.facebook.com https://www.google-analytics.com https://*.google-analytics.com https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app https://www.facebook.com https://*.facebook.com https://www.google-analytics.com https://*.google-analytics.com https://www.googletagmanager.com https://*.hcaptcha.com; frame-src 'self' https://*.hcaptcha.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
