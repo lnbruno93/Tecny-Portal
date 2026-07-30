@@ -4902,6 +4902,10 @@ body.modal-open { overflow: hidden; }
 .cat-count-only                { font-variant-numeric: tabular-nums; min-width: 64px; text-align: right; }
 .cat-value                     { font-weight: 500; font-variant-numeric: tabular-nums; }
 
+/* Dropdown compacto para filtros inline en toolbars (e.g. Ventas filtro por
+ * etiqueta 2026-07-30). Ancho auto, padding reducido, no invasivo. */
+.u-input-inline-narrow         { width: auto; min-width: 140px; padding: 6px 10px; font-size: 13px; }
+
 /* ─── RelevoCajaModal + RelevoProveedorModal (feature RELEVO 2026-07-29) ───
  * Ajuste manual del saldo. Compartidos entre los 2 modales porque el patrón
  * visual es idéntico. Diseño 2026-07-30 (feedback Lucas "muy poco estético"):

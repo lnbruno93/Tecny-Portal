@@ -149,6 +149,10 @@ export default function Ventas() {
   const hasta = searchParams.get('hasta') || _today;
   const estadoFilter = searchParams.get('estado') || '';
   const search = searchParams.get('q') || '';
+  // 2026-07-30 (Lucas): filtro por etiqueta persistido en URL. Cuando presente,
+  // recalcula TODOS los KPIs del dashboard + filtra el listado. Ver
+  // computeDashboard en backend/src/routes/ventas.js.
+  const etiquetaFilter = searchParams.get('etiqueta') || '';
 
   // Setters que escriben (o borran) un solo param sobre los existentes —
   // preservan cualquier otro param (drill-down, etc.) que ya esté en la URL.
@@ -173,6 +177,7 @@ export default function Ventas() {
   const setHasta = useCallback((h) => setParam('hasta', h, _today), [setParam, _today]);
   const setEstadoFilter = useCallback((e) => setParam('estado', e, ''), [setParam]);
   const setSearch = useCallback((s) => setParam('q', s, ''), [setParam]);
+  const setEtiquetaFilter = useCallback((e) => setParam('etiqueta', e, ''), [setParam]);
   const dSearch = useDebouncedValue(search, 350); // no fetch en cada keystroke
 
   // Catálogos
@@ -251,8 +256,14 @@ export default function Ventas() {
 
   // ── Carga ──
   const loadDash = useCallback(async () => {
-    try { setDash(await ventas.dashboard({ desde, hasta })); } catch (_) {}
-  }, [desde, hasta]);
+    try {
+      const params = { desde, hasta };
+      // 2026-07-30 (Lucas): filtro por etiqueta afecta TODOS los KPIs.
+      // Cuando presente, backend excluye B2B (movimientos_cc no tiene etiqueta).
+      if (etiquetaFilter) params.etiqueta_id = etiquetaFilter;
+      setDash(await ventas.dashboard(params));
+    } catch (_) {}
+  }, [desde, hasta, etiquetaFilter]);
 
   const loadLista = useCallback(async () => {
     setLoading(true);
@@ -260,10 +271,13 @@ export default function Ventas() {
       const params = { desde, hasta, limit: 200 };
       if (estadoFilter) params.estado = estadoFilter;
       if (dSearch.trim()) params.buscar = dSearch.trim();
+      // 2026-07-30 (Lucas): filtro etiqueta se aplica también al listado
+      // — el endpoint /api/ventas ya soporta ?etiqueta_id desde antes.
+      if (etiquetaFilter) params.etiqueta_id = etiquetaFilter;
       const res = await ventas.list(params);
       setLista(res.data || []);
     } catch (e) { toast.error(e.message); } finally { setLoading(false); }
-  }, [desde, hasta, estadoFilter, dSearch, toast]);
+  }, [desde, hasta, estadoFilter, dSearch, etiquetaFilter, toast]);
 
   const loadRapidas = useCallback(async () => {
     try { setRapidas(await ventas.rapidas({ estado: 'pendiente' })); } catch (_) { setRapidas([]); }
@@ -1426,10 +1440,33 @@ export default function Ventas() {
 
       {/* Período + acciones en la misma fila */}
       <div className="flex-between u-mb-14 u-gap-12-flex-wrap u-align-items-center">
-        <Seg value={periodo} options={[
-          { value: 'hoy', label: 'Hoy' }, { value: 'ayer', label: 'Ayer' }, { value: 'semana', label: 'Esta semana' },
-          { value: 'mes', label: 'Este mes' }, { value: 'custom', label: 'Personalizado' },
-        ]} onChange={setPeriodoRange} />
+        <div className="flex-row u-gap-12-flex-wrap u-align-items-center">
+          <Seg value={periodo} options={[
+            { value: 'hoy', label: 'Hoy' }, { value: 'ayer', label: 'Ayer' }, { value: 'semana', label: 'Esta semana' },
+            { value: 'mes', label: 'Este mes' }, { value: 'custom', label: 'Personalizado' },
+          ]} onChange={setPeriodoRange} />
+          {/* 2026-07-30 (Lucas): dropdown filtro por etiqueta. Recalcula
+              TODOS los KPIs del dashboard + filtra el listado. Persistido en
+              URL (?etiqueta=<id>) para deep-links. B2B se excluye cuando hay
+              filtro (movimientos_cc no tiene etiqueta — es un canal aparte). */}
+          {etiquetas.length > 0 && (
+            <div className="flex-row u-align-items-center u-gap-6">
+              <label className="muted tiny" htmlFor="filtro-etiqueta">Etiqueta</label>
+              <select
+                id="filtro-etiqueta"
+                className="input u-input-inline-narrow"
+                value={etiquetaFilter}
+                onChange={(e) => setEtiquetaFilter(e.target.value)}
+                title="Filtrar dashboard y listado por etiqueta"
+              >
+                <option value="">— Todas —</option>
+                {etiquetas.map(et => (
+                  <option key={et.id} value={et.id}>{et.nombre}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
         <div className="page-actions">
           <button className="btn" onClick={() => { loadDash(); loadLista(); loadRapidas(); }}><Icons.Refresh size={14} /> Actualizar</button>
           <button className="btn" onClick={() => setShowGarantias(true)}><Icons.Shield size={14} /> Plantillas</button>

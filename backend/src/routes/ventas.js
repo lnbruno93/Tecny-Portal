@@ -692,8 +692,13 @@ async function insertarDetalle(client, venta, b, ctx = {}) {
 const dashboardCache = createTenantScopedCache({
   ...DASHBOARD_VENTAS,
   fetcher: async (scopeKey) => {
-    const [tenantStr, desde, hasta] = scopeKey.split('|');
-    return computeDashboard(Number(tenantStr), desde, hasta);
+    // 2026-07-30 (Lucas): scopeKey ahora incluye etiquetaId como 4to segmento.
+    // Formato: `{tenantId}|{desde}|{hasta}|{etiquetaId||''}`. Cuando no hay
+    // filtro por etiqueta, el segmento queda vacío (compat con entries viejas
+    // que solo tenían 3 segmentos — split devuelve `undefined` que cae al `null`).
+    const [tenantStr, desde, hasta, etiquetaStr] = scopeKey.split('|');
+    const etiquetaId = etiquetaStr ? Number(etiquetaStr) : null;
+    return computeDashboard(Number(tenantStr), desde, hasta, etiquetaId);
   },
 });
 
@@ -719,10 +724,19 @@ function invalidateDashboardVentas(tenantId) {
   });
 }
 
-async function computeDashboard(tenantId, desde, hasta) {
-    const p = [desde, hasta];
-    // Filtro base de ventas del período (excluye canceladas y borradas)
-    const BASE = `v.deleted_at IS NULL AND v.estado <> 'cancelado' AND v.fecha >= $1 AND v.fecha <= $2`;
+async function computeDashboard(tenantId, desde, hasta, etiquetaId = null) {
+    // 2026-07-30 (Lucas): filtro opcional por etiqueta. Cuando presente:
+    //   - Retail: `p` incluye `etiquetaId` como $3 y BASE agrega
+    //     `AND v.etiqueta_id = $3` (afecta INGRESOS/GANANCIA/COSTOS/UNIDADES/
+    //     MÉTODOS PAGO/TOP PROD/TOP VEND).
+    //   - B2B: se EXCLUYE (WHERE FALSE) porque movimientos_cc no tiene
+    //     etiqueta_id — canal distinto. Usa `pB2B` (2 params, sin etiquetaId)
+    //     para no bindear parámetro no referenciado.
+    //   - Cache key incluye etiquetaId (ver dashboardCache fetcher).
+    const p    = etiquetaId ? [desde, hasta, etiquetaId] : [desde, hasta];
+    const pB2B = [desde, hasta];
+    const etiquetaCondRetail = etiquetaId ? ` AND v.etiqueta_id = $3` : '';
+    const BASE = `v.deleted_at IS NULL AND v.estado <> 'cancelado' AND v.fecha >= $1 AND v.fecha <= $2${etiquetaCondRetail}`;
 
     // B2B: ventas registradas como movimientos_cc tipo='compra' en el período.
     // Antes el dashboard solo miraba la tabla `ventas` (retail). Ahora sumamos
@@ -733,7 +747,12 @@ async function computeDashboard(tenantId, desde, hasta) {
     // mandar). costo_unit puede estar en USD o ARS — si está en ARS y no hay
     // info de TC, asumimos costo_unit como USD (caso 99% del catálogo). Si
     // empieza a haber casos mixtos importantes, agregar columna tc al movimiento.
-    const B2B_BASE = `m.deleted_at IS NULL AND m.tipo = 'compra' AND m.fecha >= $1 AND m.fecha <= $2`;
+    //
+    // Cuando hay filtro por etiqueta_id, forzamos `FALSE` — no queremos que
+    // B2B contamine los totales de una etiqueta específica retail.
+    const B2B_BASE = etiquetaId
+      ? `FALSE /* B2B excluido cuando hay filtro por etiqueta retail */`
+      : `m.deleted_at IS NULL AND m.tipo = 'compra' AND m.fecha >= $1 AND m.fecha <= $2`;
 
     // 2026-06-15 multi-tenant (PR 4.2): el bundle de 11 queries del dashboard
     // corre dentro de UNA tx con app.current_tenant seteado vía withTenant.
@@ -809,7 +828,9 @@ async function computeDashboard(tenantId, desde, hasta) {
       const canjes = await client.query(`SELECT COALESCE(SUM(CASE WHEN c.moneda IN ('ARS','UYU') AND v.tc_venta > 0 THEN c.valor_toma/v.tc_venta ELSE c.valor_toma END),0) AS canjes_usd
                 FROM canjes c JOIN ventas v ON v.id = c.venta_id WHERE ${BASE} AND c.deleted_at IS NULL`, p);
       // Egresos del período (USD)
-      const egresos = await client.query(`SELECT COALESCE(SUM(monto_usd),0) AS egresos_usd FROM egresos WHERE deleted_at IS NULL AND estado = 'pagado' AND fecha >= $1 AND fecha <= $2`, p);
+      // Egresos: NO filtran por etiqueta (los egresos no tienen etiqueta_id).
+      // Usan `pB2B` para no pasar el 3er param cuando hay filtro etiqueta.
+      const egresos = await client.query(`SELECT COALESCE(SUM(monto_usd),0) AS egresos_usd FROM egresos WHERE deleted_at IS NULL AND estado = 'pagado' AND fecha >= $1 AND fecha <= $2`, pB2B);
       // Diferencias de pago (sobrepagos / faltantes) — CTEs pre-agregadas (sin subqueries correlacionadas)
       const dif = await client.query(`WITH bv AS (
                   SELECT v.id, v.total_usd, v.tc_venta FROM ventas v WHERE ${BASE}
@@ -881,7 +902,13 @@ async function computeDashboard(tenantId, desde, hasta) {
       // 2026-06-10: `ingresos_acreditado_usd` y `costos_acreditado_usd` agregan
       // FILTER por m.estado='acreditado'. Alimentan la GANANCIA NETA del
       // dashboard — pendientes no cuentan hasta que pasen a acreditadas.
-      const b2b = await client.query(`
+      // 2026-07-30 (Lucas): cuando hay filtro etiqueta, B2B se excluye entero.
+      // Salteamos la query (no vale la pena hacer roundtrip a Postgres para un
+      // WHERE FALSE que retorna row vacío pero con warning de params sin uso).
+      // Hardcodeamos el shape idéntico al que devolvería la query real.
+      const b2b = etiquetaId
+        ? { rows: [{ count: 0, ingresos_usd: 0, costos_usd: 0, ingresos_acreditado_usd: 0, costos_acreditado_usd: 0, celulares: 0, accesorios: 0 }] }
+        : await client.query(`
         SELECT
           COUNT(DISTINCT m.id) FILTER (WHERE i.devuelto_at IS NULL)::int                            AS count,
           COALESCE(SUM(i.valor)             FILTER (WHERE i.devuelto_at IS NULL), 0)                AS ingresos_usd,
@@ -895,7 +922,7 @@ async function computeDashboard(tenantId, desde, hasta) {
         LEFT JOIN productos pr ON pr.id = i.producto_id
         LEFT JOIN clases_producto cp ON cp.id = pr.clase_id AND cp.deleted_at IS NULL
         WHERE ${B2B_BASE}
-      `, p);
+      `, pB2B);
       // 2026-07-08 Fase 2 categorías reales: desglose de unidades por las 9
       // clases de F1, retail + B2B por separado (se combinan abajo). Filtra
       // items sin producto (pr.clase NULL) — no representan mercadería física.
@@ -932,13 +959,16 @@ async function computeDashboard(tenantId, desde, hasta) {
                 LEFT JOIN clases_producto cp ON cp.id = pr.clase_id AND cp.deleted_at IS NULL
                 WHERE ${BASE}
                 GROUP BY pr.clase_id, cp.nombre, cp.emoji`, p);
-      const unidadesPorClaseB2B = await client.query(`SELECT pr.clase_id, cp.nombre, cp.emoji, SUM(i.cantidad)::int AS n
+      // Ídem b2b: si hay filtro etiqueta, no hay unidades B2B posibles.
+      const unidadesPorClaseB2B = etiquetaId
+        ? { rows: [] }
+        : await client.query(`SELECT pr.clase_id, cp.nombre, cp.emoji, SUM(i.cantidad)::int AS n
                 FROM items_movimiento_cc i
                 JOIN movimientos_cc m ON m.id = i.movimiento_cc_id
                 LEFT JOIN productos pr ON pr.id = i.producto_id
                 LEFT JOIN clases_producto cp ON cp.id = pr.clase_id AND cp.deleted_at IS NULL
                 WHERE ${B2B_BASE} AND i.devuelto_at IS NULL
-                GROUP BY pr.clase_id, cp.nombre, cp.emoji`, p);
+                GROUP BY pr.clase_id, cp.nombre, cp.emoji`, pB2B);
       return [totales, pagos, unidades, canjes, egresos, dif, horario, etiquetas, topProd, topVend, b2b, unidadesPorClaseRetail, unidadesPorClaseB2B];
     });
 
@@ -1114,7 +1144,11 @@ router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, re
     const hoy = new Date().toISOString().split('T')[0];
     const desde = req.query.desde || hoy;
     const hasta = req.query.hasta || hoy;
-    const data = await dashboardCache.get(`${req.tenantId}|${desde}|${hasta}`);
+    // 2026-07-30 (Lucas): filtro opcional por etiqueta_id. Cuando presente,
+    // el bloque B2B se excluye (movimientos_cc no tiene etiqueta_id). Ver
+    // computeDashboard y el schema Zod para detalle.
+    const etiquetaId = req.query.etiqueta_id || '';
+    const data = await dashboardCache.get(`${req.tenantId}|${desde}|${hasta}|${etiquetaId}`);
 
     // 2026-07-04 F5b (ver_ganancias): response shaping. Sin
     // `ventas.ver_ganancias`, sacamos los campos de ganancia/margen del
