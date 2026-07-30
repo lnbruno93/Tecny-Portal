@@ -613,6 +613,13 @@ export const proveedores = {
   createDevolucion: (id, data, idempotencyKey = null) =>
     api(`/api/proveedores/${id}/devoluciones`, 'POST', data, 15000,
       idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : null),
+  // ─── Relevo (feature RELEVO 2026-07-29) ─────────────────────────
+  // Ajuste manual del saldo del proveedor contra la realidad. User ingresa
+  // `saldo_nuevo_usd`; server deriva delta + tipo (`relevo_incremento` o
+  // `relevo_reduccion`). Requiere capability `proveedores.relevar` (owner
+  // o admin). Espejo del pattern de cajas.relevarCaja.
+  relevarProveedor: (id, data) =>
+    api(`/api/proveedores/${id}/relevo`, 'POST', data),
 };
 
 export const proyectos = {

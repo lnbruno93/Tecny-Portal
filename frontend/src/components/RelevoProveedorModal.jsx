@@ -1,67 +1,76 @@
 /**
- * RelevoCajaModal — ajuste manual del saldo de una caja contra la realidad.
+ * RelevoProveedorModal — ajuste manual del saldo del proveedor contra la realidad.
  *
- * Feature RELEVO (2026-07-29): el user con permission `cajas.relevar` (owner
- * o admin) ajusta el saldo de una caja al valor REAL (arqueo físico, pago
- * olvidado, gasto fuera del sistema, etc.).
+ * Feature RELEVO (2026-07-29): el user con capability `proveedores.relevar`
+ * (owner o admin por default) ajusta el saldo del proveedor al valor REAL.
  *
- * UX:
- *   1. Muestra saldo actual de la caja (readonly).
- *   2. User ingresa `saldo_nuevo` deseado.
- *   3. Sistema calcula y muestra el DELTA en vivo (color rojo si -,
- *      verde si +).
+ * Casos de uso:
+ *   - Pago olvidado en efectivo (le dimos plata que no cargamos).
+ *   - Compra no cargada (nos mandó mercadería que no anotamos).
+ *   - Devolución no registrada.
+ *   - Mobiliario intercambiado ("nos dio una silla como parte de pago").
+ *   - Cierre de cuenta con ajuste final para reconciliar.
+ *
+ * UX (espejo de RelevoCajaModal):
+ *   1. Muestra saldo actual del proveedor en USD (readonly).
+ *   2. User ingresa `saldo_nuevo_usd` deseado.
+ *   3. Sistema calcula y muestra el DELTA en vivo (color rojo si -, verde si +).
  *   4. Nota OBLIGATORIA (min 10 chars) — audit forense.
- *   5. Warning explicando que el relevo NO genera movimientos en otras
- *      cajas ni impacta el Dashboard.
- *   6. Confirmar → POST /api/cajas/cajas/:id/relevo.
+ *   5. Warning explicando que el relevo NO impacta otros proveedores ni
+ *      el Dashboard (cobrado/pagado).
+ *   6. Confirmar → POST /api/proveedores/:id/relevo.
  *
- * Backend: ver `backend/src/routes/cajas.js` handler POST /:id/relevo y
- * `backend/src/schemas/cajas.js:cajaRelevoSchema`.
+ * Backend: ver `backend/src/routes/proveedores.js` handler POST /:id/relevo,
+ * `backend/src/schemas/proveedores.js:proveedorRelevoSchema` y la fórmula
+ * canónica en `backend/src/lib/saldoProveedor.js` (SALDO_CASE_M consume los
+ * 2 tipos nuevos: relevo_incremento + relevo_reduccion).
  *
- * Signo del saldo_nuevo:
- *   - Puede ser negativo (adelanto entregado no registrado).
- *   - El backend NO aplica la guardia "no permitir negativo" que sí aplica
- *     al ajuste manual — el relevo ES el ajuste, aceptando la realidad.
+ * Convención del saldo:
+ *   - Positivo = les debemos al proveedor (deuda pendiente).
+ *   - Negativo = el proveedor nos debe (adelanto entregado sin mercadería
+ *     recibida aún). El backend NO aplica guardia "no negativo" — el relevo
+ *     ES el ajuste, aceptando la realidad tal cual es.
  *
- * Cajas ARS/UYU: TC requerido (para calcular monto_usd del movimiento).
- * Cajas USD/USDT: TC no aplica (el saldo YA está en USD).
+ * Diferencia con proveedor.js (POST /movimientos):
+ *   - Movimiento manual: user ingresa monto + tipo (compra/pago).
+ *   - Relevo: user ingresa saldo_nuevo, server deriva tipo + monto.
+ *   - Movimiento: nota opcional. Relevo: OBLIGATORIA min 10 chars.
+ *
+ * Todo se hace en USD (moneda funcional del proveedor) — no hay TC porque
+ * la deuda del proveedor se lleva siempre en USD (fórmula canónica).
  */
 import { useEffect, useRef, useState, useMemo } from 'react';
 import useModal from '../lib/useModal';
 import { Icons } from './Icons';
-import { cajas as cajasApi } from '../lib/api';
+import { proveedores as proveedoresApi } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 import { friendlyError } from '../lib/friendlyError';
 
 function todayISO() { return new Date().toLocaleDateString('sv'); }
 
-const REQUIERE_TC = ['ARS', 'UYU'];
-
-// Formato de número con separadores locales.
-function fmtMoney(n, moneda) {
+// Formato de número con separadores locales — siempre USD para proveedores.
+function fmtMoneyUsd(n) {
   const val = Number(n || 0).toLocaleString('es-AR', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-  return `${moneda} ${val}`;
+  return `USD ${val}`;
 }
 
-export default function RelevoCajaModal({ caja, onClose, onSaved }) {
+export default function RelevoProveedorModal({ proveedor, onClose, onSaved }) {
   const { toast } = useToast();
 
   // Estado del form
-  const [fecha, setFecha]           = useState(todayISO());
+  const [fecha, setFecha]                 = useState(todayISO());
   const [saldoNuevoStr, setSaldoNuevoStr] = useState('');
-  const [nota, setNota]             = useState('');
-  const [tc, setTc]                 = useState('');
-  const [saving, setSaving]         = useState(false);
-  const [error, setError]           = useState(null);
+  const [nota, setNota]                   = useState('');
+  const [saving, setSaving]               = useState(false);
+  const [error, setError]                 = useState(null);
 
   const overlayRef = useRef(null);
   useModal({ open: true, onClose, overlayRef });
 
-  const requiereTc = REQUIERE_TC.includes(caja?.moneda);
-  const saldoActual = Number(caja?.saldo_actual || 0);
+  const saldoActual = Number(proveedor?.saldo_usd || 0);
   const saldoNuevoNum = saldoNuevoStr === '' || saldoNuevoStr === '-'
     ? null
     : Number(saldoNuevoStr);
@@ -69,7 +78,6 @@ export default function RelevoCajaModal({ caja, onClose, onSaved }) {
   // Delta calculado en vivo (null si saldo_nuevo no válido).
   const delta = useMemo(() => {
     if (saldoNuevoNum === null || isNaN(saldoNuevoNum)) return null;
-    // Round a 2 decimales para evitar drift por float.
     return Math.round((saldoNuevoNum - saldoActual) * 100) / 100;
   }, [saldoNuevoNum, saldoActual]);
 
@@ -77,8 +85,7 @@ export default function RelevoCajaModal({ caja, onClose, onSaved }) {
   const notaTrim = nota.trim();
   const notaOk = notaTrim.length >= 10 && notaTrim.length <= 500;
   const deltaOk = delta !== null && delta !== 0;
-  const tcOk = !requiereTc || (Number(tc) > 0);
-  const formOk = notaOk && deltaOk && tcOk && !saving;
+  const formOk = notaOk && deltaOk && !saving;
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -88,15 +95,14 @@ export default function RelevoCajaModal({ caja, onClose, onSaved }) {
     try {
       const body = {
         fecha,
-        saldo_nuevo: saldoNuevoNum,
+        saldo_nuevo_usd: saldoNuevoNum,
         nota: notaTrim,
       };
-      if (requiereTc) body.tc = Number(tc);
-      const res = await cajasApi.relevarCaja(caja.id, body);
+      const res = await proveedoresApi.relevarProveedor(proveedor.id, body);
       toast({
         type: 'success',
         title: 'Relevo registrado',
-        message: `Saldo ajustado ${fmtMoney(res.saldo_anterior, caja.moneda)} → ${fmtMoney(res.saldo_nuevo, caja.moneda)}`,
+        message: `Saldo ajustado ${fmtMoneyUsd(res.saldo_anterior)} → ${fmtMoneyUsd(res.saldo_nuevo)}`,
       });
       if (onSaved) onSaved(res);
       onClose();
@@ -106,20 +112,24 @@ export default function RelevoCajaModal({ caja, onClose, onSaved }) {
     }
   }
 
-  if (!caja) return null;
+  if (!proveedor) return null;
 
-  const deltaColorClass = delta === null
+  // Signo semántico del delta para deuda:
+  //   - delta > 0 → aumenta lo que les debemos → color rojo (peor situación).
+  //   - delta < 0 → reduce lo que les debemos → color verde (mejor situación).
+  // OJO: al revés que en cajas (donde + es bueno). Acá `saldo` = deuda.
+  const deltaColorClass = delta === null || delta === 0
     ? ''
-    : delta > 0 ? 'u-color-pos' : 'u-color-neg';
+    : delta > 0 ? 'u-color-neg' : 'u-color-pos';
   const deltaSign = delta === null || delta === 0 ? '' : delta > 0 ? '+' : '';
 
   return (
     <div className="modal-overlay" ref={overlayRef} onMouseDown={(e) => {
       if (e.target === overlayRef.current) onClose();
     }}>
-      <div className="modal modal-md" role="dialog" aria-labelledby="relevo-title">
+      <div className="modal modal-md" role="dialog" aria-labelledby="relevo-prov-title">
         <div className="modal-hd">
-          <h3 id="relevo-title" className="u-m-0">Relevo de saldo — {caja.nombre}</h3>
+          <h3 id="relevo-prov-title" className="u-m-0">Relevo de saldo — {proveedor.nombre}</h3>
           <button className="icon-btn" onClick={onClose} aria-label="Cerrar">
             <Icons.X size={16} />
           </button>
@@ -142,17 +152,22 @@ export default function RelevoCajaModal({ caja, onClose, onSaved }) {
           <div className="form-row">
             <label className="form-label">Saldo actual (según sistema)</label>
             <div className="u-fw-600-fs-14-mb-4 mono">
-              {fmtMoney(saldoActual, caja.moneda)}
+              {fmtMoneyUsd(saldoActual)}
+            </div>
+            <div className="hint">
+              {saldoActual > 0 && 'Positivo = les debemos.'}
+              {saldoActual < 0 && 'Negativo = el proveedor nos debe (adelanto entregado).'}
+              {saldoActual === 0 && 'Cuenta en cero.'}
             </div>
           </div>
 
           {/* Saldo nuevo (input) */}
           <div className="form-row">
-            <label className="form-label" htmlFor="relevo-saldo-nuevo">
+            <label className="form-label" htmlFor="relevo-prov-saldo-nuevo">
               Saldo nuevo (según la realidad) <span className="req">*</span>
             </label>
             <input
-              id="relevo-saldo-nuevo"
+              id="relevo-prov-saldo-nuevo"
               type="number"
               inputMode="decimal"
               step="0.01"
@@ -163,8 +178,8 @@ export default function RelevoCajaModal({ caja, onClose, onSaved }) {
               autoFocus
             />
             <div className="hint">
-              Ingresá el saldo REAL de la caja (contá plata / verificá cuenta).
-              Puede ser negativo (adelantos entregados no registrados).
+              Ingresá el saldo REAL en USD. Puede ser negativo (adelantos
+              entregados no recibidos como mercadería).
             </div>
           </div>
 
@@ -173,51 +188,31 @@ export default function RelevoCajaModal({ caja, onClose, onSaved }) {
             <div className="form-row relevo-delta-panel">
               <label className="form-label">Diferencia calculada</label>
               <div className={`mono ${deltaColorClass} relevo-delta-value`}>
-                {deltaSign}{fmtMoney(delta, caja.moneda)}
+                {deltaSign}{fmtMoneyUsd(delta)}
               </div>
-              {delta === 0 && (
-                <div className="hint u-color-warn">
-                  El saldo nuevo es igual al actual. No hay ajuste que registrar.
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* TC (solo ARS/UYU) */}
-          {requiereTc && delta !== null && delta !== 0 && (
-            <div className="form-row">
-              <label className="form-label" htmlFor="relevo-tc">
-                Tipo de cambio ({caja.moneda}/USD) <span className="req">*</span>
-              </label>
-              <input
-                id="relevo-tc"
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                min="0.01"
-                className="input mono"
-                value={tc}
-                onChange={(e) => setTc(e.target.value)}
-                placeholder="Ej: 1200"
-                required
-              />
               <div className="hint">
-                Usado para el equivalente USD del movimiento (histórico).
+                {delta > 0 && 'Aumenta lo que les debemos (más deuda).'}
+                {delta < 0 && 'Reduce lo que les debemos (menos deuda).'}
+                {delta === 0 && (
+                  <span className="u-color-warn">
+                    El saldo nuevo es igual al actual. No hay ajuste que registrar.
+                  </span>
+                )}
               </div>
             </div>
           )}
 
           {/* Nota (obligatoria) */}
           <div className="form-row">
-            <label className="form-label" htmlFor="relevo-nota">
+            <label className="form-label" htmlFor="relevo-prov-nota">
               Motivo del relevo <span className="req">*</span>
             </label>
             <textarea
-              id="relevo-nota"
+              id="relevo-prov-nota"
               className="input"
               value={nota}
               onChange={(e) => setNota(e.target.value)}
-              placeholder="Ej: Arqueo mensual — encontré USD 500 más en el cajón / Pago olvidado a Kevin del 25/07 en efectivo"
+              placeholder="Ej: Pago olvidado a Kevin del 20/07 en efectivo por USD 300 / Mercadería recibida sin cargar el 25/07"
               rows={3}
               maxLength={500}
               required
@@ -235,10 +230,9 @@ export default function RelevoCajaModal({ caja, onClose, onSaved }) {
           <div className="hint relevo-warning-banner">
             <Icons.Alert size={14} />
             <div>
-              Este ajuste <strong>NO impacta otras cajas</strong>, cuentas
-              corrientes, ni KPIs del Dashboard (cobrado / pagado del mes).
-              Queda registrado en el historial de esta caja con badge distintivo
-              &quot;Relevo&quot;.
+              Este ajuste <strong>NO impacta otros proveedores</strong>, cajas,
+              ni KPIs del Dashboard (cobrado / pagado del mes). Queda registrado
+              en el historial de esta cuenta con badge distintivo &quot;Relevo&quot;.
             </div>
           </div>
 
