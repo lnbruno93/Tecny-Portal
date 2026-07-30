@@ -12,6 +12,7 @@ import { Skeleton, SkeletonRow } from '../components/Skeleton';
 import useModal from '../lib/useModal';
 import ContactoPickerEmbedded from '../components/ContactoPickerEmbedded';
 import Badge from '../components/Badge';
+import RelevoCajaModal from '../components/RelevoCajaModal';
 // 2026-06-29 Multi-país F3: monedas según país del tenant en form alta caja.
 import { useMonedasTenant } from '../lib/useMonedasTenant';
 
@@ -154,6 +155,9 @@ export default function Cajas() {
   // ── Config Cajas (cuentas de dinero = metodos_pago) ───────────────────────
   const [cajasList, setCajasList] = useState([]);
   const [loadingCajas, setLoadingCajas] = useState(false);
+  // 2026-07-29 Feature RELEVO: caja seleccionada para modal de relevo.
+  // null = modal cerrado. Setear al objeto caja para abrir.
+  const [relevoCaja, setRelevoCaja] = useState(null);
   // 2026-06-29 Multi-país F3: initial state usa 'ARS' por compat con el
   // mount inicial sync (cuando user todavía no hidrató). El effect abajo
   // sincroniza a monedaLocal cuando el hook está listo.
@@ -1033,6 +1037,15 @@ export default function Cajas() {
                         <button className="icon-btn" title="Movimientos / ajuste" onClick={() => openCajaLedger(c)}>
                           <Icons.Eye size={14} />
                         </button>
+                        {/* 2026-07-29 Feature RELEVO: ajuste manual del saldo
+                            contra la realidad. Requiere permiso `cajas.relevar`
+                            (backend). Botón siempre visible — el 403 del
+                            backend lo maneja el modal si el user no tiene
+                            capability (fail-loud). */}
+                        <button className="icon-btn" title="Relevo (arqueo — ajuste manual del saldo)"
+                                onClick={() => setRelevoCaja(c)}>
+                          <Icons.Sliders size={13} />
+                        </button>
                         <button className="icon-btn" title="Eliminar caja" onClick={() => handleDeleteCaja(c)}>
                           <Icons.Trash size={13} />
                         </button>
@@ -1286,6 +1299,19 @@ export default function Cajas() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* 2026-07-29 Feature RELEVO: modal de ajuste manual del saldo.
+          Se abre cuando setRelevoCaja(c) desde la fila de una caja. Al
+          confirmar, recargamos la lista (loadCajas) para reflejar el
+          saldo nuevo. Si el user no tiene capability `cajas.relevar`,
+          el modal muestra el 403 amigable del backend. */}
+      {relevoCaja && (
+        <RelevoCajaModal
+          caja={relevoCaja}
+          onClose={() => setRelevoCaja(null)}
+          onSaved={() => { setRelevoCaja(null); loadCajas(); }}
+        />
       )}
     </div>
   );
