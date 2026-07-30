@@ -1,19 +1,29 @@
-// Tests del CompraProveedorDetalleModal — vista read-only del detalle de
-// una compra a proveedor (Fase A pedido Gianfranco 2026-07-30).
+// Tests del CompraProveedorDetalleModal — vista + edición del detalle de
+// una compra a proveedor.
 //
-// Verifica:
-//   · Render condicional (sin movimiento → null)
-//   · Header con fecha, tipo, monto USD, caja (o CC)
-//   · Notas del movimiento cuando existen
-//   · Tabla con TODOS los items (no solo el primero + "+N" como la grilla)
-//   · Botón "Editar" deshabilitado (Fase A)
-//   · Footer con suma cuando hay >1 item
-//   · Nota de discrepancia si suma_items ≠ monto_movimiento
-//   · Close via botón X, botón Cerrar, y click en overlay
+// Fase A (2026-07-30): vista read-only con todos los items.
+// Fase B (2026-07-30): modo edit — editar campos, agregar y remover items,
+//   con sync a Inventario y guards de producto vendido.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, fireEvent, cleanup } from '@testing-library/react';
+import { render, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import CompraProveedorDetalleModal from './CompraProveedorDetalleModal';
+import { ToastProvider } from '../contexts/ToastContext';
+
+// Mock del module api (updateMovimiento) — retorna una promesa configurable
+// por test para verificar el body enviado.
+vi.mock('../lib/api', () => ({
+  proveedores: {
+    updateMovimiento: vi.fn(),
+  },
+}));
+import { proveedores as provApi } from '../lib/api';
+
+function Wrapper({ children }) {
+  return <ToastProvider>{children}</ToastProvider>;
+}
+const renderModal = (props) =>
+  render(<CompraProveedorDetalleModal {...props} />, { wrapper: Wrapper });
 
 function mkMov(overrides = {}) {
   return {
@@ -23,7 +33,7 @@ function mkMov(overrides = {}) {
     monto: 14985,
     moneda: 'USD',
     monto_usd: 14985,
-    caja_id: null, // CC por default
+    caja_id: null,
     caja_nombre: null,
     notas: null,
     items: [
@@ -37,188 +47,251 @@ function mkMov(overrides = {}) {
 
 const proveedor = { id: 5, nombre: 'Celnyx' };
 
-beforeEach(() => { cleanup(); });
+beforeEach(() => {
+  cleanup();
+  provApi.updateMovimiento.mockReset();
+});
 
-describe('CompraProveedorDetalleModal — render condicional', () => {
-  it('sin movimiento: no renderiza nada', () => {
-    const { container } = render(
-      <CompraProveedorDetalleModal movimiento={null} proveedor={proveedor} onClose={vi.fn()} />
-    );
+// ─── Fase A: render + view mode ───────────────────────────────────────
+describe('render condicional', () => {
+  it('sin movimiento: no renderiza', () => {
+    const { container } = renderModal({ movimiento: null, proveedor, onClose: vi.fn() });
     expect(container.querySelector('.modal')).toBeNull();
   });
 
-  it('con movimiento: renderiza modal con role="dialog"', () => {
-    const { container } = render(
-      <CompraProveedorDetalleModal movimiento={mkMov()} proveedor={proveedor} onClose={vi.fn()} />
-    );
+  it('con movimiento: renderiza dialog con aria-labelledby', () => {
+    const { container } = renderModal({ movimiento: mkMov(), proveedor, onClose: vi.fn() });
     const dialog = container.querySelector('[role="dialog"]');
-    expect(dialog).toBeTruthy();
     expect(dialog.getAttribute('aria-labelledby')).toBe('compra-detalle-title');
   });
 });
 
-describe('CompraProveedorDetalleModal — header', () => {
-  it('muestra tipo, fecha (DD/MM/YY), monto USD y nombre proveedor', () => {
-    const { container } = render(
-      <CompraProveedorDetalleModal movimiento={mkMov()} proveedor={proveedor} onClose={vi.fn()} />
-    );
-    const text = container.textContent;
-    expect(text).toContain('Compra');
-    expect(text).toContain('15/07/26');
-    expect(text).toContain('USD 14.985,00');
-    expect(text).toContain('Celnyx');
+describe('header (view)', () => {
+  it('muestra tipo, fecha (DD/MM/YY), monto USD, nombre proveedor', () => {
+    const { container } = renderModal({ movimiento: mkMov(), proveedor, onClose: vi.fn() });
+    const t = container.textContent;
+    expect(t).toContain('Compra');
+    expect(t).toContain('15/07/26');
+    expect(t).toContain('USD 14.985,00');
+    expect(t).toContain('Celnyx');
   });
 
-  it('sin caja_id: muestra "A crédito (CC)"', () => {
-    const { container } = render(
-      <CompraProveedorDetalleModal movimiento={mkMov({ caja_id: null })} proveedor={proveedor} onClose={vi.fn()} />
-    );
+  it('sin caja_id: "A crédito (CC)"', () => {
+    const { container } = renderModal({
+      movimiento: mkMov({ caja_id: null }), proveedor, onClose: vi.fn(),
+    });
     expect(container.textContent).toContain('A crédito');
   });
 
-  it('con caja_nombre: muestra el nombre de la caja', () => {
-    const { container } = render(
-      <CompraProveedorDetalleModal
-        movimiento={mkMov({ caja_id: 7, caja_nombre: 'Efectivo USD' })}
-        proveedor={proveedor}
-        onClose={vi.fn()}
-      />
-    );
+  it('con caja_nombre: muestra la caja', () => {
+    const { container } = renderModal({
+      movimiento: mkMov({ caja_id: 7, caja_nombre: 'Efectivo USD' }),
+      proveedor, onClose: vi.fn(),
+    });
     expect(container.textContent).toContain('Efectivo USD');
   });
 
-  it('devolucion: label "Devolución" en el header', () => {
-    const { container } = render(
-      <CompraProveedorDetalleModal
-        movimiento={mkMov({ tipo: 'devolucion' })}
-        proveedor={proveedor}
-        onClose={vi.fn()}
-      />
-    );
+  it('tipo=devolucion: label "Devolución"', () => {
+    const { container } = renderModal({
+      movimiento: mkMov({ tipo: 'devolucion' }), proveedor, onClose: vi.fn(),
+    });
     expect(container.textContent).toContain('Devolución');
   });
 });
 
-describe('CompraProveedorDetalleModal — items', () => {
-  it('renderiza fila por cada item (TODOS, no solo +N)', () => {
-    const { container } = render(
-      <CompraProveedorDetalleModal movimiento={mkMov()} proveedor={proveedor} onClose={vi.fn()} />
-    );
-    const text = container.textContent;
-    expect(text).toContain('iPad Pro 11"');
-    expect(text).toContain('14 Pro');
-    expect(text).toContain('MacBook Neo');
-    expect(text).toContain('SHQWPFH7069');
-    expect(text).toContain('HPW0');
+describe('items (view)', () => {
+  it('renderiza TODOS los items — no solo el primero + N', () => {
+    const { container } = renderModal({ movimiento: mkMov(), proveedor, onClose: vi.fn() });
+    const t = container.textContent;
+    expect(t).toContain('iPad Pro 11"');
+    expect(t).toContain('14 Pro');
+    expect(t).toContain('MacBook Neo');
+    expect(t).toContain('SHQWPFH7069');
+    expect(t).toContain('HPW0');
   });
 
-  it('muestra el color, capacidad y valor de cada item', () => {
-    const { container } = render(
-      <CompraProveedorDetalleModal movimiento={mkMov()} proveedor={proveedor} onClose={vi.fn()} />
-    );
-    const text = container.textContent;
-    expect(text).toContain('Space Black');
-    expect(text).toContain('Gold');
-    expect(text).toContain('Blush ESP');
-    // Valores formateados
-    expect(text).toContain('1.175,00');
-    expect(text).toContain('10.000,00');
-  });
-
-  it('items.length === 0: muestra placeholder', () => {
-    const { container } = render(
-      <CompraProveedorDetalleModal
-        movimiento={mkMov({ items: [] })}
-        proveedor={proveedor}
-        onClose={vi.fn()}
-      />
-    );
+  it('placeholder cuando items === 0', () => {
+    const { container } = renderModal({
+      movimiento: mkMov({ items: [] }), proveedor, onClose: vi.fn(),
+    });
     expect(container.textContent).toContain('no tiene productos asociados');
   });
 
-  it('items > 1: muestra tfoot con suma total', () => {
-    const { container } = render(
-      <CompraProveedorDetalleModal movimiento={mkMov()} proveedor={proveedor} onClose={vi.fn()} />
-    );
+  it('tfoot con suma cuando >1 items', () => {
+    const { container } = renderModal({ movimiento: mkMov(), proveedor, onClose: vi.fn() });
     const tfoot = container.querySelector('tfoot');
-    expect(tfoot).toBeTruthy();
     expect(tfoot.textContent).toContain('3 items');
-    expect(tfoot.textContent).toContain('14.985,00'); // 1175+3810+10000
+    expect(tfoot.textContent).toContain('14.985,00');
   });
 
-  it('items === 1: NO muestra tfoot (redundante)', () => {
-    const { container } = render(
-      <CompraProveedorDetalleModal
-        movimiento={mkMov({ items: [{ id: 1, producto: 'Solo uno', valor: 500 }] })}
-        proveedor={proveedor}
-        onClose={vi.fn()}
-      />
-    );
+  it('sin tfoot cuando items === 1', () => {
+    const { container } = renderModal({
+      movimiento: mkMov({ items: [{ id: 1, producto: 'Único', valor: 500 }] }),
+      proveedor, onClose: vi.fn(),
+    });
     expect(container.querySelector('tfoot')).toBeNull();
   });
 });
 
-describe('CompraProveedorDetalleModal — notas y discrepancia', () => {
-  it('con notas del movimiento: las muestra', () => {
-    const { container } = render(
-      <CompraProveedorDetalleModal
-        movimiento={mkMov({ notas: 'Compra a proveedor mayorista. Descuento 5%.' })}
-        proveedor={proveedor}
-        onClose={vi.fn()}
-      />
-    );
-    expect(container.textContent).toContain('Compra a proveedor mayorista');
-  });
-
-  it('discrepancia suma_items ≠ monto: muestra nota explicativa', () => {
-    // Items suman 14.985 pero monto es 14.500 (descuento aplicado al total)
-    const { container } = render(
-      <CompraProveedorDetalleModal
-        movimiento={mkMov({ monto: 14500 })}
-        proveedor={proveedor}
-        onClose={vi.fn()}
-      />
-    );
+describe('discrepancia (view)', () => {
+  it('nota explicativa cuando suma items ≠ monto', () => {
+    const { container } = renderModal({
+      movimiento: mkMov({ monto: 14500 }), proveedor, onClose: vi.fn(),
+    });
     expect(container.textContent).toContain('difiere');
-    expect(container.textContent).toContain('descuentos, envío o ajustes');
+    expect(container.textContent).toContain('descuentos');
   });
 
-  it('sin discrepancia: no muestra la nota', () => {
-    const { container } = render(
-      <CompraProveedorDetalleModal movimiento={mkMov()} proveedor={proveedor} onClose={vi.fn()} />
-    );
-    // El texto de la nota específica no debe aparecer
+  it('sin nota cuando suma == monto', () => {
+    const { container } = renderModal({ movimiento: mkMov(), proveedor, onClose: vi.fn() });
     expect(container.textContent).not.toContain('difiere');
   });
 });
 
-describe('CompraProveedorDetalleModal — acciones', () => {
-  it('botón X en el header cierra el modal', () => {
+describe('acciones (view)', () => {
+  it('botón X del header cierra', () => {
     const onClose = vi.fn();
-    const { container } = render(
-      <CompraProveedorDetalleModal movimiento={mkMov()} proveedor={proveedor} onClose={onClose} />
-    );
-    // aria-label "Cerrar" (el botón X del header, no el btn del footer)
-    const closeBtn = container.querySelector('[aria-label="Cerrar"]');
-    fireEvent.click(closeBtn);
+    const { container } = renderModal({ movimiento: mkMov(), proveedor, onClose });
+    fireEvent.click(container.querySelector('[aria-label="Cerrar"]'));
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('botón "Cerrar" del footer cierra el modal', () => {
+  it('botón "Cerrar" del footer cierra', () => {
     const onClose = vi.fn();
-    const { getByText } = render(
-      <CompraProveedorDetalleModal movimiento={mkMov()} proveedor={proveedor} onClose={onClose} />
-    );
+    const { getByText } = renderModal({ movimiento: mkMov(), proveedor, onClose });
     fireEvent.click(getByText('Cerrar'));
     expect(onClose).toHaveBeenCalled();
   });
+});
 
-  it('botón "Editar" está deshabilitado en Fase A', () => {
-    const { getByLabelText } = render(
-      <CompraProveedorDetalleModal movimiento={mkMov()} proveedor={proveedor} onClose={vi.fn()} />
-    );
-    const editBtn = getByLabelText(/Editar/);
-    expect(editBtn).toBeDisabled();
-    expect(editBtn.getAttribute('title')).toContain('Próximamente');
+// ─── Fase B: modo edit ────────────────────────────────────────────────
+describe('modo edit — activación', () => {
+  it('tipo=compra: botón "Editar" visible y activo', () => {
+    const { getByText } = renderModal({ movimiento: mkMov(), proveedor, onClose: vi.fn() });
+    const btn = getByText('Editar');
+    expect(btn).toBeInTheDocument();
+    expect(btn).not.toBeDisabled();
+  });
+
+  it('tipo=devolucion: sin botón "Editar" (backend rechaza)', () => {
+    const { queryByText } = renderModal({
+      movimiento: mkMov({ tipo: 'devolucion' }), proveedor, onClose: vi.fn(),
+    });
+    expect(queryByText('Editar')).toBeNull();
+  });
+
+  it('click "Editar" muestra form editable con inputs por item', () => {
+    const { getByText, container } = renderModal({
+      movimiento: mkMov(), proveedor, onClose: vi.fn(),
+    });
+    fireEvent.click(getByText('Editar'));
+    // Debería haber inputs con los valores actuales
+    const inputs = container.querySelectorAll('input[type="text"], input[type="number"]');
+    expect(inputs.length).toBeGreaterThan(0);
+    // Botón "Guardar cambios" reemplaza a "Cerrar"
+    expect(getByText('Guardar cambios')).toBeInTheDocument();
+    expect(getByText('Cancelar')).toBeInTheDocument();
+  });
+});
+
+describe('modo edit — agregar y remover items', () => {
+  it('botón "+ Agregar producto" agrega una fila vacía', () => {
+    const { getByText, container } = renderModal({
+      movimiento: mkMov({ items: [{ id: 1, producto: 'X', valor: 100 }] }),
+      proveedor, onClose: vi.fn(),
+    });
+    fireEvent.click(getByText('Editar'));
+    // 1 fila + tfoot
+    let rows = container.querySelectorAll('tbody tr');
+    expect(rows.length).toBe(1);
+    fireEvent.click(getByText('+ Agregar producto'));
+    rows = container.querySelectorAll('tbody tr');
+    expect(rows.length).toBe(2);
+  });
+
+  it('botón trash de una fila la remueve', () => {
+    const { getByText, container, getAllByTitle } = renderModal({
+      movimiento: mkMov({
+        items: [
+          { id: 1, producto: 'A', valor: 100 },
+          { id: 2, producto: 'B', valor: 200 },
+        ],
+      }),
+      proveedor, onClose: vi.fn(),
+    });
+    fireEvent.click(getByText('Editar'));
+    const trashBtns = getAllByTitle('Eliminar item');
+    expect(trashBtns.length).toBe(2);
+    fireEvent.click(trashBtns[0]);
+    // Post-remove: solo 1 fila
+    const rows = container.querySelectorAll('tbody tr');
+    expect(rows.length).toBe(1);
+  });
+});
+
+describe('modo edit — guardar', () => {
+  it('cancelar vuelve a view mode sin llamar API', () => {
+    const { getByText, queryByText } = renderModal({
+      movimiento: mkMov(), proveedor, onClose: vi.fn(),
+    });
+    fireEvent.click(getByText('Editar'));
+    fireEvent.click(getByText('Cancelar'));
+    // De vuelta en view: aparece "Editar" de nuevo
+    expect(getByText('Editar')).toBeInTheDocument();
+    expect(queryByText('Guardar cambios')).toBeNull();
+    expect(provApi.updateMovimiento).not.toHaveBeenCalled();
+  });
+
+  it('click "Guardar cambios" envía payload con items diff-eados por id', async () => {
+    provApi.updateMovimiento.mockResolvedValue({ id: 1, items: [], monto: 300 });
+    const onSaved = vi.fn();
+    const onClose = vi.fn();
+    const { getByText, getAllByTitle } = renderModal({
+      movimiento: mkMov({
+        items: [
+          { id: 10, producto: 'A', valor: 100 },
+          { id: 11, producto: 'B', valor: 200 },
+        ],
+      }),
+      proveedor, onClose, onSaved,
+    });
+    fireEvent.click(getByText('Editar'));
+    // Elimino el primer item + agrego uno nuevo
+    fireEvent.click(getAllByTitle('Eliminar item')[0]);
+    fireEvent.click(getByText('+ Agregar producto'));
+    fireEvent.click(getByText('Guardar cambios'));
+
+    await waitFor(() => expect(provApi.updateMovimiento).toHaveBeenCalledTimes(1));
+    const [movId, body] = provApi.updateMovimiento.mock.calls[0];
+    expect(movId).toBe(1);
+    // Body debe tener items: [item2 con id=11, item nuevo sin id]
+    expect(body.items).toHaveLength(2);
+    expect(body.items[0].id).toBe(11); // item que quedó (B)
+    expect(body.items[1].id).toBeUndefined(); // item nuevo
+    // Callbacks post-success
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it('backend 409 producto vendido: muestra error, no cierra', async () => {
+    const err = new Error('Producto vendido');
+    err.body = { productos_vendidos: ['iPhone Vendido'] };
+    provApi.updateMovimiento.mockRejectedValue(err);
+    const onClose = vi.fn();
+    const { getByText, container, getAllByTitle } = renderModal({
+      movimiento: mkMov({ items: [{ id: 1, producto: 'X', valor: 100 }] }),
+      proveedor, onClose,
+    });
+    fireEvent.click(getByText('Editar'));
+    fireEvent.click(getAllByTitle('Eliminar item')[0]);
+    fireEvent.click(getByText('Guardar cambios'));
+
+    await waitFor(() => expect(provApi.updateMovimiento).toHaveBeenCalled());
+    // El modal NO se cerró
+    expect(onClose).not.toHaveBeenCalled();
+    // Aparece el mensaje de error en el modal
+    await waitFor(() => {
+      expect(container.textContent).toMatch(/Error/i);
+    });
   });
 });

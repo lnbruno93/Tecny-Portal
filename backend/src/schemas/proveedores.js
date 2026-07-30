@@ -178,10 +178,45 @@ const proveedorRelevoSchema = z.object({
                      .max(500, 'Nota demasiado larga (máximo 500 caracteres)'),
 }).strict();
 
+// ─── Editar compra (Fase B pedido Gianfranco 2026-07-30) ────────────────
+//
+// Permite editar una compra existente (proveedor_movimientos.tipo='compra').
+// Los items se pasan como REEMPLAZO COMPLETO del array actual — el handler
+// diff-ea por `id` para decidir INSERT (item nuevo, sin id), UPDATE (con id
+// existente) y DELETE (id en base pero no en el body).
+//
+// Campos NO editables acá (requieren workflow separado):
+//   - proveedor_id, tipo, moneda, tc, caja_id — cambiar cualquiera de estos
+//     requiere revertir el movimiento entero + re-crear. Feature futuro.
+//   - monto — se RECALCULA server-side desde SUM(valor) de items (invariante).
+//
+// Guards de integridad:
+//   - Solo tipo=compra editable. Pagos/relevos/saldo_inicial no.
+//   - Si el item nuevo trae `producto_stock`, se crea producto en Inventario.
+//   - Si un item se remueve y tenía producto asociado NO vendido, se soft-deletea
+//     el producto también. Si YA se vendió, la ruta rechaza con 409 amigable.
+//   - IMEI duplicado global (interno o vs stock) → 409.
+//
+// Item con `id` opcional para permitir edición diferencial.
+const itemProveedorEditSchema = itemProveedorSchema.extend({
+  id: z.coerce.number().int().positive().optional(),
+});
+
+const updateMovimientoProveedorSchema = z.object({
+  fecha:       fechaNoFutura.optional(),
+  descripcion: z.string().trim().max(500).optional().nullable(),
+  notas:       z.string().trim().max(1000).optional().nullable(),
+  // Array completo del nuevo estado. Vacío → no cambia items.
+  // Si querés eliminar TODOS los items, pasá `[]` explícito (el handler
+  // interpreta undefined como "no tocar", array como "reemplazar").
+  items:       z.array(itemProveedorEditSchema).max(200, 'Máximo 200 ítems por compra').optional(),
+}).strict();
+
 module.exports = {
   createProveedorSchema,
   updateProveedorSchema,
   createMovimientoProveedorSchema,
+  updateMovimientoProveedorSchema,
   bulkCreateMovimientosProveedorSchema,
   nombresBulkProveedoresSchema,
   createDevolucionMercaderiaProveedorSchema,

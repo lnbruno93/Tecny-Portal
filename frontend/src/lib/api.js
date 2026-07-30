@@ -595,6 +595,15 @@ export const proveedores = {
   // (POST /movimientos/bulk).
   createMovimientosBulk: (movimientos) => api('/api/proveedores/movimientos/bulk', 'POST', { movimientos }),
   deleteMovimiento: (id) => api(`/api/proveedores/movimientos/${id}`, 'DELETE'),
+  // Editar compra (Fase B pedido Gianfranco 2026-07-30). Body: { fecha?,
+  // descripcion?, notas?, items? }. Si items se pasa, es reemplazo completo:
+  // items con `id` = UPDATE, sin `id` = INSERT, id-en-DB-no-en-body = DELETE.
+  // Backend recalcula monto desde SUM(items.valor) y sincroniza productos
+  // asociados por IMEI original. Ver runbook (backend/src/routes/proveedores.js
+  // PUT /movimientos/:mid) para guards + edge cases.
+  updateMovimiento: (id, data, idempotencyKey = null) =>
+    api(`/api/proveedores/movimientos/${id}`, 'PUT', data, 15000,
+      idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : null),
   saldos: () => api('/api/proveedores/resumen/saldos'),
   // Bulk-delete cascade — admin only. Borra TODOS los proveedores + sus
   // compras/pagos + revierte los egresos de caja. Si alguna caja queda
