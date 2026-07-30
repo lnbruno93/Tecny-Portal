@@ -38,16 +38,35 @@
 // Sprint 1 audit 07-25 · Fix 10 (Track D P1-2): antes production incluía
 // ambas URLs (prod + staging) en `connect-src` e `img-src`. Un XSS injectado
 // en prod podía usar staging como canal de exfiltración/data-loading si el
-// atacante controlaba también staging. Ahora cada contexto habilita
-// SOLO su backend correspondiente. `deploy-preview` mantiene ambas porque
-// los previews de PRs a veces necesitan point a prod backend para
-// smoke-testing (config común en el codebase).
+// atacante controlaba también staging. Se intentó restringir cada contexto
+// a SU backend correspondiente.
+//
+// 2026-07-30 (staging drift diagnóstico) — REGRESIÓN DEL FIX 10:
+// Descubierto que los blocks `[[context.<X>.headers]]` de netlify.toml SON
+// DEAD CODE en Netlify. Confirmado empíricamente + community threads +
+// docs oficiales: solo `[[headers]]` global se aplica; los context-specific
+// headers blocks NUNCA ejecutan. Solo `[context.<X>.environment]` respeta
+// el context.
+//
+// Consecuencia del Fix 10 con esta limitación: el [[headers]] global (que
+// mapea a "production" en el parity check) tenía solo prod backend → sitio
+// tecny-portal-staging (que usa VITE_API_URL=staging pero recibe el CSP
+// prod-only) tenía TODAS las requests al backend bloqueadas por CSP. Staging
+// efectivamente roto por 4 días (07-26 → 07-30).
+//
+// Este cambio unifica los 3 contexts a AMBOS backends. Pierde la hardening
+// del Fix 10 (defense-in-depth contra exfil cross-env vía XSS), pero:
+//   · La limitación de Netlify hace la hardening imposible sin refactor
+//     a build-time _headers generation (task backlog #259).
+//   · Staging + deploy-previews vuelven a funcionar.
+//   · El threat model de Fix 10 requería que el atacante ADEMÁS comprometa
+//     staging separadamente — probabilidad baja.
+//
+// Ver docs/runbooks/csp-landing.md (sección "Netlify context-specific
+// headers limitation") + task #259 (fix proper con _headers dinámico).
 const BACKEND_URLS_BY_CONTEXT = Object.freeze({
-  production:       ['https://tecny-backend-production.up.railway.app'],
-  'branch-deploy':  ['https://tecny-backend-staging.up.railway.app'],
-  // Deploy-preview: orden production-primero (matchea el orden histórico
-  // en netlify.toml — el parity check es order-sensitive porque el header
-  // CSP también es order-sensitive del punto de vista del browser).
+  production:       ['https://tecny-backend-production.up.railway.app', 'https://tecny-backend-staging.up.railway.app'],
+  'branch-deploy':  ['https://tecny-backend-production.up.railway.app', 'https://tecny-backend-staging.up.railway.app'],
   'deploy-preview': ['https://tecny-backend-production.up.railway.app', 'https://tecny-backend-staging.up.railway.app'],
 });
 

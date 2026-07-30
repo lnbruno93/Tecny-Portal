@@ -87,10 +87,12 @@
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
     Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
-    # Sprint 1 audit 07-25 · Fix 10 (Track D P1-2): production CSP restringido a
-    # backend-PRODUCTION solamente (removidas URLs de staging de img-src +
-    # connect-src). Ver csp-spec.js:BACKEND_URLS_BY_CONTEXT.
-    Content-Security-Policy = "default-src 'self'; script-src 'self' https://*.hcaptcha.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.hcaptcha.com; img-src 'self' data: blob: https://tecny-backend-production.up.railway.app; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://tecny-backend-production.up.railway.app https://*.hcaptcha.com https://fonts.googleapis.com https://fonts.gstatic.com; frame-src 'self' data: https://*.hcaptcha.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests; script-src-attr 'none'; report-uri https://tecny-backend-production.up.railway.app/api/csp-report"
+    # 2026-07-30: los `[[context.<X>.headers]]` de más abajo son dead code
+    # (limitación Netlify). Este [[headers]] global es el ÚNICO CSP aplicado
+    # en runtime. Ver csp-spec.js:BACKEND_URLS_BY_CONTEXT y task backlog #259.
+    # Sprint 1 audit 07-25 · Fix 10 regressed acá (ambos backends permitidos)
+    # para no romper deploy previews y admin-staging.
+    Content-Security-Policy = "default-src 'self'; script-src 'self' https://*.hcaptcha.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.hcaptcha.com; img-src 'self' data: blob: https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app https://*.hcaptcha.com https://fonts.googleapis.com https://fonts.gstatic.com; frame-src 'self' data: https://*.hcaptcha.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests; script-src-attr 'none'; report-uri https://tecny-backend-production.up.railway.app/api/csp-report"
     # Sprint 106 (2026-07-24): Trusted Types Report-Only. Header SEPARADO del
     # CSP enforce arriba — este NO bloquea nada, solo reporta al backend para
     # análisis. Datos guían Sprint 106b (enforce mode) según qué violations
@@ -119,9 +121,9 @@
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
     Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
-    # Sprint 1 audit 07-25 · Fix 10: branch-deploy solo habilita backend-STAGING
-    # (era prod+staging antes). Simetría con production restringido → prod-only.
-    Content-Security-Policy = "default-src 'self'; script-src 'self' https://*.hcaptcha.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.hcaptcha.com; img-src 'self' data: blob: https://tecny-backend-staging.up.railway.app; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://tecny-backend-staging.up.railway.app https://*.hcaptcha.com https://fonts.googleapis.com https://fonts.gstatic.com; frame-src 'self' data: https://*.hcaptcha.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests; script-src-attr 'none'; report-uri https://tecny-backend-staging.up.railway.app/api/csp-report"
+    # 2026-07-30: dead code (Netlify no aplica [[context.<X>.headers]]).
+    # Mantenido para parity check + doc del INTENT. Runtime usa [[headers]] global.
+    Content-Security-Policy = "default-src 'self'; script-src 'self' https://*.hcaptcha.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.hcaptcha.com; img-src 'self' data: blob: https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app https://*.hcaptcha.com https://fonts.googleapis.com https://fonts.gstatic.com; frame-src 'self' data: https://*.hcaptcha.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests; script-src-attr 'none'; report-uri https://tecny-backend-staging.up.railway.app/api/csp-report"
     # Sprint 106 (2026-07-24): Trusted Types Report-Only. Ver comment en block production.
     Content-Security-Policy-Report-Only = "require-trusted-types-for 'script'; trusted-types 'allow-duplicates' default; report-uri https://tecny-backend-staging.up.railway.app/api/csp-report"
 

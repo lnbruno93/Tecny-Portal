@@ -167,6 +167,28 @@ Después de mergear un cambio al CSP:
 
 5. **Repetir para `/signup` y `/forgot-password`**.
 
+## Netlify context-specific headers limitation
+
+**Descubierto 2026-07-30 durante el staging drift diagnóstico.**
+
+Netlify docs implican que `[[context.<X>.headers]]` blocks scopean headers por deploy context (production, branch-deploy, deploy-preview, o un branch específico). En la práctica, **NO funcionan** — son dead code.
+
+Solo `[context.<X>.environment]` respeta el context. Los headers blocks context-específicos NUNCA se aplican en runtime. Confirmado empíricamente + community threads + docs de soporte de Netlify. El único header block que gana es `[[headers]]` global.
+
+Consecuencias:
+
+- `[[context.deploy-preview.headers]]` con CSP diferente → ignorado. Deploy previews reciben `[[headers]]` global.
+- `[[context.branch-deploy.headers]]` con report-uri distinto → ignorado.
+- `[[context.staging.headers]]` (branch específico) → ignorado.
+
+**Impacto pasado**: el "Fix 10" del audit 07-25 (Sprint 1) intentó restringir el CSP de prod a `backend-production` solamente (hardening contra XSS-exfil-a-staging). Como el `[[headers]]` global es el único que aplica, ese cambio ALSO bloqueó las requests desde staging + deploy previews (que apuntan a `backend-staging` vía VITE_API_URL). Regressed 2026-07-30 (ambos backends permitidos en el CSP global) para restaurar funcionalidad.
+
+**Workaround oficial de Netlify**: usar el build command para copiar un `_headers` file dinámicamente al `dist/` según el context detectado (via env var `CONTEXT`).
+
+**Fix proper diferido** (task backlog #259): script post-build que genera `dist/_headers` con CSP tailored al context — restauraría el hardening del Fix 10 con separación real por site.
+
+**Regla operativa**: si querés headers distintos por context/branch/site, NO uses `[[context.<X>.headers]]` blocks — son placebo. Usá build-time generation.
+
 ## Cache invalidation gotcha (edge cache Netlify)
 
 El edge cache de Netlify a veces persiste responses con headers viejos hasta ~6h después del deploy — visto en el P0 del 2026-07-30 donde el CSP fix estaba live pero el browser seguía recibiendo el CSP viejo. Signos:
