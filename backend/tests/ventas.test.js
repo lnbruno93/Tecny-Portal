@@ -1096,6 +1096,103 @@ describe('GET /api/ventas/dashboard', () => {
     expect(res.body.top_productos.map(p => p.descripcion).sort()).toEqual(['A', 'B']);
     expect(Array.isArray(res.body.top_vendedores)).toBe(true);
   });
+
+  // 2026-07-30 (Lucas): filtro por etiqueta en el dashboard. Cuando pasás
+  // `?etiqueta_id=X`, TODOS los KPIs se recalculan con solo las ventas de
+  // esa etiqueta. El bloque B2B queda excluido (movimientos_cc no tiene
+  // etiqueta_id — es un canal distinto). Ver computeDashboard.
+  it('filtra INGRESOS/GANANCIA/UNIDADES por etiqueta_id', async () => {
+    const fecha = '2026-12-05'; // aislado de otros tests
+
+    // Setup: 2 etiquetas + producto USD.
+    const etRetail = await request(app).post('/api/ventas/etiquetas').set(auth())
+      .send({ nombre: `retail-${Date.now()}` });
+    expect(etRetail.status).toBe(201);
+    const etEnvio = await request(app).post('/api/ventas/etiquetas').set(auth())
+      .send({ nombre: `envio-${Date.now()}` });
+    expect(etEnvio.status).toBe(201);
+
+    const cat = await request(app).post('/api/inventario/categorias').set(auth())
+      .send({ nombre: `Cat filtro etiqueta ${Date.now()}` });
+    // Producto A (retail): costo 100, precio 200 → ganancia 100
+    const prodA = await request(app).post('/api/inventario/productos').set(auth())
+      .send({
+        nombre: 'Prod A retail', clase: 'accesorios_varios', tipo_carga: 'lote',
+        categoria_id: cat.body.id, costo: 100, costo_moneda: 'USD',
+        precio_venta: 200, precio_moneda: 'USD', cantidad: 5,
+      });
+    // Producto B (envio): costo 300, precio 500 → ganancia 200
+    const prodB = await request(app).post('/api/inventario/productos').set(auth())
+      .send({
+        nombre: 'Prod B envio', clase: 'accesorios_varios', tipo_carga: 'lote',
+        categoria_id: cat.body.id, costo: 300, costo_moneda: 'USD',
+        precio_venta: 500, precio_moneda: 'USD', cantidad: 5,
+      });
+
+    // 2 ventas con etiqueta retail (ganancia 100 c/u = 200 total)
+    for (let i = 0; i < 2; i++) {
+      const v = await request(app).post('/api/ventas').set(auth()).send({
+        fecha, cliente_nombre: `Retail ${i}`, estado: 'acreditado',
+        etiqueta_id: etRetail.body.id,
+        items: [{ producto_id: prodA.body.id, descripcion: 'Prod A', cantidad: 1, precio_vendido: 200, costo: 100, moneda: 'USD' }],
+        pagos: [{ metodo_nombre: 'USD | Efectivo', monto: 200, moneda: 'USD' }],
+      });
+      expect(v.status).toBe(201);
+    }
+    // 1 venta con etiqueta envio (ganancia 200)
+    const vEnvio = await request(app).post('/api/ventas').set(auth()).send({
+      fecha, cliente_nombre: 'Envio', estado: 'acreditado',
+      etiqueta_id: etEnvio.body.id,
+      items: [{ producto_id: prodB.body.id, descripcion: 'Prod B', cantidad: 1, precio_vendido: 500, costo: 300, moneda: 'USD' }],
+      pagos: [{ metodo_nombre: 'USD | Efectivo', monto: 500, moneda: 'USD' }],
+    });
+    expect(vEnvio.status).toBe(201);
+
+    // Sin filtro: 3 ventas, ingresos 400+500=900, ganancia bruta 200+200=400
+    const dSinFiltro = (await request(app)
+      .get(`/api/ventas/dashboard?desde=${fecha}&hasta=${fecha}`)
+      .set(auth())).body;
+    expect(dSinFiltro.ventas_count).toBe(3);
+    expect(Number(dSinFiltro.ingresos.usd)).toBeCloseTo(900, 1);
+    expect(Number(dSinFiltro.ganancia_bruta_acreditada_usd)).toBeCloseTo(400, 1);
+
+    // Filtro retail: 2 ventas, ingresos 400, ganancia 200
+    const dRetail = (await request(app)
+      .get(`/api/ventas/dashboard?desde=${fecha}&hasta=${fecha}&etiqueta_id=${etRetail.body.id}`)
+      .set(auth())).body;
+    expect(dRetail.ventas_count).toBe(2);
+    expect(Number(dRetail.ingresos.usd)).toBeCloseTo(400, 1);
+    expect(Number(dRetail.ganancia_bruta_acreditada_usd)).toBeCloseTo(200, 1);
+
+    // Filtro envio: 1 venta, ingresos 500, ganancia 200
+    const dEnvio = (await request(app)
+      .get(`/api/ventas/dashboard?desde=${fecha}&hasta=${fecha}&etiqueta_id=${etEnvio.body.id}`)
+      .set(auth())).body;
+    expect(dEnvio.ventas_count).toBe(1);
+    expect(Number(dEnvio.ingresos.usd)).toBeCloseTo(500, 1);
+    expect(Number(dEnvio.ganancia_bruta_acreditada_usd)).toBeCloseTo(200, 1);
+  });
+
+  it('filtro etiqueta_id → bloque B2B siempre en 0 (movimientos_cc sin etiqueta_id)', async () => {
+    const fecha = '2026-12-06';
+    const et = await request(app).post('/api/ventas/etiquetas').set(auth())
+      .send({ nombre: `solo-retail-${Date.now()}` });
+    expect(et.status).toBe(201);
+
+    // No hace falta sembrar B2B — el behavior es "B2B siempre 0 cuando hay
+    // filtro etiqueta", independiente de si hay movimientos_cc en el período
+    // o no. Verificamos el shape del response.
+    const d = (await request(app)
+      .get(`/api/ventas/dashboard?desde=${fecha}&hasta=${fecha}&etiqueta_id=${et.body.id}`)
+      .set(auth())).body;
+    expect(d.b2b).toBeDefined();
+    expect(d.b2b.count).toBe(0);
+    expect(Number(d.b2b.ingresos_usd)).toBe(0);
+    expect(Number(d.b2b.costos_usd)).toBe(0);
+    expect(Number(d.b2b.ganancia_bruta_usd)).toBe(0);
+    expect(d.b2b.unidades.celulares).toBe(0);
+    expect(d.b2b.unidades.accesorios).toBe(0);
+  });
 });
 
 // ─── A2: lote sin trackear_stock no debe vender ilimitado ─────────

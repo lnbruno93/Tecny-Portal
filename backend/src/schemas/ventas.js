@@ -279,9 +279,15 @@ const queryEgresosSchema = z.object({
   limit: z.coerce.number().int().positive().max(200).optional(),
 });
 
+// 2026-07-30 (Lucas): `etiqueta_id` opcional filtra el dashboard entero
+// (INGRESOS/GANANCIA/COSTOS/UNIDADES/TICKET/MÉTODOS PAGO/TOP PROD/VEND).
+// Cuando está presente, el bloque B2B queda excluido — movimientos_cc no
+// tiene columna etiqueta_id (es un canal distinto). Ver comentario en el
+// handler y en computeDashboard.
 const queryDashboardSchema = z.object({
-  desde: z.string().date().optional(),
-  hasta: z.string().date().optional(),
+  desde:       z.string().date().optional(),
+  hasta:       z.string().date().optional(),
+  etiqueta_id: z.coerce.number().int().positive().optional(),
 });
 
 /* ── Ventas rápidas ── */
