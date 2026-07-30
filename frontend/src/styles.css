@@ -4723,7 +4723,12 @@ body.modal-open { overflow: hidden; }
 .u-list-reset                 { list-style: none; padding: 0; margin: 0; }
 .u-partnership-row            { padding: 12px; border-bottom: 1px solid var(--border, #e5e7eb); display: flex; justify-content: space-between; align-items: center; }
 .u-flex-between-start-wrap-mb-12 { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
-.u-btn-link-inline            { font-size: 14px; background: transparent; border: 0; padding: 0; cursor: pointer; }
+.u-btn-link-inline            { font-size: 14px; background: transparent; border: 0; padding: 0; cursor: pointer; color: inherit; text-align: left; }
+
+/* Fase A pedido Gianfranco 2026-07-30: fila de movimiento de proveedor con
+   producto clickeable → subrayado sutil en hover para affordance. */
+.u-provs-item-btn:hover        { text-decoration: underline; color: var(--accent); }
+.u-provs-item-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
 .u-mb-4-mt-6                  { margin-bottom: 4px; margin-top: 6px; }
 .u-alert-red-box              { background: var(--red-bg, #fef2f2); padding: 12px; border-radius: 4px; margin-bottom: 12px; }
 .u-alert-green-box            { background: var(--green-bg, #f0fdf4); padding: 12px; border-radius: 4px; margin-bottom: 12px; }

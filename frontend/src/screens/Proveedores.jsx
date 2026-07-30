@@ -12,6 +12,7 @@ import { fmt, fmtFecha } from '../lib/format';
 import CompraProveedorModal from '../components/CompraProveedorModal';
 import DevolucionMercaderiaProveedorModal from '../components/DevolucionMercaderiaProveedorModal';
 import RelevoProveedorModal from '../components/RelevoProveedorModal';
+import CompraProveedorDetalleModal from '../components/CompraProveedorDetalleModal';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import CajaSelectHint from '../components/CajaSelectHint';
 import TcWarning from '../components/TcWarning';
@@ -80,6 +81,11 @@ export default function Proveedores() {
   // bloque inline. La caja se elige por fila (no global): permite cargar de
   // varias cajas en una misma sesión y refleja correctamente la moneda.
   const [cajas, setCajas] = useState([]);
+
+  // ── Detalle de compra (Fase A pedido Gianfranco 2026-07-30) ──
+  // El movimiento seleccionado se abre en CompraProveedorDetalleModal —
+  // muestra TODOS los items (no solo el primero + "+N" que muestra la grilla).
+  const [detalleMov, setDetalleMov] = useState(null);
 
   // ── Cargar lista ──
   const listReq = useRef(0); // token "última request gana" (evita que una respuesta lenta pise a una nueva)
@@ -533,14 +539,32 @@ export default function Proveedores() {
                   {movimientos.map(m => {
                     const t    = TIPO_DISPLAY[m.tipo] || { label: m.tipo, tone: 'default', signo: 1 };
                     const item = m.items?.[0];
-                    const extra = m.items?.length > 1 ? ` +${m.items.length - 1}` : '';
+                    const nItems = m.items?.length || 0;
+                    const extra = nItems > 1 ? ` +${nItems - 1}` : '';
+                    // Fase A pedido Gianfranco 2026-07-30: si el mov tiene items,
+                    // el nombre del producto es clickeable y abre el detalle
+                    // completo (todos los items, no solo el primero + "+N").
+                    const canOpenDetalle = nItems > 0 && !m._pending;
                     return (
                       <tr key={m.id} className={`u-provs-row ${m._pending ? 'u-opacity-55' : ''}`}>
                         <td className="cell muted mono">{fmtFecha(m.fecha)}</td>
                         <td className="cell"><Status tone={t.tone}>{t.label}</Status></td>
                         <td className="cell">
                           {item?.producto
-                            ? <>{item.producto}<span className="muted tiny">{extra}</span></>
+                            ? canOpenDetalle
+                              ? (
+                                <button
+                                  type="button"
+                                  className="u-btn-link-inline u-provs-item-btn"
+                                  onClick={() => setDetalleMov(m)}
+                                  title={nItems > 1
+                                    ? `Ver los ${nItems} productos de esta ${t.label.toLowerCase()}`
+                                    : 'Ver detalle completo'}
+                                >
+                                  {item.producto}<span className="muted tiny">{extra}</span>
+                                </button>
+                              )
+                              : <>{item.producto}<span className="muted tiny">{extra}</span></>
                             : (m.descripcion || <span className="dim">—</span>)
                           }
                         </td>
@@ -703,6 +727,19 @@ export default function Proveedores() {
           proveedor={selected}
           onClose={() => setShowRelevo(false)}
           onSaved={handleCompraSaved /* mismo refresh: recarga movs + lista saldo */}
+        />
+      )}
+
+      {/* ── Modal Detalle Compra (Fase A pedido Gianfranco 2026-07-30) ──
+          Vista read-only con TODOS los items de un movimiento (típicamente
+          compra). Se abre al clickear el nombre del producto en la grilla.
+          El botón "Editar" del modal está deshabilitado — capacidad de
+          edición real requiere endpoint backend nuevo (task backlog). */}
+      {detalleMov && (
+        <CompraProveedorDetalleModal
+          movimiento={detalleMov}
+          proveedor={selected}
+          onClose={() => setDetalleMov(null)}
         />
       )}
 
