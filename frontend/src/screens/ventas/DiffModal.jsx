@@ -9,12 +9,19 @@
 //
 // Estado esperado en el padre:
 //   const [diffModal, setDiffModal] = useState({
-//     open: false, items: 0, cubierto: 0, dif: 0, resolve: null
+//     open: false, items: 0, cubierto: 0, dif: 0, vueltoUsd: 0, resolve: null
 //   });
 //
 // El campo `resolve` es la promesa pending que el padre resuelve cuando
 // el usuario elige una opción. La promesa se setea desde el flow de submit
 // de la venta (await new Promise(resolve => setDiffModal({ ..., resolve }))).
+//
+// `dif` viene NETEADO contra el vuelto (`totales.dif - totales.vueltoUsd`).
+// `vueltoUsd` es opcional: si > 0, mostramos línea informativa "Vuelto
+// entregado: -u$sX" para que el usuario entienda que parte de la diferencia
+// original se compensa con el vuelto ya cargado, y el sobrante/restante
+// mostrado abajo es lo que QUEDA por explicar. Ver Ventas.jsx `netDif`
+// (fix bug Lautaro 2026-07-30).
 //
 // U2 auditoría 2026-06: useModal aplicado — Esc cancela (resuelve con false,
 // igual que "Corregir"), body lock activo mientras está abierto, foco inicial
@@ -35,6 +42,8 @@ export default function DiffModal({ state, onClose }) {
   if (!state.open) return null;
   const dif = state.dif;
   const aFavor = dif > 0;
+  const vueltoUsd = Number(state.vueltoUsd) || 0;
+  const hayVuelto = vueltoUsd > 0.005;
   const close = (aceptado) => {
     const r = state.resolve;
     onClose();
@@ -63,6 +72,14 @@ export default function DiffModal({ state, onClose }) {
               <strong>Total pagado:</strong>
               <span className="mono pos u-fw-700">u$s {state.cubierto.toFixed(2)}</span>
             </div>
+            {hayVuelto && (
+              <div className="flex-between u-fs-14-mb-8">
+                <strong>Vuelto entregado:</strong>
+                <span className="mono u-color-neg u-fw-700">
+                  -u$s {vueltoUsd.toFixed(2)}
+                </span>
+              </div>
+            )}
             <div className="flex-between u-fs-14">
               <strong>{aFavor ? 'Sobrante:' : 'Restante:'}</strong>
               <span className={`mono u-fw-700 ${aFavor ? 'u-color-pos' : 'u-color-neg'}`}>

@@ -208,7 +208,7 @@ export default function Ventas() {
 
   // Modal de diferencia en pagos (visual rico, custom — no usa ConfirmModal)
   // y modal de éxito post-venta con descargar comprobante en PDF.
-  const [diffModal, setDiffModal] = useState({ open: false, items: 0, cubierto: 0, dif: 0, resolve: null });
+  const [diffModal, setDiffModal] = useState({ open: false, items: 0, cubierto: 0, dif: 0, vueltoUsd: 0, resolve: null });
   const [exitoModal, setExitoModal] = useState({ open: false, venta: null });
   // #509 — modal focalizado para editar el "atendido por" del comprobante
   // post-emisión. Se abre desde el icono Users de VentasList.
@@ -981,22 +981,45 @@ export default function Ventas() {
     //     → no toca total_usd pero baja ganancia_usd.
     // (No usamos precio negativo: la DB tiene CHECK precio_vendido >= 0.)
     // Tolerancia 0.005 USD para no marcar errores de redondeo por floats.
-    if (Math.abs(totales.dif) > 0.005) {
+    //
+    // 2026-07-30 (bug Lautaro Bisman): NETEAR contra el vuelto. Escenario:
+    // cliente paga u$s1000 por producto u$s990 y se le devuelve u$s10 de vuelto
+    // en ARS. La diferencia bruta es +$10 (sobre), pero el vuelto de $10 la
+    // cancela exactamente — el cliente NO pagó $10 extra por el producto, pagó
+    // los mismos $990 (los $10 que entregó de más se le devolvieron). Antes se
+    // inyectaba item "Diferencia de cambio (a favor) +$10" ficticio que inflaba
+    // total_usd + ganancia, mientras el vuelto salía como egreso de caja aparte
+    // — se cancelaba matemáticamente pero enmascaraba lo contable y el
+    // comprobante mostraba "Total $1000" (mentira, el producto vale $990).
+    //
+    // Fix: usar `netDif = totales.dif - totales.vueltoUsd`. Si el vuelto cubre
+    // la diferencia bruta (netDif ≈ 0), no mostramos modal ni inyectamos item.
+    // Si el vuelto solo cubre parcialmente, el modal muestra la NETA + el
+    // vuelto como línea informativa aparte.
+    const netDif = totales.dif - totales.vueltoUsd;
+    if (Math.abs(netDif) > 0.005) {
       // Promesa que el modal resuelve con true (aceptar) o false (corregir).
       const aceptado = await new Promise(resolve => {
-        setDiffModal({ open: true, items: totales.items, cubierto: totales.cubierto, dif: totales.dif, resolve });
+        setDiffModal({
+          open: true,
+          items: totales.items,
+          cubierto: totales.cubierto,
+          dif: netDif,
+          vueltoUsd: totales.vueltoUsd,
+          resolve,
+        });
       });
       if (!aceptado) return;
-      const aFavor = totales.dif > 0;
-      const dif = Math.abs(totales.dif);
+      const aFavor = netDif > 0;
+      const difAbs = Math.abs(netDif);
       items.push({
         producto_id:   null,
         vendedor_id:   vForm.vendedor_id || null,
         descripcion:   aFavor ? 'Diferencia de cambio (a favor)' : 'Diferencia de cambio (en contra)',
         imei:          null,
         cantidad:      1,
-        precio_vendido: aFavor ? dif : 0,
-        costo:         aFavor ? 0 : dif,
+        precio_vendido: aFavor ? difAbs : 0,
+        costo:         aFavor ? 0 : difAbs,
         moneda:        'USD',
         comision:      0,
       });
@@ -2683,7 +2706,7 @@ Pago: Efectivo + Transferencia`}
           tener desglose visual con colores y dos acciones: corregir / aceptar igual. */}
       <DiffModal
         state={diffModal}
-        onClose={() => setDiffModal({ open: false, items: 0, cubierto: 0, dif: 0, resolve: null })}
+        onClose={() => setDiffModal({ open: false, items: 0, cubierto: 0, dif: 0, vueltoUsd: 0, resolve: null })}
       />
 
       {/* #509 — Modal focalizado para editar el "atendido por" del comprobante
