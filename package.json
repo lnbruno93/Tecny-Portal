@@ -10,6 +10,7 @@
     "e2e:install": "playwright install --with-deps chromium",
     "e2e:report": "playwright show-report",
     "verify:csp": "node scripts/security/verify-csp-parity.js",
+    "verify:landing-csp-hcaptcha": "node scripts/security/verify-landing-csp-hcaptcha.js",
     "test:csp": "node --test scripts/security/verify-csp-parity.test.js scripts/security/csp-invariants.test.js",
     "check:backend-anti-regression": "node scripts/security/backend-anti-regression-check.mjs"
   },
