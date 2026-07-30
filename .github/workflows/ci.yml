@@ -34,6 +34,31 @@ jobs:
       - name: Verify CSP parity between netlify.toml files
         run: npm run verify:csp
 
+  # 2026-07-30 (post P0 CSP hcaptcha bloqueaba login): contract test que
+  # asserta que el CSP del landing (landing/netlify.toml + landing/public/_headers)
+  # incluye hcaptcha.com en script-src/style-src/connect-src/frame-src.
+  # Previene la regresión del P0 07-30 donde el CSP del landing omitió
+  # hcaptcha → los paths /login, /signup, /forgot-password del portal
+  # (proxeados desde landing) quedaban sin poder cargar el widget hCaptcha.
+  #
+  # Corre sin services + sin npm ci — el script usa solo Node built-in fs.
+  # Job independiente para dar señal específica en la UI del PR ("landing
+  # CSP hcaptcha broken" es más claro que otro fail dentro de csp-parity).
+  landing-csp-hcaptcha:
+    name: Landing CSP hcaptcha anti-regression
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+
+      - name: Verify hcaptcha.com en CSP del landing
+        run: npm run verify:landing-csp-hcaptcha
+
   # Rec #6 audit 2026-07-20 Fase 1: anti-regression check de inline styles.
   # Cuenta `style={}` en frontend + admin-frontend y compara con baseline.
   # Falla si un PR agrega inline styles nuevos (que forzarían mantener
