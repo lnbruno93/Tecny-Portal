@@ -59,6 +59,40 @@ describe('DiffModal — datos mostrados', () => {
   });
 });
 
+describe('DiffModal — línea vuelto (fix bug Lautaro 2026-07-30)', () => {
+  it('sin vueltoUsd: no muestra línea "Vuelto entregado"', () => {
+    const { container } = renderDiff({ dif: -50, vueltoUsd: 0 });
+    expect(container.textContent).not.toContain('Vuelto entregado');
+  });
+
+  it('vueltoUsd omitido (compat): no muestra línea "Vuelto entregado"', () => {
+    // El componente debe manejar el shape viejo sin campo vueltoUsd.
+    const { container } = renderDiff({ dif: -50 });
+    expect(container.textContent).not.toContain('Vuelto entregado');
+  });
+
+  it('vueltoUsd > 0: muestra línea "Vuelto entregado: -u$sX.XX"', () => {
+    // Escenario típico: producto $990, cliente paga $1000 (dif bruta +$10),
+    // vuelto $10 en ARS → dif neta = 0 → NO se abre modal en Ventas.jsx. Pero
+    // si el vuelto solo cubre parte (ej. cliente paga $1005, vuelto $10 → dif
+    // neta -$5), el modal se abre con vueltoUsd=10 y dif=-5, y queremos mostrar
+    // el vuelto para que el operador entienda de dónde vienen los $5 faltantes.
+    const { container } = renderDiff({
+      items: 990, cubierto: 1005, dif: -5, vueltoUsd: 10,
+    });
+    expect(container.textContent).toContain('Vuelto entregado:');
+    expect(container.textContent).toContain('-u$s 10.00');
+    // El "Restante" sigue siendo el neto (-5), no la dif bruta.
+    expect(container.textContent).toContain('Restante:');
+    expect(container.textContent).toContain('u$s -5.00');
+  });
+
+  it('vueltoUsd <= 0.005 (redondeo): no muestra línea', () => {
+    const { container } = renderDiff({ dif: -5, vueltoUsd: 0.001 });
+    expect(container.textContent).not.toContain('Vuelto entregado');
+  });
+});
+
 describe('DiffModal — acciones', () => {
   it('click "Corregir" resuelve la promesa con false + llama onClose', () => {
     const { resolve, onClose, getByText } = renderDiff();
