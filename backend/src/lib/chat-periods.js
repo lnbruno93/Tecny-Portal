@@ -136,7 +136,17 @@ function periodoRange(periodo, opts = {}) {
     }
     case 'mes_anterior': {
       // Primer día del mes anterior + último día del mes anterior.
+      //
+      // 2026-07-31 (fix bug de producción): CRÍTICO setear día 1 ANTES de
+      // restar el mes. En dates como 31/7, `setUTCMonth(-1)` sobre 31 junio
+      // ruedan a 1/7 porque junio no tiene 31 → `prev` termina siendo 1/7,
+      // NO 1/6 como uno esperaría. Resultado: mes_anterior devuelve el mismo
+      // rango que mes_actual → deltas siempre en 0, bot muestra datos rotos.
+      // Afecta a cualquier consulta el 29/30/31 del mes cuando el mes anterior
+      // tiene menos días. Test en chat.test.js "delta 100% si mes anterior
+      // fue 0 y mes actual > 0" empezó a fallar hoy (31/7) por esto.
       const prev = new Date(now.getTime());
+      prev.setUTCDate(1); // fix: evita el rollover a mes actual
       prev.setUTCMonth(prev.getUTCMonth() - 1);
       return {
         desde: isoDate(firstOfMonth(prev)),
