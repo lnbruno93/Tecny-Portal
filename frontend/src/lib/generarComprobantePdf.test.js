@@ -8,7 +8,7 @@
 // "diferencia en contra" falsa. Fix: sumar canjes (convertidos a USD).
 
 import { describe, it, expect } from 'vitest';
-import { sumPagosUsd, sumCanjesUsd } from './generarComprobantePdf.js';
+import { sumPagosUsd, sumCanjesUsd, computeVueltoUsd } from './generarComprobantePdf.js';
 
 describe('sumPagosUsd', () => {
   it('suma monto_usd de todos los pagos', () => {
@@ -129,5 +129,43 @@ describe('Escenario del bug reportado (2026-07-16)', () => {
     };
     const totalCobrado = sumPagosUsd(venta.pagos) + sumCanjesUsd(venta.canjes, venta.tc_venta);
     expect(totalCobrado).toBeCloseTo(1150, 2);
+  });
+});
+
+// Vuelto entregado en el comprobante (2026-07-30 pedido Lautaro Bisman).
+describe('computeVueltoUsd', () => {
+  it('sin vuelto: 0', () => {
+    expect(computeVueltoUsd({ vuelto_monto: null })).toBe(0);
+    expect(computeVueltoUsd({})).toBe(0);
+    expect(computeVueltoUsd(null)).toBe(0);
+  });
+
+  it('vuelto USD: monto tal cual', () => {
+    expect(computeVueltoUsd({ vuelto_monto: 10, vuelto_moneda: 'USD' })).toBe(10);
+    expect(computeVueltoUsd({ vuelto_monto: 25.5, vuelto_moneda: 'USDT' })).toBe(25.5);
+  });
+
+  it('vuelto ARS: se divide por vuelto_tc (NO por tc_venta)', () => {
+    // Cliente pagó $1000 USD, se le devuelve 15.000 ARS al TC 1500 = $10 USD
+    expect(computeVueltoUsd({
+      vuelto_monto: 15000, vuelto_moneda: 'ARS', vuelto_tc: 1500,
+      tc_venta: 1200,  // otro TC — el vuelto usa el SUYO
+    })).toBe(10);
+  });
+
+  it('vuelto UYU: se divide por vuelto_tc', () => {
+    expect(computeVueltoUsd({
+      vuelto_monto: 400, vuelto_moneda: 'UYU', vuelto_tc: 40,
+    })).toBe(10);
+  });
+
+  it('vuelto ARS sin tc (defensive): 0', () => {
+    expect(computeVueltoUsd({ vuelto_monto: 15000, vuelto_moneda: 'ARS' })).toBe(0);
+    expect(computeVueltoUsd({ vuelto_monto: 15000, vuelto_moneda: 'ARS', vuelto_tc: 0 })).toBe(0);
+  });
+
+  it('monto negativo o 0: devuelve 0', () => {
+    expect(computeVueltoUsd({ vuelto_monto: 0, vuelto_moneda: 'USD' })).toBe(0);
+    expect(computeVueltoUsd({ vuelto_monto: -5, vuelto_moneda: 'USD' })).toBe(0);
   });
 });

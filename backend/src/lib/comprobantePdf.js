@@ -159,6 +159,26 @@ function sumCanjesUsd(canjes, tcVenta) {
 }
 
 /**
+ * Vuelto entregado en USD para mostrar en el resumen del comprobante
+ * (2026-07-30 pedido Lautaro Bisman). Sale de `venta.vuelto_monto`,
+ * `venta.vuelto_moneda`, `venta.vuelto_tc`. Si el vuelto está en ARS/UYU
+ * usa el `vuelto_tc` propio (NO el tc_venta — pueden ser distintos).
+ * USD/USDT devuelve el monto tal cual. Sin vuelto → 0.
+ *
+ * Espejo del helper `computeVueltoUsd` en frontend/src/lib/generarComprobantePdf.js
+ * — cualquier cambio de comportamiento debe replicarse en ambos.
+ */
+function computeVueltoUsd(venta) {
+  const monto = Number(venta?.vuelto_monto) || 0;
+  if (monto <= 0) return 0;
+  const moneda = String(venta?.vuelto_moneda || 'USD').toUpperCase();
+  if (moneda === 'USD' || moneda === 'USDT') return monto;
+  const tc = Number(venta?.vuelto_tc) || 0;
+  if (tc <= 0) return 0;  // ARS/UYU sin tc → no mostrar (defensive)
+  return monto / tc;
+}
+
+/**
  * Genera el PDF del comprobante como Buffer.
  *
  * @param {object} opts
@@ -318,23 +338,54 @@ async function generarComprobantePdf({ venta, tenant, _compress = true }) {
     // "Total cobrado" + "Diferencia" (si aplica). Mismo modelo que el frontend
     // generarComprobantePdf. Sin canjes mantenemos el layout compacto original
     // (solo Total).
-    if (canjes.length > 0) {
+    //
+    // 2026-07-30 (pedido Lautaro Bisman): "Vuelto entregado" también se muestra
+    // cuando la venta tiene vuelto. Si hay canjes y/o vuelto, aparece el
+    // bloque completo Total cobrado + Diferencia + Vuelto. Sin nada de eso
+    // queda solo "Total".
+    const vueltoUsd = computeVueltoUsd(venta);
+    const showResumen = canjes.length > 0 || vueltoUsd > 0.005;
+    if (showResumen) {
+      // Total cobrado incluye pagos + canjes (el vuelto es egreso, no cobrado).
       const totalCobrado = sumPagosUsd(pagos, venta.tc_venta) + sumCanjesUsd(canjes, venta.tc_venta);
       const dif = totalCobrado - totalUsd;
-      doc.moveDown(0.3);
-      doc.font('Helvetica').fontSize(10).fillColor('#3f3a2c');
-      doc.text(`Total cobrado: ${fmtMoney(totalCobrado, 'USD', pais)}`, xStart, doc.y, {
-        width: colWidth, align: 'right',
-      });
-      if (Math.abs(dif) > 0.005) {
-        doc.moveDown(0.1);
-        doc.font('Helvetica').fontSize(9).fillColor(dif > 0 ? '#4caf50' : '#dc3545');
-        const difLabel = dif > 0 ? 'Diferencia (a favor)' : 'Diferencia (en contra)';
-        doc.text(`${difLabel}: ${fmtMoney(Math.abs(dif), 'USD', pais)}`, xStart, doc.y, {
+      if (canjes.length > 0) {
+        // Solo mostramos "Total cobrado" cuando hay canjes — sin canjes,
+        // total_cobrado == suma pagos y ya la sección MEDIOS DE PAGO lo muestra.
+        doc.moveDown(0.3);
+        doc.font('Helvetica').fontSize(10).fillColor('#3f3a2c');
+        doc.text(`Total cobrado: ${fmtMoney(totalCobrado, 'USD', pais)}`, xStart, doc.y, {
           width: colWidth, align: 'right',
         });
-        doc.fillColor('#1c1a14');
+        if (Math.abs(dif) > 0.005) {
+          doc.moveDown(0.1);
+          doc.font('Helvetica').fontSize(9).fillColor(dif > 0 ? '#4caf50' : '#dc3545');
+          const difLabel = dif > 0 ? 'Diferencia (a favor)' : 'Diferencia (en contra)';
+          doc.text(`${difLabel}: ${fmtMoney(Math.abs(dif), 'USD', pais)}`, xStart, doc.y, {
+            width: colWidth, align: 'right',
+          });
+        }
       }
+      if (vueltoUsd > 0.005) {
+        doc.moveDown(0.1);
+        doc.font('Helvetica').fontSize(9).fillColor('#dc3545');
+        doc.text(`Vuelto entregado: -${fmtMoney(vueltoUsd, 'USD', pais)}`, xStart, doc.y, {
+          width: colWidth, align: 'right',
+        });
+        // Hint si el vuelto se dio en moneda distinta a USD
+        const vMoneda = String(venta.vuelto_moneda || 'USD').toUpperCase();
+        if (vMoneda !== 'USD' && vMoneda !== 'USDT') {
+          doc.moveDown(0.05);
+          doc.font('Helvetica').fontSize(7).fillColor('#76705c');
+          const vMonto = Number(venta.vuelto_monto) || 0;
+          const vTc = Number(venta.vuelto_tc) || 0;
+          const vSym = vMoneda === 'ARS' ? '$' : (vMoneda === 'UYU' ? '$U' : vMoneda);
+          const vNumLocale = pais === 'UY' ? 'es-UY' : 'es-AR';
+          doc.text(`(${vSym} ${vMonto.toLocaleString(vNumLocale)} @ TC ${vTc.toLocaleString(vNumLocale)})`,
+            xStart, doc.y, { width: colWidth, align: 'right' });
+        }
+      }
+      doc.fillColor('#1c1a14');
     }
 
     // TC info (opcional): si la venta tuvo items en moneda local, mostrar TC.
@@ -443,4 +494,6 @@ module.exports = {
   // del total_cobrado sin generar el PDF completo. Paralelo al frontend.
   sumPagosUsd,
   sumCanjesUsd,
+  // 2026-07-30 (pedido Lautaro Bisman): vuelto en el resumen del comprobante.
+  computeVueltoUsd,
 };
