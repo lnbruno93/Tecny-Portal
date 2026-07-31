@@ -277,6 +277,73 @@ Si el _headers dinámico rompe algo:
 2. Como fallback rápido: agregar un CSP permisivo al `[[headers]]` toml (ambos backends). Eso restaura el estado pre-#259.
 3. Diagnosticar el fallo en local con `VITE_API_URL=... node frontend/scripts/generate-headers.mjs`.
 
+### Setup del site `tecny-admin-staging` (creado 2026-07-31)
+
+**Motivo**: descubierto durante el sanity sweep de task #259 que `admin-staging.tecnyapp.com` era un **alias** del site prod `tecny-admin` (mismo bundle, mismo backend, mismo CSP). Cualquiera que confiara en ese subdomain para testear cambios admin pre-prod estaba viendo prod real. Portal tenía simetría con `tecny-portal-staging` desde 2026-07-30 (PR #944/#247); admin no.
+
+**Config del site en Netlify** (id `d37cbe30-34f9-4a55-bc9a-ad19874faacf`, account slug `lnbruno93`):
+
+| Campo | Valor |
+|---|---|
+| repo | `lnbruno93/Tecny-Portal` |
+| branch | `staging` |
+| base | `admin-frontend` |
+| cmd | `npm run build` (el toml sobrescribe con el workaround skip-pristine) |
+| dir | `dist` |
+| VITE_API_URL | `https://tecny-backend-staging.up.railway.app` (via `[context.staging.environment]`) |
+| custom_domain | `admin-staging.tecnyapp.com` |
+| installation_id | `133597660` (misma GitHub App install que tecny-admin) |
+
+**Flow de deploys**: el workflow `.github/workflows/sync-main-to-staging.yml` sincroniza `main → staging` fast-forward tras cada CI verde. Consecuencia: cada merge a main dispara build en admin prod **y** admin-staging casi simultáneamente. No es un staging "por delante de prod" — es una copia paralela con backend distinto.
+
+**Para probar cambios admin pre-prod real**: usar los **deploy previews de PR** (Netlify los genera automáticamente contra backend-staging via `[context.deploy-preview.environment]`). El subdomain `admin-staging.tecnyapp.com` sirve para: (a) subdomain estable para linkear en docs/tests, (b) catch drift del CSP/config independiente de prod, (c) smoke tests contra el backend-staging con la UI real de admin.
+
+**Cómo se creó (referencia para replicar futuro sites)**:
+
+Netlify CLI (`netlify api createSiteInTeam`) crea el site pero deja `build_settings` null. Hay que hacer 2 PATCHes raw HTTP (el CLI no expone la shape correcta para linkear repo con installation_id):
+
+```bash
+TOKEN=$(cat ~/Library/Preferences/netlify/config.json | python3 -c "import sys,json; print(list(json.load(sys.stdin)['users'].values())[0]['auth']['token'])")
+
+# 1. Crear el site
+curl -X POST "https://api.netlify.com/api/v1/accounts/lnbruno93/sites" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"name": "tecny-admin-staging", "force_ssl": true}'
+# → capturar site_id de la response
+
+# 2. Linkear repo (nota: usar campo "repo", NO "build_settings")
+curl -X PATCH "https://api.netlify.com/api/v1/sites/<SITE_ID>" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"repo": {"provider": "github", "repo": "lnbruno93/Tecny-Portal", "branch": "staging", "dir": "dist", "cmd": "npm run build", "installation_id": 133597660}}'
+
+# 3. Setear base directory (segundo PATCH — el primero no lo acepta)
+curl -X PATCH "https://api.netlify.com/api/v1/sites/<SITE_ID>" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"build_settings": {"base": "admin-frontend", "base_rel_dir": true, "dir": "dist", "cmd": "npm run build"}}'
+
+# 4. Trigger primer build (post-link no autobuilder)
+curl -X POST "https://api.netlify.com/api/v1/sites/<SITE_ID>/builds" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{}'
+
+# 5. Asignar custom domain (post-build)
+curl -X PATCH "https://api.netlify.com/api/v1/sites/<SITE_ID>" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"custom_domain": "admin-staging.tecnyapp.com"}'
+
+# 6. Trigger SSL provisioning explícito (opcional; a veces auto)
+curl -X POST "https://api.netlify.com/api/v1/sites/<SITE_ID>/ssl" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Prerequisito**: el `admin-frontend/netlify.toml` debe tener el block `[context.staging.environment]` con `VITE_API_URL = backend-staging` — sin eso, el bundle se buildea contra backend-production porque Netlify trata al primary branch de un site como PRODUCTION context (NO como branch-deploy). Ver PR #956 (patrón del PR #944 para portal-staging).
+
+**Regression check post-cutover**: verificar que el site prod (`admin.tecnyapp.com`) sigue apuntando a backend-production:
+
+```bash
+curl -sI https://admin.tecnyapp.com/ | grep -i content-security-policy | tr ';' '\n' | grep connect-src
+# → debe contener tecny-backend-production, NO tecny-backend-staging
+```
+
 ## Cache invalidation gotcha (edge cache Netlify)
 
 El edge cache de Netlify a veces persiste responses con headers viejos hasta ~6h después del deploy — visto en el P0 del 2026-07-30 donde el CSP fix estaba live pero el browser seguía recibiendo el CSP viejo. Signos:
