@@ -87,69 +87,35 @@
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
     Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
-    # 2026-07-30: los `[[context.<X>.headers]]` de más abajo son dead code
-    # (limitación Netlify). Este [[headers]] global es el ÚNICO CSP aplicado
-    # en runtime. Ver csp-spec.js:BACKEND_URLS_BY_CONTEXT y task backlog #259.
-    # Sprint 1 audit 07-25 · Fix 10 regressed acá (ambos backends permitidos)
-    # para no romper deploy previews y admin-staging.
-    Content-Security-Policy = "default-src 'self'; script-src 'self' https://*.hcaptcha.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.hcaptcha.com; img-src 'self' data: blob: https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app https://*.hcaptcha.com https://fonts.googleapis.com https://fonts.gstatic.com; frame-src 'self' data: https://*.hcaptcha.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests; script-src-attr 'none'; report-uri https://tecny-backend-production.up.railway.app/api/csp-report"
-    # Sprint 106 (2026-07-24): Trusted Types Report-Only. Header SEPARADO del
-    # CSP enforce arriba — este NO bloquea nada, solo reporta al backend para
-    # análisis. Datos guían Sprint 106b (enforce mode) según qué violations
-    # aparecen. `require-trusted-types-for 'script'` activa TT para script sinks
-    # (innerHTML, setAttribute('src',...), etc.). `trusted-types` sin args limita
-    # policies creables al nombre "default"; `'allow-duplicates'` permite que
-    # hCaptcha/otras libs registren sus propias sin conflictos.
-    Content-Security-Policy-Report-Only = "require-trusted-types-for 'script'; trusted-types 'allow-duplicates' default; report-uri https://tecny-backend-production.up.railway.app/api/csp-report"
+    # ── Content-Security-Policy: NO va acá (task #259) ─────────────────
+    # Netlify precedence: `[[headers]]` toml GANA sobre `dist/_headers`
+    # cuando ambos definen el MISMO header. Confirmado empíricamente
+    # 2026-07-31 (PR #955 diagnostic).
+    #
+    # Solución: NO definir Content-Security-Policy ni
+    # Content-Security-Policy-Report-Only acá. `admin-frontend/scripts/
+    # generate-headers.mjs` escribe `dist/_headers` con el CSP restringido
+    # al backend específico del site (admin-prod → backend-prod solamente;
+    # admin-staging → backend-staging solamente), rescatando el hardening
+    # del Fix 10 que se perdió con PR #948.
+    #
+    # Los `[[context.<X>.headers]]` que había abajo eran dead code
+    # (limitación Netlify), fueron removidos por task #259. Ver
+    # docs/runbooks/csp-landing.md.
 
-# ── Branch deploys (staging) ──────────────────────────────────────────
+# ── Context-specific env vars ─────────────────────────────────────────
 #
-# Netlify NO mergea context blocks con el global — REPLACE para los paths
-# que matchea. Replicamos todos los headers cambiando SOLO el report-uri
-# (apunta a backend-staging en vez de prod). Misma razón que frontend/.
-# En branch-deploy (staging), overrideamos VITE_API_URL para apuntar al
-# backend de staging. Consistente con el override del report-uri en headers.
+# `[context.<X>.environment]` DOES respect deploy context (VITE_API_URL
+# varía per site). Los `[[context.<X>.headers]]` NO — se removieron con
+# task #259 porque eran dead code que aportaba ruido sin efecto runtime.
+
 [context.branch-deploy.environment]
   VITE_API_URL = "https://tecny-backend-staging.up.railway.app"
 
-[[context.branch-deploy.headers]]
-  for = "/*"
-  [context.branch-deploy.headers.values]
-    X-Robots-Tag = "noindex, nofollow"
-    X-Frame-Options = "DENY"
-    X-Content-Type-Options = "nosniff"
-    Referrer-Policy = "strict-origin-when-cross-origin"
-    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
-    Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
-    # 2026-07-30: dead code (Netlify no aplica [[context.<X>.headers]]).
-    # Mantenido para parity check + doc del INTENT. Runtime usa [[headers]] global.
-    Content-Security-Policy = "default-src 'self'; script-src 'self' https://*.hcaptcha.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.hcaptcha.com; img-src 'self' data: blob: https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app https://*.hcaptcha.com https://fonts.googleapis.com https://fonts.gstatic.com; frame-src 'self' data: https://*.hcaptcha.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests; script-src-attr 'none'; report-uri https://tecny-backend-staging.up.railway.app/api/csp-report"
-    # Sprint 106 (2026-07-24): Trusted Types Report-Only. Ver comment en block production.
-    Content-Security-Policy-Report-Only = "require-trusted-types-for 'script'; trusted-types 'allow-duplicates' default; report-uri https://tecny-backend-staging.up.railway.app/api/csp-report"
-
-# ── Deploy previews (PRs) ─────────────────────────────────────────────
-#
-# Misma config que branch-deploy. Previews son entornos no-prod, reportan a
-# staging backend.
-# Deploy previews (PRs) también contra staging backend — mismo criterio.
+# Deploy previews (PRs) también contra staging backend — mismo criterio
+# (entornos no-prod, no ensucian data prod).
 [context.deploy-preview.environment]
   VITE_API_URL = "https://tecny-backend-staging.up.railway.app"
-
-[[context.deploy-preview.headers]]
-  for = "/*"
-  [context.deploy-preview.headers.values]
-    X-Robots-Tag = "noindex, nofollow"
-    X-Frame-Options = "DENY"
-    X-Content-Type-Options = "nosniff"
-    Referrer-Policy = "strict-origin-when-cross-origin"
-    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
-    Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
-    Content-Security-Policy = "default-src 'self'; script-src 'self' https://*.hcaptcha.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.hcaptcha.com; img-src 'self' data: blob: https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app https://*.hcaptcha.com https://fonts.googleapis.com https://fonts.gstatic.com; frame-src 'self' data: https://*.hcaptcha.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests; script-src-attr 'none'; report-uri https://tecny-backend-staging.up.railway.app/api/csp-report"
-    # 2026-07-27 (audit 07-25 Externa P2-2 fix): agregar Trusted Types Report-Only
-    # también en deploy-preview. Antes solo production + branch-deploy tenían este
-    # header — deploy-preview quedó sin él, cortando la data de TT violations que
-    # informa la decisión Sprint 106b (enforce vs remain Report-Only).
-    Content-Security-Policy-Report-Only = "require-trusted-types-for 'script'; trusted-types 'allow-duplicates' default; report-uri https://tecny-backend-staging.up.railway.app/api/csp-report"
 
 # ── Cache headers ─────────────────────────────────────────────────────
 #

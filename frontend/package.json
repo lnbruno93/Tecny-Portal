@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && npm run cleanup:sourcemaps",
+    "build": "vite build && npm run cleanup:sourcemaps && npm run generate:headers",
     "cleanup:sourcemaps": "find dist -name '*.map' -type f -delete 2>/dev/null || true",
+    "generate:headers": "node scripts/generate-headers.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",

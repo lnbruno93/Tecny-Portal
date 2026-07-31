@@ -1,239 +1,216 @@
 #!/usr/bin/env node
 /**
- * scripts/security/verify-csp-parity.js — asserta paridad de CSP entre los 2
- * netlify.toml (portal + admin) y los 3 contextos (production, branch-deploy,
- * deploy-preview).
+ * scripts/security/verify-csp-parity.js
  *
- * Sprint 3 L1 del roadmap post-auditoría. Ver csp-spec.js para el contexto
- * completo del problema (bug del 2026-07-19).
+ * Task #259 (2026-07-31): reescrito post-descubrimiento empírico de que
+ * Netlify `[[headers]]` toml GANA sobre `dist/_headers` para el mismo
+ * header name. Antes este script comparaba el CSP del toml contra la
+ * spec canónica (tenía sentido cuando el CSP vivía en el toml). Ahora
+ * el CSP vive SOLO en `dist/_headers` generado por
+ * `frontend/scripts/generate-headers.mjs` y `admin-frontend/scripts/
+ * generate-headers.mjs` — el toml no debe contenerlo.
  *
- * ── Cómo corre ────────────────────────────────────────────────────────
+ * Este check ahora asegura DOS invariantes:
  *
- *   $ node scripts/security/verify-csp-parity.js
+ *   1. **Toml no tiene CSP**: `netlify.toml` y `admin-frontend/netlify.toml`
+ *      NO deben contener `Content-Security-Policy` ni
+ *      `Content-Security-Policy-Report-Only` en ningún `[[headers]]` block.
+ *      Si aparece, la precedencia Netlify hace que gane sobre `_headers`
+ *      → regresión al problema pre-#259.
  *
- * Exit 0 → todo alineado con `csp-spec.js`.
- * Exit 1 → hay drift; el output muestra por site + context qué directivas
- *          divergen (agregadas, faltantes, tokens fuera de orden).
+ *   2. **Generators producen CSP match con spec**: correr cada generator
+ *      con cada backend URL válido y verificar que el `dist/_headers`
+ *      resultante tenga el CSP esperado por `cspForSiteAndBackend()`.
  *
- * ── Integración CI ────────────────────────────────────────────────────
+ * Corre en CI (`.github/workflows/ci.yml` → job `csp-parity`).
  *
- *   .github/workflows/ci.yml → job `csp-parity` (~2s, sin services).
- *
- * ── Diseño del parser ─────────────────────────────────────────────────
- *
- * No usamos librería TOML full: el header CSP tiene un shape fijo y estable
- * (una línea `Content-Security-Policy = "..."` dentro de un block
- * `[[headers]]` o `[[context.X.headers]]`). Barremos línea a línea llevando
- * el context actual como state. Es más simple que agregar dependency de
- * @iarna/toml y suficientemente robusto para nuestro uso (los 2 files
- * tienen shape controlada por nosotros).
+ *   Exit 0 → ambos invariantes OK.
+ *   Exit 1 → toml tiene CSP OR generator produce CSP no esperado.
  */
 
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
+const { execFileSync } = require('child_process');
 const {
-  REQUIRED_CONTEXTS,
-  SITES,
-  expectedCspFor,
+  KNOWN_BACKEND_URLS,
+  cspForSiteAndBackend,
+  formatCsp,
+  trustedTypesReportOnlyFor,
 } = require('./csp-spec');
 
 const REPO_ROOT = path.resolve(__dirname, '../..');
 
-// ── Parser ─────────────────────────────────────────────────────────────
+// ── Sites y generators cubiertos ──────────────────────────────────────
+// Nota: el shape es distinto al viejo `SITES` (csp-spec.js) porque
+// el runbook agrega paths de generator + tomlPath que antes no existían.
+const TARGETS = [
+  {
+    key: 'root',
+    label: 'root (frontend/tecnyapp.com)',
+    tomlPath: 'netlify.toml',
+    generator: 'frontend/scripts/generate-headers.mjs',
+    distDir: 'frontend/dist',
+  },
+  {
+    key: 'admin',
+    label: 'admin (admin-frontend/admin.tecnyapp.com)',
+    tomlPath: 'admin-frontend/netlify.toml',
+    generator: 'admin-frontend/scripts/generate-headers.mjs',
+    distDir: 'admin-frontend/dist',
+  },
+];
+
+// ── Invariante 1: toml no debe contener CSP ────────────────────────────
 
 /**
- * Descubre si un TOML block header CAMBIA el context, lo PRESERVA (es una
- * subsección del block actual) o RESETEA (block no relacionado a headers).
- *
- *   [[headers]]                              → set 'production'
- *   [[context.branch-deploy.headers]]        → set 'branch-deploy'
- *   [[context.deploy-preview.headers]]       → set 'deploy-preview'
- *   [headers.values]                         → keep (subsección del [[headers]] previo)
- *   [context.branch-deploy.headers.values]   → keep (subsección del context block)
- *   [build] / [[redirects]] / [build.environment] / etc. → reset a null
- *
- * Devuelve:
- *   { action: 'set',   context: 'production' | 'branch-deploy' | ... }
- *   { action: 'keep'  }   ← preservar el context previo
- *   { action: 'reset' }   ← salir del scope de un CSP block
+ * Escanea el toml buscando `Content-Security-Policy` o
+ * `Content-Security-Policy-Report-Only`. Devuelve las líneas offending
+ * (o array vacío si limpio).
  */
-function classifyBlockHeader(header) {
-  if (header === '[[headers]]') return { action: 'set', context: 'production' };
-  const arrayMatch = header.match(/^\[\[context\.([\w-]+)\.headers\]\]$/);
-  if (arrayMatch) return { action: 'set', context: arrayMatch[1] };
-  // Subsecciones .values del block actual — preservan el context.
-  if (header === '[headers.values]') return { action: 'keep' };
-  if (/^\[context\.[\w-]+\.headers\.values\]$/.test(header)) return { action: 'keep' };
-  // Cualquier otro top-level block resetea.
-  return { action: 'reset' };
-}
-
-/**
- * Parsea un value CSP como string ("default-src 'self'; script-src ...; ...")
- * a un map { directive: [tokens] }.
- *
- * Tolera espacios múltiples y trailing semicolon. Ignora directivas vacías.
- * Preserva el ORDEN de aparición de los tokens para que el diff sea claro
- * si alguien reordena manualmente (no es semánticamente incorrecto pero
- * queremos consistencia).
- */
-function parseCspHeaderValue(value) {
-  const map = {};
-  for (const rawDirective of value.split(';')) {
-    const directive = rawDirective.trim();
-    if (!directive) continue;
-    const parts = directive.split(/\s+/);
-    const name = parts[0];
-    const tokens = parts.slice(1);
-    map[name] = tokens;
+function findCspInToml(tomlPath) {
+  const contents = fs.readFileSync(tomlPath, 'utf8');
+  const lines = contents.split('\n');
+  const found = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // Ignorar comentarios — el runbook menciona el nombre del header en
+    // texto explicativo; solo importa si es una config real.
+    if (line.trimStart().startsWith('#')) continue;
+    if (/Content-Security-Policy(-Report-Only)?\s*=/i.test(line)) {
+      found.push({ lineNumber: i + 1, text: line.trim() });
+    }
   }
-  return map;
+  return found;
 }
 
+// ── Invariante 2: generator output matchea spec ────────────────────────
+
 /**
- * Parsea un netlify.toml y devuelve { context: cspDirectiveMap } para cada
- * context que tenga un CSP header definido.
- *
- * Contract: cada context requerido en REQUIRED_CONTEXTS debe aparecer con
- * su CSP; el verify() de abajo asserta esa exhaustividad.
+ * Parsea un `dist/_headers` file y extrae el CSP + CSP-Report-Only del
+ * bloque `/*`. Devuelve `{ csp, reportOnly }` o throw si no encuentra.
  */
-function parseNetlifyToml(filePath) {
+function parseHeadersFile(filePath) {
   const contents = fs.readFileSync(filePath, 'utf8');
   const lines = contents.split('\n');
-  const byContext = {};
-
-  // context actual — cambia cuando cruzamos un block header `[[...]]`.
-  // null = fuera de un block [[headers]] o context.X.headers.
-  let currentContext = null;
-
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-
-    // Salta comentarios y líneas vacías — no rompen tracking del context.
-    if (!line || line.startsWith('#')) continue;
-
-    // ¿Empezó un block nuevo? Clasificar: set nuevo context, keep (subsección),
-    // o reset (salimos del scope de headers).
-    if (line.startsWith('[')) {
-      const result = classifyBlockHeader(line);
-      if (result.action === 'set') currentContext = result.context;
-      else if (result.action === 'reset') currentContext = null;
-      // 'keep' → no cambia currentContext.
-      continue;
-    }
-
-    // Solo captamos CSP mientras estemos dentro de un block relevante.
-    if (currentContext === null) continue;
-
-    // El header CSP es una línea `Content-Security-Policy = "..."`. Tolera
-    // capitalización estándar; no debería aparecer en minúsculas pero por
-    // las dudas usamos case-insensitive en el nombre.
-    const m = line.match(/^Content-Security-Policy\s*=\s*"([^"]+)"$/i);
-    if (m) {
-      byContext[currentContext] = parseCspHeaderValue(m[1]);
-    }
+  let inBlock = false;
+  let csp = null;
+  let reportOnly = null;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed === '/*') { inBlock = true; continue; }
+    if (inBlock && trimmed === '') { inBlock = false; continue; }
+    if (!inBlock) continue;
+    const cspMatch = line.match(/^\s+Content-Security-Policy:\s*(.+)$/);
+    if (cspMatch) csp = cspMatch[1].trim();
+    const rMatch = line.match(/^\s+Content-Security-Policy-Report-Only:\s*(.+)$/);
+    if (rMatch) reportOnly = rMatch[1].trim();
   }
-
-  return byContext;
+  if (!csp) throw new Error(`no Content-Security-Policy en block /* de ${filePath}`);
+  if (!reportOnly) throw new Error(`no Content-Security-Policy-Report-Only en block /* de ${filePath}`);
+  return { csp, reportOnly };
 }
 
-// ── Verifier ───────────────────────────────────────────────────────────
-
 /**
- * Compara dos directive maps (actual vs expected) y devuelve una lista de
- * discrepancias human-readable. Vacía si son iguales.
+ * Corre el generator con `VITE_API_URL=backendUrl` en un temp dist, y
+ * devuelve `{ csp, reportOnly }` parseado.
  */
-function diffCspMaps(actual, expected) {
-  const problems = [];
-  const actualKeys = new Set(Object.keys(actual));
-  const expectedKeys = new Set(Object.keys(expected));
-
-  // Directivas de MÁS: aparecen en el TOML pero no en el spec.
-  for (const key of actualKeys) {
-    if (!expectedKeys.has(key)) {
-      problems.push(`  ✗ directiva no esperada por el spec: "${key}" con tokens ${JSON.stringify(actual[key])}`);
-    }
+function runGeneratorAndParse(target, backendUrl) {
+  const absDistDir = path.join(REPO_ROOT, target.distDir);
+  const absGenerator = path.join(REPO_ROOT, target.generator);
+  // Asegurar dist/ existe (mkdir -p). El generator no lo crea porque
+  // asume que vite build lo hizo.
+  fs.mkdirSync(absDistDir, { recursive: true });
+  try {
+    execFileSync('node', [absGenerator], {
+      env: { ...process.env, VITE_API_URL: backendUrl },
+      cwd: path.dirname(absGenerator),
+      stdio: 'pipe',
+    });
+  } catch (err) {
+    throw new Error(`generator falló: ${err.stderr?.toString() || err.message}`);
   }
-
-  // Directivas de MENOS: en el spec pero faltan en el TOML.
-  for (const key of expectedKeys) {
-    if (!actualKeys.has(key)) {
-      problems.push(`  ✗ directiva faltante: "${key}" — se esperaba ${JSON.stringify(expected[key])}`);
-    }
-  }
-
-  // Directivas presentes en ambos: comparar tokens (misma cantidad + mismo orden).
-  for (const key of expectedKeys) {
-    if (!actualKeys.has(key)) continue; // ya reportado
-    const a = actual[key];
-    const e = expected[key];
-    if (a.length !== e.length || a.some((t, i) => t !== e[i])) {
-      problems.push(
-        `  ✗ directiva "${key}" difiere:\n` +
-        `      actual:   ${JSON.stringify(a)}\n` +
-        `      esperado: ${JSON.stringify(e)}`
-      );
-    }
-  }
-
-  return problems;
+  return parseHeadersFile(path.join(absDistDir, '_headers'));
 }
 
 function main() {
   let anyFailure = false;
 
-  console.log('=== CSP parity check ===');
-  console.log('Spec canónica: scripts/security/csp-spec.js\n');
+  console.log('=== CSP parity check (post-#259) ===\n');
 
-  for (const [siteKey, siteMeta] of Object.entries(SITES)) {
-    const absPath = path.join(REPO_ROOT, siteMeta.path);
-    console.log(`▸ ${siteMeta.label}`);
-    console.log(`  ${siteMeta.path}`);
-
-    if (!fs.existsSync(absPath)) {
-      console.error(`  ✗ ARCHIVO NO ENCONTRADO`);
+  // ── Invariante 1: toml sin CSP ──────────────────────────────────────
+  console.log('▸ Invariante 1: toml no debe declarar Content-Security-Policy');
+  for (const target of TARGETS) {
+    const absToml = path.join(REPO_ROOT, target.tomlPath);
+    if (!fs.existsSync(absToml)) {
+      console.error(`  ✗ ${target.tomlPath}: ARCHIVO NO ENCONTRADO`);
       anyFailure = true;
       continue;
     }
-
-    const parsed = parseNetlifyToml(absPath);
-
-    for (const context of REQUIRED_CONTEXTS) {
-      const actual = parsed[context];
-      if (!actual) {
-        console.error(`  ✗ context "${context}": no se encontró Content-Security-Policy`);
-        anyFailure = true;
-        continue;
+    const violations = findCspInToml(absToml);
+    if (violations.length === 0) {
+      console.log(`  ✓ ${target.tomlPath}`);
+    } else {
+      console.error(`  ✗ ${target.tomlPath}: ${violations.length} línea(s) violan la invariante`);
+      for (const v of violations) {
+        console.error(`      línea ${v.lineNumber}: ${v.text.substring(0, 100)}...`);
       }
-      const expected = expectedCspFor(siteKey, context);
-      const problems = diffCspMaps(actual, expected);
-      if (problems.length === 0) {
-        console.log(`  ✓ context "${context}": OK`);
-      } else {
-        console.error(`  ✗ context "${context}": ${problems.length} diferencia(s)`);
-        for (const p of problems) console.error(p);
+      console.error(`      → El CSP en toml GANA sobre dist/_headers (precedencia Netlify).`);
+      console.error(`      → Remover estas líneas — el CSP viene de scripts/generate-headers.mjs.`);
+      anyFailure = true;
+    }
+  }
+  console.log('');
+
+  // ── Invariante 2: generator output matchea spec ────────────────────
+  console.log('▸ Invariante 2: generators producen CSP esperado por spec');
+  for (const target of TARGETS) {
+    console.log(`  ${target.label}`);
+    for (const backendUrl of KNOWN_BACKEND_URLS) {
+      const tag = backendUrl.includes('staging') ? 'staging' : 'production';
+      try {
+        const { csp, reportOnly } = runGeneratorAndParse(target, backendUrl);
+        const expectedCsp = formatCsp(cspForSiteAndBackend(target.key, backendUrl));
+        const expectedReportOnly = trustedTypesReportOnlyFor(backendUrl);
+        if (csp !== expectedCsp) {
+          console.error(`    ✗ backend ${tag}: CSP no matchea spec`);
+          console.error(`        esperado: ${expectedCsp.substring(0, 120)}...`);
+          console.error(`        actual:   ${csp.substring(0, 120)}...`);
+          anyFailure = true;
+        } else if (reportOnly !== expectedReportOnly) {
+          console.error(`    ✗ backend ${tag}: CSP-Report-Only no matchea spec`);
+          console.error(`        esperado: ${expectedReportOnly}`);
+          console.error(`        actual:   ${reportOnly}`);
+          anyFailure = true;
+        } else {
+          console.log(`    ✓ backend ${tag}: OK`);
+        }
+      } catch (err) {
+        console.error(`    ✗ backend ${tag}: ${err.message}`);
         anyFailure = true;
       }
     }
-    console.log('');
+    // Cleanup del _headers temp — no queremos ensuciar el workspace.
+    const headersOut = path.join(REPO_ROOT, target.distDir, '_headers');
+    if (fs.existsSync(headersOut)) fs.unlinkSync(headersOut);
   }
+  console.log('');
 
   if (anyFailure) {
-    console.error('✗ CSP parity FAILED. Actualizá netlify.toml o scripts/security/csp-spec.js según corresponda.');
+    console.error('✗ CSP parity FAILED. Ver output arriba.');
     process.exit(1);
   }
-  console.log('✓ Todos los CSPs matchean la spec canónica.');
+  console.log('✓ Todos los invariantes OK.');
 }
 
-// Ejecutable directo (`node scripts/security/verify-csp-parity.js`).
-// Guardamos el shape modular para poder testearlo/importarlo desde otro script.
+// Ejecutable directo. Guardamos shape modular para tests.
 if (require.main === module) {
   main();
 }
 
 module.exports = {
-  parseNetlifyToml,
-  parseCspHeaderValue,
-  classifyBlockHeader,
-  diffCspMaps,
+  findCspInToml,
+  parseHeadersFile,
+  runGeneratorAndParse,
+  TARGETS,
 };
