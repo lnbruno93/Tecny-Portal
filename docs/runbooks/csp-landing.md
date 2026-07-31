@@ -62,9 +62,13 @@ Es la fuente canónica. Se aplica al build.
   Content-Security-Policy: default-src 'self'; script-src 'self' ...
 ```
 
-Es el **fallback runtime**. El edge cache de Netlify a veces no invalida cambios del `.toml` inmediatamente (visto en producción — un cambio de CSP tardó horas en propagarse). El file `_headers` se sirve directo desde el build, sin intermediación de config, y siempre gana.
+Es el **fallback runtime**. El edge cache de Netlify a veces no invalida cambios del `.toml` inmediatamente (visto en producción — un cambio de CSP tardó horas en propagarse). El file `_headers` se sirve directo desde el build, sin intermediación de config.
 
-**Regla:** cualquier cambio al CSP DEBE hacerse en **ambos** files sincronizados. El contract test (ver abajo) valida esto.
+**Precedencia real** (task #259, 2026-07-31): para headers definidos en AMBOS files, el `netlify.toml` **gana** — confirmado empíricamente + [docs oficiales de Netlify](https://docs.netlify.com/routing/headers/). En el landing (Astro) esta duplicación funciona porque ambos files tienen contenido idéntico; si divergen, aplica el toml. El contract test valida sincronización.
+
+**Regla:** cualquier cambio al CSP del landing DEBE hacerse en **ambos** files sincronizados. El contract test (ver abajo) valida esto.
+
+**Para el portal + admin**: patrón distinto — el CSP **solo vive en `_headers`** (generado en build-time), NO en el toml. Ver sección "Build-time _headers generation" abajo.
 
 ## Los tokens obligatorios
 
@@ -183,17 +187,27 @@ Consecuencias:
 
 **Impacto pasado**: el "Fix 10" del audit 07-25 (Sprint 1) intentó restringir el CSP de prod a `backend-production` solamente (hardening contra XSS-exfil-a-staging). Como el `[[headers]]` global es el único que aplica, ese cambio ALSO bloqueó las requests desde staging + deploy previews (que apuntan a `backend-staging` vía VITE_API_URL). Regressed 2026-07-30 (ambos backends permitidos en el CSP global) para restaurar funcionalidad.
 
-**Workaround oficial de Netlify**: usar el build command para copiar un `_headers` file dinámicamente al `dist/` según el context detectado (via env var `CONTEXT` o `VITE_API_URL`).
+**Workaround oficial de Netlify**: usar el build command para copiar un `_headers` file dinámicamente al `dist/` según el context detectado (via env var `CONTEXT` o `VITE_API_URL`). Y — importante — quitar el header equivalente del `[[headers]]` toml (ver "Precedencia" en la siguiente sección: toml gana sobre `_headers` para el mismo header name; si dejás ambos, el toml pisa el trabajo del generator).
 
 **Fix implementado (task #259, 2026-07-31)** — ver siguiente sección.
 
-**Regla operativa**: si querés headers distintos por context/branch/site, NO uses `[[context.<X>.headers]]` blocks — son placebo. Usá build-time generation (patrón documentado abajo).
+**Regla operativa**: si querés headers distintos por context/branch/site, NO uses `[[context.<X>.headers]]` blocks — son placebo. Usá build-time generation + eliminá el header conflictivo del toml.
 
 ## Build-time `_headers` generation (task #259)
 
 **Aplica a los sites**: `tecny-portal`, `tecny-portal-staging`, `tecny-admin`, `tecny-admin-staging`.
 
 **No aplica al landing** (`tecny-landing`) — el landing tiene su propio pipeline (Astro + `landing/public/_headers`) y no consume `VITE_API_URL`; ver secciones anteriores.
+
+### Precedencia Netlify — cazado por PR #955
+
+Antes de mergear task #259 asumimos (basado en el runbook viejo del landing) que `_headers` **ganaba** sobre `[[headers]]` toml. Falso — [los docs oficiales](https://docs.netlify.com/routing/headers/) dicen lo contrario:
+
+> Custom headers set in the netlify.toml take precedence over those set in the _headers file. This means if the same header is set in both files, the netlify.toml version is used.
+
+Confirmado empíricamente con un marker header en PR #955: cuando toml + _headers definían ambos el CSP, la response mostraba el CSP del **toml**. El marker header (solo en _headers) sí aparecía → el _headers file se aplica, pero PIERDE contra toml para el mismo header name.
+
+**Consecuencia del patrón implementado**: el CSP del portal + admin vive **exclusivamente en `dist/_headers`**. El `[[headers]]` toml define X-Frame-Options / HSTS / etc. (headers que no cambian por site) pero NO CSP.
 
 ### El patrón
 
@@ -205,7 +219,7 @@ Cada build de Vite del portal (`frontend/`) y del admin (`admin-frontend/`) corr
 - Admin staging (`admin-staging.tecnyapp.com`) → mismo criterio.
 - Deploy previews (PR builds) → CSP restringido a staging.
 
-**Precedencia Netlify**: `dist/_headers` GANA sobre `[[headers]]` toml per header. El toml queda como fallback safe: si el generator falla, el sitio se sigue sirviendo con el CSP permisivo del toml (ambos backends) — degradación graceful.
+**Failure mode**: si el generator falla, el `dist/_headers` no existe → el `[[headers]]` toml NO tiene CSP → browser aplica policy default (sin restricción). Estado equivalente al pre-task-#259. NO es P0 — es "menos hardened", no "roto".
 
 ### Los archivos involucrados
 
@@ -213,19 +227,21 @@ Cada build de Vite del portal (`frontend/`) y del admin (`admin-frontend/`) corr
 - `frontend/scripts/generate-headers.mjs` — post-build del portal. Lee `VITE_API_URL`, valida contra allowlist, escribe `frontend/dist/_headers`.
 - `admin-frontend/scripts/generate-headers.mjs` — espejo del admin.
 - `frontend/package.json` / `admin-frontend/package.json` — el script `build` corre `vite build && npm run generate:headers`.
-- `netlify.toml` / `admin-frontend/netlify.toml` — el `[[headers]]` global sigue existiendo como safety net.
+- `netlify.toml` / `admin-frontend/netlify.toml` — el `[[headers]]` global tiene HSTS, X-Frame-Options, etc. **NO tiene CSP** (invariante de `verify-csp-parity.js`).
 
 ### Cómo cambiar el CSP del portal/admin
 
 1. **Editar `scripts/security/csp-spec.js`** — actualizar `COMMON_DIRECTIVES`, `SITE_DIFFERENCES`, o agregar tokens al site que aplique. Este es el único lugar canónico.
 
-2. **Correr tests**: `node --test scripts/security/csp-invariants.test.js`. Los 21 tests validan invariantes de seguridad + el nuevo hardening del Fix 10.
+2. **Correr tests**: `node --test scripts/security/csp-invariants.test.js` (invariantes de seguridad + 7 tests del hardening #259).
 
-3. **Actualizar los 2 netlify.toml** (portal + admin) con los mismos cambios en el `[[headers]]` global — recordá que es el fallback. Correr `node scripts/security/verify-csp-parity.js` para confirmar que coinciden con la spec.
+3. **Correr parity check**: `node scripts/security/verify-csp-parity.js`. Valida DOS invariantes: (a) el toml NO tiene CSP; (b) el generator produce headers alineados con la spec.
 
-4. **Deploy** — al build, cada site genera su `dist/_headers` con el CSP restringido.
+4. **NO tocar netlify.toml para cambios de CSP** — es un invariante que el toml NO tenga CSP. Si necesitás agregar/quitar un header que sí va en toml (HSTS, X-Frame, etc.), editar el `[[headers]]` global directamente.
 
-5. **Verificar post-deploy**:
+5. **Deploy** — al build, cada site genera su `dist/_headers` con el CSP restringido.
+
+6. **Verificar post-deploy**:
    ```bash
    curl -sI https://tecnyapp.com/ | grep -i content-security-policy
    # → debe contener backend-production, NO backend-staging
@@ -257,9 +273,9 @@ Defense-in-depth intencional: un `VITE_API_URL` typo/malicioso NO puede legitima
 
 Si el _headers dinámico rompe algo:
 
-1. Revertir el commit que introdujo `generate:headers` (o comentar el `&& npm run generate:headers` del build script).
-2. El siguiente build produce `dist/` sin `_headers` file → Netlify cae al `[[headers]]` toml (permisivo, ambos backends) → sitio funcional aunque menos hardened.
-3. Diagnosticar el fallo en local con `VITE_API_URL=... node scripts/generate-headers.mjs`.
+1. Revertir el commit que introdujo el patrón.
+2. Como fallback rápido: agregar un CSP permisivo al `[[headers]]` toml (ambos backends). Eso restaura el estado pre-#259.
+3. Diagnosticar el fallo en local con `VITE_API_URL=... node frontend/scripts/generate-headers.mjs`.
 
 ## Cache invalidation gotcha (edge cache Netlify)
 

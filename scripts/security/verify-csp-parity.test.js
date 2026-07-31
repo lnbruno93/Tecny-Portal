@@ -1,20 +1,19 @@
 /**
- * Tests unitarios para verify-csp-parity.js.
+ * Tests unitarios para verify-csp-parity.js (refactor #259).
  *
- * Usan node:test (built-in, Node 20+) — no requieren jest/vitest ni dependencies
- * extra. Corren con:
+ * Antes esto testeaba el parser CSP del toml. Con task #259 el CSP se movió
+ * afuera del toml → los tests viejos ya no aplican. Nuevos tests cubren:
+ *
+ *   - findCspInToml: detecta violaciones de la invariante "toml sin CSP"
+ *   - parseHeadersFile: parsea el `_headers` generado
+ *
+ * Los tests end-to-end (invariantes 1 y 2 en tandem) los da el propio
+ * verify-csp-parity.js corriendo en CI. Ver `.github/workflows/ci.yml`
+ * → job `csp-parity`.
+ *
+ * Corre con:
  *
  *   $ node --test scripts/security/verify-csp-parity.test.js
- *
- * Cobertura:
- *   - Parser de directivas CSP (tokenización, trailing semicolons, whitespace).
- *   - Clasificador de blocks TOML (context-setting vs subsection vs reset).
- *   - Diff maps (agregadas, faltantes, reordenadas, valores diferentes).
- *   - Parser end-to-end sobre un netlify.toml fixture inline.
- *
- * No cubre `main()` porque su output son console.log/console.error + exit code
- * — testear eso agrega complejidad de spies sin señal extra. La lógica está
- * en las funciones exportadas.
  */
 
 const { test } = require('node:test');
@@ -24,230 +23,112 @@ const path = require('node:path');
 const os = require('node:os');
 
 const {
-  parseCspHeaderValue,
-  classifyBlockHeader,
-  diffCspMaps,
-  parseNetlifyToml,
+  findCspInToml,
+  parseHeadersFile,
 } = require('./verify-csp-parity');
 
-// ── parseCspHeaderValue ──────────────────────────────────────────────
+// ── findCspInToml ──────────────────────────────────────────────
 
-test('parseCspHeaderValue: extrae directiva simple con 1 token', () => {
-  const result = parseCspHeaderValue("default-src 'self'");
-  assert.deepEqual(result, { 'default-src': ["'self'"] });
-});
-
-test('parseCspHeaderValue: extrae varias directivas separadas por ;', () => {
-  const result = parseCspHeaderValue(
-    "default-src 'self'; script-src 'self' https://a.com; frame-ancestors 'none'",
-  );
-  assert.deepEqual(result, {
-    'default-src': ["'self'"],
-    'script-src': ["'self'", 'https://a.com'],
-    'frame-ancestors': ["'none'"],
-  });
-});
-
-test('parseCspHeaderValue: ignora trailing semicolon', () => {
-  const result = parseCspHeaderValue("default-src 'self';");
-  assert.deepEqual(result, { 'default-src': ["'self'"] });
-});
-
-test('parseCspHeaderValue: tolera whitespace excesivo entre tokens', () => {
-  const result = parseCspHeaderValue("  default-src   'self'   https://a.com  ");
-  assert.deepEqual(result, { 'default-src': ["'self'", 'https://a.com'] });
-});
-
-test('parseCspHeaderValue: preserva orden de tokens', () => {
-  const result = parseCspHeaderValue("connect-src 'self' https://b.com https://a.com");
-  // Explícito: los tokens NO se ordenan alfabéticamente — el orden del CSP source
-  // se mantiene, así el diff detecta reordenamientos accidentales.
-  assert.deepEqual(result['connect-src'], ["'self'", 'https://b.com', 'https://a.com']);
-});
-
-// ── classifyBlockHeader ──────────────────────────────────────────────
-
-test('classifyBlockHeader: [[headers]] → set production', () => {
-  assert.deepEqual(classifyBlockHeader('[[headers]]'), { action: 'set', context: 'production' });
-});
-
-test('classifyBlockHeader: [[context.branch-deploy.headers]] → set branch-deploy', () => {
-  assert.deepEqual(classifyBlockHeader('[[context.branch-deploy.headers]]'), {
-    action: 'set',
-    context: 'branch-deploy',
-  });
-});
-
-test('classifyBlockHeader: [[context.deploy-preview.headers]] → set deploy-preview', () => {
-  assert.deepEqual(classifyBlockHeader('[[context.deploy-preview.headers]]'), {
-    action: 'set',
-    context: 'deploy-preview',
-  });
-});
-
-test('classifyBlockHeader: [headers.values] → keep (subsección)', () => {
-  assert.deepEqual(classifyBlockHeader('[headers.values]'), { action: 'keep' });
-});
-
-test('classifyBlockHeader: [context.branch-deploy.headers.values] → keep', () => {
-  assert.deepEqual(classifyBlockHeader('[context.branch-deploy.headers.values]'), {
-    action: 'keep',
-  });
-});
-
-test('classifyBlockHeader: [build] → reset (block no relacionado)', () => {
-  assert.deepEqual(classifyBlockHeader('[build]'), { action: 'reset' });
-});
-
-test('classifyBlockHeader: [[redirects]] → reset', () => {
-  assert.deepEqual(classifyBlockHeader('[[redirects]]'), { action: 'reset' });
-});
-
-test('classifyBlockHeader: [build.environment] → reset (subsección no de headers)', () => {
-  assert.deepEqual(classifyBlockHeader('[build.environment]'), { action: 'reset' });
-});
-
-// ── diffCspMaps ──────────────────────────────────────────────────────
-
-test('diffCspMaps: maps idénticos → sin problemas', () => {
-  const a = { 'default-src': ["'self'"], 'script-src': ["'self'", 'https://a.com'] };
-  const b = { 'default-src': ["'self'"], 'script-src': ["'self'", 'https://a.com'] };
-  assert.deepEqual(diffCspMaps(a, b), []);
-});
-
-test('diffCspMaps: token faltante en actual → problema', () => {
-  const actual = { 'script-src': ["'self'"] };
-  const expected = { 'script-src': ["'self'", 'https://hcaptcha.com'] };
-  const problems = diffCspMaps(actual, expected);
-  assert.equal(problems.length, 1);
-  assert.match(problems[0], /script-src/);
-});
-
-test('diffCspMaps: directiva de más en actual → problema', () => {
-  const actual = { 'default-src': ["'self'"], 'unexpected-src': ["'none'"] };
-  const expected = { 'default-src': ["'self'"] };
-  const problems = diffCspMaps(actual, expected);
-  assert.equal(problems.length, 1);
-  assert.match(problems[0], /unexpected-src/);
-});
-
-test('diffCspMaps: directiva faltante en actual → problema', () => {
-  const actual = { 'default-src': ["'self'"] };
-  const expected = { 'default-src': ["'self'"], 'frame-ancestors': ["'none'"] };
-  const problems = diffCspMaps(actual, expected);
-  assert.equal(problems.length, 1);
-  assert.match(problems[0], /frame-ancestors/);
-  assert.match(problems[0], /faltante/);
-});
-
-test('diffCspMaps: tokens reordenados → problema (orden importa)', () => {
-  const actual = { 'script-src': ['https://a.com', "'self'"] };
-  const expected = { 'script-src': ["'self'", 'https://a.com'] };
-  const problems = diffCspMaps(actual, expected);
-  assert.equal(problems.length, 1);
-});
-
-// ── parseNetlifyToml end-to-end ──────────────────────────────────────
-
-test('parseNetlifyToml: extrae CSP de los 3 contextos en un fixture inline', () => {
-  // Fixture inline representativo: un netlify.toml mínimo con la MISMA
-  // estructura que el real (block global + branch-deploy + deploy-preview,
-  // cada uno con `[headers.values]` subsection).
-  const fixture = `
+test('findCspInToml: toml limpio devuelve array vacío', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'csp-parity-test-'));
+  const toml = path.join(dir, 'netlify.toml');
+  fs.writeFileSync(toml, `
 [build]
-  base = "frontend"
-  command = "npm run build"
+  publish = "dist"
 
 [[headers]]
   for = "/*"
   [headers.values]
     X-Frame-Options = "DENY"
-    Content-Security-Policy = "default-src 'self'; script-src 'self'"
-
-[[context.branch-deploy.headers]]
-  for = "/*"
-  [context.branch-deploy.headers.values]
-    Content-Security-Policy = "default-src 'self'; script-src 'self' https://staging.com"
-
-[[context.deploy-preview.headers]]
-  for = "/*"
-  [context.deploy-preview.headers.values]
-    Content-Security-Policy = "default-src 'self'; connect-src 'self'"
-
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
-`;
-  const tmp = path.join(os.tmpdir(), `csp-parity-test-${Date.now()}.toml`);
-  fs.writeFileSync(tmp, fixture);
-  try {
-    const result = parseNetlifyToml(tmp);
-    assert.deepEqual(result.production, {
-      'default-src': ["'self'"],
-      'script-src': ["'self'"],
-    });
-    assert.deepEqual(result['branch-deploy'], {
-      'default-src': ["'self'"],
-      'script-src': ["'self'", 'https://staging.com'],
-    });
-    assert.deepEqual(result['deploy-preview'], {
-      'default-src': ["'self'"],
-      'connect-src': ["'self'"],
-    });
-  } finally {
-    fs.unlinkSync(tmp);
-  }
+    Strict-Transport-Security = "max-age=63072000"
+`);
+  const violations = findCspInToml(toml);
+  assert.deepEqual(violations, []);
 });
 
-test('parseNetlifyToml: block [build] no ensucia el context (regresión)', () => {
-  // Regresión: la primera versión del parser trataba `[build.environment]`
-  // como si fuera un context-setter y perdía el track del context real. Este
-  // fixture pone un [build.environment] ENTRE el [[headers]] y su .values
-  // subsection para asegurar que el reset funciona bien.
-  const fixture = `
+test('findCspInToml: detecta Content-Security-Policy activo', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'csp-parity-test-'));
+  const toml = path.join(dir, 'netlify.toml');
+  fs.writeFileSync(toml, `
 [[headers]]
   for = "/*"
   [headers.values]
     Content-Security-Policy = "default-src 'self'"
+`);
+  const violations = findCspInToml(toml);
+  assert.equal(violations.length, 1);
+  assert.match(violations[0].text, /Content-Security-Policy/);
+});
 
-[build]
-  base = "frontend"
-
-[build.environment]
-  VITE_API_URL = "https://x.com"
-
-[[context.branch-deploy.headers]]
+test('findCspInToml: detecta Content-Security-Policy-Report-Only también', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'csp-parity-test-'));
+  const toml = path.join(dir, 'netlify.toml');
+  fs.writeFileSync(toml, `
+[[headers]]
   for = "/*"
-  [context.branch-deploy.headers.values]
-    Content-Security-Policy = "default-src 'self'; connect-src https://y.com"
-`;
-  const tmp = path.join(os.tmpdir(), `csp-parity-test-${Date.now()}.toml`);
-  fs.writeFileSync(tmp, fixture);
-  try {
-    const result = parseNetlifyToml(tmp);
-    // Ambos contextos deben aparecer, y el [build.environment] NO debe
-    // aparecer como si fuera un context aparte.
-    assert.deepEqual(Object.keys(result).sort(), ['branch-deploy', 'production']);
-  } finally {
-    fs.unlinkSync(tmp);
-  }
+  [headers.values]
+    Content-Security-Policy-Report-Only = "require-trusted-types-for 'script'"
+`);
+  const violations = findCspInToml(toml);
+  assert.equal(violations.length, 1);
+  assert.match(violations[0].text, /Content-Security-Policy-Report-Only/);
 });
 
-test('parseNetlifyToml: netlify.toml del repo (root) parsea 3 contextos', () => {
-  const rootToml = path.resolve(__dirname, '../../netlify.toml');
-  const result = parseNetlifyToml(rootToml);
-  assert.ok(result.production, 'debe encontrar production');
-  assert.ok(result['branch-deploy'], 'debe encontrar branch-deploy');
-  assert.ok(result['deploy-preview'], 'debe encontrar deploy-preview');
-  // Sanity: la directiva default-src debe existir en los 3.
-  assert.deepEqual(result.production['default-src'], ["'self'"]);
+test('findCspInToml: ignora menciones en comentarios', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'csp-parity-test-'));
+  const toml = path.join(dir, 'netlify.toml');
+  fs.writeFileSync(toml, `
+# El Content-Security-Policy vive en dist/_headers, no acá.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    # Ver comment sobre Content-Security-Policy en el generator.
+    X-Frame-Options = "DENY"
+`);
+  const violations = findCspInToml(toml);
+  assert.deepEqual(violations, []);
 });
 
-test('parseNetlifyToml: netlify.toml del repo (admin) parsea 3 contextos', () => {
-  const adminToml = path.resolve(__dirname, '../../admin-frontend/netlify.toml');
-  const result = parseNetlifyToml(adminToml);
-  assert.ok(result.production, 'debe encontrar production');
-  assert.ok(result['branch-deploy'], 'debe encontrar branch-deploy');
-  assert.ok(result['deploy-preview'], 'debe encontrar deploy-preview');
+test('findCspInToml: detecta múltiples violaciones', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'csp-parity-test-'));
+  const toml = path.join(dir, 'netlify.toml');
+  fs.writeFileSync(toml, `
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy = "default-src 'self'"
+    Content-Security-Policy-Report-Only = "trusted-types default"
+`);
+  const violations = findCspInToml(toml);
+  assert.equal(violations.length, 2);
+});
+
+// ── parseHeadersFile ──────────────────────────────────────────
+
+test('parseHeadersFile: extrae CSP + CSP-Report-Only del block /*', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'csp-parity-test-'));
+  const headers = path.join(dir, '_headers');
+  fs.writeFileSync(headers, `
+# comment
+/*
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'self'; script-src 'self'
+  Content-Security-Policy-Report-Only: require-trusted-types-for 'script'
+
+/assets/*
+  Cache-Control: max-age=31536000
+`);
+  const { csp, reportOnly } = parseHeadersFile(headers);
+  assert.equal(csp, "default-src 'self'; script-src 'self'");
+  assert.equal(reportOnly, "require-trusted-types-for 'script'");
+});
+
+test('parseHeadersFile: throw si falta CSP', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'csp-parity-test-'));
+  const headers = path.join(dir, '_headers');
+  fs.writeFileSync(headers, `
+/*
+  X-Frame-Options: DENY
+`);
+  assert.throws(() => parseHeadersFile(headers), /Content-Security-Policy/);
 });
