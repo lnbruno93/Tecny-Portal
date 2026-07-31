@@ -87,11 +87,15 @@
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
     Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
-    # 2026-07-30: los `[[context.<X>.headers]]` de más abajo son dead code
-    # (limitación Netlify). Este [[headers]] global es el ÚNICO CSP aplicado
-    # en runtime. Ver csp-spec.js:BACKEND_URLS_BY_CONTEXT y task backlog #259.
-    # Sprint 1 audit 07-25 · Fix 10 regressed acá (ambos backends permitidos)
-    # para no romper deploy previews y admin-staging.
+    # **FALLBACK / safety net**. En runtime este header PIERDE contra
+    # `dist/_headers` (generado por admin-frontend/scripts/generate-headers.mjs,
+    # task #259). El _headers file restringe el CSP al backend específico
+    # del site deployed, rescatando el hardening del Fix 10 (que estaba
+    # regressed acá para no romper admin-staging + deploy previews).
+    #
+    # Este [[headers]] toml sólo aplica si el _headers file no se generó
+    # (build script roto). Los `[[context.<X>.headers]]` abajo son dead code
+    # (limitación Netlify). Ver docs/runbooks/csp-landing.md.
     Content-Security-Policy = "default-src 'self'; script-src 'self' https://*.hcaptcha.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.hcaptcha.com; img-src 'self' data: blob: https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app https://*.hcaptcha.com https://fonts.googleapis.com https://fonts.gstatic.com; frame-src 'self' data: https://*.hcaptcha.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests; script-src-attr 'none'; report-uri https://tecny-backend-production.up.railway.app/api/csp-report"
     # Sprint 106 (2026-07-24): Trusted Types Report-Only. Header SEPARADO del
     # CSP enforce arriba — este NO bloquea nada, solo reporta al backend para

@@ -219,6 +219,119 @@ function expectedCspFor(site, context) {
   };
 }
 
+// ── Runtime helpers (build-time _headers generation, task #259) ───────
+//
+// Contexto: Netlify NO respeta `[[context.<X>.headers]]` en runtime (dead
+// code — solo `[[headers]]` global se aplica). Consecuencia: no podemos
+// separar el CSP por site/context desde netlify.toml. Antes del Fix 10
+// del audit 07-25 esto era invisible; el Fix 10 intentó restringir prod
+// a solo backend-prod y ROMPIÓ staging/preview por 4 días (07-26 → 07-30).
+// PR #948 pragmáticamente unificó los CSPs a ambos backends para
+// desbloquear.
+//
+// Fix proper (este script): frontend/scripts/generate-headers.mjs corre
+// después de `vite build` y escribe `dist/_headers`. Ese file OVERRIDES
+// el `[[headers]]` toml para cualquier path que matchea. Como el build
+// corre en Netlify con `VITE_API_URL` ya seteado por el context, podemos
+// derivar el backend correcto y escribir un CSP restringido a ÉSE backend
+// solamente. Esto RESTAURA el hardening del Fix 10 pero por-site en vez
+// de por-context.
+//
+// Threat model recuperado: un XSS injectado en el bundle prod NO puede
+// usar backend-staging como canal de exfil (o vice versa) porque el CSP
+// runtime solo permite el backend del env deployed.
+
+/**
+ * Deriva el report-uri para un backend URL dado. Reglas del proyecto:
+ * cada env postea reports a SU propio backend (no cross-env), por
+ * Cross-Origin-Resource-Policy + para no ensuciar la ingesta prod con
+ * ruido de staging/preview. Ver comment de REPORT_URI_BY_CONTEXT.
+ *
+ * @param {string} backendUrl — ej. 'https://tecny-backend-production.up.railway.app'
+ * @returns {string} report-uri absoluto
+ */
+function reportUriForBackend(backendUrl) {
+  return `${backendUrl}/api/csp-report`;
+}
+
+/**
+ * Backend URLs conocidos por el proyecto. Se usa como allowlist en
+ * generate-headers.mjs para rechazar un `VITE_API_URL` typo/malicioso
+ * que apuntaría a un dominio arbitrario (defense-in-depth contra un env
+ * comprometido en Netlify UI).
+ */
+const KNOWN_BACKEND_URLS = Object.freeze([
+  'https://tecny-backend-production.up.railway.app',
+  'https://tecny-backend-staging.up.railway.app',
+]);
+
+/**
+ * Construye el spec CSP runtime para (site, backendUrl) — versión
+ * HARDENED: solo permite el backend explícito, no ambos. Complementaria
+ * a `expectedCspFor(site, context)` que refleja el toml legacy (ambos
+ * backends por limitación Netlify).
+ *
+ * Diferencia clave con expectedCspFor: connect-src e img-src incluyen
+ * SOLO backendUrl, no los dos backends del contexto. Es lo que
+ * generate-headers.mjs escribe al `dist/_headers` — el fallback toml
+ * queda como safety net si el file no se generó.
+ *
+ * @param {'root' | 'admin'} site
+ * @param {string} backendUrl — uno de KNOWN_BACKEND_URLS
+ * @returns {Record<string, string[]>} directive-name → [tokens]
+ */
+function cspForSiteAndBackend(site, backendUrl) {
+  const siteDiff = SITE_DIFFERENCES[site];
+  if (!siteDiff) throw new Error(`site desconocido: ${site}`);
+  if (!KNOWN_BACKEND_URLS.includes(backendUrl)) {
+    throw new Error(
+      `backend URL no reconocido: ${backendUrl}. Válidos: ${KNOWN_BACKEND_URLS.join(', ')}`
+    );
+  }
+  return {
+    ...COMMON_DIRECTIVES,
+    'connect-src': [
+      "'self'",
+      backendUrl,
+      'https://*.hcaptcha.com',
+      'https://fonts.googleapis.com',
+      'https://fonts.gstatic.com',
+    ],
+    'img-src': [
+      ...siteDiff.imgSrcBase,
+      backendUrl,
+    ],
+    'report-uri': [reportUriForBackend(backendUrl)],
+  };
+}
+
+/**
+ * Serializa un dict CSP a header string CSP-válido.
+ * Ejemplo: `{ 'default-src': ["'self'"] }` → `default-src 'self'`.
+ * Directivas sin tokens (ej. `upgrade-insecure-requests`) van sin espacio.
+ * Orden preservado (Object.entries respeta orden de inserción en Node ≥12).
+ *
+ * @param {Record<string, string[]>} directives
+ * @returns {string}
+ */
+function formatCsp(directives) {
+  return Object.entries(directives)
+    .map(([name, tokens]) => (tokens.length === 0 ? name : `${name} ${tokens.join(' ')}`))
+    .join('; ');
+}
+
+/**
+ * Header CSP-Report-Only para Trusted Types (Sprint 106 audit 07-24).
+ * Los reports van al backend del env — mismo criterio que report-uri
+ * del CSP enforce.
+ *
+ * @param {string} backendUrl
+ * @returns {string} valor del header Content-Security-Policy-Report-Only
+ */
+function trustedTypesReportOnlyFor(backendUrl) {
+  return `require-trusted-types-for 'script'; trusted-types 'allow-duplicates' default; report-uri ${reportUriForBackend(backendUrl)}`;
+}
+
 module.exports = {
   COMMON_DIRECTIVES,
   SITE_DIFFERENCES,
@@ -227,4 +340,10 @@ module.exports = {
   REQUIRED_CONTEXTS,
   SITES,
   expectedCspFor,
+  // Runtime helpers (task #259)
+  KNOWN_BACKEND_URLS,
+  reportUriForBackend,
+  cspForSiteAndBackend,
+  formatCsp,
+  trustedTypesReportOnlyFor,
 };

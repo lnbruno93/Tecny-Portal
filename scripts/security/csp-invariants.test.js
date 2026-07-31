@@ -32,6 +32,11 @@ const {
   SITE_DIFFERENCES,
   expectedCspFor,
   REQUIRED_CONTEXTS,
+  KNOWN_BACKEND_URLS,
+  cspForSiteAndBackend,
+  formatCsp,
+  trustedTypesReportOnlyFor,
+  reportUriForBackend,
 } = require('./csp-spec.js');
 
 // ── Helpers ─────────────────────────────────────────────────────────────
@@ -279,4 +284,94 @@ test('root y admin tienen las mismas backend URLs en img-src (per-context)', () 
       `  admin: ${JSON.stringify(adminBackends)}`
     );
   }
+});
+
+// ── Runtime helpers (task #259 — build-time _headers generation) ────────
+//
+// Estos tests aseguran que `cspForSiteAndBackend` respeta el hardening
+// que perdimos en el toml. Si mañana alguien accidentalmente permite el
+// backend "opuesto" (staging en un build prod), los tests avisan.
+
+test('cspForSiteAndBackend rechaza backend URL desconocido', () => {
+  assert.throws(
+    () => cspForSiteAndBackend('root', 'https://evil.attacker.com'),
+    /backend URL no reconocido/,
+    'Un VITE_API_URL malicioso/typo NO debe legitimarse en el CSP'
+  );
+});
+
+test('cspForSiteAndBackend rechaza site desconocido', () => {
+  assert.throws(
+    () => cspForSiteAndBackend('unknown-site', KNOWN_BACKEND_URLS[0]),
+    /site desconocido/,
+  );
+});
+
+test('cspForSiteAndBackend restringe connect-src y img-src al backend explícito', () => {
+  for (const site of ['root', 'admin']) {
+    for (const backend of KNOWN_BACKEND_URLS) {
+      const csp = cspForSiteAndBackend(site, backend);
+      const otherBackend = KNOWN_BACKEND_URLS.find(u => u !== backend);
+      assert.ok(
+        csp['connect-src'].includes(backend),
+        `[${site}, ${backend}] connect-src debe incluir el backend explícito`
+      );
+      assert.ok(
+        !csp['connect-src'].includes(otherBackend),
+        `[${site}, ${backend}] connect-src NO debe incluir el backend "opuesto" (${otherBackend}). ` +
+        `Ese es exactamente el hardening que rescatamos con task #259.`
+      );
+      assert.ok(
+        csp['img-src'].includes(backend),
+        `[${site}, ${backend}] img-src debe incluir el backend explícito`
+      );
+      assert.ok(
+        !csp['img-src'].includes(otherBackend),
+        `[${site}, ${backend}] img-src NO debe incluir el backend "opuesto"`
+      );
+      // report-uri debe apuntar al MISMO backend (no cross-env).
+      assert.deepEqual(
+        csp['report-uri'],
+        [`${backend}/api/csp-report`],
+        `[${site}, ${backend}] report-uri debe apuntar al MISMO backend`
+      );
+    }
+  }
+});
+
+test('cspForSiteAndBackend preserva site differences (admin blob:, root no)', () => {
+  const backend = KNOWN_BACKEND_URLS[0];
+  const rootImg  = cspForSiteAndBackend('root',  backend)['img-src'];
+  const adminImg = cspForSiteAndBackend('admin', backend)['img-src'];
+  assert.ok(!rootImg.includes('blob:'), 'root NO debe tener blob: en img-src');
+  assert.ok(adminImg.includes('blob:'), 'admin DEBE tener blob: en img-src (TrustedCompaniesCard)');
+});
+
+test('formatCsp serializa dict a header CSP-válido', () => {
+  const dict = {
+    'default-src': ["'self'"],
+    'script-src': ["'self'", 'https://a.com'],
+    'upgrade-insecure-requests': [], // directive sin tokens
+  };
+  const out = formatCsp(dict);
+  assert.equal(
+    out,
+    "default-src 'self'; script-src 'self' https://a.com; upgrade-insecure-requests"
+  );
+});
+
+test('trustedTypesReportOnlyFor apunta al mismo backend', () => {
+  for (const backend of KNOWN_BACKEND_URLS) {
+    const header = trustedTypesReportOnlyFor(backend);
+    assert.match(header, /^require-trusted-types-for 'script';/);
+    assert.match(header, /trusted-types 'allow-duplicates' default;/);
+    assert.ok(header.includes(`report-uri ${backend}/api/csp-report`));
+  }
+});
+
+test('reportUriForBackend siempre suffix /api/csp-report', () => {
+  assert.equal(
+    reportUriForBackend('https://foo.example.com'),
+    'https://foo.example.com/api/csp-report'
+  );
 });

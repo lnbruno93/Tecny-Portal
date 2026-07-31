@@ -99,18 +99,21 @@
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
     Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
-    # Default CSP (production). Este block es EL ÚNICO que aplica en runtime
-    # per site — los `[[context.<X>.headers]]` de más abajo son dead code
-    # (limitación de Netlify: solo `[context.<X>.environment]` respeta el
-    # context, no headers). Ver csp-spec.js:BACKEND_URLS_BY_CONTEXT comment
-    # para el diagnóstico completo del 2026-07-30.
+    # Default CSP (production) — **FALLBACK / safety net**. En runtime este
+    # header PIERDE contra `dist/_headers` (generado por frontend/scripts/
+    # generate-headers.mjs, task #259). El _headers file restringe el CSP
+    # al backend específico del site deployed (portal-prod → backend-prod
+    # solamente; portal-staging → backend-staging solamente), rescatando
+    # el hardening del Fix 10 que se perdió con PR #948.
     #
-    # Sprint 1 audit 07-25 · Fix 10 (Track D P1-2): originalmente restringido a
-    # backend-PRODUCTION solamente para cerrar XSS-exfil-a-staging. REGRESSED
-    # el 2026-07-30 (staging drift fix) — ambos backends permitidos porque el
-    # site tecny-portal-staging usa VITE_API_URL=staging con este mismo CSP
-    # (Netlify no permite scopear headers per branch/site). Task backlog #259
-    # rescata el hardening vía build-time _headers generation.
+    # Este [[headers]] toml sólo aplica si el _headers file no se generó
+    # (build script roto, output missing) — en ese caso el CSP permisivo
+    # de acá evita que el sitio quede completamente roto por CSP.
+    #
+    # Los `[[context.<X>.headers]]` de más abajo son dead code (limitación
+    # Netlify: solo `[context.<X>.environment]` respeta el context, no
+    # headers). Ver csp-spec.js:BACKEND_URLS_BY_CONTEXT + runbook
+    # docs/runbooks/csp-landing.md sección "Build-time _headers generation".
     Content-Security-Policy = "default-src 'self'; script-src 'self' https://*.hcaptcha.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.hcaptcha.com; img-src 'self' data: https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app https://*.hcaptcha.com https://fonts.googleapis.com https://fonts.gstatic.com; frame-src 'self' data: https://*.hcaptcha.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests; script-src-attr 'none'; report-uri https://tecny-backend-production.up.railway.app/api/csp-report"
     # Sprint 106 (2026-07-24): Trusted Types en Report-Only. Un HEADER
     # SEPARADO del CSP enforce arriba — este NO bloquea nada, solo reporta.

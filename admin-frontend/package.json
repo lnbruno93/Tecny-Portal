@@ -6,7 +6,8 @@
   "description": "Tecny super-admin console — gestión de tenants del SaaS (separada del portal de usuarios).",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && npm run generate:headers",
+    "generate:headers": "node scripts/generate-headers.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "coverage": "vitest run --coverage",

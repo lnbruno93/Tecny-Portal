@@ -183,11 +183,83 @@ Consecuencias:
 
 **Impacto pasado**: el "Fix 10" del audit 07-25 (Sprint 1) intentó restringir el CSP de prod a `backend-production` solamente (hardening contra XSS-exfil-a-staging). Como el `[[headers]]` global es el único que aplica, ese cambio ALSO bloqueó las requests desde staging + deploy previews (que apuntan a `backend-staging` vía VITE_API_URL). Regressed 2026-07-30 (ambos backends permitidos en el CSP global) para restaurar funcionalidad.
 
-**Workaround oficial de Netlify**: usar el build command para copiar un `_headers` file dinámicamente al `dist/` según el context detectado (via env var `CONTEXT`).
+**Workaround oficial de Netlify**: usar el build command para copiar un `_headers` file dinámicamente al `dist/` según el context detectado (via env var `CONTEXT` o `VITE_API_URL`).
 
-**Fix proper diferido** (task backlog #259): script post-build que genera `dist/_headers` con CSP tailored al context — restauraría el hardening del Fix 10 con separación real por site.
+**Fix implementado (task #259, 2026-07-31)** — ver siguiente sección.
 
-**Regla operativa**: si querés headers distintos por context/branch/site, NO uses `[[context.<X>.headers]]` blocks — son placebo. Usá build-time generation.
+**Regla operativa**: si querés headers distintos por context/branch/site, NO uses `[[context.<X>.headers]]` blocks — son placebo. Usá build-time generation (patrón documentado abajo).
+
+## Build-time `_headers` generation (task #259)
+
+**Aplica a los sites**: `tecny-portal`, `tecny-portal-staging`, `tecny-admin`, `tecny-admin-staging`.
+
+**No aplica al landing** (`tecny-landing`) — el landing tiene su propio pipeline (Astro + `landing/public/_headers`) y no consume `VITE_API_URL`; ver secciones anteriores.
+
+### El patrón
+
+Cada build de Vite del portal (`frontend/`) y del admin (`admin-frontend/`) corre un post-build que genera `dist/_headers` con el CSP RESTRINGIDO al backend específico del site deployed:
+
+- Portal prod (`tecnyapp.com`, `VITE_API_URL=backend-production`) → CSP permite SOLO `tecny-backend-production`.
+- Portal staging (`staging.tecnyapp.com`, `VITE_API_URL=backend-staging`) → CSP permite SOLO `tecny-backend-staging`.
+- Admin prod (`admin.tecnyapp.com`) → mismo criterio.
+- Admin staging (`admin-staging.tecnyapp.com`) → mismo criterio.
+- Deploy previews (PR builds) → CSP restringido a staging.
+
+**Precedencia Netlify**: `dist/_headers` GANA sobre `[[headers]]` toml per header. El toml queda como fallback safe: si el generator falla, el sitio se sigue sirviendo con el CSP permisivo del toml (ambos backends) — degradación graceful.
+
+### Los archivos involucrados
+
+- `scripts/security/csp-spec.js` — spec canónica (fuente de verdad). Exports `cspForSiteAndBackend(site, backendUrl)`, `formatCsp(dict)`, `trustedTypesReportOnlyFor(backendUrl)`, `KNOWN_BACKEND_URLS` (allowlist).
+- `frontend/scripts/generate-headers.mjs` — post-build del portal. Lee `VITE_API_URL`, valida contra allowlist, escribe `frontend/dist/_headers`.
+- `admin-frontend/scripts/generate-headers.mjs` — espejo del admin.
+- `frontend/package.json` / `admin-frontend/package.json` — el script `build` corre `vite build && npm run generate:headers`.
+- `netlify.toml` / `admin-frontend/netlify.toml` — el `[[headers]]` global sigue existiendo como safety net.
+
+### Cómo cambiar el CSP del portal/admin
+
+1. **Editar `scripts/security/csp-spec.js`** — actualizar `COMMON_DIRECTIVES`, `SITE_DIFFERENCES`, o agregar tokens al site que aplique. Este es el único lugar canónico.
+
+2. **Correr tests**: `node --test scripts/security/csp-invariants.test.js`. Los 21 tests validan invariantes de seguridad + el nuevo hardening del Fix 10.
+
+3. **Actualizar los 2 netlify.toml** (portal + admin) con los mismos cambios en el `[[headers]]` global — recordá que es el fallback. Correr `node scripts/security/verify-csp-parity.js` para confirmar que coinciden con la spec.
+
+4. **Deploy** — al build, cada site genera su `dist/_headers` con el CSP restringido.
+
+5. **Verificar post-deploy**:
+   ```bash
+   curl -sI https://tecnyapp.com/ | grep -i content-security-policy
+   # → debe contener backend-production, NO backend-staging
+   curl -sI https://staging.tecnyapp.com/ | grep -i content-security-policy
+   # → debe contener backend-staging, NO backend-production
+   ```
+
+### Agregar un backend URL nuevo (raro)
+
+Si Tecny agrega un backend regional (ej. `tecny-backend-mx.up.railway.app`):
+
+1. Editar `scripts/security/csp-spec.js:KNOWN_BACKEND_URLS` — agregar la URL.
+2. Correr los tests: `node --test scripts/security/csp-invariants.test.js`.
+3. Setear `VITE_API_URL` del site nuevo en Netlify UI o en el toml correspondiente.
+
+Si NO se agrega a `KNOWN_BACKEND_URLS`, el build del site nuevo va a FALLAR loud con:
+```
+[generate-headers] ERROR: VITE_API_URL no reconocido: "https://tecny-backend-mx..."
+```
+Defense-in-depth intencional: un `VITE_API_URL` typo/malicioso NO puede legitimarse silenciosamente en el CSP.
+
+### Cuándo NO usar este patrón
+
+- Si el header debe ser IDÉNTICO en todos los contexts → mantener en `[[headers]]` global y punto.
+- Si el header depende de algo que Netlify no expone en build (ej. request headers) → usar Edge Function.
+- Si el sitio NO tiene build step (static hosted directo) → generar `_headers` manualmente y commitearlo.
+
+### Rollback
+
+Si el _headers dinámico rompe algo:
+
+1. Revertir el commit que introdujo `generate:headers` (o comentar el `&& npm run generate:headers` del build script).
+2. El siguiente build produce `dist/` sin `_headers` file → Netlify cae al `[[headers]]` toml (permisivo, ambos backends) → sitio funcional aunque menos hardened.
+3. Diagnosticar el fallo en local con `VITE_API_URL=... node scripts/generate-headers.mjs`.
 
 ## Cache invalidation gotcha (edge cache Netlify)
 
