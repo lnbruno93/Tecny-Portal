@@ -129,12 +129,17 @@ function generate() {
   // CSP, los demás (HSTS, X-Frame-Options, etc.) seguirían viniendo del
   // toml — pero mejor tenerlos juntos para claridad y menor sorpresa
   // operativa.
+  //
+  // X-Tecny-Headers-Source es un marker de diagnóstico — nos permite verificar
+  // con `curl -sI <url> | grep x-tecny-headers-source` si el _headers file
+  // fue efectivamente aplicado por Netlify (deprecable una vez estable).
   const staticHeaders = [
     'X-Frame-Options: DENY',
     'X-Content-Type-Options: nosniff',
     'Referrer-Policy: strict-origin-when-cross-origin',
     'Permissions-Policy: camera=(), microphone=(), geolocation=()',
     'Strict-Transport-Security: max-age=63072000; includeSubDomains; preload',
+    `X-Tecny-Headers-Source: build-time-generator-portal-${SITE}`,
   ];
 
   // Cache headers para SW, manifest, y assets — replicar del toml para

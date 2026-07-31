@@ -64,6 +64,7 @@ function generate() {
 
   // Static headers — replicar del admin-frontend/netlify.toml.
   // Diferencia con portal: agrega X-Robots-Tag (admin no es público).
+  // X-Tecny-Headers-Source: diagnóstico verificable con curl.
   const staticHeaders = [
     'X-Robots-Tag: noindex, nofollow',
     'X-Frame-Options: DENY',
@@ -71,6 +72,7 @@ function generate() {
     'Referrer-Policy: strict-origin-when-cross-origin',
     'Permissions-Policy: camera=(), microphone=(), geolocation=()',
     'Strict-Transport-Security: max-age=63072000; includeSubDomains; preload',
+    `X-Tecny-Headers-Source: build-time-generator-admin-${SITE}`,
   ];
 
   // Cache headers — replicar del toml.
