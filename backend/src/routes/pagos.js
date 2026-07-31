@@ -144,10 +144,17 @@ router.post('/', validate(createPagoSchema), async (req, res, next) => {
     //    caja destino. La caja FV nunca reflejaba salidas → el saldo del libro
     //    caja crecía indefinidamente y mentía. Ahora cada pago = ingreso real
     //    en destino + egreso real en FV (transacción atómica).
+    // 2026-07-31 (task #230, cierre DEBT audit 07-25 Track A P1-5):
+    // TC contextual explícito. Si el pago tenía `convertir_usd:true` (o sea,
+    // pago en ARS/UYU con conversión), el mismo `tc` que usamos arriba en el
+    // ingreso destino aplica también al egreso de la caja FV — sino el ledger
+    // FV UYU subestima cada egreso. Si `convertir_usd:false` (pago same-moneda
+    // que caja FV), `tc:null` está bien porque no hay conversión.
     await postCajaMovimientoFinanciera(client, {
       tipo: 'egreso',
       fecha,
       monto: Number(monto), // siempre el ARS del pago (no el monto_usd convertido)
+      tc: convertir_usd ? Number(tc) : null,
       ref_tabla: 'pagos',
       ref_id: rows[0].id,
       concepto: `Egreso por pago a vendedor → ${caja.nombre}${referencia ? ' · ' + referencia : ''}`,

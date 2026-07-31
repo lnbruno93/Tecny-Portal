@@ -205,10 +205,16 @@ router.post('/', validate(createComprobanteSchema), async (req, res, next) => {
 
     // Ingreso en caja FV. Si no hay caja `es_financiera=true`, throwea con
     // mensaje claro al operador y el comprobante se rollbackea.
+    // 2026-07-31 (task #230): tc:null explícito porque este flujo NO tiene
+    // conversión — el operador sube un comprobante con `monto`/`monto_neto` ya
+    // en la moneda de la caja Financiera (típicamente ARS AR, UYU UY). No hay
+    // cross-moneda. Si en el futuro se acepta comprobante USD sobre caja UYU
+    // (u otro cross-moneda), agregar `tc` al body del schema y pasarlo acá.
     await postCajaMovimientoFinanciera(client, {
       tipo: 'ingreso',
       fecha,
       monto: netoMov,
+      tc: null,
       ref_tabla: 'comprobantes',
       ref_id: compId,
       concepto: `Comprobante · ${cliente}${referencia ? ' · ' + referencia : ''}`,
@@ -264,10 +270,13 @@ router.post('/manuales', validate(createManualComprobanteSchema), async (req, re
     );
     const compId = rows[0].id;
 
+    // tc:null explícito — ver comment de POST arriba. Manual venta previa
+    // es siempre same-moneda respecto de la caja FV.
     await postCajaMovimientoFinanciera(client, {
       tipo: 'ingreso',
       fecha,
       monto: neto,
+      tc: null,
       ref_tabla: 'comprobantes',
       ref_id: compId,
       concepto: `Venta previa · ${cliente}${referencia ? ' · ' + referencia : ''}`,
@@ -360,10 +369,12 @@ router.patch('/manuales/:id', validate(updateManualComprobanteSchema), async (re
     const fechaCambio = String(cur.fecha).slice(0, 10) !== String(fecha).slice(0, 10);
     if (netoCambio || fechaCambio) {
       await reverseCajaMovimientos(client, 'comprobantes', id);
+      // tc:null explícito — same-moneda que POST /manuales de arriba.
       await postCajaMovimientoFinanciera(client, {
         tipo: 'ingreso',
         fecha,
         monto: neto,
+        tc: null,
         ref_tabla: 'comprobantes',
         ref_id: id,
         concepto: `Venta previa (editado) · ${cliente}${referencia ? ' · ' + referencia : ''}`,

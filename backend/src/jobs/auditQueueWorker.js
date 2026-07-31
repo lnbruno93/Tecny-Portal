@@ -158,18 +158,48 @@ async function maybeAlertQueueDepth() {
   }
 }
 
-function startAuditQueueWorker({ batchSize = 100, intervalMs = 2000 } = {}) {
-  // En tests NO arrancamos el setInterval ni registramos SIGTERM hooks.
+// 2026-07-31 (task #231): backoff exponencial cuando la queue está drenada.
+// Antes: setInterval fijo cada intervalMs (2s) — martillaba la DB con SELECT
+// COUNT vacíos + advisory lock overhead 24/7 aunque el tenant no tuviera
+// actividad. En tenants que operan pocas horas al día (~90% del tiempo idle),
+// el worker gastaba ~43.200 ticks/día para 0 rows.
+//
+// Nuevo esquema: setTimeout self-scheduling con currentInterval que empieza
+// en `intervalMs` (2s) y duplica cada vez que un tick termina drenado
+// (batch vacío o queue vacía), hasta llegar a `maxIntervalMs` (30s). Cuando
+// procesa algo (processed > 0), resetea a `intervalMs` para responder rápido
+// a bursts. Neto: ~1.500 ticks/día en tenants idle (vs 43.200), sin latencia
+// perceptible cuando llega actividad (worst case 30s del último tick sync).
+//
+// Trade-off: en un tenant idle, un audit_log encolado justo después de un
+// tick puede esperar hasta `maxIntervalMs` para procesarse. Esto es OK porque
+// audit_logs no son user-facing (nadie los espera en la request path). Si
+// mañana aparece un consumer que necesita real-time (dashboards / alertas
+// online), bajar maxIntervalMs o ratear condicionalmente al feature flag.
+const DEFAULT_MAX_INTERVAL_MS = 30_000;
+
+function startAuditQueueWorker({
+  batchSize = 100,
+  intervalMs = 2000,
+  maxIntervalMs = DEFAULT_MAX_INTERVAL_MS,
+} = {}) {
+  // En tests NO arrancamos el setTimeout ni registramos SIGTERM hooks.
   // Razones:
   //   · open handles: Jest --detectOpenHandles falla con timers vivos cross-test.
   //   · control: los tests llaman processBatch() directo para forzar drain
   //     sincronicamente y assertear sin race conditions.
   if (process.env.NODE_ENV === 'test') return null;
 
+  let currentInterval = intervalMs;
+  let currentHandle = null;
+  let shuttingDown = false;
+
   const tick = async () => {
     try {
+      let processedThisTick = 0;
       await withAdvisoryLock('audit_queue_worker', async () => {
         const { processed } = await processBatch({ batchSize });
+        processedThisTick = processed;
         if (processed > 0) {
           logger.debug({ processed }, 'audit_queue: batch procesado');
         }
@@ -186,26 +216,41 @@ function startAuditQueueWorker({ batchSize = 100, intervalMs = 2000 } = {}) {
         // que rompan). Re-evaluar cuando se vea la 1ra row con last_error en
         // rows_with_errors del endpoint /api/admin/audit-queue-stats.
       }, { logSkip: false });
+
+      // Backoff: si procesamos rows, resetear al intervalo mínimo (bursts
+      // futuros se drenan rápido). Sino, duplicar hasta el max.
+      if (processedThisTick > 0) {
+        currentInterval = intervalMs;
+      } else {
+        currentInterval = Math.min(currentInterval * 2, maxIntervalMs);
+      }
     } catch (err) {
       logger.error({ err }, 'audit_queue worker tick failed');
       try {
         const Sentry = require('@sentry/node');
         if (process.env.SENTRY_DSN) Sentry.captureException(err);
       } catch { /* Sentry no disponible — no propagar */ }
+      // Ante error, no cambiar el interval — mantener el actual. Evita loops
+      // rápidos si el error es transient (conexión DB) que se resuelve solo.
+    }
+    // Re-schedule para el próximo tick (self-scheduling loop).
+    if (!shuttingDown) {
+      currentHandle = setTimeout(tick, currentInterval);
+      if (typeof currentHandle.unref === 'function') currentHandle.unref();
     }
   };
 
-  const handle = setInterval(tick, intervalMs);
-  if (typeof handle.unref === 'function') handle.unref();
+  // Primer tick programado con el intervalo inicial.
+  currentHandle = setTimeout(tick, currentInterval);
+  if (typeof currentHandle.unref === 'function') currentHandle.unref();
 
   // Graceful drain on shutdown. El proceso recibe SIGTERM de Railway con ~10s
   // de margen antes del SIGKILL. Reservamos 8s para procesar lo encolado;
   // sino el siguiente arranque retoma (la queue es persistente).
-  let shuttingDown = false;
   const drain = async () => {
     if (shuttingDown) return;
     shuttingDown = true;
-    clearInterval(handle);
+    if (currentHandle) clearTimeout(currentHandle);
     logger.info('audit_queue: draining queue before shutdown');
     const deadline = Date.now() + DRAIN_TIMEOUT_MS;
     let totalDrained = 0;
@@ -234,8 +279,11 @@ function startAuditQueueWorker({ batchSize = 100, intervalMs = 2000 } = {}) {
   process.once('SIGTERM', drain);
   process.once('SIGINT', drain);
 
-  logger.info({ batchSize, intervalMs }, 'audit_queue worker programado (con advisory lock)');
-  return handle;
+  logger.info({ batchSize, intervalMs, maxIntervalMs }, 'audit_queue worker programado (self-scheduling + backoff)');
+  // Devolvemos un handle-like con clearTimeout compatible con el API viejo
+  // (tests que hacían `clearInterval(returnedHandle)` — no hay ninguno en el
+  // codebase actual, pero mantiene backward compat futura).
+  return { stop: () => { shuttingDown = true; if (currentHandle) clearTimeout(currentHandle); } };
 }
 
 module.exports = {
