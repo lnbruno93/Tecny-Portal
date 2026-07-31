@@ -63,6 +63,24 @@ describe('periodoRange — formato y consistencia', () => {
     expect(next.getUTCDate()).toBe(1);
   });
 
+  it('"mes_anterior" no colapsa a "mes" cuando hoy es día 29/30/31 (regresión 2026-07-31)', () => {
+    // Bug real: en el último día del mes actual (31/7/2026), setUTCMonth(-1)
+    // sobre 31 junio rueda a 1/7 porque junio no tiene 31 → mes_anterior
+    // termina devolviendo el mismo rango que mes_actual → deltas siempre 0
+    // en get_dashboard_mensual. Cazado por el test "delta 100% si mes
+    // anterior fue 0 y mes actual > 0" en chat.test.js. Fix: setUTCDate(1)
+    // antes de restar el mes.
+    //
+    // El test es date-independent — verifica que mes_actual y mes_anterior
+    // NUNCA se solapen (arrastran a cualquier día del mes).
+    const actual = periodoRange('mes');
+    const anterior = periodoRange('mes_anterior');
+    // mes_anterior.hasta debe ser estrictamente anterior a mes_actual.desde
+    expect(anterior.hasta < actual.desde).toBe(true);
+    // El mes-año de anterior debe ser distinto al de actual
+    expect(anterior.desde.slice(0, 7)).not.toBe(actual.desde.slice(0, 7));
+  });
+
   it('"anio" arranca el 1 de enero', () => {
     const r = periodoRange('anio');
     expect(r.desde.slice(-5)).toBe('01-01');

@@ -166,6 +166,79 @@ describe('PUT /movimientos/:mid — editar campos de items existentes', () => {
   });
 });
 
+describe('PUT /movimientos/:mid — sync SIN IMEI (FK producto_id 2026-07-31)', () => {
+  it('UPDATE item accesorio sin IMEI sincroniza producto por FK', async () => {
+    // Migration 20260731100000 agregó FK producto_id — antes items sin IMEI
+    // no podían matchearse al producto asociado (limitación PR #951).
+    // Este test confirma que ahora sí sincronizan.
+    const provId = await crearProveedor('MayoristaAccesorioSyncFK');
+    const mov = await crearCompra(provId, {
+      items: [{
+        producto: 'Cargador USB-C',
+        modelo: '20W',
+        color: 'Blanco',
+        // Sin imei_serial — típico de accesorios
+        valor: 25,
+        producto_stock: {
+          nombre: 'Cargador USB-C 20W',
+          // Sin imei — accesorio
+          color: 'Blanco',
+          costo: 25,
+        },
+      }],
+    });
+    const itemId = mov.items[0].id;
+    const productoId = mov.productos_creados[0].id;
+    // El item debe tener producto_id popularizado ya en el response
+    expect(mov.items[0].producto_id).toBe(productoId);
+
+    // Edito nombre + color del item (sin cambiar IMEI porque no hay)
+    const res = await request(app)
+      .put(`/api/proveedores/movimientos/${mov.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        items: [{
+          id: itemId,
+          producto: 'Cargador USB-C 30W Premium',
+          modelo: '30W',
+          color: 'Negro',
+          valor: 35,
+        }],
+      });
+    expect(res.status).toBe(200);
+    // Verifico que el producto se sincronizó — antes de la FK esto no pasaba
+    // para items sin IMEI (matching por IMEI original devolvía NULL).
+    const prod = await getProducto(productoId);
+    expect(prod.nombre).toBe('Cargador USB-C 30W Premium');
+    expect(prod.color).toBe('Negro');
+    expect(Number(prod.costo)).toBe(35);
+  });
+
+  it('DELETE item accesorio sin IMEI soft-deletea producto por FK', async () => {
+    const provId = await crearProveedor('MayoristaAccesorioDelFK');
+    const mov = await crearCompra(provId, {
+      items: [{
+        producto: 'Funda',
+        valor: 15,
+        producto_stock: {
+          nombre: 'Funda de silicona',
+          costo: 15,
+        },
+      }],
+    });
+    const productoId = mov.productos_creados[0].id;
+
+    // Remover el item → producto asociado se soft-deletea via FK
+    const res = await request(app)
+      .put(`/api/proveedores/movimientos/${mov.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ items: [] });
+    expect(res.status).toBe(200);
+    const prodBorrado = await getProducto(productoId);
+    expect(prodBorrado).toBeNull();
+  });
+});
+
 describe('PUT /movimientos/:mid — agregar items nuevos', () => {
   it('INSERT item nuevo con producto_stock crea producto en Inventario', async () => {
     const provId = await crearProveedor('MayoristaInsertItem');

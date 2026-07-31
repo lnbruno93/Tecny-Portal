@@ -598,7 +598,17 @@ router.post('/movimientos', compraMovimientoLimiter, validate(createMovimientoPr
 
       // 2) Bulk INSERT de productos para los items con producto_stock.
       //    Auto-fill: proveedor forzado al nombre del proveedor (#H-06).
-      const stockItems = items.filter(it => it.producto_stock);
+      //
+      //    2026-07-31 (feature FK producto_id): guardamos el índice original
+      //    de cada stockItem en `items` para poder vincular el producto
+      //    creado con el item correspondiente vía UPDATE post-INSERT.
+      //    Los productos vuelven de RETURNING * en el mismo orden que se
+      //    pasaron los arrays UNNEST, entonces productosCreados[i]
+      //    corresponde a stockItemsIdx[i].
+      const stockItemsIdx = items
+        .map((it, idx) => ({ it, idx }))
+        .filter(({ it }) => it.producto_stock);
+      const stockItems = stockItemsIdx.map(({ it }) => it);
       if (stockItems.length > 0) {
         const STOCK_COLS = [
           'tipo_carga', 'clase_id', 'nombre', 'imei', 'gb', 'color', 'bateria',
@@ -624,6 +634,25 @@ router.post('/movimientos', compraMovimientoLimiter, validate(createMovimientoPr
           arrays
         );
         productosCreados = prodRes.rows;
+
+        // 3) Vincular items ↔ productos via producto_id (feature FK 2026-07-31).
+        //    Cierra la limitación del sync IMEI-based del PR #951: items sin
+        //    IMEI (accesorios) ahora también se sincronizan por FK en edits
+        //    futuros. Bulk UPDATE con UNNEST — 1 RTT extra vs. matching manual.
+        const itemIds = stockItemsIdx.map(({ idx }) => insertedItems[idx].id);
+        const prodIds = productosCreados.map(p => p.id);
+        await client.query(
+          `UPDATE proveedor_movimiento_items pmi
+              SET producto_id = u.pid
+             FROM UNNEST($1::int[], $2::int[]) AS u(iid, pid)
+            WHERE pmi.id = u.iid`,
+          [itemIds, prodIds]
+        );
+        // Refresh insertedItems con el producto_id popularizado (para el
+        // response del cliente + audit_logs abajo).
+        for (let i = 0; i < stockItemsIdx.length; i++) {
+          insertedItems[stockItemsIdx[i].idx].producto_id = prodIds[i];
+        }
 
         // 1 sólo audit-lote en vez de 1 por producto. La trazabilidad queda
         // en el JSON 'despues.ids' + ref al movimiento de compra.
@@ -747,24 +776,38 @@ router.put('/movimientos/:mid', compraMovimientoLimiter,
         });
       }
 
-      // 2) Cargar items actuales + producto asociado (matching por IMEI)
-      // LEFT JOIN devuelve producto_id NULL para items sin IMEI o sin producto vinculado.
+      // 2) Cargar items actuales + producto asociado.
+      //
+      // 2026-07-31: usamos la FK directa `i.producto_id` (agregada por migration
+      // 20260731100000). Antes se matcheaba por IMEI (LEFT JOIN por
+      // proveedor_movimiento_id + imei_serial), lo cual dejaba fuera items sin
+      // IMEI (accesorios). Ahora el link es determinístico — items con o sin
+      // IMEI sincronizan igual. Los items históricos con IMEI fueron
+      // backfilleados por la migration; los sin IMEI quedaron con producto_id
+      // NULL y se pueden editar solo desde Inventario (limitación conocida
+      // para históricos, aplica solo a filas creadas antes de 2026-07-31).
       const currentItemsRes = await client.query(
         `SELECT i.*,
-                p.id AS producto_id,
+                p.id AS p_producto_id,
                 p.estado AS producto_estado,
                 p.nombre AS producto_nombre
            FROM proveedor_movimiento_items i
       LEFT JOIN productos p
-             ON p.proveedor_movimiento_id = $1
-            AND p.imei = i.imei_serial
+             ON p.id = i.producto_id
             AND p.deleted_at IS NULL
-            AND i.imei_serial IS NOT NULL
           WHERE i.proveedor_movimiento_id = $1
           ORDER BY i.id`,
         [mid]
       );
-      const currentItems = currentItemsRes.rows;
+      // Normalizo el shape: en el código de abajo se lee `.producto_id`.
+      // La FK propia del item viene en `i.producto_id`; el LEFT JOIN devuelve
+      // `p.id AS p_producto_id` solo si el producto NO está soft-deleted.
+      // Si `producto_id` está seteado pero el producto está soft-deleted,
+      // `p_producto_id` es NULL y NO consideramos que haya producto vivo asociado.
+      const currentItems = currentItemsRes.rows.map(r => ({
+        ...r,
+        producto_id: r.p_producto_id, // solo si producto está vivo
+      }));
       const currentById = new Map(currentItems.map(i => [i.id, i]));
 
       // Si el body NO manda items, dejamos el array actual sin tocar (los diffs
@@ -915,7 +958,12 @@ router.put('/movimientos/:mid', compraMovimientoLimiter,
         insertedItems = itemInsertRes.rows;
 
         // INSERT productos para items con producto_stock (mismo pattern que POST)
-        const stockItems = toInsert.filter(it => it.producto_stock);
+        // 2026-07-31 (feature FK producto_id): además vinculamos item ↔ producto
+        // via producto_id post-INSERT, misma técnica que en el POST.
+        const stockItemsIdx = toInsert
+          .map((it, idx) => ({ it, idx }))
+          .filter(({ it }) => it.producto_stock);
+        const stockItems = stockItemsIdx.map(({ it }) => it);
         if (stockItems.length > 0) {
           // Cross-módulo: si crea stock, requerir capability inventario también.
           const { hasCapability } = require('../middleware/requireCapability');
@@ -951,6 +999,20 @@ router.put('/movimientos/:mid', compraMovimientoLimiter,
             arrays
           );
           productosCreados = prodRes.rows;
+
+          // Vincular items nuevos ↔ productos via FK producto_id.
+          const itemIds = stockItemsIdx.map(({ idx }) => insertedItems[idx].id);
+          const prodIds = productosCreados.map(p => p.id);
+          await client.query(
+            `UPDATE proveedor_movimiento_items pmi
+                SET producto_id = u.pid
+               FROM UNNEST($1::int[], $2::int[]) AS u(iid, pid)
+              WHERE pmi.id = u.iid`,
+            [itemIds, prodIds]
+          );
+          for (let i = 0; i < stockItemsIdx.length; i++) {
+            insertedItems[stockItemsIdx[i].idx].producto_id = prodIds[i];
+          }
         }
       }
 
