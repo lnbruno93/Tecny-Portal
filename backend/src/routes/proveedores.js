@@ -554,6 +554,39 @@ router.post('/movimientos', compraMovimientoLimiter, validate(createMovimientoPr
           });
         }
       }
+
+      // 2026-07-31 (task #265, bug Nook Tech): validar clase_id upfront
+      // — bulk query + rechazo 400 si alguno no existe en clases_producto
+      // del tenant. Antes se guardaba silencioso como NULL si el frontend
+      // no lo mandaba (regresión histórica cuando `categoria_id` legacy
+      // pisaba el shape) → productos aparecían como "Sin categoría" en
+      // Inventario. Mismo patrón que inventario.js:1811-1829 con
+      // categoria_id, pero acá el rechazo es HARD porque F3 ya es
+      // canónico (Inventario > Agregar producto exige clase_id).
+      //
+      // Nota: la RLS activa por SET LOCAL scopea el query al tenant.
+      // Debe ir FUERA del `if (imeisACrear.length > 0)` — hay items sin
+      // IMEI (accesorios, cargadores) que también necesitan validación.
+      const claseIds = [...new Set(
+        items.filter(it => it.producto_stock?.clase_id)
+             .map(it => it.producto_stock.clase_id)
+      )];
+      if (claseIds.length > 0) {
+        const { rows: valid } = await client.query(
+          `SELECT id FROM clases_producto
+            WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL`,
+          [claseIds]
+        );
+        const okSet = new Set(valid.map(r => r.id));
+        const invalidas = claseIds.filter(id => !okSet.has(id));
+        if (invalidas.length > 0) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({
+            error: `Categorías inválidas o eliminadas: ${invalidas.join(', ')}. Revisá el modal — puede haber quedado seleccionada una categoría que borraste.`,
+            clase_ids_invalidas: invalidas,
+          });
+        }
+      }
     }
 
     const monto_usd = round2(toUsd(monto, moneda, tc));
@@ -890,6 +923,31 @@ router.put('/movimientos/:mid', compraMovimientoLimiter,
           return res.status(409).json({
             error: `IMEI ya existe${colisiones.length > 1 ? 'n' : ''} en Inventario: ${colisiones.map(r => r.imei).join(', ')}`,
             imeis_existentes: colisiones.map(r => r.imei),
+          });
+        }
+      }
+
+      // 2026-07-31 (task #265): validar clase_id de items nuevos (toInsert).
+      // Espejo de la validación en POST /movimientos — evita que un edit
+      // agregue productos con clase_id inválido/eliminado (mismo síntoma:
+      // producto termina "Sin categoría" en Inventario).
+      const claseIdsNuevos = [...new Set(
+        toInsert.filter(bi => bi.producto_stock?.clase_id)
+                .map(bi => bi.producto_stock.clase_id)
+      )];
+      if (claseIdsNuevos.length > 0) {
+        const { rows: valid } = await client.query(
+          `SELECT id FROM clases_producto
+            WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL`,
+          [claseIdsNuevos]
+        );
+        const okSet = new Set(valid.map(r => r.id));
+        const invalidas = claseIdsNuevos.filter(id => !okSet.has(id));
+        if (invalidas.length > 0) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({
+            error: `Categorías inválidas o eliminadas: ${invalidas.join(', ')}.`,
+            clase_ids_invalidas: invalidas,
           });
         }
       }

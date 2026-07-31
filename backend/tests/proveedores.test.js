@@ -423,6 +423,85 @@ describe('Proveedores — compra crea producto en Inventario', () => {
     expect(res.body.items).toHaveLength(1);
     expect(res.body.productos_creados).toHaveLength(0);
   });
+
+  // 2026-07-31 (task #265, bug Nook Tech): validación de clase_id.
+  //
+  // El modal "Cargar compra" (CompraProveedorModal.jsx) ahora envía SOLO
+  // `clase_id` UUID (categoría F3 real, tabla `clases_producto`). El
+  // backend rechaza 400 si `clase_id` no existe/eliminado — evita el bug
+  // silencioso pre-fix donde el producto quedaba con clase_id=NULL y
+  // aparecía como "Sin categoría" en Inventario/Dashboard/filtros.
+  //
+  // La bulk validation es upfront (después del check IMEI) para dar 400
+  // limpio con `clase_ids_invalidas` en el body — mismo patrón que
+  // inventario.js:1811-1829 con `categoria_id`.
+  describe('clase_id validation (F3, task #265)', () => {
+    it('producto_stock con clase_id válido → producto se crea con esa categoría', async () => {
+      // Obtener una clase base del tenant test (el seed las crea).
+      const clases = await request(app).get('/api/inventario/clases').set(auth());
+      const claseCel = clases.body.find(c => c.slug_legacy === 'celular_sellado');
+      expect(claseCel).toBeDefined();
+
+      const prov = await crearProveedor({ nombre: 'MayoClaseF3_OK' });
+      const res = await request(app).post('/api/proveedores/movimientos').set(auth())
+        .send({
+          proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 500, moneda: 'USD',
+          items: [{ valor: 500,
+            producto_stock: {
+              tipo_carga: 'unitario', clase_id: claseCel.id,
+              nombre: 'iPhone F3 OK', imei: '350099000000001', cantidad: 1,
+              costo: 500, costo_moneda: 'USD', precio_venta: 700, precio_moneda: 'USD',
+            },
+          }],
+        });
+      expect(res.status).toBe(201);
+      expect(res.body.productos_creados).toHaveLength(1);
+      expect(res.body.productos_creados[0].clase_id).toBe(claseCel.id);
+    });
+
+    it('producto_stock con clase_id INEXISTENTE → 400 + clase_ids_invalidas', async () => {
+      const prov = await crearProveedor({ nombre: 'MayoClaseF3_Bad' });
+      const claseIdFake = '00000000-0000-0000-0000-000000000099';
+      const res = await request(app).post('/api/proveedores/movimientos').set(auth())
+        .send({
+          proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 100, moneda: 'USD',
+          items: [{ valor: 100,
+            producto_stock: {
+              tipo_carga: 'unitario', clase_id: claseIdFake,
+              nombre: 'Producto con clase fake', cantidad: 1,
+              costo: 100, costo_moneda: 'USD', precio_venta: 150, precio_moneda: 'USD',
+            },
+          }],
+        });
+      expect(res.status).toBe(400);
+      expect(res.body.clase_ids_invalidas).toContain(claseIdFake);
+      expect(res.body.error).toMatch(/[Cc]ategoría/);
+
+      // Rollback verificado: el movimiento NO existe.
+      const movs = await request(app).get(`/api/proveedores/${prov.id}/movimientos`).set(auth());
+      expect(movs.body.data).toHaveLength(0);
+    });
+
+    it('producto_stock SIN clase_id (backward compat) → 201, producto queda con clase_id NULL', async () => {
+      // Mantiene compat con callers antiguos (ej. import XLSX legacy o API
+      // externa) que no envían clase_id. El schema lo permite opcional.
+      // No es el path recomendado — el frontend nuevo siempre lo envía.
+      const prov = await crearProveedor({ nombre: 'MayoClaseF3_Null' });
+      const res = await request(app).post('/api/proveedores/movimientos').set(auth())
+        .send({
+          proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 80, moneda: 'USD',
+          items: [{ valor: 80,
+            producto_stock: {
+              tipo_carga: 'unitario',
+              nombre: 'Sin clase_id (backward compat)', cantidad: 1,
+              costo: 80, costo_moneda: 'USD', precio_venta: 100, precio_moneda: 'USD',
+            },
+          }],
+        });
+      expect(res.status).toBe(201);
+      expect(res.body.productos_creados[0].clase_id).toBeNull();
+    });
+  });
 });
 
 // Tests TANDA 3 post-auditoría: bulk de proveedores para import de stock.
