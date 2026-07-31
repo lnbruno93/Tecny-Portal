@@ -43,10 +43,18 @@ const INITIAL_ROWS = 10;        // arranca con 10 vacías
 const ADD_BATCH    = 10;        // "+ 10 filas" suma de a 10
 
 // Estado de defaults editable por el usuario arriba de la planilla.
+//
+// 2026-07-31 (task #265, bug Nook Tech): removidos los defaults legacy `clase`
+// (slug F1 dead) y `categoria_id` (INT tabla `categorias` = "Colecciones",
+// retirada en PR #35). Ahora la única categoría es `clase_id` UUID de
+// `clases_producto` (F3), coherente con Inventario > Agregar producto e
+// import XLSX (PR #876). Antes el modal tenía DOS dropdowns "Categoría"
+// (uno F3 y otro legacy) y solo validaba/enviaba el legacy → productos
+// creados desde Compras quedaban `clase_id=NULL` → aparecían como "Sin
+// categoría" en Inventario, filtros y dashboard.
 const DEFAULTS_INICIALES = {
-  clase: 'celular',
   tipo_carga: 'unitario',
-  categoria_id: '',
+  clase_id: '',
   deposito_id: '',
   condicion: 'nuevo',
   costo_moneda: 'USD',
@@ -60,9 +68,8 @@ const mkRow = (defaults) => ({
   // Estado de creación de stock
   crear_stock: defaults.crear_stock,
   // Inputs del producto
-  clase: defaults.clase,
   tipo_carga: defaults.tipo_carga,
-  categoria_id: defaults.categoria_id,
+  clase_id: defaults.clase_id,
   deposito_id: defaults.deposito_id,
   condicion: defaults.condicion,
   nombre: '',
@@ -131,10 +138,11 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
   });
 
   // ── Catálogos ────────────────────────────────────────────────────────
-  const [categorias, setCategorias] = useState([]);
+  // 2026-07-31 (task #265): removido `categorias` (tabla legacy Colecciones)
+  // — el único catálogo de categorías real es `clases_producto` (F3).
   const [depositos,  setDepositos]  = useState([]);
   const [cajas,      setCajas]      = useState([]);
-  // F3.d-3: clases_producto del tenant (para el dropdown Categoría).
+  // clases_producto del tenant (F3) — dropdown Categoría *.
   const [clases,     setClases]     = useState([]);
   const [saving,     setSaving]     = useState(false);
   // #B-10: IMEIs que el backend devolvió como conflictivos en el último save.
@@ -145,17 +153,17 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
   const [catalogosError, setCatalogosError] = useState(null);
 
   useEffect(() => {
+    // 2026-07-31 (task #265): removida carga de `invApi.categorias()` — la
+    // tabla legacy Colecciones ya no se usa en Compras (ni en Inventario).
     Promise.allSettled([
-      invApi.categorias(),
       invApi.depositos(),
       cajasApi.listCajas(),
-      invApi.clases(),   // F3.d-3
-    ]).then(([rc, rd, rk, rcl]) => {
+      invApi.clases(),
+    ]).then(([rd, rk, rcl]) => {
       const errores = [];
-      if (rc.status === 'fulfilled') setCategorias(rc.value || []); else errores.push('categorías');
       if (rd.status === 'fulfilled') setDepositos(rd.value || []); else errores.push('depósitos');
       if (rk.status === 'fulfilled') setCajas((rk.value || []).filter(x => x.activo !== false)); else errores.push('cajas');
-      if (rcl.status === 'fulfilled') setClases(rcl.value || []); else errores.push('categorías de producto');
+      if (rcl.status === 'fulfilled') setClases(rcl.value || []); else errores.push('categorías');
       if (errores.length > 0) setCatalogosError(errores);
     });
   }, []);
@@ -269,9 +277,11 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
         return `Fila ${i + 1}: el costo está en ${r.costo_moneda}, cargá el TC`;
       if (r.crear_stock) {
         if (!r.nombre?.trim()) return `Fila ${i + 1}: el nombre es obligatorio para crear stock`;
-        if (!r.categoria_id) return `Fila ${i + 1}: elegí categoría`;
-        // F3.d-3: coherencia unitario ↔ cantidad basada en slug_legacy del
-        // catálogo del tenant. Antes usaba `r.clase === 'celular'` hardcoded.
+        // 2026-07-31 (task #265): validamos clase_id (F3) en vez del legacy
+        // categoria_id (que ya no existe en la fila).
+        if (!r.clase_id) return `Fila ${i + 1}: elegí categoría`;
+        // Coherencia unitario ↔ cantidad basada en slug_legacy del catálogo
+        // del tenant. Antes usaba `r.clase === 'celular'` hardcoded.
         if (esUnitario(r.clase_id) && r.tipo_carga === 'unitario' && Number(r.cantidad) !== 1)
           return `Fila ${i + 1}: un producto unitario debe tener cantidad = 1`;
       }
@@ -323,13 +333,16 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
             ...baseLog,
             producto_stock: {
               tipo_carga:    r.tipo_carga,
-              clase_id:      r.clase_id || null,   // F3.d-3
+              // 2026-07-31 (task #265): solo enviamos clase_id (F3).
+              // categoria_id legacy (Colecciones) removido — el backend ya
+              // no lo espera y guardarlo dejaba productos con clase_id=NULL
+              // que aparecían como "Sin categoría" en Inventario.
+              clase_id:      r.clase_id,
               nombre:        r.nombre.trim(),
               imei:          r.imei.trim() || null,
               gb:            r.gb.trim() || null,
               color:         r.color.trim() || null,
               bateria:       num(r.bateria),
-              categoria_id:  Number(r.categoria_id),
               deposito_id:   r.deposito_id ? Number(r.deposito_id) : null,
               costo:         Number(r.costo),
               costo_moneda:  r.costo_moneda,
@@ -444,15 +457,15 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
               </button>
             </div>
             <div className="row u-gap-8">
+              {/* 2026-07-31 (task #265): un solo dropdown "Categoría"
+                  (clase_id, F3). Antes había 2 con el mismo label — el
+                  segundo era el legacy Colecciones. Ver comment de
+                  DEFAULTS_INICIALES. */}
               <Field label="Categoría"><select className="input" value={defs.clase_id} onChange={e => setDef('clase_id', e.target.value)}>
                 <option value="">— Sin default —</option>
                 {clases.filter(c => c.activa && !c.es_sin_categoria).map(c => (
                   <option key={c.id} value={c.id}>{c.emoji ? `${c.emoji} ${c.nombre}` : c.nombre}</option>
                 ))}
-              </select></Field>
-              <Field label="Categoría"><select className="input" value={defs.categoria_id} onChange={e => setDef('categoria_id', e.target.value)}>
-                <option value="">— Sin default —</option>
-                {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
               </select></Field>
               <Field label="Depósito"><select className="input" value={defs.deposito_id} onChange={e => setDef('deposito_id', e.target.value)}>
                 <option value="">— Sin default —</option>
@@ -494,6 +507,11 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
           <div className="bulk-spreadsheet-hint">↔ Desliza horizontalmente para ver todas las columnas</div>
           <div className="u-overflow-x-border-r-6">
             <table className="u-table-compra-1500">
+              {/* 2026-07-31 (task #265): removida la columna extra
+                  "Categoría *" que era el dropdown legacy Colecciones.
+                  Ahora hay UNA sola columna Categoría (F3, clase_id).
+                  Antes había 2 columnas visuales con el mismo label
+                  → UX confuso + productos guardados sin clase_id. */}
               <colgroup>
                 <col className="u-w-28" />   {/* # */}
                 <col className="u-w-38" />   {/* Stock */}
@@ -502,7 +520,6 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
                 <col className="u-w-60px" />   {/* GB */}
                 <col className="u-w-90px" />   {/* Color */}
                 <col className="u-w-60px" />   {/* Bat % */}
-                <col className="u-w-88" />   {/* Tipo */}
                 <col className="u-w-120px" />  {/* Categoría */}
                 <col className="u-w-120px" />  {/* Depósito */}
                 <col className="u-w-88" />   {/* Condición */}
@@ -516,7 +533,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
               </colgroup>
               <thead>
                 <tr>
-                  {['#','✓','Nombre *','IMEI/Serial','GB','Color','Bat %','Tipo','Categoría *','Depósito','Cond.','Tipo carga','Cant.','Costo *','M.','Precio venta','M.',''].map((h, i) =>
+                  {['#','✓','Nombre *','IMEI/Serial','GB','Color','Bat %','Categoría *','Depósito','Cond.','Tipo carga','Cant.','Costo *','M.','Precio venta','M.',''].map((h, i) =>
                     <th key={i} className={'u-b2b-th' + ((i === 0 || i === 1) ? ' u-ta-center' : '')}>{h}</th>
                   )}
                 </tr>
@@ -556,6 +573,9 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
                         <input type="number" onKeyDown={blockInvalidNumberKeys} className="cell-inp u-text-right" value={r.bateria}
                           placeholder="100" onChange={e => updCell(idx, 'bateria', e.target.value)} />
                       </td>
+                      {/* 2026-07-31 (task #265): un solo dropdown Categoría
+                          (clase_id, F3). Antes había 2 TDs con el mismo label
+                          — el segundo era el legacy Colecciones. */}
                       <td className="u-p-3-4">
                         <select className="cell-inp u-cursor-pointer" value={r.clase_id || ''}
                           onChange={e => updCell(idx, 'clase_id', e.target.value)}>
@@ -563,13 +583,6 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
                           {clases.filter(c => c.activa && !c.es_sin_categoria).map(c => (
                             <option key={c.id} value={c.id}>{c.emoji ? `${c.emoji} ${c.nombre}` : c.nombre}</option>
                           ))}
-                        </select>
-                      </td>
-                      <td className="u-p-3-4">
-                        <select className="cell-inp u-cursor-pointer" value={r.categoria_id}
-                          onChange={e => updCell(idx, 'categoria_id', e.target.value)}>
-                          <option value="">—</option>
-                          {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                         </select>
                       </td>
                       <td className="u-p-3-4">
