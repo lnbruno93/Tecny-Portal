@@ -109,6 +109,14 @@
 # varía per site). Los `[[context.<X>.headers]]` NO — se removieron con
 # task #259 porque eran dead code que aportaba ruido sin efecto runtime.
 
+# 2026-07-31: `[context.staging]` explícito para el site tecny-admin-staging
+# (primary branch = `staging`). Netlify trata al primary branch de un site
+# como PRODUCTION context, NO como branch-deploy — sin este block quedaría
+# con el VITE_API_URL de `[build.environment]` (prod backend), rompiendo el
+# propósito de staging. Mismo patrón que portal-staging (PR #944).
+[context.staging.environment]
+  VITE_API_URL = "https://tecny-backend-staging.up.railway.app"
+
 [context.branch-deploy.environment]
   VITE_API_URL = "https://tecny-backend-staging.up.railway.app"
 
