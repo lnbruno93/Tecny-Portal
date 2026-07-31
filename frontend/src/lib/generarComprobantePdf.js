@@ -55,6 +55,27 @@ export function sumCanjesUsd(canjes, tcVenta) {
   }, 0);
 }
 
+/**
+ * Vuelto entregado convertido a USD para mostrar en el resumen del
+ * comprobante (2026-07-30 pedido Lautaro Bisman).
+ *
+ * Sale de `venta.vuelto_monto/vuelto_moneda/vuelto_tc`. Si el vuelto está en
+ * moneda local (ARS/UYU) usamos el `vuelto_tc` propio (NO el tc_venta —
+ * podrían ser distintos, y el schema Zod ya rechaza vuelto ARS sin tc).
+ * Si es USD/USDT devolvemos el monto tal cual. Si no hay vuelto → 0.
+ *
+ * Exportado para poder testear el cálculo sin generar el PDF.
+ */
+export function computeVueltoUsd(venta) {
+  const monto = Number(venta?.vuelto_monto) || 0;
+  if (monto <= 0) return 0;
+  const moneda = String(venta?.vuelto_moneda || 'USD').toUpperCase();
+  if (moneda === 'USD' || moneda === 'USDT') return monto;
+  const tc = Number(venta?.vuelto_tc) || 0;
+  if (tc <= 0) return 0;  // ARS/UYU sin tc → no lo mostramos (defensive)
+  return monto / tc;
+}
+
 function fmtMoney(n, moneda = 'USD') {
   const sym = moneda === 'ARS' ? '$' : 'u$s';
   const num = Math.abs(Number(n) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -269,6 +290,37 @@ export async function generarComprobantePdf(venta, opts = {}) {
     if (dif > 0) tc(doc, COLOR.pos); else tc(doc, COLOR.neg);
     doc.text(fmtMoney(dif, 'USD'), pageWidth - margin, y, { align: 'right' });
     y += 16;
+  }
+
+  // Vuelto entregado — feature vuelto (2026-07-13, PR #596). Se muestra
+  // como línea informativa en el resumen para que el cliente/comercio vea
+  // que se le devolvió efectivo (típicamente en ARS/UYU sobre venta USD).
+  // Pedido por Lautaro Bisman 2026-07-30: sin esta línea, el comprobante
+  // no dejaba constancia del vuelto que sí se entregó físicamente.
+  const vueltoUsd = computeVueltoUsd(venta);
+  if (vueltoUsd > 0.005) {
+    doc.setFont('helvetica', 'normal');
+    tc(doc, COLOR.text);
+    doc.text('Vuelto entregado:', resumenX, y);
+    doc.setFont('helvetica', 'bold');
+    tc(doc, COLOR.neg);
+    doc.text(`-${fmtMoney(vueltoUsd, 'USD')}`, pageWidth - margin, y, { align: 'right' });
+    y += 16;
+    // Si el vuelto se dio en moneda distinta a USD, agregamos hint del
+    // monto original y TC — así el cliente ve "-u$s10 (15.000 ARS @ 1500)".
+    const vMoneda = String(venta?.vuelto_moneda || 'USD').toUpperCase();
+    if (vMoneda !== 'USD' && vMoneda !== 'USDT') {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      tc(doc, COLOR.textSoft);
+      const vMonto = Number(venta.vuelto_monto) || 0;
+      const vTc = Number(venta.vuelto_tc) || 0;
+      const vSym = vMoneda === 'ARS' ? '$' : (vMoneda === 'UYU' ? '$U' : vMoneda);
+      const hint = `(${vSym} ${vMonto.toLocaleString('es-AR')} @ TC ${vTc.toLocaleString('es-AR')})`;
+      doc.text(hint, pageWidth - margin, y, { align: 'right' });
+      doc.setFontSize(10);
+      y += 12;
+    }
   }
   y += 14;
 
