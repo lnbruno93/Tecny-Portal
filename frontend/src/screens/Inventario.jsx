@@ -67,7 +67,8 @@ const EMPTY_PRODUCTO = {
   // F3.d-3: `clase` VARCHAR se dropeó. El form solo maneja `clase_id`.
   tipo_carga: 'unitario', clase_id: '', nombre: '', imei: '', gb: '', color: '',
   bateria: '', categoria_id: '', deposito_id: '', proveedor: '',
-  costo: '', costo_moneda: 'USD', precio_venta: '', precio_moneda: 'USD',
+  costo: '', costo_moneda: 'USD', costo_tc: '',
+  precio_venta: '', precio_moneda: 'USD',
   cantidad: '1', estado: 'disponible', observaciones: '',
   condicion: 'nuevo',
 };
@@ -638,7 +639,10 @@ export default function Inventario() {
       tipo_carga: p.tipo_carga, clase_id: p.clase_id ?? '', nombre: p.nombre, imei: p.imei ?? '',
       gb: p.gb ?? '', color: p.color ?? '', bateria: p.bateria ?? '',
       categoria_id: p.categoria_id ?? '', deposito_id: p.deposito_id ?? '', proveedor: p.proveedor ?? '',
-      costo: p.costo, costo_moneda: p.costo_moneda, precio_venta: p.precio_venta, precio_moneda: p.precio_moneda,
+      costo: p.costo, costo_moneda: p.costo_moneda,
+      // 2026-08-01 (task #273): populate costo_tc si existe (permite editar).
+      costo_tc: p.costo_tc != null ? String(p.costo_tc) : '',
+      precio_venta: p.precio_venta, precio_moneda: p.precio_moneda,
       cantidad: p.cantidad, estado: p.estado, observaciones: p.observaciones ?? '',
       condicion: p.condicion || 'nuevo',
     });
@@ -722,6 +726,10 @@ export default function Inventario() {
       bateria: num(form.bateria), categoria_id: form.categoria_id || null, deposito_id: form.deposito_id || null,
       proveedor: form.proveedor.trim() || null,
       costo: num(form.costo) ?? 0, costo_moneda: form.costo_moneda,
+      // 2026-08-01 (task #273): solo enviar costo_tc si la moneda es local
+      // (ARS/UYU). En USD/USDT es null (backend Zod refine tolera null ahí).
+      costo_tc: (form.costo_moneda === 'ARS' || form.costo_moneda === 'UYU')
+        ? num(form.costo_tc) : null,
       precio_venta: num(form.precio_venta) ?? 0, precio_moneda: form.precio_moneda,
       // task #269: si hay IMEI, forzamos cantidad=1 en el payload
       // (independiente de lo que quedó en el state). Cubre el escenario
@@ -1331,6 +1339,24 @@ export default function Inventario() {
         </div>
       </div>
 
+      {/* 2026-08-01 (task #273): banner warning cuando hay productos ARS/UYU
+          sin costo_tc — quedan excluidos del "Total valorizado" USD unificado.
+          Regla PO Q3 (no-bloqueante): avisa al operador que los complete pero
+          no rompe la vista. Click abre el filtro "Vista: solo con costo local"
+          + tab de productos que necesitan TC — atajo al fix. */}
+      {metricas && Number(metricas.sin_tc_count) > 0 && (
+        <div className="card card-tight u-mb-12" role="alert" aria-live="polite">
+          <div className="flex-row u-gap-8 u-align-center">
+            <span className="u-color-warn" aria-hidden="true">⚠️</span>
+            <div className="u-flex-1">
+              <span className="u-color-warn"><strong>{metricas.sin_tc_count}</strong></span>{' '}
+              {metricas.sin_tc_count === 1 ? 'producto' : 'productos'} con costo en pesos
+              (ARS/UYU) <strong>sin TC cargado</strong> — no se están sumando en el valorizado USD.{' '}
+              <span className="muted">Editá cada uno y completá el TC del costo para incluirlo.</span>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Botón detalle: abre el modal con breakdown por categoría real.
           Deshabilitado mientras las métricas están cargando o no tenemos data. */}
       <div className="u-mb-18">
@@ -1807,6 +1833,20 @@ export default function Inventario() {
                         </select>
                       </div>
                     </div>
+                    {/* 2026-08-01 (task #273): TC del costo visible SOLO
+                        cuando la moneda es local (ARS/UYU). Backend Zod refine
+                        exige > 0 si moneda local + costo > 0. Todo el stock
+                        se mide en USD; con este TC el KPI valorizado unifica. */}
+                    {(form.costo_moneda === 'ARS' || form.costo_moneda === 'UYU') && (
+                      <div className="field u-w-120px">
+                        <label className="field-label" title="Tipo de cambio del día para convertir el costo a USD">
+                          TC costo
+                        </label>
+                        <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
+                               className="input mono" placeholder="1500"
+                               value={form.costo_tc} onChange={e => setF('costo_tc', e.target.value)} />
+                      </div>
+                    )}
                     <div className="field u-flex-1">
                       <label className="field-label">Precio de venta</label>
                       <div className="flex-row u-gap-6">
