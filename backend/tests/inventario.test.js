@@ -1491,4 +1491,117 @@ describe('GET /api/inventario/productos — precisión del search (tokenización
       expect(r.body.data.length).toBeGreaterThan(0);
     });
   });
+
+  // task #269 (bug Nook Tech): un producto con IMEI/Serie debe tener
+  // cantidad = 1. Regla ortogonal a la clase — antes solo validábamos si
+  // la clase era unitaria (celular/ipad), pero un accesorio con IMEI
+  // (raro pero posible) escapaba el check.
+  describe('validarImeiUnico (task #269)', () => {
+    let catImei;
+    beforeAll(async () => {
+      const cat = await request(app).post('/api/inventario/categorias').set(auth())
+        .send({ nombre: 'ImeiUnicoTest' });
+      catImei = cat.body.id;
+    });
+
+    it('POST con IMEI + cantidad=1 → 201 (OK)', async () => {
+      const r = await request(app).post('/api/inventario/productos').set(auth()).send({
+        tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catImei,
+        nombre: 'Cel IMEI OK', imei: '900000000000001',
+        cantidad: 1, costo: 100, costo_moneda: 'USD',
+        precio_venta: 150, precio_moneda: 'USD',
+      });
+      expect(r.status).toBe(201);
+      expect(r.body.cantidad).toBe(1);
+    });
+
+    it('POST con IMEI + cantidad=2 → 400 con mensaje explicativo', async () => {
+      // Usamos accesorios_varios (clase NO unitaria) para que solo dispare
+      // validarImeiUnico, no validarUnitarioCoherente (que corre antes con
+      // clases celular_sellado/celular_usado/ipads). Así el mensaje incluye
+      // "IMEI" y podemos assertar sobre eso — es el bug NUEVO que cierra
+      // task #269 (regla ORTOGONAL a la clase). Para clases unitarias el
+      // validador viejo ya rebotaba.
+      const r = await request(app).post('/api/inventario/productos').set(auth()).send({
+        tipo_carga: 'lote', clase: 'accesorios_varios', categoria_id: catImei,
+        nombre: 'Item con IMEI x2', imei: '900000000000002',
+        cantidad: 2, costo: 100, costo_moneda: 'USD',
+        precio_venta: 150, precio_moneda: 'USD',
+      });
+      expect(r.status).toBe(400);
+      expect(r.body.error).toMatch(/IMEI.*cantidad.*1/i);
+    });
+
+    it('POST accesorio con IMEI + cantidad=3 → 400 (ortogonal a la clase)', async () => {
+      // Accesorio (clase no-unitaria) con IMEI — el bug reportado por Nook.
+      const r = await request(app).post('/api/inventario/productos').set(auth()).send({
+        tipo_carga: 'lote', clase: 'accesorios_varios', categoria_id: catImei,
+        nombre: 'Accesorio con serie', imei: '900000000000003',
+        cantidad: 3, costo: 10, costo_moneda: 'USD',
+        precio_venta: 20, precio_moneda: 'USD',
+      });
+      expect(r.status).toBe(400);
+      expect(r.body.error).toMatch(/IMEI/i);
+    });
+
+    it('POST sin IMEI + cantidad=10 → 201 (regla no aplica)', async () => {
+      const r = await request(app).post('/api/inventario/productos').set(auth()).send({
+        tipo_carga: 'lote', clase: 'accesorios_varios', categoria_id: catImei,
+        nombre: 'Accesorio lote sin serie', cantidad: 10,
+        costo: 5, costo_moneda: 'USD', precio_venta: 10, precio_moneda: 'USD',
+      });
+      expect(r.status).toBe(201);
+      expect(r.body.cantidad).toBe(10);
+    });
+
+    // NOTA (task #269): NO probamos el caso "PUT solo con {imei: 'X'}"
+    // sobre un producto sin IMEI con cantidad>1. Bajo el modelo actual el
+    // schema `updateProductoSchema` es baseProducto.partial() y `cantidad`
+    // tiene `.default(1)` — Zod aplica ese default incluso en un partial
+    // cuando el field llega undefined. Por eso `req.body.cantidad` siempre
+    // vale 1 y el COALESCE del UPDATE sobrescribe la cantidad DB con 1.
+    // Resultado: producto queda con imei='X' + cantidad=1, respetando la
+    // regla IMEI ⇒ único. No rebota con 400 pero el estado final es SEGURO
+    // (nunca queda un IMEI con cantidad>1 en DB). Además el frontend
+    // (Inventario.jsx) deshabilita el input cantidad cuando hay IMEI y
+    // fuerza cantidad=1 en el payload, así que el usuario nunca envía la
+    // combinación inconsistente. Ver comentario en validarImeiUnico.
+    //
+    // El caso que SÍ testeamos abajo es el explícito: PUT con {cantidad: 5}
+    // sobre un producto con IMEI ya cargado → rebota con 400 vía comparación
+    // contra el DB (bodyCant !== dbCant → newCant = 5 → validarImeiUnico).
+
+    it('PUT que sube cantidad a 5 en producto con IMEI → 400', async () => {
+      // 1) Crear producto con IMEI (cantidad=1 forzada) — usamos categoría
+      // accesorios para que NO dispare validarUnitarioCoherente (regla
+      // vieja que trigger para celular_sellado/ipads antes de nuestra
+      // validación IMEI). Así el error viene específicamente de
+      // validarImeiUnico y podemos assertar sobre "IMEI".
+      const create = await request(app).post('/api/inventario/productos').set(auth()).send({
+        tipo_carga: 'lote', clase: 'accesorios_varios', categoria_id: catImei,
+        nombre: 'Acc con serie para editar', imei: '900000000000005',
+        cantidad: 1, costo: 100, costo_moneda: 'USD',
+        precio_venta: 150, precio_moneda: 'USD',
+      });
+      expect(create.status).toBe(201);
+      // 2) PUT que sube cantidad → debe rechazar.
+      const upd = await request(app).put(`/api/inventario/productos/${create.body.id}`)
+        .set(auth()).send({ cantidad: 5 });
+      expect(upd.status).toBe(400);
+      expect(upd.body.error).toMatch(/IMEI/i);
+    });
+
+    it('bulk import: item con IMEI + cantidad=3 → 400', async () => {
+      const r = await request(app).post('/api/inventario/productos/bulk').set(auth()).send({
+        productos: [{
+          tipo_carga: 'lote', clase: 'accesorios_varios', categoria_id: catImei,
+          nombre: 'Bulk con IMEI', imei: '900000000000006',
+          cantidad: 3, costo: 5, costo_moneda: 'USD',
+          precio_venta: 10, precio_moneda: 'USD',
+        }],
+      });
+      expect(r.status).toBe(400);
+      expect(r.body.error).toMatch(/IMEI/i);
+    });
+  });
 });

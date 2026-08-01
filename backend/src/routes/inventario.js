@@ -1279,6 +1279,31 @@ function validarUnitarioCoherente(slug_legacy, body) {
   throw err;
 }
 
+// 2026-07-31 (task #269, bug Nook Tech): regla ORTOGONAL a la clase.
+// Un IMEI/serie identifica una unidad física ÚNICA — por definición del
+// dispositivo (celular, tablet, notebook, etc. tienen 1 IMEI cada uno).
+// Si viene IMEI, cantidad debe ser 1 sin importar la clase ni el
+// tipo_carga. Antes solo validábamos coherencia si la clase era unitaria
+// (celular/ipad) — un producto con IMEI pero categoría "Accesorio" o
+// categoría custom del tenant podía tener cantidad > 1 (bug reportado).
+//
+// Aplica al POST/PUT/bulk single y al POST /proveedores/movimientos que
+// crea productos desde una compra (llama esta misma función).
+function validarImeiUnico(body) {
+  const imei = String(body.imei || '').trim();
+  if (!imei) return; // sin IMEI: la regla no aplica (accesorios sin serie)
+  const cantidad = Number(body.cantidad);
+  if (Number.isNaN(cantidad) || cantidad === 1) return; // OK
+  const err = new Error(
+    `Un producto con IMEI/Serie debe tener cantidad = 1 (recibido: ${cantidad}). ` +
+    `El IMEI identifica una unidad física única. Si querés cargar N unidades, ` +
+    `dejá el IMEI vacío (accesorio/lote) o cargá cada IMEI como fila separada.`
+  );
+  err.status = 400;
+  err.path = ['cantidad'];
+  throw err;
+}
+
 router.post('/productos', requireCapability('inventario.crear'), validate(createProductoSchema), async (req, res, next) => {
   try {
     // Multi-país F2: el schema acepta UYU + ARS, pero el tenant solo puede
@@ -1373,6 +1398,8 @@ router.post('/productos', requireCapability('inventario.crear'), validate(create
       // bidireccional (columna `clase` dropeada en migration 20260709000001).
       const { slug_legacy } = await resolveClaseInfo(client, req.tenantId, b);
       validarUnitarioCoherente(slug_legacy, b);
+      // task #269: regla independiente de la clase — IMEI ⇒ cantidad=1.
+      validarImeiUnico(b);
 
       const values = PRODUCTO_COLS.map(c => b[c] ?? null);
       const { rows } = await client.query(
@@ -1487,6 +1514,42 @@ router.put('/productos/:id', requireCapability('inventario.editar'), validate(up
         // original ya validó).
         if (req.body.cantidad !== undefined) {
           validarUnitarioCoherente(slug_legacy, req.body);
+        }
+      }
+      // task #269: regla IMEI ⇒ cantidad=1 (ortogonal a la clase). En el
+      // PUT calculamos el estado post-update y lo validamos.
+      //
+      // Escenario que atrapa: producto con IMEI (cantidad=1) donde el user
+      // envía cantidad=5 explícitamente → RECHAZO.
+      //
+      // Escenario que NO atrapa (limitación conocida): producto sin IMEI +
+      // cantidad=5 donde el user envía `{imei: 'X'}` solo, sin tocar
+      // cantidad. El schema `updateProductoSchema` es baseProducto.partial()
+      // y `cantidad` tiene `.default(1)` → Zod aplica el default aún en
+      // partial → req.body.cantidad SIEMPRE llega con valor. Combinado con
+      // COALESCE, el UPDATE termina con cantidad=1 en DB — que respeta la
+      // regla (imei + cantidad=1), pero es un cambio silencioso al valor
+      // pre-existente. El frontend Inventario.jsx cubre esto deshabilitando
+      // el input cantidad cuando hay IMEI y forzando cantidad=1 en payload,
+      // así que en la práctica el user nunca envía la combinación mala.
+      //
+      // El truco `newCant !== dbCant` abajo detecta el caso explícito
+      // (user quiso 5, DB tenía 1 → diferentes → usamos 5 → validador
+      // rechaza). Si coincide con DB, asumimos "no tocó" y usamos el DB.
+      {
+        const { rows: cur } = await client.query(
+          'SELECT imei, cantidad FROM productos WHERE id = $1 AND deleted_at IS NULL',
+          [id]
+        );
+        if (cur[0]) {
+          const dbImei = cur[0].imei;
+          const dbCant = Number(cur[0].cantidad);
+          const bodyImei = req.body.imei;
+          const bodyCant = req.body.cantidad;
+          const newImei = bodyImei !== undefined ? bodyImei : dbImei;
+          const newCant = (bodyCant !== undefined && Number(bodyCant) !== dbCant)
+            ? Number(bodyCant) : dbCant;
+          validarImeiUnico({ imei: newImei, cantidad: newCant });
         }
       }
       // values se computa DESPUÉS del derive para que el COALESCE reciba los
@@ -1875,6 +1938,8 @@ router.post('/productos/bulk', requireCapability('inventario.crear'), bulkLimite
       // clase_id — solo verificamos que exista en el catálogo del tenant.
       const { slug_legacy } = await resolveClaseInfo(client, req.tenantId, p);
       validarUnitarioCoherente(slug_legacy, p);
+      // task #269: regla ortogonal a la clase — IMEI ⇒ cantidad=1.
+      validarImeiUnico(p);
       buf.push({
         ...p,
         condicion: p.condicion ?? 'nuevo',

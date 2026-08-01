@@ -587,6 +587,28 @@ router.post('/movimientos', compraMovimientoLimiter, validate(createMovimientoPr
           });
         }
       }
+
+      // task #269 (bug Nook Tech): regla IMEI ⇒ cantidad=1. Un IMEI/serie
+      // identifica un dispositivo físico único. Reject 400 si algún item
+      // con producto_stock trae IMEI y cantidad > 1. Antes solo se validaba
+      // si la clase era unitaria (celular/ipad), pero un accesorio con IMEI
+      // (raro pero posible: gadget con serie) escapaba el check.
+      const violacionImei = items.find(it => {
+        const ps = it.producto_stock;
+        if (!ps) return false;
+        const imei = String(ps.imei || '').trim();
+        if (!imei) return false;
+        const cant = Number(ps.cantidad);
+        return !Number.isNaN(cant) && cant > 1;
+      });
+      if (violacionImei) {
+        await client.query('ROLLBACK');
+        const bad = violacionImei.producto_stock;
+        return res.status(400).json({
+          error: `Un producto con IMEI/Serie debe tener cantidad = 1 (IMEI "${bad.imei}" tiene cantidad ${bad.cantidad}). El IMEI identifica una unidad física única — si querés cargar N unidades, dejá el IMEI vacío o cargá cada IMEI como fila separada.`,
+          imei_conflictivo: bad.imei,
+        });
+      }
     }
 
     const monto_usd = round2(toUsd(monto, moneda, tc));
