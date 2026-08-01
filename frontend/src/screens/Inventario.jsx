@@ -723,7 +723,10 @@ export default function Inventario() {
       proveedor: form.proveedor.trim() || null,
       costo: num(form.costo) ?? 0, costo_moneda: form.costo_moneda,
       precio_venta: num(form.precio_venta) ?? 0, precio_moneda: form.precio_moneda,
-      cantidad: num(form.cantidad) ?? 1, estado: form.estado,
+      // task #269: si hay IMEI, forzamos cantidad=1 en el payload
+      // (independiente de lo que quedó en el state). Cubre el escenario
+      // "user cargó cantidad=2 primero, después tipeó IMEI".
+      cantidad: form.imei?.trim() ? 1 : (num(form.cantidad) ?? 1), estado: form.estado,
       observaciones: form.observaciones.trim() || null,
       condicion: form.condicion || 'nuevo',
     };
@@ -1816,7 +1819,22 @@ export default function Inventario() {
                     </div>
                   </div>
                   <div className="row">
-                    <div className="field u-flex-1"><label className="field-label">Cantidad</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" value={form.cantidad} onChange={e => setF('cantidad', e.target.value)} /></div>
+                    {/* task #269 (bug Nook Tech): si hay IMEI cargado, cantidad
+                        se fuerza a 1 y el input queda disabled — un IMEI/serie
+                        identifica una unidad física única. Backend también lo
+                        valida con validarImeiUnico (defense-in-depth). Al
+                        borrar el IMEI, el input vuelve a habilitarse. */}
+                    <div className="field u-flex-1">
+                      <label className="field-label">Cantidad {form.imei?.trim() ? <span className="muted tiny">(bloqueada por IMEI)</span> : null}</label>
+                      <input
+                        type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
+                        className="input mono"
+                        value={form.imei?.trim() ? '1' : form.cantidad}
+                        onChange={e => setF('cantidad', e.target.value)}
+                        disabled={!!form.imei?.trim()}
+                        title={form.imei?.trim() ? 'Un producto con IMEI/Serie debe tener cantidad = 1' : ''}
+                      />
+                    </div>
                     <div className="field u-flex-1">
                       <label className="field-label">Estado</label>
                       <select className="input" value={form.estado} onChange={e => setF('estado', e.target.value)}>
