@@ -44,7 +44,7 @@ import CategoriasProductoModal from '../components/CategoriasProductoModal';
 import InventarioPorCategoriaModal from '../components/InventarioPorCategoriaModal';
 import EditableCell from '../components/EditableCell';
 import ScrollFadeX from '../components/ScrollFadeX'; // #F-4
-import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
+import { blockInvalidNumberKeys, preventScannerSubmit } from '../lib/inputUtils'; // #F-1 + task #268
 import useModal from '../lib/useModal';
 import useFormFields from '../lib/useFormFields';
 import { fmt, fmtMoney, fmtImei } from '../lib/format';
@@ -1688,7 +1688,12 @@ export default function Inventario() {
                 clava el body al 70% del viewport. Con el form flex, el
                 .modal-body.flex:1 + overflow-y:auto del base CSS scrollea
                 automáticamente. Ver Envios.jsx modal para el fix inicial. */}
-            <form onSubmit={handleSave} className="u-flex-col-flex-1-mh-0">
+            {/* task #268 (bug Nook Tech): onKeyDown={preventScannerSubmit}
+                intercepta el Enter que las pistolas scanner USB HID envían
+                tras leer el código de barras. Sin esto el form se submitea
+                con solo IMEI y el producto queda a medias. Bonus: mueve el
+                foco al siguiente campo (efecto Tab automático post-scan). */}
+            <form onSubmit={handleSave} onKeyDown={preventScannerSubmit} className="u-flex-col-flex-1-mh-0">
               <div className="modal-body">
                 <div className="stack u-gap-14">
                   <div className="row">

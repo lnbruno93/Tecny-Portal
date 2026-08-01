@@ -83,3 +83,60 @@ export function normalizeDecimal(value) {
   }
   return s; // Solo dígitos o solo punto (ya parseable por Number).
 }
+
+/**
+ * Anti-submit-por-scanner (task #268, bug Nook Tech, 2026-07-31).
+ *
+ * Contexto: los scanners USB HID (pistolas láser de código de barras) emulan
+ * teclado y al terminar de "tipear" el código envían un Enter (\r\n). En
+ * HTML, un Enter sobre un <input> dentro de un <form> dispara el submit por
+ * default. En el modal Inventario > Agregar producto, el operador escanea
+ * el IMEI y el form se envía instantáneo con SOLO el IMEI cargado — sin
+ * nombre, sin categoría, sin precio. Producto queda a medias en Inventario.
+ *
+ * Uso (a nivel form — captura todo Enter de inputs hijos):
+ *   <form onSubmit={handleSave} onKeyDown={preventScannerSubmit}>...</form>
+ *
+ * Comportamiento:
+ *   - Enter en <input type=text/number/etc.>: preventDefault (no submit) +
+ *     mover foco al siguiente elemento focusable (input/select/textarea).
+ *     Así el scanner se comporta como Tab: escanea, salta al próximo campo.
+ *   - Enter en <textarea>: NO tocar — el operador quiere saltos de línea.
+ *   - Enter en <button>: NO tocar — click intencional del user (submit
+ *     button, botones ghost, etc.).
+ *   - Enter con modifier (Cmd/Ctrl/Shift/Alt): NO tocar — atajos del user.
+ *
+ * NO usar en spreadsheets (VentaB2BModal, CompraProveedorModal) donde el
+ * Enter tiene semántica propia de navegación entre celdas — esos ya
+ * manejan Enter/Tab custom en cada celda.
+ */
+export function preventScannerSubmit(e) {
+  if (e.key !== 'Enter') return;
+  // Respeta modifiers (Cmd/Ctrl/Shift/Alt+Enter) — pueden ser atajos.
+  if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+  const target = e.target;
+  if (!target || typeof target.tagName !== 'string') return;
+  const tag = target.tagName.toUpperCase();
+  // Textarea: Enter = nueva línea legítima.
+  if (tag === 'TEXTAREA') return;
+  // Botones: Enter = click. Si es el submit del form, el user lo intención.
+  if (tag === 'BUTTON') return;
+  // Solo interceptamos inputs (el caso del scanner).
+  if (tag !== 'INPUT') return;
+  // type=submit dentro de <input> también es un submit intencional.
+  if (target.type === 'submit') return;
+
+  e.preventDefault();
+
+  // Bonus UX: mover al siguiente elemento focusable del form. Así el scan
+  // funciona como Tab automático — escaneás IMEI, foco salta a "Nombre",
+  // seguís tipeando. Sin esto el foco queda "atascado" en el input IMEI.
+  const form = target.form;
+  if (!form) return;
+  const focusables = Array.from(
+    form.querySelectorAll('input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])')
+  );
+  const idx = focusables.indexOf(target);
+  const next = focusables[idx + 1];
+  if (next && typeof next.focus === 'function') next.focus();
+}
