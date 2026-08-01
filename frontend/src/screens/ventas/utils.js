@@ -20,6 +20,92 @@ export function sym(m) {
 // del módulo Ventas.
 export { toUsd } from '../../lib/money';
 
+// 2026-08-01 (bug Leonel): al cambiar el TC de un pago que ya tiene monto
+// tipeado, no debe multiplicar el monto por el TC. El operador que tipeó
+// "$811000" está diciendo "el cliente me paga 811.000 pesos" — cambiar el
+// TC solo cambia el USD equivalente, no el monto en pesos.
+//
+// Pre-fix: si el pago tenía tanto `usd_input` (típico de auto-fill inicial
+// o setPagoBruto que setea usd_input derivado) como `monto`, la lógica
+// priorizaba `usd_input` y recalculaba `monto = usd_input × tc_nuevo` —
+// resultado: número enorme, operador tenía que borrar los pesos y volver
+// a tipearlos.
+//
+// Post-fix: priorizamos `hayMonto`. Si el operador tipeó monto (en cualquier
+// input — el ARS direct o el bruto manual del desglose), lo preservamos y
+// derivamos el USD equivalente. Solo si NO hay monto tipeado, usamos la
+// fórmula usd × tc para calcular el bruto (caso "cliente paga USD X y
+// convierto a pesos").
+//
+// Contrato:
+//   Input:
+//     pago = { monto, usd_input, moneda }
+//     newTc = string | number — el TC nuevo tipeado por el operador
+//     pct = number — comisión del método (0 si sin comisión)
+//   Output: { tc, monto, usd_input, neto_input, bruto_manual } — merge parcial
+//     que se aplica al pago existente. Ej: `{ ...pg, ...computePagoAfterTcChange(pg, newTc, pct) }`
+//
+// Helpers internos (fórmulas espejo de Ventas.jsx brutoFromUsdInput/usdFromBrutoInput):
+function _brutoFromUsdInput(usd, moneda, tc, pct) {
+  const u = Number(usd) || 0;
+  if (u <= 0) return '';
+  const factor = pct > 0 ? 1 / (1 - pct / 100) : 1;
+  if (moneda === 'USD' || moneda === 'USDT') return Math.round(u * factor * 100) / 100;
+  const t = Number(tc);
+  if ((moneda === 'ARS' || moneda === 'UYU') && t > 0) return Math.round(u * t * factor * 100) / 100;
+  return '';
+}
+function _usdFromBrutoInput(bruto, moneda, tc, pct) {
+  const b = Number(bruto) || 0;
+  if (b <= 0) return '';
+  const factor = pct > 0 ? 1 / (1 - pct / 100) : 1;
+  const netoEquivalente = b / factor;
+  if (moneda === 'USD' || moneda === 'USDT') return Math.round(netoEquivalente * 100) / 100;
+  const t = Number(tc);
+  if ((moneda === 'ARS' || moneda === 'UYU') && t > 0) {
+    return Math.round(netoEquivalente / t * 100) / 100;
+  }
+  return '';
+}
+export function computePagoAfterTcChange(pago, newTc, pct) {
+  const hayMonto    = pago.monto && Number(pago.monto) > 0;
+  const hayUsdInput = pago.usd_input && Number(pago.usd_input) > 0;
+
+  // Flow "cliente paga $X directo" — preservar monto tipeado, derivar USD.
+  // Prioridad #1 (fix 2026-08-01): si tipeó pesos, cambiar TC NO debe tocar
+  // los pesos. Solo actualiza el USD implícito.
+  if (hayMonto) {
+    const usdDerivado = _usdFromBrutoInput(pago.monto, pago.moneda, newTc, pct);
+    return {
+      tc: newTc,
+      // NO tocamos monto — respetamos lo que tipeó el operador.
+      neto_input: '',
+      bruto_manual: false,
+      usd_input: usdDerivado !== '' ? String(usdDerivado) : pago.usd_input,
+    };
+  }
+
+  // Flow "cliente paga USD X" (sin monto tipeado) — recalcular el bruto en
+  // moneda del pago. Típico del auto-fill inicial cuando el operador aún no
+  // tocó nada.
+  if (hayUsdInput) {
+    const bruto = _brutoFromUsdInput(pago.usd_input, pago.moneda, newTc, pct);
+    return {
+      tc: newTc,
+      neto_input: '',
+      bruto_manual: false,
+      monto: bruto !== '' ? String(bruto) : '',
+    };
+  }
+
+  // Ni monto ni usd_input tipeados — solo actualizamos el TC.
+  return {
+    tc: newTc,
+    neto_input: '',
+    bruto_manual: false,
+  };
+}
+
 // Fecha de hoy en formato ISO YYYY-MM-DD (locale 'sv' devuelve siempre ese
 // formato, sin importar timezone del browser — más confiable que toISOString).
 export function todayStr() {

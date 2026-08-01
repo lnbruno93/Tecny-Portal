@@ -37,7 +37,7 @@ import DiffModal from './ventas/DiffModal';
 import ExitoModal from './ventas/ExitoModal';
 import EditarVendedorModal from './ventas/EditarVendedorModal';
 import VentasList from './ventas/VentasList';
-import { sym, toUsd, todayStr, shiftDate, monthStart, weekStart, computeVentaTotales } from './ventas/utils';
+import { sym, toUsd, todayStr, shiftDate, monthStart, weekStart, computeVentaTotales, computePagoAfterTcChange } from './ventas/utils';
 
 const ESTADO_DISPLAY = {
   acreditado: { label: 'Acreditado', tone: 'pos' },
@@ -771,43 +771,28 @@ export default function Ventas() {
       return { ...pg, usd_input: usd !== '' ? String(usd) : '', neto_input: value, monto: bruto !== '' ? String(bruto) : '' };
     }));
   }
-  // Setter del TC (recalcula el bruto desde el USD tipeado).
+  // Setter del TC. Lógica pura extraída a `computePagoAfterTcChange` (utils.js)
+  // para testing sin montar el componente.
+  //
   // 2026-07-04: al editar TC se pierde el override manual (misma política
   // que setPagoUsd — cualquier cambio en input primario descarta el manual).
   //
-  // 2026-07-07 FIX (feedback Lucas): si el operador tipeó MONTO primero y
-  // TC después (flow común efectivo ARS/UYU), preservar el monto y calcular
-  // el USD equivalente hacia atrás. Antes borrábamos el monto porque
-  // `brutoFromUsdInput('', ...)` retorna '' cuando usd_input está vacío —
-  // el operador tenía que re-tipear el monto.
+  // 2026-07-07 (feedback Lucas #1): preservar el monto cuando el operador
+  // tipeó MONTO primero y TC después. Antes borrábamos el monto.
+  //
+  // 2026-08-01 (feedback Leonel): PRIORIZAR el monto tipeado SIEMPRE. La
+  // versión previa priorizaba `hayUsdInput` sobre `hayMonto` — si el operador
+  // tipeaba el monto en el input "Le cobrás al cliente" (setPagoBruto, que
+  // setea usd_input derivado), al cambiar el TC el monto se multiplicaba por
+  // el TC y quedaba número enorme (Leonel: "tenés que borrar los pesos y
+  // volver a poner el monto correcto"). Ahora `hayMonto` gana → preserva
+  // pesos, deriva USD. Ver `computePagoAfterTcChange` en utils.js.
   function setPagoTc(i, value) {
     setPagos(p => p.map((pg, j) => {
       if (j !== i) return pg;
       const m = metodos.find(x => x.id === pg.metodo_pago_id);
       const pct = pctMetodo(m);
-      const hayUsdInput = pg.usd_input && Number(pg.usd_input) > 0;
-      const hayMonto    = pg.monto && Number(pg.monto) > 0;
-      if (hayUsdInput) {
-        // Flow "cliente paga USD X" → recalcula el bruto en moneda del pago.
-        const bruto = brutoFromUsdInput(pg.usd_input, pg.moneda, value, pct);
-        return { ...pg, tc: value, neto_input: '', bruto_manual: false, monto: bruto !== '' ? String(bruto) : '' };
-      }
-      if (hayMonto) {
-        // Flow "cliente paga $X directo" → preservar monto, derivar USD
-        // desde el monto ahora que tenemos TC. El USD queda como fuente de
-        // verdad para el cálculo del total cubierto.
-        const usdDerivado = usdFromBrutoInput(pg.monto, pg.moneda, value, pct);
-        return {
-          ...pg,
-          tc: value,
-          neto_input: '',
-          bruto_manual: false,
-          // NO tocamos monto — respetamos lo que tipeó el operador.
-          usd_input: usdDerivado !== '' ? String(usdDerivado) : pg.usd_input,
-        };
-      }
-      // Ni monto ni usd_input tipeados — solo actualizamos el TC.
-      return { ...pg, tc: value, neto_input: '', bruto_manual: false };
+      return { ...pg, ...computePagoAfterTcChange(pg, value, pct) };
     }));
   }
   // Setter directo en moneda nativa para EFECTIVO ARS (sin comisión). El operador

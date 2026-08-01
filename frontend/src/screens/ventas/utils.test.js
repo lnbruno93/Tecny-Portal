@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeVentaTotales, sym } from './utils';
+import { computeVentaTotales, computePagoAfterTcChange, sym } from './utils';
 
 // 2026-07-08 (bug iOStoreUY): antes `sym('UYU')` caía en el default 'u$s'
 // porque el helper era `m === 'ARS' ? '$' : 'u$s'`. En "Métodos de pago" del
@@ -224,6 +224,108 @@ describe('computeVentaTotales', () => {
       const r = computeVentaTotales(cart, pagos, [], [], 0, null, vuelto);
       expect(r.vueltoUsd).toBe(5);
       expect(r.real).toBe(45); // 105 - 60, sin restar 5 del vuelto
+    });
+  });
+});
+
+// 2026-08-01 (bug Leonel): al cambiar el TC de un pago que ya tiene monto
+// tipeado, el pago NO debe multiplicar los pesos por el TC. Antes se
+// priorizaba `hayUsdInput` sobre `hayMonto` — si el operador tipeaba el
+// monto en el input "Le cobrás al cliente" (setPagoBruto, que setea
+// usd_input derivado), al cambiar el TC se recalculaba monto = usd × tc_nuevo
+// = número enorme. Fix: `hayMonto` prioridad #1.
+describe('computePagoAfterTcChange (fix Leonel 2026-08-01)', () => {
+  describe('BUG del reporte — pesos tipeados no se multiplican al cambiar TC', () => {
+    it('pago con monto=811000 pesos + usd_input=519.87 derivado: al tipear TC=1560 preserva monto', () => {
+      // Reproducción exacta del screenshot de Leonel:
+      // - Transferencia PESOS $ 811000, TC 1560
+      // - usd_input=519.87 (calculado por setPagoBruto o setPagoUsd previo)
+      // Pre-fix: hayUsdInput ganaba → monto = 519.87 × 1560 = 810,997 (roundeo raro)
+      // Post-fix: hayMonto gana → monto se preserva, usd_input se re-deriva.
+      const pago = { monto: '811000', usd_input: '519.87', moneda: 'ARS' };
+      const result = computePagoAfterTcChange(pago, '1560', 0);
+      expect(result.tc).toBe('1560');
+      expect(result.monto).toBeUndefined(); // NO se toca el monto
+      expect(Number(result.usd_input)).toBe(519.87); // 811000 / 1560 ≈ 519.87
+    });
+
+    it('mismo bug con UYU (Uruguay): pesos preserva al cambiar TC', () => {
+      const pago = { monto: '40000', usd_input: '1000', moneda: 'UYU' };
+      const result = computePagoAfterTcChange(pago, '40', 0);
+      expect(result.monto).toBeUndefined();
+      expect(Number(result.usd_input)).toBe(1000); // 40000 / 40 = 1000
+    });
+
+    it('con comisión de tarjeta: preserva bruto, USD derivado NETO de comisión', () => {
+      // Pago tarjeta 5% comisión. Bruto en pesos = 100000, TC = 1500.
+      // USD equivalente = 100000 / 1500 / factor_comision
+      //   factor = 1 / (1 - 0.05) = 1.0526
+      //   netoEquivalente = 100000 / 1.0526 ≈ 95000
+      //   USD = 95000 / 1500 ≈ 63.33
+      const pago = { monto: '100000', usd_input: '65', moneda: 'ARS' };
+      const result = computePagoAfterTcChange(pago, '1500', 5);
+      expect(result.monto).toBeUndefined();
+      expect(Number(result.usd_input)).toBeCloseTo(63.33, 1);
+    });
+  });
+
+  describe('Flow original preservado — sin monto, sí usd_input', () => {
+    it('pago con solo usd_input (autofill inicial): calcula monto = usd × tc', () => {
+      // Caso: operador elige método, autofill deja usd_input=520 y monto=''.
+      // Al tipear TC=1560, calcula monto = 520 × 1560 = 811200.
+      const pago = { monto: '', usd_input: '520', moneda: 'ARS' };
+      const result = computePagoAfterTcChange(pago, '1560', 0);
+      expect(result.tc).toBe('1560');
+      expect(result.monto).toBe('811200'); // 520 × 1560
+      expect(result.usd_input).toBeUndefined(); // no se toca
+    });
+
+    it('pago USD puro: monto = usd × 1 (TC no aplica)', () => {
+      const pago = { monto: '', usd_input: '500', moneda: 'USD' };
+      const result = computePagoAfterTcChange(pago, '1500', 0);
+      expect(result.monto).toBe('500'); // USD no divide/multiplica por TC
+    });
+  });
+
+  describe('Casos edge', () => {
+    it('sin monto ni usd_input: solo actualiza el TC', () => {
+      const pago = { monto: '', usd_input: '', moneda: 'ARS' };
+      const result = computePagoAfterTcChange(pago, '1500', 0);
+      expect(result.tc).toBe('1500');
+      expect(result.monto).toBeUndefined();
+      expect(result.usd_input).toBeUndefined();
+    });
+
+    it('monto=0 se trata como sin monto (no preserva 0)', () => {
+      const pago = { monto: '0', usd_input: '520', moneda: 'ARS' };
+      const result = computePagoAfterTcChange(pago, '1500', 0);
+      // hayMonto=false porque 0 > 0 = false → cae en usd_input branch
+      expect(result.monto).toBe('780000'); // 520 × 1500
+    });
+
+    it('bruto_manual se resetea a false al cambiar TC', () => {
+      // Consistencia con setPagoUsd: cualquier cambio de TC descarta el
+      // override manual del bruto.
+      const pago = { monto: '811000', usd_input: '520', moneda: 'ARS', bruto_manual: true };
+      const result = computePagoAfterTcChange(pago, '1600', 0);
+      expect(result.bruto_manual).toBe(false);
+    });
+
+    it('neto_input siempre se limpia al cambiar TC', () => {
+      // Consistencia con setPagoUsd/setPagoBruto: cambio de TC descarta el neto tipeado.
+      const pago = { monto: '811000', usd_input: '520', moneda: 'ARS', neto_input: '810000' };
+      const result = computePagoAfterTcChange(pago, '1600', 0);
+      expect(result.neto_input).toBe('');
+    });
+
+    it('ARS sin TC (edge defensive): monto preserva, usd_input NO se puede derivar', () => {
+      // Si el usuario borra el TC (value=''), preservamos monto pero el USD
+      // derivado retorna ''. En ese caso, el usd_input se queda como está.
+      const pago = { monto: '811000', usd_input: '520', moneda: 'ARS' };
+      const result = computePagoAfterTcChange(pago, '', 0);
+      expect(result.tc).toBe('');
+      expect(result.monto).toBeUndefined(); // preserva
+      expect(result.usd_input).toBe('520'); // preserva (no se puede derivar sin TC)
     });
   });
 });
