@@ -71,9 +71,10 @@ export function weekStart() {
 //     metodos   — array de métodos de pago { id, es_tarjeta, es_financiera, comision_pct }
 //     pctFinanciera — float, comisión default de financiera si el método es_financiera
 //     tcVenta   — TC de la venta (para convertir montos no-USD)
-//     vuelto    — { monto, moneda, tc } opcional. Se descuenta de `real`. Si tc
-//                 falta para moneda local (ARS/UYU), el vuelto se ignora
-//                 defensively (el schema backend ya lo bloquea al submit).
+//     vuelto    — { monto, moneda, tc } opcional. Solo se computa
+//                 `vueltoUsd` para mostrar en UI/comprobante como línea
+//                 informativa. NO impacta `real` (regla PO 2026-08-01: el
+//                 vuelto es dinero devuelto al cliente, no gasto).
 //   Output: { items, cubierto, dif, canjeTotal, bruta, costoFin, vueltoUsd, real, pagosDetalle }
 //
 // Import de toUsd hardcoded al final del archivo para evitar circular deps
@@ -127,8 +128,12 @@ export function computeVentaTotales(cart, pagos, canjes, metodos, pctFinanciera,
     }
     // else: moneda local sin TC → ignoramos (defensive; el submit lo bloquea).
   }
-  // Ganancia real: neto de comisión + canjes − costos − vuelto.
-  const real = (netoTotalUsd + canjeTotal) - costosUsd - vueltoUsd;
+  // Ganancia real: neto de comisión + canjes − costos.
+  // 2026-08-01 (regla PO Lucas): el vuelto NO resta. Es solo dinero
+  // devuelto al cliente (línea informativa en UI/comprobante), no
+  // impacta rentabilidad. `vueltoUsd` sigue en el return para que el
+  // caller lo pinte separado ("Vuelto entregado: -u$s10").
+  const real = (netoTotalUsd + canjeTotal) - costosUsd;
   return {
     items, cubierto, dif: cubierto - items, canjeTotal,
     bruta, costoFin: costoFinTotal, vueltoUsd, real, pagosDetalle,
