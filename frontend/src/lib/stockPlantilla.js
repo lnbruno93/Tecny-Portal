@@ -35,11 +35,6 @@ import { exportCsv } from './exportCsv';
 // Sufijos "(solo iph)" / "(solo acc)" son labels-hint para operadores no
 // técnicos — indican qué campos son relevantes según el tipo de producto.
 // El parser los ignora (`normHeader` descarta paréntesis).
-// 2026-08-01 (task #273): columna "TC COSTO" agregada. Es OBLIGATORIA cuando
-// MONEDA COSTO es ARS o UYU (regla PO Lucas — todo el stock se mide en USD;
-// con este TC el backend convierte al vuelo y unifica el KPI valorizado).
-// Vacía cuando MONEDA COSTO es USD/USDT (no aplica). Ubicada JUSTO después
-// de MONEDA COSTO para que el operador la vea al lado del campo relacionado.
 export const PLANTILLA_HEADERS = [
   'Nombre',
   'GB(solo iph)',
@@ -47,7 +42,6 @@ export const PLANTILLA_HEADERS = [
   'COLOR(solo iph)',
   'COSTO',
   'MONEDA COSTO(ARS/USD)',
-  'TC COSTO(si moneda ARS/UYU)',
   'PRECIO',
   'MONEDA PRECIO(ARS/USD)',
   'IMEI(solo iph)',
@@ -63,11 +57,9 @@ export const PLANTILLA_HEADERS = [
 //
 // 2026-07-25: depósito ejemplo cambiado de "1" (ID numérico) a "Principal"
 // (nombre) para reforzar que el nombre es aceptado + más intuitivo.
-// 2026-08-01 (task #273): ejemplos incluyen TC COSTO — vacío para USD
-// (no aplica) y populado para el 2do que muestra un caso ARS.
 export const PLANTILLA_EJEMPLO = [
-  ['iPhone 15 Pro', '256', '92', 'Natural', '800', 'USD', '', '950', 'USD', '356938035643809', 'Unitario', 'iPhone Nuevo', 'Juan Distribuidor', '', 'Principal'],
-  ['Funda iPhone 15', '', '', '', '4500', 'ARS', '1500', '10500', 'ARS', '', 'stock', 'Accesorios', 'Mayorista Acc', '20', 'Principal'],
+  ['iPhone 15 Pro', '256', '92', 'Natural', '800', 'USD', '950', 'USD', '356938035643809', 'Unitario', 'iPhone Nuevo', 'Juan Distribuidor', '', 'Principal'],
+  ['Funda iPhone 15', '', '', '', '3', 'USD', '8', 'USD', '', 'stock', 'Accesorios', 'Mayorista Acc', '20', 'Principal'],
 ];
 
 /**

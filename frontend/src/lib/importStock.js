@@ -37,9 +37,6 @@ export const STOCK_ALIASES = {
   proveedor:     ['proveedor'],
   costo:         ['costo', 'costos', 'compra', 'costounitario'],
   costo_moneda:  ['monedacosto', 'costomoneda'],
-  // 2026-08-01 (task #273): TC del costo para convertir ARS/UYU → USD.
-  // Aliases toleran variantes que operadores puedan escribir.
-  costo_tc:      ['tccosto', 'costotc', 'tipodecambiocosto', 'tipodecambio', 'tc'],
   precio_venta:  ['precio', 'precioventa', 'venta', 'preciodeventa', 'preciolista'],
   precio_moneda: ['monedaprecio', 'preciomoneda', 'monedaventa'],
   // STOCK(solo acc): cantidad de accesorios. Su presencia define clase=accesorio.
@@ -335,16 +332,6 @@ export function mapStockRows(rows, { depositos = [], proveedores = [], clases = 
       const costo = parseNum(get('costo'));
       const precio_venta = parseNum(get('precio_venta'));
 
-      const costoMoneda = cleanMoneda(get('costo_moneda'));
-      // 2026-08-01 (task #273): TC del costo. Solo se envía si moneda local
-      // (ARS/UYU). USD/USDT → null. Si el operador cargó TC en una fila USD,
-      // lo ignoramos silenciosamente (no rompemos import). La validación
-      // "obligatorio para ARS/UYU con costo>0" se agrega abajo como error.
-      const costoTcRaw = get('costo_tc');
-      const costoTc = (costoMoneda === 'ARS' || costoMoneda === 'UYU') && String(costoTcRaw ?? '').trim()
-        ? parseNum(costoTcRaw)
-        : null;
-
       const body = {
         nombre,
         // F3.d-3: `clase` VARCHAR dropeada — solo `clase_id`.
@@ -363,8 +350,7 @@ export function mapStockRows(rows, { depositos = [], proveedores = [], clases = 
         deposito_id,
         proveedor: proveedorRaw || null,
         costo,
-        costo_moneda: costoMoneda,
-        costo_tc: costoTc,
+        costo_moneda: cleanMoneda(get('costo_moneda')),
         precio_venta,
         precio_moneda: cleanMoneda(get('precio_moneda')),
         cantidad,
@@ -383,12 +369,6 @@ export function mapStockRows(rows, { depositos = [], proveedores = [], clases = 
       else if (depError) error = depError;
       else if (!(costo > 0)) error = 'Costo en 0 o inválido';
       else if (!(precio_venta > 0)) error = 'Precio en 0 o inválido';
-      // 2026-08-01 (task #273): validación del TC costo — obligatorio
-      // cuando moneda local + costo > 0. Espeja el Zod refine del backend
-      // para dar feedback inmediato en el preview del import.
-      else if ((costoMoneda === 'ARS' || costoMoneda === 'UYU') && !(costoTc > 0)) {
-        error = 'Costo en ARS/UYU requiere TC COSTO (> 0) para convertir a USD';
-      }
 
       // Warnings: la fila SÍ se importa, pero el owner ve un aviso amarillo en
       // el preview para tomar la decisión con contexto (ej. alta de modelo
