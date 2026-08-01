@@ -801,6 +801,107 @@ describe('Cuenta corriente como medio de pago', () => {
     await request(app).delete(`/api/ventas/${v.body.id}`).set(auth());
     expect(await saldo(cid)).toBe(0);
   });
+
+  // task #270 (bug Nook Tech, 2026-08-01):
+  //
+  // Cuando se paga una venta retail con "Cuenta corriente (deuda)" como
+  // método, sincronizarCuentaCorriente() en lib/ventaSync.js crea un
+  // movimiento_cc "shadow" con tipo='compra' + venta_id=<venta.id> + SIN
+  // items (los items reales viven en venta_items). Ese shadow es solo el
+  // link que sube la deuda del cliente CC — NO es una venta B2B propia.
+  //
+  // El listado Ventas hacía UNION entre `ventas` (retail) y `movimientos_cc
+  // tipo='compra'` (B2B) sin filtrar el shadow → el usuario veía una fila
+  // B2B fantasma con importe u$s0 al lado de cada venta retail fiada.
+  // También el dashboard duplicaba count/ingresos (contaba la venta como
+  // retail Y como B2B).
+  //
+  // Fix: agregar `AND m.venta_id IS NULL` en 3 lugares:
+  //   · condB del listado GET /api/ventas
+  //   · B2B_BASE del dashboard (KPIs + top prod + unidades por clase)
+  //   · chat-tools.js summary de ventas del período
+  //
+  // Solo aparecen como B2B las ventas GENUINAS (POST /cuentas/movimientos
+  // tipo='compra' + items O Red B2B createSellerVenta — ambas sin venta_id).
+  describe('shadow mov_cc de retail fiado NO aparece como fila B2B (task #270)', () => {
+    it('venta retail fiada crea shadow en DB pero NO aparece como fila B2B en el listado', async () => {
+      const cid = await crearClienteCC('Nook shadow test');
+      // Crear venta retail con pago 100% CC (dispara sincronizarCuentaCorriente).
+      const v = await request(app).post('/api/ventas').set(auth()).send({
+        fecha: hoy, cliente_cc_id: cid,
+        items: [{ descripcion: 'iPhone shadow', cantidad: 1, precio_vendido: 800, costo: 600, moneda: 'USD' }],
+        pagos: [ccPago(800)],
+      });
+      expect(v.status).toBe(201);
+      // Sanity: la deuda subió (el shadow SÍ se creó en DB).
+      expect(await saldo(cid)).toBe(800);
+
+      // Recuperar el ID del shadow desde DB — bypass RLS via el rol de tests
+      // (setupTestDb usa DATABASE_URL con role que ignora RLS). Este id NO
+      // debe aparecer en el listado B2B tras el fix.
+      const { rows: shadowRows } = await pool.query(
+        `SELECT id FROM movimientos_cc WHERE venta_id = $1 AND tipo = 'compra' AND deleted_at IS NULL`,
+        [v.body.id]
+      );
+      expect(shadowRows).toHaveLength(1);
+      const shadowMovId = shadowRows[0].id;
+
+      // Listar ventas del día. NINGUNA fila B2B debe tener este shadow.id.
+      const res = await request(app).get(`/api/ventas?desde=${hoy}&hasta=${hoy}`).set(auth());
+      expect(res.status).toBe(200);
+      const b2bIds = res.body.data.filter(r => r.origen === 'b2b').map(r => r._b2b_mov_id);
+      expect(b2bIds).not.toContain(shadowMovId);
+    });
+
+    it('venta B2B genuina (POST /cuentas/movimientos) SÍ aparece en el listado', async () => {
+      // Regression: el fix (AND m.venta_id IS NULL) no debe romper el flow
+      // original de ventas B2B creadas via POST /cuentas/movimientos — esas
+      // NO tienen venta_id (venta_id NULL por default en el INSERT).
+      const cli = await request(app).post('/api/cuentas/clientes').set(auth())
+        .send({ nombre: 'B2B genuina regression', categoria: 'A+' });
+      const mov = await request(app).post('/api/cuentas/movimientos').set(auth())
+        .send({
+          cliente_cc_id: cli.body.id, fecha: hoy, tipo: 'compra', monto_total: 1200,
+          items: [{ producto: 'B2B item test', cantidad: 1, valor: 1200 }],
+        });
+      expect(mov.status).toBe(201);
+      const res = await request(app).get(`/api/ventas?desde=${hoy}&hasta=${hoy}`).set(auth());
+      expect(res.status).toBe(200);
+      const b2bRow = res.body.data.find(r => r.origen === 'b2b' && r._b2b_mov_id === mov.body.id);
+      expect(b2bRow).toBeDefined();
+      expect(Number(b2bRow.total_usd)).toBe(1200);
+    });
+
+    it('dashboard NO cuenta shadow retail en b2b.count/ingresos', async () => {
+      // Baseline pre-venta.
+      const pre = await request(app).get(`/api/ventas/dashboard?desde=${hoy}&hasta=${hoy}`).set(auth());
+      expect(pre.status).toBe(200);
+      const preB2bCount    = Number(pre.body.b2b?.ventas_count ?? pre.body.b2b?.count ?? 0);
+      const preB2bIngresos = Number(pre.body.b2b?.ingresos_usd ?? 0);
+
+      // Crear venta retail fiada (dispara shadow). El POST /ventas invalida
+      // el cache del dashboard (invalidateDashboardVentas), así el GET
+      // siguiente re-computa desde DB.
+      const cid = await crearClienteCC('Nook dashboard shadow');
+      const v = await request(app).post('/api/ventas').set(auth()).send({
+        fecha: hoy, cliente_cc_id: cid,
+        items: [{ descripcion: 'iPhone dash shadow', cantidad: 1, precio_vendido: 900, costo: 700, moneda: 'USD' }],
+        pagos: [ccPago(900)],
+      });
+      expect(v.status).toBe(201);
+
+      const post = await request(app).get(`/api/ventas/dashboard?desde=${hoy}&hasta=${hoy}`).set(auth());
+      expect(post.status).toBe(200);
+      const postB2bCount    = Number(post.body.b2b?.ventas_count ?? post.body.b2b?.count ?? 0);
+      const postB2bIngresos = Number(post.body.b2b?.ingresos_usd ?? 0);
+      // La venta retail fiada NO debe incrementar b2b.count ni b2b.ingresos.
+      // Sin este fix, ambas subían (una por la fila shadow con items vacíos —
+      // count +1, ingresos +0 porque items_movimiento_cc está vacío pero el
+      // COUNT(DISTINCT m.id) igual la contaba).
+      expect(postB2bCount).toBe(preB2bCount);
+      expect(postB2bIngresos).toBe(preB2bIngresos);
+    });
+  });
 });
 
 describe('Etiquetas, métodos de pago, egresos y ventas rápidas', () => {

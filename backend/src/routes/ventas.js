@@ -750,9 +750,19 @@ async function computeDashboard(tenantId, desde, hasta, etiquetaId = null) {
     //
     // Cuando hay filtro por etiqueta_id, forzamos `FALSE` — no queremos que
     // B2B contamine los totales de una etiqueta específica retail.
+    //
+    // 2026-08-01 (task #270, bug Nook Tech): `AND m.venta_id IS NULL` excluye
+    // las filas "shadow" que `sincronizarCuentaCorriente` (ventaSync.js)
+    // crea al vender retail fiado — ese mov_cc no es una venta B2B propia,
+    // es solo el link que sube la deuda del cliente CC. La venta ya está
+    // contada en el bloque retail (BASE); si además la sumaba B2B aquí,
+    // duplicaba count/ingresos y aparecía como fila fantasma con u$s0 en el
+    // listado Ventas (los items reales viven en venta_items, no en
+    // items_movimiento_cc). Solo cuentan las ventas B2B GENUINAS: creadas
+    // vía POST /cuentas/movimientos tipo='compra' o Red B2B createSellerVenta.
     const B2B_BASE = etiquetaId
       ? `FALSE /* B2B excluido cuando hay filtro por etiqueta retail */`
-      : `m.deleted_at IS NULL AND m.tipo = 'compra' AND m.fecha >= $1 AND m.fecha <= $2`;
+      : `m.deleted_at IS NULL AND m.tipo = 'compra' AND m.venta_id IS NULL AND m.fecha >= $1 AND m.fecha <= $2`;
 
     // 2026-06-15 multi-tenant (PR 4.2): el bundle de 11 queries del dashboard
     // corre dentro de UNA tx con app.current_tenant seteado vía withTenant.
@@ -1261,6 +1271,16 @@ router.get('/', validate(queryVentasSchema, 'query'), async (req, res, next) => 
     const condB = [
       `m.deleted_at IS NULL`,
       `m.tipo = 'compra'`,
+      // 2026-08-01 (task #270, bug Nook Tech): excluir "shadow" mov_cc que
+      // crea `sincronizarCuentaCorriente` (ventaSync.js) al vender retail
+      // fiado. Ese mov_cc no es una venta B2B propia — es solo el link que
+      // marca la deuda del cliente CC. La venta retail ya aparece como fila
+      // en el UNION (whereR); si además apareciera acá, se veía como
+      // duplicado con chip B2B + importe u$s0 (los items reales viven en
+      // venta_items, no en items_movimiento_cc). Solo listamos B2B GENUINAS:
+      // creadas vía POST /cuentas/movimientos o Red B2B (venta_id NULL en
+      // ambos casos por diseño de esos endpoints).
+      `m.venta_id IS NULL`,
       `c.deleted_at IS NULL`,
     ];
     const paramsB = [];
