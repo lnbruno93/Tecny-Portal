@@ -96,11 +96,11 @@ const GrupoRow = memo(function GrupoRow({
 
   return (
     <>
-      {/* Header del grupo — clickeable en toda la fila. Chevron rota al expandir. */}
+      {/* Header del grupo — clickeable en toda la fila. Chevron rota al expandir.
+          `cursor:pointer` lo aporta la clase `.inv-grupo-header` (styles.css). */}
       <tr
         data-testid="inv-grupo-header"
         onClick={toggle}
-        style={{ cursor: 'pointer' }}
         className="inv-grupo-header"
       >
         <td colSpan={15}>
@@ -153,7 +153,7 @@ const GrupoRow = memo(function GrupoRow({
         <tr><td colSpan={15}><div className="u-p-8-center muted tiny">Cargando…</div></td></tr>
       )}
       {expanded && err && (
-        <tr><td colSpan={15}><div className="u-p-8-center" style={{ color: 'var(--danger, #c33)' }}>Error: {err}</div></td></tr>
+        <tr><td colSpan={15}><div className="u-p-8-center inv-agrupado-error">Error: {err}</div></td></tr>
       )}
       {expanded && !loading && productos && productos.length === 0 && (
         <tr><td colSpan={15}><div className="u-p-8-center muted tiny">Sin productos en este grupo (¿filtro cambió mientras estaba cargado?)</div></td></tr>
