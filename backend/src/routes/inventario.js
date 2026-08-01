@@ -578,12 +578,22 @@ const DIM_CONFIG = {
 // la query es chica (SUM/COUNT con índices).
 //
 // Métricas devueltas por fila (y totales):
-//   productos       = COUNT(*) de filas que matchearon (no de unidades)
-//   stock           = SUM(cantidad) (unidades reales)
-//   inv_usd/ars     = SUM(costo * cantidad) split por moneda de costo
-//   valorizado_*    = SUM(precio_venta * cantidad) split por moneda de venta
-//   margen_usd/ars  = valorizado - inversión (sólo informativo dentro de
-//                     cada moneda; no hace conversión cruzada)
+//   productos            = COUNT(*) de filas que matchearon (no de unidades)
+//   stock                = SUM(cantidad) (unidades reales)
+//   inv_usd              = SUM UNIFICADO en USD del costo (2026-08-01 task #273).
+//                          USD/USDT: costo tal cual. ARS/UYU: costo/costo_tc.
+//                          Los productos con costo_moneda local + costo_tc NULL
+//                          NO cuentan (contador aparte `sin_tc_count` avisa al
+//                          user que los complete para incluirlos en el KPI).
+//   inv_ars              = Legacy: SUM(costo*cantidad) WHERE costo_moneda='ARS'
+//                          (crudo, sin convertir). Se mantiene para backward
+//                          compat de widgets viejos; migrar a `inv_usd`.
+//   valorizado_usd/ars   = SUM(precio_venta * cantidad) split por moneda de venta.
+//                          NO se unifica: precio_venta es futuro/variable, y por
+//                          decisión PO no persistimos precio_tc (Q1 task #273).
+//   sin_tc_count         = # productos con costo_moneda IN (ARS,UYU) + costo_tc
+//                          NULL. Alimenta el banner warning en Dashboard.
+//   margen_usd/ars       = valorizado - inversión (informativo por moneda).
 // 2026-06-23 F5b: el endpoint /desglose es PURO breakdown de costos
 // (inv_usd, valorizado_usd, margen). Sin `inventario.ver_costos` no
 // hay shape parcial razonable — devolvemos 403 directo.
@@ -621,13 +631,33 @@ router.get('/desglose', requireCapability('inventario.ver_costos'), validate(que
     if (searchClauseDesglose) conditions.push(searchClauseDesglose);
     const where = conditions.join(' AND ');
 
+    // 2026-08-01 (task #273): inv_usd es SUM UNIFICADO en USD.
+    //   USD/USDT: costo tal cual (tc=1 implícito).
+    //   ARS/UYU con costo_tc>0: costo/costo_tc (equivalente USD del día
+    //     que se cargó, congelado).
+    //   ARS/UYU sin costo_tc (legacy): NO cuenta — el contador
+    //     sin_tc_count lo suma aparte para el banner del Dashboard.
+    // El expresión CASE genera 0 cuando no aplica (defensive vs divisor 0).
+    const CASE_COSTO_USD_UNIF = `
+      CASE
+        WHEN p.costo_moneda IN ('USD','USDT') THEN p.costo * p.cantidad
+        WHEN p.costo_moneda IN ('ARS','UYU') AND p.costo_tc IS NOT NULL AND p.costo_tc > 0
+          THEN (p.costo / p.costo_tc) * p.cantidad
+        ELSE 0
+      END
+    `;
     const aggSelect = `
         COUNT(*)::int AS productos,
         COALESCE(SUM(p.cantidad), 0)::int AS stock,
-        COALESCE(SUM(p.costo * p.cantidad)        FILTER (WHERE p.costo_moneda  = 'USD'), 0)::float AS inv_usd,
+        COALESCE(SUM(${CASE_COSTO_USD_UNIF}), 0)::float                                       AS inv_usd,
         COALESCE(SUM(p.costo * p.cantidad)        FILTER (WHERE p.costo_moneda  = 'ARS'), 0)::float AS inv_ars,
         COALESCE(SUM(p.precio_venta * p.cantidad) FILTER (WHERE p.precio_moneda = 'USD'), 0)::float AS valorizado_usd,
-        COALESCE(SUM(p.precio_venta * p.cantidad) FILTER (WHERE p.precio_moneda = 'ARS'), 0)::float AS valorizado_ars
+        COALESCE(SUM(p.precio_venta * p.cantidad) FILTER (WHERE p.precio_moneda = 'ARS'), 0)::float AS valorizado_ars,
+        COUNT(*) FILTER (
+          WHERE p.costo_moneda IN ('ARS','UYU')
+            AND (p.costo_tc IS NULL OR p.costo_tc = 0)
+            AND p.costo > 0
+        )::int AS sin_tc_count
     `;
 
     const filasQuery = `
@@ -668,6 +698,10 @@ router.get('/desglose', requireCapability('inventario.ver_costos'), validate(que
         valorizado_ars: Number(tot.valorizado_ars || 0),
         margen_usd: Number(tot.valorizado_usd || 0) - Number(tot.inv_usd || 0),
         margen_ars: Number(tot.valorizado_ars || 0) - Number(tot.inv_ars || 0),
+        // 2026-08-01 (task #273): # productos ARS/UYU sin costo_tc — el
+        // frontend muestra banner "N productos sin TC — completá para
+        // incluirlos en el valorizado" (regla PO Q3 no-bloqueante).
+        sin_tc_count: Number(tot.sin_tc_count || 0),
       },
       filas: filasRes.rows.map(r => ({
         valor: r.valor,
@@ -1203,6 +1237,9 @@ router.get('/productos/:id/foto', async (req, res, next) => {
 const PRODUCTO_COLS = [
   'tipo_carga', 'clase_id', 'nombre', 'imei', 'gb', 'color', 'bateria',
   'categoria_id', 'deposito_id', 'proveedor', 'costo', 'costo_moneda',
+  // 2026-08-01 (task #273): costo_tc para convertir costos ARS/UYU → USD
+  // al vuelo en el KPI valorizado unificado. Ver query en /metricas.
+  'costo_tc',
   'precio_venta', 'precio_moneda', 'trackear_stock', 'cantidad', 'estado',
   'foto_data', 'foto_nombre', 'foto_tipo', 'foto_key', 'foto_size',
   'observaciones', 'condicion', 'oculto',
@@ -1965,6 +2002,9 @@ router.post('/productos/bulk', requireCapability('inventario.crear'), bulkLimite
       bateria:       'smallint', categoria_id: 'int',
       deposito_id:   'int',     proveedor:     'text',
       costo:         'numeric', costo_moneda:  'text',
+      // 2026-08-01 (task #273): costo_tc para conversión USD del stock
+      // cargado en pesos. Nullable — USD/USDT y legacy quedan NULL.
+      costo_tc:      'numeric',
       precio_venta:  'numeric', precio_moneda: 'text',
       trackear_stock:'boolean', cantidad:      'int',
       estado:        'text',    observaciones: 'text',

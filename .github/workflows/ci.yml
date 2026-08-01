@@ -274,6 +274,48 @@ jobs:
           NODE_ENV: test
         run: npx jest tests/nosuperuser-pool-real.test.js --runInBand
 
+      # ────────────────────────────────────────────────────────────────────
+      # 2026-08-01 (P0 lesson learned #274 / task #275):
+      #
+      # El step "Run migrations (as superuser)" arriba corre las migrations
+      # con role `ipro` que es SUPERUSER → bypasea RLS incluso con FORCE.
+      # En prod, migrations corren con `ipro_app` NOSUPERUSER SIN BYPASSRLS.
+      #
+      # Consecuencia: una migration con `SET LOCAL row_security = off` +
+      # UPDATE sobre tabla con FORCE ROW LEVEL SECURITY activo pasa CI y
+      # rompe prod (10h downtime 2026-08-01 desde PR #965).
+      #
+      # Este step cierra el gap: crea DB fresca, seta `ipro_app` como
+      # owner del schema, y corre TODAS las migrations desde cero como
+      # NOSUPERUSER. Si alguna usa un feature superuser-only (BYPASSRLS,
+      # ALTER SYSTEM, o `SET LOCAL row_security = off` contra tabla FORCE
+      # RLS), el step revienta con el mensaje exacto de Postgres.
+      #
+      # Ver `docs/RUNBOOK-migration-rls-force.md` para diagnóstico + fix.
+      # ────────────────────────────────────────────────────────────────────
+      - name: Migrations from-scratch as ipro_app NOSUPERUSER (owner-of-schema)
+        working-directory: backend
+        env:
+          PGPASSWORD: testpass
+        # Crea DB paralela, la deja owned por ipro_app, y corre migrations
+        # como ipro_app desde pgmigrations vacío. Debe pasar limpio.
+        run: |
+          set -e
+          echo "── Creando DB ipro_from_scratch y transfiriendo ownership a ipro_app ──"
+          psql -h localhost -U ipro -d postgres -v ON_ERROR_STOP=1 <<SQL
+          DROP DATABASE IF EXISTS ipro_from_scratch;
+          CREATE DATABASE ipro_from_scratch OWNER ipro_app;
+          SQL
+          # Setear default privileges de forma que las tablas creadas por
+          # ipro_app pertenezcan a ipro_app (owner) — replica prod donde
+          # ipro_app es el owner (y por lo tanto NO puede bypasear FORCE
+          # RLS con `SET LOCAL row_security = off`).
+          echo "── Verificando ipro_app es owner del schema public ──"
+          psql -h localhost -U ipro -d ipro_from_scratch -v ON_ERROR_STOP=1 -c "ALTER SCHEMA public OWNER TO ipro_app;"
+          psql -h localhost -U ipro -d ipro_from_scratch -v ON_ERROR_STOP=1 -c "GRANT SET ON PARAMETER app.current_tenant TO ipro_app;"
+          echo "── Corriendo migrations como ipro_app NOSUPERUSER ──"
+          DATABASE_URL="postgresql://ipro_app:ci_test_password_not_for_prod@localhost:5432/ipro_from_scratch" npm run migrate
+
   frontend-test:
     name: Frontend Tests
     runs-on: ubuntu-latest

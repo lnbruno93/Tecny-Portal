@@ -233,12 +233,17 @@ describe('money.js — assertMonedaValidaParaPais (helper)', () => {
 
 describe('POST /api/inventario/productos — país-aware moneda', () => {
   // Helper para crear el body con defaults sanos.
+  // 2026-08-01 (task #273): agregamos costo_tc por default (1500) para que
+  // el refine `refineCostoTcRequerido` NO rebote antes de llegar al
+  // assertMonedaValidaParaPais que estos tests están validando. Los tests
+  // que quieren ver ese assert PRIMERO necesitan que el TC ya esté OK.
   const productoBody = (overrides = {}) => ({
     nombre: 'F2 producto test ' + Math.random().toString(36).slice(2, 8),
     costo: 100,
     precio_venta: 200,
     cantidad: 1,
     categoria_id: catBaseAr,
+    costo_tc: 1500,
     ...overrides,
   });
 
