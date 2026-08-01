@@ -9,6 +9,13 @@ import EquiposUsadosContent from './EquiposUsadosContent';
 import { exportCsv } from '../lib/exportCsv';
 import { downloadBlob as downloadBlobShared } from '../lib/downloadBlob';
 import { readXlsxRows, writeXlsx } from '../lib/xlsx';
+// task #266: schema + helpers de plantilla compartidos con CompraProveedorModal.
+import {
+  PLANTILLA_HEADERS,
+  PLANTILLA_EJEMPLO,
+  descargarPlantillaXlsx as descargarPlantillaXlsxShared,
+  descargarPlantillaCsv as descargarPlantillaCsvShared,
+} from '../lib/stockPlantilla';
 import { mapStockRows, extractNewCatalogos, groupRowsByProveedor, buildBulkMovimientosPayload, findDuplicateImeis } from '../lib/importStock';
 // F3.d-3 (2026-07-09): removimos el import de `../lib/clasesProducto` — la
 // serie categorías reales cerró la transición a `clases_producto` (tabla
@@ -116,20 +123,11 @@ const TIPO_CARGA_OPTIONS = [
 const ESTADO_OPTIONS = Object.entries(ESTADO_DISPLAY).map(([v, m]) => ({ value: v, label: m.label }));
 
 // Encabezados EXACTOS de la planilla del negocio (misma base para importar y exportar).
-// 2026-07-25: última columna cambió de "ID DEPOSITO(SÓLO NÚMERO)" a
-// "DEPOSITO(nombre o ID)". El backend ya soportaba nombre pero el header
-// forzaba al operador a memorizar IDs. Ahora acepta nombre y auto-crea si
-// no existe (mismo patrón que CATEGORIA post-fix XLSX PR #876).
-const PLANTILLA_HEADERS = ['Nombre', 'GB(solo iph)', 'BATERIA(solo iph)', 'COLOR(solo iph)', 'COSTO',
-  'MONEDA COSTO(ARS/USD)', 'PRECIO', 'MONEDA PRECIO(ARS/USD)', 'IMEI(solo iph)', 'TIPO(unitario, stock)',
-  'CATEGORIA', 'PROVEEDOR', 'STOCK(solo acc)', 'DEPOSITO(nombre o ID)'];
-// Filas de ejemplo: un celular (IMEI, sin STOCK) y un accesorio (STOCK, sin IMEI).
-// 2026-07-25: cambiado deposito ejemplo de "1" (ID numérico) a "Principal"
-// (nombre) para reforzar que el nombre es aceptado + más intuitivo.
-const PLANTILLA_EJEMPLO = [
-  ['iPhone 15 Pro', '256', '92', 'Natural', '800', 'USD', '950', 'USD', '356938035643809', 'Unitario', 'iPhone Nuevo', 'Juan Distribuidor', '', 'Principal'],
-  ['Funda iPhone 15', '', '', '', '3', 'USD', '8', 'USD', '', 'stock', 'Accesorios', 'Mayorista Acc', '20', 'Principal'],
-];
+// 2026-07-31 (task #266): extraídos a `lib/stockPlantilla.js` para compartir
+// el mismo schema entre Inventario > Importar y Compras > Proveedores > Cargar
+// compra (pedido cliente Nook Tech — un solo XLSX, un solo formato).
+// Los helpers `descargarPlantillaXlsx` / `descargarPlantillaCsv` también viven
+// ahí (siguen accesibles vía import más abajo).
 
 // Parser CSV mínimo (soporta comillas, comas y saltos dentro de campos).
 // Salteamos la primera línea si es el hint `sep=,` que emite exportCsv para
@@ -821,12 +819,10 @@ export default function Inventario() {
     }
   }
 
-  function descargarPlantillaXlsx() {
-    downloadBlob(writeXlsx([PLANTILLA_HEADERS, ...PLANTILLA_EJEMPLO]), 'plantilla_stock.xlsx');
-  }
-  function descargarPlantillaCsv() {
-    exportCsv('plantilla_stock.csv', rowsToObjects(PLANTILLA_EJEMPLO), plantillaCols());
-  }
+  // task #266: delegado al helper compartido con CompraProveedorModal.
+  // Mantenemos aliases locales para no tocar los call sites (JSX abajo).
+  const descargarPlantillaXlsx = descargarPlantillaXlsxShared;
+  const descargarPlantillaCsv = descargarPlantillaCsvShared;
 
   function openImport() {
     setImportRows([]); setImportGroups([]); setImportError(''); setShowImport(true);

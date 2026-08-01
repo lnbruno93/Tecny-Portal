@@ -35,6 +35,12 @@ import TcWarning from './TcWarning';
 import CajaSelectHint from './CajaSelectHint';
 // 2026-06-29 Multi-país F3: dropdowns moneda gated por tenant.pais.
 import { useMonedasTenant } from '../lib/useMonedasTenant';
+// task #266: schema XLSX compartido con Inventario > Importar (mismo formato,
+// misma plantilla descargable). Reusa `mapStockRows` para el parse — así
+// cualquier XLSX que funciona en Inventario también funciona acá.
+import { descargarPlantillaXlsx } from '../lib/stockPlantilla';
+import { readXlsxRows } from '../lib/xlsx';
+import { mapStockRows } from '../lib/importStock';
 
 
 function todayISO() { return new Date().toLocaleDateString('sv'); }
@@ -151,6 +157,9 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
   // #H-12: si algún catálogo falla, mostramos banner ámbar (en vez de silenciar
   // el error y que el user vea selects vacíos sin entender por qué).
   const [catalogosError, setCatalogosError] = useState(null);
+  // task #266: ref al <input type="file"> oculto — lo dispara el botón
+  // "Importar XLSX" para abrir el file picker.
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     // 2026-07-31 (task #265): removida carga de `invApi.categorias()` — la
@@ -239,6 +248,86 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
       toast.success(`${parsed.length} fila${parsed.length > 1 ? 's' : ''} agregada${parsed.length > 1 ? 's' : ''} desde el portapapeles`);
     } catch (e) {
       toast.error('No se pudo leer el portapapeles · permitilo en el navegador');
+    }
+  }
+
+  // task #266: importar desde XLSX/CSV — mismo schema que Inventario >
+  // Importar. Popula el spreadsheet con las filas del archivo; el user
+  // puede editar antes de guardar (por eso NO submitea directo, a diferencia
+  // del flow de Inventario que va full-auto).
+  //
+  // Diferencias con Inventario > Importar:
+  //   · Acá el proveedor ya viene del contexto del modal (no se toma del
+  //     XLSX). Si el XLSX trae columna PROVEEDOR con valores distintos al
+  //     seleccionado, se ignoran silenciosamente (con toast informativo).
+  //   · Acá NO se crea la compra en el submit del import — solo se
+  //     poblan las filas. El user revisa y aprieta "Guardar compra".
+  //   · Categorías/depósitos que vengan por NOMBRE en el XLSX se resuelven
+  //     al `clase_id`/`deposito_id` del catálogo del tenant. Los que no
+  //     matchean quedan con warning (se pueden completar a mano en la fila).
+  async function handleImportXlsx(e) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // permite re-seleccionar el mismo archivo
+    if (!file) return;
+    const MAX_MB = 10;
+    if (file.size > MAX_MB * 1024 * 1024) {
+      toast.error(`El archivo supera ${MAX_MB} MB. Achicalo antes de importar.`);
+      return;
+    }
+    const isXlsx = /\.xlsx$/i.test(file.name);
+    if (!isXlsx) {
+      toast.error('Solo se acepta .xlsx. Descargá la plantilla del botón de al lado.');
+      return;
+    }
+    try {
+      const rows = await readXlsxRows(await file.arrayBuffer());
+      if (!rows || rows.length < 2) { toast.error('El archivo no tiene filas de datos.'); return; }
+      // mapStockRows resuelve categorías (clase_id) + depósitos por nombre
+      // usando los catálogos del tenant. No pasamos `proveedores` porque el
+      // proveedor viene del contexto del modal, no del XLSX.
+      const mapped = mapStockRows(rows, { depositos, proveedores: [], clases });
+      if (mapped.length === 0) { toast.error('No se encontraron filas con datos válidos.'); return; }
+      const validas = mapped.filter(m => !m.error);
+      const conError = mapped.length - validas.length;
+      if (validas.length === 0) {
+        toast.error(`Ninguna fila válida (${conError} con errores). Revisá el archivo.`);
+        return;
+      }
+      // Convertir cada fila mapeada al shape que usa el spreadsheet del modal.
+      // `mapStockRows` devuelve `{ body: { clase_id, nombre, imei, ... }, ...meta }`.
+      const nuevasFilas = validas.map(m => {
+        const b = m.body || {};
+        return {
+          ...mkRow(defs), // hereda defaults + _id + crear_stock
+          nombre:        b.nombre        ?? '',
+          imei:          b.imei          ?? '',
+          gb:            b.gb            ?? '',
+          color:         b.color         ?? '',
+          bateria:       b.bateria       != null ? String(b.bateria) : '',
+          clase_id:      b.clase_id      ?? defs.clase_id ?? '',
+          deposito_id:   b.deposito_id   ?? defs.deposito_id ?? '',
+          condicion:     b.condicion     ?? defs.condicion,
+          tipo_carga:    b.tipo_carga    ?? defs.tipo_carga,
+          cantidad:      b.cantidad      != null ? String(b.cantidad) : (defs.tipo_carga === 'unitario' ? '1' : ''),
+          costo:         b.costo         != null ? String(b.costo) : '',
+          costo_moneda:  b.costo_moneda  ?? defs.costo_moneda,
+          precio_venta:  b.precio_venta  != null ? String(b.precio_venta) : '',
+          precio_moneda: b.precio_moneda ?? defs.precio_moneda,
+          crear_stock:   true, // el import es explícitamente "cargar al stock"
+        };
+      });
+      // Reemplaza las filas vacías + agrega las importadas. Mantiene las
+      // filas usadas que el user pudiera haber tipeado antes de importar.
+      setRows(rs => {
+        const usadas = rs.filter(isUsedRow);
+        return [...usadas, ...nuevasFilas, ...Array.from({ length: 3 }, () => mkRow(defs))];
+      });
+      const msg = conError > 0
+        ? `${nuevasFilas.length} fila(s) importada(s) · ${conError} descartada(s) por error de formato`
+        : `${nuevasFilas.length} fila(s) importada(s) desde XLSX`;
+      toast.success(msg);
+    } catch (err) {
+      toast.error('No se pudo leer el Excel. ¿Es un .xlsx válido?');
     }
   }
 
@@ -491,6 +580,26 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
               Items · {rows.filter(isUsedRow).length} usadas / {rows.length} filas
             </div>
             <div className="flex-row u-gap-6">
+              {/* task #266: import XLSX + descarga plantilla. Mismo shape
+                  que Inventario > Importar (schema en lib/stockPlantilla.js). */}
+              {/* Input file oculto — se dispara desde el botón "Importar XLSX".
+                  Usamos u-display-none (utility CSS existente) en vez de style
+                  inline para pasar el check CSP inline-styles anti-regression. */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx"
+                onChange={handleImportXlsx}
+                className="u-display-none"
+              />
+              <button className="btn btn-sm" onClick={descargarPlantillaXlsx}
+                title="Descargá la plantilla XLSX (mismo formato que Inventario > Importar)">
+                <Icons.Download size={13} /> Plantilla .xlsx
+              </button>
+              <button className="btn btn-sm" onClick={() => fileInputRef.current?.click()}
+                title="Cargá filas desde un .xlsx (podés revisar antes de guardar)">
+                <Icons.Upload size={13} /> Importar XLSX
+              </button>
               <button className="btn btn-sm" onClick={pasteFromClipboard}
                 title="Pegá un bloque desde Excel · orden: Nombre · IMEI · GB · Color · Batería · Costo · Precio">
                 <Icons.Plus size={13} /> Pegar desde Excel
