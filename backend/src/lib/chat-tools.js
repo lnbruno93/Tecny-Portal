@@ -541,6 +541,12 @@ const handlers = {
 
       // B2B — movimientos_cc tipo='compra'. monto_total ya está en USD.
       // No tiene "estado cancelado", solo soft-delete.
+      //
+      // 2026-08-01 (task #270, bug Nook Tech): `AND venta_id IS NULL` excluye
+      // las filas "shadow" que `sincronizarCuentaCorriente` (ventaSync.js)
+      // crea al vender retail fiado — ese mov_cc solo linkea la deuda al
+      // cliente CC, la venta ya está contada como retail. Sumarla acá
+      // duplicaba count/ingresos del período.
       const { rows: b2bRows } = await client.query(
         `SELECT
            COUNT(*)::int                          AS b2b_count,
@@ -548,6 +554,7 @@ const handlers = {
          FROM movimientos_cc
          WHERE fecha >= $1 AND fecha <= $2
            AND tipo = 'compra'
+           AND venta_id IS NULL
            AND deleted_at IS NULL`,
         [desde, hasta]
       );
