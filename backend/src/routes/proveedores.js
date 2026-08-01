@@ -38,11 +38,6 @@ const PRODUCT_COL_TYPES = {
   gb: 'text', color: 'text', bateria: 'int',
   categoria_id: 'int', deposito_id: 'int', proveedor: 'text',
   costo: 'numeric', costo_moneda: 'text',
-  // 2026-08-01 (task #273): TC del costo. Se propaga desde `mov.tc` del
-  // movimiento de compra al crear productos con moneda local. El item
-  // puede overridear con `producto_stock.costo_tc` explícito si quiere
-  // un TC distinto al del movimiento (raro; caso: compra multi-moneda).
-  costo_tc: 'numeric',
   precio_venta: 'numeric', precio_moneda: 'text',
   trackear_stock: 'boolean', cantidad: 'int', estado: 'text',
   observaciones: 'text', condicion: 'text', oculto: 'boolean',
@@ -673,8 +668,6 @@ router.post('/movimientos', compraMovimientoLimiter, validate(createMovimientoPr
         const STOCK_COLS = [
           'tipo_carga', 'clase_id', 'nombre', 'imei', 'gb', 'color', 'bateria',
           'categoria_id', 'deposito_id', 'proveedor', 'costo', 'costo_moneda',
-          // 2026-08-01 (task #273): costo_tc propagado desde mov.tc.
-          'costo_tc',
           'precio_venta', 'precio_moneda', 'trackear_stock', 'cantidad', 'estado',
           'observaciones', 'condicion', 'oculto', 'proveedor_movimiento_id',
         ];
@@ -687,21 +680,6 @@ router.post('/movimientos', compraMovimientoLimiter, validate(createMovimientoPr
           if (col === 'condicion')               return ps.condicion ?? 'nuevo';
           if (col === 'oculto')                  return ps.oculto    ?? false;
           if (col === 'proveedor_movimiento_id') return mov.id;
-          // 2026-08-01 (task #273): resolver costo_tc con prioridad:
-          //   1) ps.costo_tc explícito del item (raro; override manual).
-          //   2) mov.tc del movimiento SI el costo del producto está en
-          //      la MISMA moneda local que el movimiento. Ej: compra ARS
-          //      con TC 1500 → productos ARS reciben costo_tc=1500 auto.
-          //   3) null (USD/USDT o incoherencia → sin TC, cae al warning
-          //      del Dashboard hasta que el operador lo complete).
-          if (col === 'costo_tc') {
-            if (ps.costo_tc != null && Number(ps.costo_tc) > 0) return Number(ps.costo_tc);
-            const cm = ps.costo_moneda;
-            if ((cm === 'ARS' || cm === 'UYU') && cm === moneda && mov.tc) {
-              return Number(mov.tc);
-            }
-            return null;
-          }
           return ps[col] ?? null;
         }));
         const prodRes = await client.query(

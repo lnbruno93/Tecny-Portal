@@ -139,36 +139,41 @@ function validarTc(items, pagos, tcVenta) {
 
 // Totales de una venta en USD (normalizados por TC). { totalUsd, gananciaUsd }
 //
-// 2026-08-01 (regla PO Lucas): el `vuelto` NO se descuenta de la ganancia.
-// Es puramente informativo — dinero que se entrega al cliente como cambio.
-// Solo genera un egreso de caja (via `syncVentaVuelto`) para reflejar la
-// salida física del efectivo, pero no impacta el KPI de rentabilidad de la
-// venta. El vuelto se muestra como línea aparte en el comprobante y en el
-// modal (screenshot Lautaro 2026-08-01), donde "Ganancia real" = "Ganancia
-// bruta" cuando el sobrepago del cliente coincide con el vuelto entregado
-// (caso típico: cliente paga u$s1000 por venta u$s990 + se le devuelve
-// u$s10 de vuelto → ganancia real = bruta = u$s15).
+// 2026-07-14 (bug reportado por Lucas): agregamos el descuento del `vuelto`
+// en el cálculo de gananciaUsd. Antes: se ignoraba → la ganancia_usd persistida
+// mentía cuando el operador daba vuelto (típicamente en ARS/UYU con TC distinto
+// al pago).
 //
-// Historia: PR #620 (2026-07-14) restaba el vuelto de gananciaUsd bajo la
-// premisa "el vuelto sale del comercio → resta ganancia". Lucas aclaró la
-// regla el 2026-08-01: el vuelto es solo devolución, no gasto. Este PR lo
-// revierte + migration backfill suma el vuelto ya restado a las ventas
-// históricas con vuelto_monto NOT NULL.
+// El vuelto convertido a USD se resta directamente de la ganancia — es dinero
+// que sale del comercio y va al cliente, no importa por qué. La conversión
+// usa `vuelto_tc` para ARS/UYU; USD/USDT usan tc=1.
 //
-// @param {object} [_vuelto] — DEPRECATED, ignorado. Se mantiene el
-//   parámetro en la firma por compat con callers (POST y PUT lo pasan aún
-//   para no cambiar todos los sites en un mismo PR). Prefijo `_` marca la
-//   intención de no-uso; ESLint no rebota.
-function calcularTotales(items, tc, _vuelto) {
+// @param {object} [vuelto] — { monto, moneda, tc } opcional. Si es null/undefined
+//   o falta alguno de los 3 campos requeridos, el vuelto se ignora en el cálculo
+//   (equivalente a "sin vuelto"). El schema Zod ya valida que si hay monto haya
+//   moneda + tc para monedas locales.
+function calcularTotales(items, tc, vuelto) {
   let totalUsd = 0, costoUsd = 0, comisionUsd = 0;
   for (const it of items) {
     totalUsd    += toUsd(it.precio_vendido * it.cantidad, it.moneda, tc);
     costoUsd    += toUsd(it.costo * it.cantidad, it.moneda, tc);
     comisionUsd += toUsd(it.comision, it.moneda, tc);
   }
+  // Vuelto convertido a USD. Si no hay vuelto o el shape es incompleto, es 0.
+  let vueltoUsd = 0;
+  if (vuelto && vuelto.monto != null && Number(vuelto.monto) > 0 && vuelto.moneda) {
+    const vuMonto = Number(vuelto.monto);
+    if (vuelto.moneda === 'USD' || vuelto.moneda === 'USDT') {
+      vueltoUsd = vuMonto;
+    } else if (vuelto.tc != null && Number(vuelto.tc) > 0) {
+      vueltoUsd = toUsd(vuMonto, vuelto.moneda, Number(vuelto.tc));
+    }
+    // Si moneda es ARS/UYU y tc está ausente (no debería pasar por el schema
+    // Zod), preferimos ignorar el vuelto que persistir una ganancia con ruido.
+  }
   return {
     totalUsd: round2(totalUsd),
-    gananciaUsd: round2(totalUsd - costoUsd - comisionUsd),
+    gananciaUsd: round2(totalUsd - costoUsd - comisionUsd - vueltoUsd),
   };
 }
 
@@ -1528,12 +1533,15 @@ router.post('/', validate(createVentaSchema), async (req, res, next) => {
       }
     }
 
-    // 2026-08-01 (regla PO Lucas): el vuelto NO impacta la ganancia — es
-    // solo dinero devuelto al cliente. calcularTotales ignora el 3er param.
-    // Se sigue pasando null por consistencia con la firma; los campos
-    // vuelto_* se persisten aparte en el INSERT (row abajo) y generan
-    // egreso de caja via syncVentaVuelto — pero NO restan gananciaUsd.
-    const { totalUsd, gananciaUsd } = calcularTotales(b.items, b.tc_venta, null);
+    // 2026-07-14 (bug reportado por Lucas): pasamos el vuelto a calcularTotales
+    // para que se reste de gananciaUsd. Antes se ignoraba → ganancia_usd mentía
+    // cuando el operador daba vuelto.
+    const vueltoObj = b.vuelto_monto != null ? {
+      monto:  b.vuelto_monto,
+      moneda: b.vuelto_moneda,
+      tc:     b.vuelto_tc,
+    } : null;
+    const { totalUsd, gananciaUsd } = calcularTotales(b.items, b.tc_venta, vueltoObj);
 
     // #509 — vendedor_nombre es opcional al alta: normalizamos '' → null para
     // consistencia con el PATCH focalizado (que hace lo mismo). Si no viene, el
@@ -1700,11 +1708,20 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
         .filter(x => x != null);
       await revertirCanjesDeVenta(client, id, { preserveProductoIds });
 
-      // 2026-08-01 (regla PO Lucas): el vuelto NO impacta gananciaUsd —
-      // es solo dinero devuelto al cliente. calcularTotales ignora el 3er
-      // param. Los campos vuelto_* se persisten aparte + generan egreso
-      // de caja via syncVentaVuelto, pero no restan ganancia.
-      const { totalUsd, gananciaUsd } = calcularTotales(b.items, tc, null);
+      // 2026-07-14 (bug reportado por Lucas): resolver el vuelto efectivo
+      // para el cálculo de gananciaUsd. Si el body edita vuelto, usa esos
+      // valores; sino usa los persistidos en `before` (edit parcial no debe
+      // recomputar la ganancia sin considerar el vuelto que ya tenía).
+      const hasVuelto = 'vuelto_monto' in b || 'vuelto_moneda' in b || 'vuelto_caja_id' in b;
+      const effVueltoMonto  = hasVuelto ? b.vuelto_monto  : before.vuelto_monto;
+      const effVueltoMoneda = hasVuelto ? b.vuelto_moneda : before.vuelto_moneda;
+      const effVueltoTc     = ('vuelto_tc' in b)          ? b.vuelto_tc      : before.vuelto_tc;
+      const vueltoObj = effVueltoMonto != null ? {
+        monto:  effVueltoMonto,
+        moneda: effVueltoMoneda,
+        tc:     effVueltoTc,
+      } : null;
+      const { totalUsd, gananciaUsd } = calcularTotales(b.items, tc, vueltoObj);
       const { estado, etiqueta_id, garantia_id, cliente_id, cliente_cc_id, cliente_nombre, notas, hora, vendedor_nombre } = b;
       // #509 — vendedor_nombre: COALESCE-based (undefined = keep, null/string = set).
       // Para "borrar" el override usar el PATCH focalizado.
@@ -1774,18 +1791,28 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
     await syncVentaCaja(client, rows[0], req.user.id);
     // 2026-07-13 (feature vuelto): mismo patrón que fullEdit — solo tocamos
     // si el body trajo alguno de los 3 campos.
-    // 2026-08-01 (regla PO Lucas): el vuelto NO impacta ganancia_usd, así
-    // que el UPDATE ya NO recomputa la ganancia — solo persiste los 4
-    // campos vuelto_*. El egreso de caja del vuelto sigue vía
-    // syncVentaVuelto (línea abajo), pero eso es contable de caja, no
-    // KPI de rentabilidad de la venta.
+    // 2026-07-14: también persistir vuelto_tc + recomputar ganancia_usd
+    // (el vuelto afecta la ganancia; sin este recomputo, cambiar el vuelto
+    // en un edit "solo metadatos" dejaría la ganancia obsoleta).
     const hasVueltoInBody = 'vuelto_monto' in b || 'vuelto_moneda' in b || 'vuelto_caja_id' in b;
     if (hasVueltoInBody) {
+      // Cargar items persistidos para recomputar ganancia con el vuelto nuevo.
+      const { rows: itemsDb } = await client.query(
+        `SELECT precio_vendido, costo, cantidad, moneda, comision
+           FROM venta_items WHERE venta_id = $1`, [id]
+      );
+      const vueltoObj = b.vuelto_monto != null ? {
+        monto:  b.vuelto_monto,
+        moneda: b.vuelto_moneda,
+        tc:     b.vuelto_tc,
+      } : null;
+      const { totalUsd: _totalRecomputed, gananciaUsd: gananciaRecomputed } =
+        calcularTotales(itemsDb, before.tc_venta, vueltoObj);
       const { rows: upd } = await client.query(
         `UPDATE ventas
-            SET vuelto_monto = $1, vuelto_moneda = $2, vuelto_caja_id = $3, vuelto_tc = $4
-          WHERE id = $5 RETURNING *`,
-        [b.vuelto_monto ?? null, b.vuelto_moneda ?? null, b.vuelto_caja_id ?? null, b.vuelto_tc ?? null, id]
+            SET vuelto_monto = $1, vuelto_moneda = $2, vuelto_caja_id = $3, vuelto_tc = $4, ganancia_usd = $5
+          WHERE id = $6 RETURNING *`,
+        [b.vuelto_monto ?? null, b.vuelto_moneda ?? null, b.vuelto_caja_id ?? null, b.vuelto_tc ?? null, gananciaRecomputed, id]
       );
       rows[0] = upd[0];
     }

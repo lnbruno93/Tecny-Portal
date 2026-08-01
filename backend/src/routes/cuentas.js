@@ -914,10 +914,6 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
           const STOCK_COLS = [
             'tipo_carga', 'clase_id', 'nombre', 'imei', 'gb', 'color', 'bateria',
             'categoria_id', 'deposito_id', 'proveedor', 'costo', 'costo_moneda',
-            // 2026-08-01 (task #273): costo_tc para mercaderia_recibida
-            // (cliente entrega productos como pago). Se propaga desde el
-            // TC del movimiento (mov.tc) si moneda coincide.
-            'costo_tc',
             'precio_venta', 'precio_moneda', 'trackear_stock', 'cantidad', 'estado',
             'observaciones', 'condicion', 'oculto', 'movimiento_cc_id',
           ];
@@ -926,7 +922,6 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
             gb: 'text', color: 'text', bateria: 'int',
             categoria_id: 'int', deposito_id: 'int', proveedor: 'text',
             costo: 'numeric', costo_moneda: 'text',
-            costo_tc: 'numeric',
             precio_venta: 'numeric', precio_moneda: 'text',
             trackear_stock: 'boolean', cantidad: 'int', estado: 'text',
             observaciones: 'text', condicion: 'text', oculto: 'boolean',
@@ -940,15 +935,6 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
             if (col === 'condicion')        return ps.condicion ?? 'nuevo';
             if (col === 'oculto')           return ps.oculto    ?? false;
             if (col === 'movimiento_cc_id') return mov.id;
-            // 2026-08-01 (task #273): costo_tc — override > mov.tc > null.
-            if (col === 'costo_tc') {
-              if (ps.costo_tc != null && Number(ps.costo_tc) > 0) return Number(ps.costo_tc);
-              const cm = ps.costo_moneda;
-              if ((cm === 'ARS' || cm === 'UYU') && cm === moneda && tc) {
-                return Number(tc);
-              }
-              return null;
-            }
             return ps[col] ?? null;
           }));
           const prodRes = await client.query(

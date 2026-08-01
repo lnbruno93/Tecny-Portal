@@ -44,13 +44,6 @@ const baseProducto = z.object({
   proveedor:      z.string().trim().max(200).optional().nullable(),
   costo:          z.coerce.number().min(0).default(0),
   costo_moneda:   MonedaEnum.default('USD'),
-  // 2026-08-01 (task #273, regla PO Lucas): TC del costo cuando la
-  // moneda es local (ARS/UYU). Permite unificar el KPI valorizado en USD
-  // y sumar todo el stock aunque se haya comprado en pesos. Refine abajo
-  // exige TC positivo cuando la moneda lo requiere. USD/USDT lo ignoran
-  // (siempre null). Productos legacy sin TC (backfill NULL) siguen
-  // aceptándose por backward compat — el KPI los excluye + warning en UI.
-  costo_tc:       z.coerce.number().positive('El TC del costo debe ser mayor a 0').optional().nullable(),
   precio_venta:   z.coerce.number().min(0).default(0),
   precio_moneda:  MonedaEnum.default('USD'),
   trackear_stock: z.boolean().default(true),
@@ -100,40 +93,11 @@ const SLUGS_UNITARIOS = new Set(['celular_sellado', 'celular_usado', 'ipads']);
 // del tenant) esa función la cumple `clase_id`, y `categoria_id` queda
 // como agrupación libre auxiliar opcional.
 
-// 2026-08-01 (task #273): refine costo_tc — obligatorio cuando la
-// moneda del costo es local (ARS/UYU). Comportamiento:
-//   - costo_moneda='USD'/'USDT' → costo_tc puede ser null (ignorado).
-//   - costo_moneda='ARS'/'UYU' + costo>0 → costo_tc obligatorio (> 0).
-//   - costo_moneda='ARS'/'UYU' + costo=0 → costo_tc opcional (nada que
-//     convertir, típico de items manuales/servicio sin costo).
-// Aplicado a create + update (partial también lo evalúa cuando ambos
-// campos están presentes) y a productoEnBulk (import XLSX).
-function refineCostoTcRequerido(d) {
-  const mLocal = d.costo_moneda === 'ARS' || d.costo_moneda === 'UYU';
-  const costoPositivo = Number(d.costo) > 0;
-  if (!mLocal || !costoPositivo) return true;
-  return d.costo_tc != null && Number(d.costo_tc) > 0;
-}
-const costoTcRequeridoMsg = 'Costo en ARS/UYU requiere TC del costo (> 0) para convertir a USD';
-
 // .strict(): un campo extra (typo del cliente, JS field leak) da 400 explícito
 // en vez de pasar silencioso y persistirse sin querer / ser ignorado.
-const createProductoSchema = baseProducto.strict()
-  .refine(refineCostoTcRequerido, { message: costoTcRequeridoMsg, path: ['costo_tc'] });
+const createProductoSchema = baseProducto.strict();
 
-// Update partial: si el body toca `costo_moneda` o `costo`, revalidamos.
-// Si el body NO toca ninguno de los 2, no aplicamos el refine (edición
-// parcial de otros campos no debe rebotar por un TC que ya está en DB).
-const updateProductoSchema = baseProducto.strict().partial()
-  .refine(
-    (d) => {
-      // Solo aplicamos si el partial edita costo o costo_moneda.
-      const toca = 'costo' in d || 'costo_moneda' in d || 'costo_tc' in d;
-      if (!toca) return true;
-      return refineCostoTcRequerido(d);
-    },
-    { message: costoTcRequeridoMsg, path: ['costo_tc'] }
-  );
+const updateProductoSchema = baseProducto.strict().partial(); // partial → coherencia se chequea al leer DB
 
 // Carga masiva: array de productos (sin foto para mantener el payload acotado).
 // Refine: coherencia por lote (sin IMEIs duplicados).

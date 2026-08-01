@@ -18,8 +18,7 @@ vi.mock('./exportCsv', () => ({
 }));
 
 describe('stockPlantilla — schema canónico compartido', () => {
-  it('PLANTILLA_HEADERS tiene los 15 encabezados esperados en orden', () => {
-    // task #273 (2026-08-01): +1 columna "TC COSTO" entre MONEDA COSTO y PRECIO.
+  it('PLANTILLA_HEADERS tiene los 14 encabezados esperados en orden', () => {
     expect(PLANTILLA_HEADERS).toEqual([
       'Nombre',
       'GB(solo iph)',
@@ -27,7 +26,6 @@ describe('stockPlantilla — schema canónico compartido', () => {
       'COLOR(solo iph)',
       'COSTO',
       'MONEDA COSTO(ARS/USD)',
-      'TC COSTO(si moneda ARS/UYU)',
       'PRECIO',
       'MONEDA PRECIO(ARS/USD)',
       'IMEI(solo iph)',

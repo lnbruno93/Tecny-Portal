@@ -82,32 +82,12 @@ const logger = require('./logger');
 //
 // Ya no necesitamos el LEFT JOIN a clases_producto en METRICAS_SQL — los
 // buckets equipos/accesorios que usaban slug_legacy IN (...) desaparecieron.
-// 2026-08-01 (task #273): expresión CASE para unificar cualquier costo
-// (USD/USDT tal cual, ARS/UYU con costo_tc). ARS/UYU sin costo_tc queda
-// en 0 y se cuenta aparte en sin_tc_count para el warning del Dashboard.
-// Mismo pattern que /desglose (backend/src/routes/inventario.js).
-const CASE_COSTO_USD_UNIF_M = `
-  CASE
-    WHEN costo_moneda IN ('USD','USDT') THEN costo
-    WHEN costo_moneda IN ('ARS','UYU') AND costo_tc IS NOT NULL AND costo_tc > 0
-      THEN costo / costo_tc
-    ELSE 0
-  END
-`;
 const METRICAS_SQL = `
   SELECT
     COUNT(*)                          FILTER (WHERE estado = 'en_tecnico')                                          AS en_tecnico_count,
-    COALESCE(SUM(${CASE_COSTO_USD_UNIF_M}) FILTER (WHERE estado = 'en_tecnico'), 0)                                 AS en_tecnico_usd,
+    COALESCE(SUM(costo)               FILTER (WHERE estado = 'en_tecnico' AND costo_moneda = 'USD'), 0)             AS en_tecnico_usd,
     COALESCE(SUM(costo)               FILTER (WHERE estado = 'en_tecnico' AND costo_moneda = 'ARS'), 0)             AS en_tecnico_ars,
-    COALESCE(SUM(cantidad)            FILTER (WHERE estado = 'disponible'), 0)                                      AS stock_disponible,
-    -- Contador para el banner warning del Dashboard: productos con costo
-    -- en moneda local pero sin costo_tc → excluidos del inv_usd unificado.
-    COUNT(*) FILTER (
-      WHERE estado = 'disponible'
-        AND costo_moneda IN ('ARS','UYU')
-        AND (costo_tc IS NULL OR costo_tc = 0)
-        AND costo > 0
-    )                                                                                                              AS sin_tc_count
+    COALESCE(SUM(cantidad)            FILTER (WHERE estado = 'disponible'), 0)                                      AS stock_disponible
   FROM productos
   WHERE deleted_at IS NULL
 `;
@@ -139,18 +119,7 @@ const INV_POR_CLASE_SQL = `
     SELECT
       p.clase_id,
       COALESCE(SUM(p.cantidad)                                                            , 0)::int AS count,
-      -- 2026-08-01 (task #273): usd UNIFICADO (USD/USDT tal cual +
-      -- ARS/UYU con costo_tc convertido). Espeja el CASE de METRICAS_SQL.
-      -- Productos ARS/UYU sin costo_tc quedan en 0 (contados aparte en
-      -- sin_tc_count del top-level METRICAS_SQL).
-      COALESCE(SUM(
-        (CASE
-           WHEN p.costo_moneda IN ('USD','USDT') THEN p.costo
-           WHEN p.costo_moneda IN ('ARS','UYU') AND p.costo_tc IS NOT NULL AND p.costo_tc > 0
-             THEN p.costo / p.costo_tc
-           ELSE 0
-         END) * p.cantidad
-      ), 0)                                                                                          AS usd,
+      COALESCE(SUM(p.costo * p.cantidad) FILTER (WHERE p.costo_moneda = 'USD')            , 0)      AS usd,
       COALESCE(SUM(p.costo * p.cantidad) FILTER (WHERE p.costo_moneda = 'ARS')            , 0)      AS ars
     FROM productos p
     WHERE p.tenant_id = $1
