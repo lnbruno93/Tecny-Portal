@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { blockInvalidNumberKeys, numberInputProps, normalizeDecimal } from './inputUtils';
+import { blockInvalidNumberKeys, numberInputProps, normalizeDecimal, preventScannerSubmit } from './inputUtils';
 
 function mkEvent(key, opts = {}) {
   return { key, ctrlKey: false, metaKey: false, preventDefault: vi.fn(), ...opts };
@@ -107,5 +107,104 @@ describe('normalizeDecimal', () => {
     // Number('') → 0 en JS (no NaN). Si querés distinguir "vacío" de "0" usá
     // !value antes de parsear. Documentamos:
     expect(Number(normalizeDecimal(''))).toBe(0);
+  });
+});
+
+// task #268 (bug Nook Tech): anti-submit por scanner USB HID.
+describe('preventScannerSubmit', () => {
+  function mkEnterEvent(overrides = {}) {
+    const target = overrides.target || { tagName: 'INPUT', type: 'text', form: null };
+    return {
+      key: 'Enter',
+      ctrlKey: false, metaKey: false, shiftKey: false, altKey: false,
+      preventDefault: vi.fn(),
+      target,
+      ...overrides,
+    };
+  }
+
+  it('previene default si Enter viene de un INPUT', () => {
+    const e = mkEnterEvent();
+    preventScannerSubmit(e);
+    expect(e.preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it.each([['Tab'], ['a'], ['1'], ['Backspace']])('no interfiere con %s', (key) => {
+    const e = mkEnterEvent({ key });
+    preventScannerSubmit(e);
+    expect(e.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('NO previene si Enter viene de TEXTAREA (nueva línea legítima)', () => {
+    const e = mkEnterEvent({ target: { tagName: 'TEXTAREA', form: null } });
+    preventScannerSubmit(e);
+    expect(e.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('NO previene si Enter viene de BUTTON (click intencional)', () => {
+    const e = mkEnterEvent({ target: { tagName: 'BUTTON', type: 'submit', form: null } });
+    preventScannerSubmit(e);
+    expect(e.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('NO previene si type=submit en input (submit intencional)', () => {
+    const e = mkEnterEvent({ target: { tagName: 'INPUT', type: 'submit', form: null } });
+    preventScannerSubmit(e);
+    expect(e.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['ctrlKey', { ctrlKey: true }],
+    ['metaKey', { metaKey: true }],
+    ['shiftKey', { shiftKey: true }],
+    ['altKey', { altKey: true }],
+  ])('NO previene con %s (atajos del user)', (_, mods) => {
+    const e = mkEnterEvent(mods);
+    preventScannerSubmit(e);
+    expect(e.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('mueve foco al siguiente input del form (efecto Tab)', () => {
+    // Setup DOM real con form + 2 inputs
+    document.body.innerHTML = `
+      <form id="f">
+        <input id="a" />
+        <input id="b" />
+        <input id="c" />
+      </form>
+    `;
+    const a = document.getElementById('a');
+    const b = document.getElementById('b');
+    const focusSpy = vi.spyOn(b, 'focus');
+    const e = mkEnterEvent({ target: a });
+    // JSDOM: target.form es el form, no null
+    Object.defineProperty(e, 'target', { value: a, writable: true });
+    preventScannerSubmit(e);
+    expect(e.preventDefault).toHaveBeenCalledOnce();
+    expect(focusSpy).toHaveBeenCalledOnce();
+  });
+
+  it('salta inputs disabled al buscar el siguiente', () => {
+    document.body.innerHTML = `
+      <form id="f">
+        <input id="a" />
+        <input id="b" disabled />
+        <input id="c" />
+      </form>
+    `;
+    const a = document.getElementById('a');
+    const c = document.getElementById('c');
+    const focusSpy = vi.spyOn(c, 'focus');
+    const e = { key: 'Enter', ctrlKey: false, metaKey: false, shiftKey: false, altKey: false, preventDefault: vi.fn(), target: a };
+    preventScannerSubmit(e);
+    expect(focusSpy).toHaveBeenCalledOnce();
+  });
+
+  it('no rompe si es el último input (no hay siguiente)', () => {
+    document.body.innerHTML = `<form id="f"><input id="a" /></form>`;
+    const a = document.getElementById('a');
+    const e = { key: 'Enter', ctrlKey: false, metaKey: false, shiftKey: false, altKey: false, preventDefault: vi.fn(), target: a };
+    expect(() => preventScannerSubmit(e)).not.toThrow();
+    expect(e.preventDefault).toHaveBeenCalledOnce();
   });
 });
