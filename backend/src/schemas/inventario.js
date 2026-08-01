@@ -291,6 +291,21 @@ const queryUsadosSchema = z.object({
   { message: 'La fecha "desde" debe ser anterior o igual a "hasta"', path: ['desde'] }
 );
 
+// 2026-08-01 (pedido cliente Nook Tech / task inventario-agrupado):
+// vista agrupada de Inventario — mismos filtros que /productos pero el
+// backend hace GROUP BY (clase_id, nombre, gb) y devuelve grupos con
+// counts por estado. Reduce ~5-10× el largo visual de la lista para
+// tenants con muchos equipos del mismo modelo (ej. 8× iPhone 15 Pro
+// 256GB con distintos colores/batería → 1 fila con "(8 unidades)").
+//
+// Regla de agrupamiento (PO Lucas 2026-08-01): agrupar por Categoría +
+// Nombre + GB. Color y batería NO agrupan — un "15 Pro 256GB Silver
+// 93%" se agrupa con "15 Pro 256GB Blue 98%" pero NO con "15 Pro 128GB
+// Silver 93%" (GB distinto → grupo distinto). Racional: el cliente
+// final acepta cualquier color/batería dentro del mismo modelo, pero
+// GB es materialidad del producto (precio + demanda).
+const queryProductosAgrupadoSchema = queryProductosSchema;
+
 module.exports = {
   nombreSchema,
   nombresBulkSchema,
@@ -299,6 +314,7 @@ module.exports = {
   updateProductoSchema,
   bulkProductoSchema,
   queryProductosSchema,
+  queryProductosAgrupadoSchema,
   queryUsadosSchema,
   queryDesgloseSchema,
   DIMENSIONES_DESGLOSE,

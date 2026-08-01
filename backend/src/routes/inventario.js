@@ -39,6 +39,7 @@ const {
   updateProductoSchema,
   bulkProductoSchema,
   queryProductosSchema,
+  queryProductosAgrupadoSchema,  // 2026-08-01: vista agrupada por Categoría + Nombre + GB
   queryUsadosSchema,         // 2026-07-11: tab "Equipos usados" en Inventario
   queryDesgloseSchema,
   SLUGS_UNITARIOS,           // F3.d-3: para validarUnitarioCoherente post-derive
@@ -869,6 +870,221 @@ router.get('/productos', validate(queryProductosSchema, 'query'), async (req, re
     const rows = canSeeCostos
       ? dataRes.rows
       : dataRes.rows.map(({ costo, costo_moneda, ...rest }) => rest);
+
+    res.json(paginatedResponse(rows, parseInt(countRes.rows[0].count), { page, limit }));
+  } catch (err) { next(err); }
+});
+
+/**
+ * GET /api/inventario/productos/agrupado — Vista agrupada del inventario.
+ *
+ * 2026-08-01 (pedido cliente Nook Tech): reduce el largo visual de la
+ * lista para tenants con muchos equipos del mismo modelo. Un tenant que
+ * tiene 8× iPhone 15 Pro 256GB en distintos colores/batería ve 1 fila
+ * "(8 unidades)" en vez de 8 filas.
+ *
+ * **Regla de agrupamiento** (PO Lucas 2026-08-01): agrupar por
+ * (clase_id, nombre, gb). Color y batería NO agrupan — un "15 Pro 256
+ * Silver 93%" se agrupa con "15 Pro 256 Blue 98%" (mismo modelo), pero
+ * NO con "15 Pro 128 Silver 93%" (GB distinto → grupo distinto).
+ *
+ * Racional: el cliente final acepta cualquier color/batería dentro del
+ * mismo modelo, pero GB es materialidad del producto (precio + demanda
+ * distintos).
+ *
+ * **Filtros aceptados**: mismos que /productos (buscar, vista, drill-
+ * down, categoría, depósito, condición, fechas, clase_id). El WHERE se
+ * arma con la misma lógica para consistencia — cualquier cambio en
+ * /productos debe replicarse acá también hasta que refactoreemos a un
+ * helper compartido.
+ *
+ * **Paginación**: los `limit`/`page` operan sobre GRUPOS, no productos.
+ * Un tenant con 500 productos que se agrupan en 30 grupos, page=1
+ * limit=100 devuelve los 30 grupos (una sola página).
+ *
+ * **Response shape**:
+ *   {
+ *     data: [{
+ *       key: "iphone-nuevo::iPhone 15 Pro::256",
+ *       clase_id, clase_nombre, clase_emoji,
+ *       nombre, gb,
+ *       count_total, count_disponible, count_vendido,
+ *       count_reservado, count_en_tecnico,
+ *       stock_total,
+ *       precio_min, precio_max,
+ *       costo_min, costo_max,       (omitidos si !hasCap ver_costos)
+ *       bateria_min, bateria_max
+ *     }],
+ *     pagination: { page, limit, total, pages }
+ *   }
+ *
+ * Para EXPANDIR un grupo (traer las filas individuales), el frontend
+ * hace un GET /productos con `?clase_id=X&nombre=Y&gb=Z` — el endpoint
+ * existente ya soporta esos 3 filtros exactos como drill-down.
+ */
+router.get('/productos/agrupado', validate(queryProductosAgrupadoSchema, 'query'), async (req, res, next) => {
+  try {
+    // Reutilizamos la MISMA lógica de WHERE que /productos para consistencia
+    // de filtros. Cualquier cambio a los filtros de /productos DEBE replicarse
+    // acá hasta que refactoreemos a un helper compartido `buildProductosWhere`.
+    const { buscar, clase_id, clase, estado, categoria_id, deposito_id, solo_stock,
+            nombre, proveedor, gb, color, vista, condicion, desde, hasta } = req.query;
+
+    const conditions = ['p.deleted_at IS NULL'];
+    const params = [];
+    if (clase_id)     { params.push(clase_id);     conditions.push(`p.clase_id = $${params.length}`); }
+    else if (clase)   {
+      params.push(clase);
+      conditions.push(`EXISTS (
+        SELECT 1 FROM clases_producto cpf
+         WHERE cpf.id = p.clase_id
+           AND cpf.slug_legacy = $${params.length}
+           AND cpf.deleted_at IS NULL
+      )`);
+    }
+    if (estado)       { params.push(estado);       conditions.push(`p.estado = $${params.length}`); }
+    if (categoria_id) { params.push(categoria_id); conditions.push(`p.categoria_id = $${params.length}`); }
+    if (deposito_id)  { params.push(deposito_id);  conditions.push(`p.deposito_id = $${params.length}`); }
+    if (condicion)    { params.push(condicion);    conditions.push(`p.condicion = $${params.length}`); }
+
+    const vistaEfectiva = vista || (solo_stock ? 'no_vendidos' : null);
+    if (vistaEfectiva === 'no_vendidos') {
+      conditions.push(`p.estado <> 'vendido' AND p.cantidad > 0 AND p.oculto = false`);
+    } else if (vistaEfectiva === 'no_vendidos_ocultos') {
+      conditions.push(`p.estado <> 'vendido' AND p.cantidad > 0 AND p.oculto = true`);
+    } else if (vistaEfectiva === 'ocultos') {
+      conditions.push(`p.oculto = true`);
+    } else if (vistaEfectiva === 'vendidos') {
+      conditions.push(`p.estado = 'vendido' AND p.oculto = false`);
+      if (desde || hasta) {
+        const desdeIdx = desde ? (params.push(desde), params.length) : null;
+        const hastaIdx = hasta ? (params.push(hasta), params.length) : null;
+        const fechaRetail = [
+          desdeIdx ? `v.fecha >= $${desdeIdx}` : null,
+          hastaIdx ? `v.fecha <= $${hastaIdx}` : null,
+        ].filter(Boolean).join(' AND ');
+        const fechaB2B = [
+          desdeIdx ? `mc.fecha >= $${desdeIdx}` : null,
+          hastaIdx ? `mc.fecha <= $${hastaIdx}` : null,
+        ].filter(Boolean).join(' AND ');
+        conditions.push(`(
+          EXISTS (
+            SELECT 1 FROM venta_items vi
+            JOIN ventas v ON v.id = vi.venta_id
+            WHERE vi.producto_id = p.id
+              AND v.deleted_at IS NULL
+              AND ${fechaRetail}
+          )
+          OR EXISTS (
+            SELECT 1 FROM items_movimiento_cc ic
+            JOIN movimientos_cc mc ON mc.id = ic.movimiento_cc_id
+            WHERE ic.producto_id = p.id
+              AND mc.tipo = 'compra'
+              AND mc.deleted_at IS NULL
+              AND ${fechaB2B}
+          )
+        )`);
+      }
+    } else if (vistaEfectiva === 'todos_visibles') {
+      conditions.push(`p.oculto = false`);
+    }
+
+    if (nombre)    { params.push(nombre);    conditions.push(`p.nombre = $${params.length}`); }
+    if (proveedor) { params.push(proveedor); conditions.push(`TRIM(COALESCE(p.proveedor, '')) = $${params.length}`); }
+    if (gb)        { params.push(gb);        conditions.push(`TRIM(COALESCE(p.gb, '')) = $${params.length}`); }
+    if (color)     { params.push(color);     conditions.push(`TRIM(COALESCE(p.color, '')) = $${params.length}`); }
+
+    // Búsqueda: reusamos buildSearchClause LEGACY (no ranking) porque en
+    // vista agrupada no tiene sentido ordenar por score de búsqueda —
+    // los grupos se ordenan alfabéticamente por nombre. Ranking está pensado
+    // para lista plana. El WHERE de búsqueda sigue aplicando igual.
+    if (buscar) {
+      const searchClause = buildSearchClause(buscar, ['p.nombre', 'p.imei', 'p.color', 'p.gb'], params);
+      if (searchClause) conditions.push(searchClause);
+    }
+
+    const where = conditions.join(' AND ');
+    const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 100 });
+
+    // COUNT total de GRUPOS (no de productos individuales). Wrap para
+    // contar filas del GROUP BY.
+    const countQuery = `
+      SELECT COUNT(*) FROM (
+        SELECT 1 FROM productos p
+        WHERE ${where}
+        GROUP BY p.clase_id, p.nombre, COALESCE(p.gb, '')
+      ) grupos
+    `;
+
+    // DATA query: GROUP BY con COUNT FILTER (Postgres nativo) para counts
+    // por estado. LEFT JOIN a clases_producto para traer nombre + emoji.
+    // COALESCE en gb para agrupar "" y NULL juntos como '' (Sin GB).
+    //
+    // NOTA sobre precio/costo: MIN/MAX son útiles para mostrar rangos ej.
+    // "$1200-$1400". Si min=max, el frontend muestra un solo valor.
+    // Bateria idem: MIN/MAX para rango "92%-100%" o "100%" si son iguales.
+    const limitIdx = params.length + 1;
+    const offsetIdx = params.length + 2;
+    const dataQuery = `
+      SELECT
+        p.clase_id,
+        cp.nombre AS clase_nombre,
+        cp.emoji  AS clase_emoji,
+        p.nombre,
+        COALESCE(p.gb, '') AS gb,
+        COUNT(*)::int                                        AS count_total,
+        COUNT(*) FILTER (WHERE p.estado = 'disponible')::int AS count_disponible,
+        COUNT(*) FILTER (WHERE p.estado = 'vendido')::int    AS count_vendido,
+        COUNT(*) FILTER (WHERE p.estado = 'reservado')::int  AS count_reservado,
+        COUNT(*) FILTER (WHERE p.estado = 'en_tecnico')::int AS count_en_tecnico,
+        COALESCE(SUM(p.cantidad), 0)::int                    AS stock_total,
+        MIN(p.precio_venta)::numeric AS precio_min,
+        MAX(p.precio_venta)::numeric AS precio_max,
+        MIN(p.costo)::numeric        AS costo_min,
+        MAX(p.costo)::numeric        AS costo_max,
+        MIN(p.bateria)::int          AS bateria_min,
+        MAX(p.bateria)::int          AS bateria_max
+      FROM productos p
+      LEFT JOIN clases_producto cp ON cp.id = p.clase_id AND cp.deleted_at IS NULL
+      WHERE ${where}
+      GROUP BY p.clase_id, cp.nombre, cp.emoji, p.nombre, COALESCE(p.gb, '')
+      ORDER BY p.nombre, COALESCE(p.gb, '') NULLS LAST
+      LIMIT $${limitIdx} OFFSET $${offsetIdx}
+    `;
+
+    const [countRes, dataRes] = await db.withTenant(req.tenantId, async (client) => {
+      const cr = await client.query(countQuery, params);
+      const dr = await client.query(dataQuery, [...params, limit, offset]);
+      return [cr, dr];
+    });
+
+    const canSeeCostos = await hasCapability(req.user, 'inventario.ver_costos');
+    const rows = dataRes.rows.map(r => {
+      const key = `${r.clase_id || 'sin-cat'}::${r.nombre}::${r.gb || 'sin-gb'}`;
+      const base = {
+        key,
+        clase_id:         r.clase_id,
+        clase_nombre:     r.clase_nombre || 'Sin categoría',
+        clase_emoji:      r.clase_emoji || '📦',
+        nombre:           r.nombre,
+        gb:               r.gb || null,   // '' → null en response (más limpio)
+        count_total:      r.count_total,
+        count_disponible: r.count_disponible,
+        count_vendido:    r.count_vendido,
+        count_reservado:  r.count_reservado,
+        count_en_tecnico: r.count_en_tecnico,
+        stock_total:      r.stock_total,
+        precio_min:       r.precio_min != null ? Number(r.precio_min) : null,
+        precio_max:       r.precio_max != null ? Number(r.precio_max) : null,
+        bateria_min:      r.bateria_min,
+        bateria_max:      r.bateria_max,
+      };
+      if (canSeeCostos) {
+        base.costo_min = r.costo_min != null ? Number(r.costo_min) : null;
+        base.costo_max = r.costo_max != null ? Number(r.costo_max) : null;
+      }
+      return base;
+    });
 
     res.json(paginatedResponse(rows, parseInt(countRes.rows[0].count), { page, limit }));
   } catch (err) { next(err); }
