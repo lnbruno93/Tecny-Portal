@@ -10,6 +10,9 @@ import { useConfirm } from '../components/ConfirmModal';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import useLoadingAction from '../lib/useLoadingAction'; // #F-2
 import useModal from '../lib/useModal';
+// task #267 (bug Nook Tech): confirm-on-close + auto-save draft para que
+// no se pierda la carga del modal Nueva venta ante cierre accidental.
+import { useVentaDraft } from '../lib/useVentaDraft';
 import TcWarning from '../components/TcWarning';
 import Badge from '../components/Badge';
 import { SkeletonRow } from '../components/Skeleton';
@@ -248,11 +251,21 @@ export default function Ventas() {
   const garantiasModalRef = useRef(null);
   const etiquetasModalRef = useRef(null);
   const comprobModalRef = useRef(null);
-  useModal({ open: showVenta, onClose: () => setShowVenta(false), overlayRef: ventaModalRef });
+  // task #267: onClose de venta usa tryCloseVenta (definido más abajo)
+  // — confirm-on-close si hay data cargada, para evitar pérdida por
+  // ESC/overlay/X accidentales. Los otros modales del módulo NO lo
+  // necesitan (son forms cortos o no tienen data compleja).
+  useModal({ open: showVenta, onClose: () => tryCloseVentaRef.current?.(), overlayRef: ventaModalRef });
   useModal({ open: showRapida, onClose: () => setShowRapida(false), overlayRef: rapidaModalRef });
   useModal({ open: showGarantias, onClose: () => setShowGarantias(false), overlayRef: garantiasModalRef });
   useModal({ open: showEtiquetas, onClose: () => setShowEtiquetas(false), overlayRef: etiquetasModalRef });
   useModal({ open: showComprob != null, onClose: () => setShowComprob(null), overlayRef: comprobModalRef });
+
+  // task #267: ref al tryCloseVenta — necesita ser stable para pasar al
+  // useModal arriba (que lee onCloseRef en el listener del ESC), pero la
+  // función real se define abajo porque depende de estados que aún no
+  // están declarados (vForm, cart, pagos). Ver definición ~línea 400.
+  const tryCloseVentaRef = useRef(null);
 
   // ── Carga ──
   const loadDash = useCallback(async () => {
@@ -349,6 +362,74 @@ export default function Ventas() {
   const prodTimer = useRef(null);
   const prodReq = useRef(0); // token "última request gana" (evita que una respuesta lenta pise a una nueva)
   const setVF = (k, v) => setVForm(f => ({ ...f, [k]: v }));
+
+  // ── task #267: anti-pérdida de datos del modal Nueva venta ────────────
+  //
+  // (1) Draft persistente en localStorage: cubre crash/refresh/session
+  //     expiry con el modal abierto. Solo aplica a NUEVA venta (no edit
+  //     ni proceso de rápida — ambos parten de data server-side).
+  // (2) tryCloseVenta: confirm-on-close si hay data cargada. Cubre ESC/
+  //     overlay/X/Cancelar accidentales. Aparece SIEMPRE si hay data;
+  //     el user puede seguir editando o cerrar (el draft queda salvado
+  //     por (1) igual, así que "Cerrar" ≠ "Perder para siempre").
+  const draftEnabled = showVenta && !editId && !procRapidaId;
+  const {
+    hasDraft, draftPreview, saveDraft, restoreDraft, discardDraft,
+  } = useVentaDraft({ enabled: draftEnabled });
+
+  // Auto-save cada vez que cambian vForm/cart/pagos. Comprobantes son File
+  // objects (no serializables) — persistimos solo el count para el warning
+  // "re-subí los N comprobantes" al restaurar.
+  useEffect(() => {
+    if (!draftEnabled) return;
+    saveDraft({
+      vForm,
+      cart,
+      pagos,
+      __comprobantesCount: comprobantes.length,
+    });
+  }, [draftEnabled, vForm, cart, pagos, comprobantes, saveDraft]);
+
+  // Helper: ¿hay data cargada digna de proteger? Umbral bajo — si el user
+  // tipeó AUNQUE SEA el nombre del cliente o agregó 1 item, pedimos confirm.
+  // No consideramos `fecha` (default hoy) ni `estado` (default acreditado).
+  function tieneDataCargada() {
+    if (cart.length > 0) return true;
+    if (pagos.length > 0) return true;
+    if (comprobantes.length > 0) return true;
+    if (vForm.cliente_nombre?.trim()) return true;
+    if (vForm.cliente_id) return true;
+    if (vForm.vendedor_id) return true;
+    if (vForm.notas?.trim()) return true;
+    if (Number(vForm.comision) > 0) return true;
+    if (vForm.vuelto_monto) return true;
+    if ((vForm.canjes || []).length > 0) return true;
+    return false;
+  }
+
+  async function tryCloseVenta() {
+    if (!tieneDataCargada()) {
+      // Nada cargado — cierre inmediato, no molestamos con confirm.
+      setShowVenta(false);
+      return;
+    }
+    const ok = await confirm({
+      title: 'Cerrar sin guardar la venta',
+      message: draftEnabled
+        ? `Vas a cerrar el modal. Se guarda un borrador con lo que cargaste — la próxima vez que abras "Nueva venta" te ofrecemos restaurarlo.`
+        : `Vas a perder los cambios sin guardar. ¿Seguro?`,
+      confirmLabel: 'Cerrar de todas formas',
+      danger: true,
+    });
+    if (ok) setShowVenta(false);
+  }
+
+  // Sincronizamos la ref para que useModal (declarado arriba en el orden
+  // de mount) pueda invocar la versión ACTUAL del handler — evita stale
+  // closures que compararían contra vForm/cart viejos.
+  useEffect(() => {
+    tryCloseVentaRef.current = tryCloseVenta;
+  });
 
   // 2026-07-05 TANDA 1 sub-fase C follow-up: wrapeamos los 7 handlers que
   // pasamos a <VentasList> con useCallback para que React.memo(VentaRow)
@@ -1085,6 +1166,9 @@ export default function Ventas() {
       if (!editId && payload.enviar_comprobante_email) {
         toast.success(`Enviando comprobante a ${payload.cliente_email}…`);
       }
+      // task #267: venta guardada → clear draft. Si el user cierra sin
+      // submitear, el draft queda para restore en la próxima apertura.
+      discardDraft();
       setShowVenta(false);
       // Cobro por Financiera con comprobante OK: ya se auto-generó el de Financiera → ir a verificarlo.
       if (!editId && usaFinanciera && !uploadFalló) { navigate('/financiera'); return; }
@@ -1589,8 +1673,9 @@ export default function Ventas() {
       )}
 
       {/* ── Modal Nueva venta ── */}
+      {/* task #267: overlay + X usan tryCloseVenta (confirm si hay data). */}
       {showVenta && (
-        <div ref={ventaModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowVenta(false)}>
+        <div ref={ventaModalRef} className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) tryCloseVenta(); }}>
           <div
             className="modal u-mw-720"
             onClick={e => e.stopPropagation()}
@@ -1598,7 +1683,7 @@ export default function Ventas() {
             aria-modal="true"
             aria-labelledby="venta-modal-title"
           >
-            <div className="modal-hd"><h3 id="venta-modal-title">{editId ? 'Editar venta' : procRapidaId ? 'Procesar venta rápida' : 'Nueva venta'}</h3><button type="button" className="icon-btn" onClick={() => setShowVenta(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button></div>
+            <div className="modal-hd"><h3 id="venta-modal-title">{editId ? 'Editar venta' : procRapidaId ? 'Procesar venta rápida' : 'Nueva venta'}</h3><button type="button" className="icon-btn" onClick={tryCloseVenta} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button></div>
             {/* 2026-07-11: form como flex-column con flex:1 + minHeight:0 para
                 que la cadena flex del .modal (display:flex column + max-height:
                 calc(100svh - 48px) + overflow:hidden) se propague al .modal-body.
@@ -1610,6 +1695,34 @@ export default function Ventas() {
             <form onSubmit={handleSaveVenta} className="u-flex-col-flex-1-mh-0">
               <div className="modal-body">
                 <div className="stack u-gap-14">
+                  {/* task #267: banner de restore de borrador. Aparece solo si
+                      draftEnabled (nueva venta) + hay draft ≤24h. El operador
+                      elige [Restaurar] o [Descartar]. Si ignora el banner y
+                      empieza a tipear, el nuevo state se auto-guarda encima. */}
+                  {hasDraft && draftPreview && (
+                    <div className="u-catalogos-error-banner">
+                      💾 <strong>Tenés una venta en progreso</strong> — guardada hace {Math.max(1, Math.round((Date.now() - draftPreview.savedAt) / 60000))} min ({draftPreview.itemsCount} {draftPreview.itemsCount === 1 ? 'item' : 'items'} en el carrito).
+                      {draftPreview.hadComprobantes ? ' Los comprobantes NO se guardan — vas a tener que re-subirlos.' : ''}
+                      <div className="flex-row u-gap-6 u-mt-8">
+                        <button type="button" className="btn btn-sm btn-primary"
+                          onClick={() => {
+                            const saved = restoreDraft();
+                            if (saved) {
+                              if (saved.vForm) setVForm(saved.vForm);
+                              if (Array.isArray(saved.cart)) setCart(saved.cart);
+                              if (Array.isArray(saved.pagos)) setPagos(saved.pagos);
+                              toast.success('Borrador restaurado');
+                            }
+                          }}>
+                          Restaurar
+                        </button>
+                        <button type="button" className="btn btn-sm btn-ghost"
+                          onClick={() => { discardDraft(); toast.success('Borrador descartado'); }}>
+                          Descartar
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   <div className="row">
                     <div className="field u-flex-1 field-label"><label>Fecha <span className="u-color-neg input">*</span></label><input type="date" value={vForm.fecha} onChange={e => setVF('fecha', e.target.value)} /></div>
                     <div className="field u-flex-1"><label className="field-label">Hora</label><input type="time" className="input" value={vForm.hora} onChange={e => setVF('hora', e.target.value)} /></div>
@@ -2526,7 +2639,8 @@ export default function Ventas() {
                 </div>
               </div>
               <div className="modal-ft">
-                <button type="button" className="btn btn-ghost" onClick={() => setShowVenta(false)}>Cancelar</button>
+                {/* task #267: Cancelar también pasa por tryCloseVenta (confirm si hay data). */}
+                <button type="button" className="btn btn-ghost" onClick={tryCloseVenta}>Cancelar</button>
                 {/* data-testid agregado para E2E (TANDA 5 venta retail) — el texto
                     del botón muta a "Guardando…" durante el submit; el testid es
                     estable contra ese cambio. */}
