@@ -582,12 +582,15 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
             <div className="flex-row u-gap-6">
               {/* task #266: import XLSX + descarga plantilla. Mismo shape
                   que Inventario > Importar (schema en lib/stockPlantilla.js). */}
+              {/* Input file oculto — se dispara desde el botón "Importar XLSX".
+                  Usamos u-display-none (utility CSS existente) en vez de style
+                  inline para pasar el check CSP inline-styles anti-regression. */}
               <input
                 ref={fileInputRef}
                 type="file"
                 accept=".xlsx"
                 onChange={handleImportXlsx}
-                style={{ display: 'none' }}
+                className="u-display-none"
               />
               <button className="btn btn-sm" onClick={descargarPlantillaXlsx}
                 title="Descargá la plantilla XLSX (mismo formato que Inventario > Importar)">
