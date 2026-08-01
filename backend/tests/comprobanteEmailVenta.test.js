@@ -291,6 +291,88 @@ describe('lib/comprobantePdf', () => {
   });
 });
 
+// task #271 (bug Lautaro Bisman, 2026-08-01): SELECT explícito de
+// comprobanteEmail.js OMITÍA los campos `vuelto_*` — el PDF backend salía
+// sin la línea "Vuelto entregado" aunque la venta sí tenía vuelto en DB.
+// Fix: agregar vuelto_monto/vuelto_moneda/vuelto_tc/vuelto_caja_id al SELECT.
+// Este test asegura que el PDF backend generado tras crear venta con vuelto
+// pesa más que uno sin vuelto — la diferencia viene de la línea que se
+// suma cuando `computeVueltoUsd(venta) > 0.005`.
+describe('SELECT venta trae vuelto_* → PDF muestra "Vuelto entregado" (task #271)', () => {
+  it('venta con vuelto ARS: PDF pesa más que la misma venta sin vuelto', async () => {
+    // Setup: 2 ventas idénticas salvo por el vuelto.
+    // Producto fresco por venta (cada una descuenta stock).
+    async function crearProd(nombre) {
+      const r = await request(app).post('/api/inventario/productos').set(auth()).send({
+        tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catBase,
+        nombre, costo: 800, precio_venta: 990, cantidad: 1,
+      });
+      return r.body;
+    }
+    const pSinVuelto = await crearProd(`Vuelto test SIN ${Date.now()}`);
+    const pConVuelto = await crearProd(`Vuelto test CON ${Date.now()}`);
+    // Caja ARS para el vuelto (egreso). Requerido por el schema para
+    // vuelto_caja_id. Endpoint: POST /api/cajas/cajas (namespace cajas.js).
+    const cajaRes = await request(app).post('/api/cajas/cajas').set(auth()).send({
+      nombre: `Caja ARS vuelto test ${Date.now()}`, moneda: 'ARS', saldo_inicial: 100000,
+    });
+    expect(cajaRes.status).toBe(201);
+    const cajaArsId = cajaRes.body.id;
+    expect(cajaArsId).toBeTruthy();
+
+    // Venta A — pago exacto USD 990, sin vuelto.
+    const ventaSin = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy, cliente_nombre: 'Lautaro test sin vuelto', estado: 'acreditado',
+      items: [{ producto_id: pSinVuelto.id, descripcion: pSinVuelto.nombre, cantidad: 1, precio_vendido: 990, costo: 800, moneda: 'USD' }],
+      pagos:  [{ metodo_nombre: 'USD | Efectivo', monto: 990, moneda: 'USD' }],
+    });
+    expect(ventaSin.status).toBe(201);
+
+    // Venta B — pago USD 1000 + vuelto 15.000 ARS @ TC 1500 = USD 10.
+    const ventaCon = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy, cliente_nombre: 'Lautaro test con vuelto', estado: 'acreditado',
+      items: [{ producto_id: pConVuelto.id, descripcion: pConVuelto.nombre, cantidad: 1, precio_vendido: 990, costo: 800, moneda: 'USD' }],
+      pagos:  [{ metodo_nombre: 'USD | Efectivo', monto: 1000, moneda: 'USD' }],
+      vuelto_monto: 15000, vuelto_moneda: 'ARS', vuelto_caja_id: cajaArsId, vuelto_tc: 1500,
+    });
+    expect(ventaCon.status).toBe(201);
+    // Sanity: la venta con vuelto persistió los 4 campos.
+    expect(Number(ventaCon.body.vuelto_monto)).toBe(15000);
+    expect(ventaCon.body.vuelto_moneda).toBe('ARS');
+    expect(Number(ventaCon.body.vuelto_tc)).toBe(1500);
+
+    // Disparar reenvío del comprobante — este flow usa el SELECT de
+    // `comprobanteEmail.js` (que antes omitía los `vuelto_*`).
+    const reenvioSin = await request(app)
+      .post(`/api/ventas/${ventaSin.body.id}/enviar-comprobante`)
+      .set(auth())
+      .send({ email: 'test-sin@vuelto.local' });
+    expect(reenvioSin.status).toBe(202);
+    const reenvioCon = await request(app)
+      .post(`/api/ventas/${ventaCon.body.id}/enviar-comprobante`)
+      .set(auth())
+      .send({ email: 'test-con@vuelto.local' });
+    expect(reenvioCon.status).toBe(202);
+
+    // Los emails son fire-and-forget. Esperamos que ambos aparezcan en la
+    // queue de test — el PDF real está en `pdfSize`. Con vuelto, el PDF
+    // debe pesar más (line extra "Vuelto entregado: -u$s 10" + hint
+    // "($15.000 @ TC 1500)"). Sin el fix, el SELECT no traía vuelto_* →
+    // computeVueltoUsd=0 → no se agregaban las 2 líneas → mismo tamaño.
+    const enviadoSin = await waitForQueueItem(p =>
+      p.type === 'comprobante_venta' && p.to === 'test-sin@vuelto.local'
+    );
+    const enviadoCon = await waitForQueueItem(p =>
+      p.type === 'comprobante_venta' && p.to === 'test-con@vuelto.local'
+    );
+    expect(enviadoSin).toBeTruthy();
+    expect(enviadoCon).toBeTruthy();
+    // Threshold conservador 50 bytes: la línea "Vuelto entregado" + hint
+    // suma ~80-150 bytes al text stream del PDF.
+    expect(enviadoCon.pdfSize).toBeGreaterThan(enviadoSin.pdfSize + 50);
+  });
+});
+
 describe('POST /api/ventas con enviar_comprobante_email', () => {
   it('alta venta con enviar=true + email válido → encola email + row en historial', async () => {
     const venta = await crearVentaRetail({

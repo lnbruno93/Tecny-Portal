@@ -62,8 +62,17 @@ async function enviarComprobanteVenta({
     const lookup = await db.withTenant(tenantId, async (client) => {
       // Venta + items + pagos. RLS asegura que solo vemos ventas del tenant.
       const vRes = await client.query(
+        // 2026-08-01 (task #271, bug Lautaro Bisman): agregar `vuelto_*`.
+        // El PDF backend (`comprobantePdf.generarComprobantePdf`) usa
+        // `computeVueltoUsd(venta)` para renderizar la línea "Vuelto
+        // entregado" en el resumen. El helper lee `venta.vuelto_monto`,
+        // `venta.vuelto_moneda`, `venta.vuelto_tc`. Este SELECT explícito
+        // omitía esos campos → el PDF salía sin la línea (aunque la venta
+        // sí tenía vuelto en DB). Path afectado: email del comprobante al
+        // crear venta + reenvío manual desde modal éxito / grilla.
         `SELECT v.id, v.order_id, v.fecha, v.total_usd, v.tc_venta, v.estado,
-                v.cliente_id, v.cliente_nombre, v.notas
+                v.cliente_id, v.cliente_nombre, v.notas,
+                v.vuelto_monto, v.vuelto_moneda, v.vuelto_tc, v.vuelto_caja_id
            FROM ventas v
           WHERE v.id = $1 AND v.deleted_at IS NULL`,
         [ventaId]
@@ -284,8 +293,17 @@ async function sendAndMarkPending({ tenantId, ventaId, emailTo, sentId }) {
   try {
     const lookup = await db.withTenant(tenantId, async (client) => {
       const vRes = await client.query(
+        // 2026-08-01 (task #271, bug Lautaro Bisman): agregar `vuelto_*`.
+        // El PDF backend (`comprobantePdf.generarComprobantePdf`) usa
+        // `computeVueltoUsd(venta)` para renderizar la línea "Vuelto
+        // entregado" en el resumen. El helper lee `venta.vuelto_monto`,
+        // `venta.vuelto_moneda`, `venta.vuelto_tc`. Este SELECT explícito
+        // omitía esos campos → el PDF salía sin la línea (aunque la venta
+        // sí tenía vuelto en DB). Path afectado: email del comprobante al
+        // crear venta + reenvío manual desde modal éxito / grilla.
         `SELECT v.id, v.order_id, v.fecha, v.total_usd, v.tc_venta, v.estado,
-                v.cliente_id, v.cliente_nombre, v.notas
+                v.cliente_id, v.cliente_nombre, v.notas,
+                v.vuelto_monto, v.vuelto_moneda, v.vuelto_tc, v.vuelto_caja_id
            FROM ventas v
           WHERE v.id = $1 AND v.deleted_at IS NULL`,
         [ventaId]
