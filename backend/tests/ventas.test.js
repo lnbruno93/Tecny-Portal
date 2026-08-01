@@ -1783,10 +1783,17 @@ describe('Ventas — vuelto/cambio (feature)', () => {
     expect(egreso).toBeDefined();
   });
 
-  // 2026-07-14 (bug reportado por Lucas): la ganancia_usd persistida no
-  // consideraba el vuelto → reportes de ganancia mentían. Estos tests
-  // cubren el shape del vuelto_tc + el impacto en ganancia_usd.
-  describe('vuelto_tc + ganancia (fix 2026-07-14)', () => {
+  // vuelto_tc: schema validation + ganancia (regla PO)
+  //
+  // 2026-07-14 (bug Lucas): agregamos vuelto_tc obligatorio para ARS/UYU
+  //   + el descuento del vuelto en ganancia_usd.
+  //
+  // 2026-08-01 (regla PO Lucas — REVIERTE parcialmente): el vuelto NO
+  //   descuenta ganancia_usd. Es solo dinero devuelto al cliente
+  //   (informativo). Los 2 tests que asserían el descuento se invirtieron
+  //   para verificar la nueva regla. La validación del vuelto_tc
+  //   obligatorio para ARS/UYU se mantiene (schema Zod).
+  describe('vuelto_tc + ganancia (regla PO 2026-08-01)', () => {
     it('rechaza vuelto en ARS sin vuelto_tc → 400', async () => {
       const cajaId = await crearCajaEfectivo('Caja Vuelto Sin TC', 5000);
       const r = await request(app).post('/api/ventas').set(auth()).send({
@@ -1823,10 +1830,10 @@ describe('Ventas — vuelto/cambio (feature)', () => {
       expect(r.body.vuelto_tc).toBeNull();
     });
 
-    it('ganancia_usd descuenta el vuelto (bug del screenshot)', async () => {
-      // Reproduce el screenshot: venta USD 600, pago USD 600 exacto (cubierto),
-      // vuelto 150.000 ARS con tc=1000 (=USD 150). Ganancia bruta debía ser
-      // 600 - 480 (costo) = 120. Con el vuelto de 150 USD → ganancia real -30.
+    it('ganancia_usd NO descuenta el vuelto (regla PO 2026-08-01)', async () => {
+      // Regla PO: el vuelto es SOLO dinero devuelto al cliente, no gasto.
+      // No impacta ganancia. Venta USD 600, costo 480 → ganancia = 120.
+      // El vuelto de 150 USD (150.000 ARS @ TC 1000) NO se resta.
       const cajaId = await crearCajaEfectivo('Caja Vuelto Ganancia', 200000);
       const r = await request(app).post('/api/ventas').set(auth()).send({
         fecha: hoy,
@@ -1839,8 +1846,11 @@ describe('Ventas — vuelto/cambio (feature)', () => {
         vuelto_tc:      1000,      // 150000 / 1000 = USD 150
       });
       expect(r.status).toBe(201);
-      // Ganancia real = 600 (total) - 480 (costo) - 150 (vuelto USD) = -30.
-      expect(Number(r.body.ganancia_usd)).toBe(-30);
+      // Ganancia = 600 (total) - 480 (costo) = 120. El vuelto NO impacta.
+      expect(Number(r.body.ganancia_usd)).toBe(120);
+      // Sanity: el vuelto sí se persiste (para egreso de caja + comprobante).
+      expect(Number(r.body.vuelto_monto)).toBe(150000);
+      expect(r.body.vuelto_moneda).toBe('ARS');
     });
 
     it('ganancia_usd sin vuelto es 100% margen (sanity check)', async () => {
@@ -1854,8 +1864,9 @@ describe('Ventas — vuelto/cambio (feature)', () => {
       expect(Number(r.body.ganancia_usd)).toBe(40);
     });
 
-    it('PUT que agrega vuelto recomputa ganancia_usd', async () => {
-      // Caja USD para que el egreso del vuelto USD tenga moneda coherente.
+    it('PUT que agrega vuelto NO recomputa ganancia_usd (regla PO 2026-08-01)', async () => {
+      // Regla PO: agregar vuelto en un edit NO cambia la ganancia.
+      // Solo persiste los campos vuelto_* + genera egreso de caja.
       const cajaId = await crearCajaEfectivo('Caja Vuelto Recomp', 1000, 'USD');
       // Alta sin vuelto: ganancia = 40.
       const r = await request(app).post('/api/ventas').set(auth()).send({
@@ -1866,14 +1877,15 @@ describe('Ventas — vuelto/cambio (feature)', () => {
       });
       expect(Number(r.body.ganancia_usd)).toBe(40);
 
-      // PUT sumando vuelto 10 USD → nueva ganancia = 30.
+      // PUT sumando vuelto 10 USD → ganancia sigue 40 (no impacta).
       const put = await request(app).put(`/api/ventas/${r.body.id}`).set(auth()).send({
         vuelto_monto:   10,
         vuelto_moneda:  'USD',
         vuelto_caja_id: cajaId,
       });
       expect(put.status).toBe(200);
-      expect(Number(put.body.ganancia_usd)).toBe(30);
+      expect(Number(put.body.ganancia_usd)).toBe(40);
+      expect(Number(put.body.vuelto_monto)).toBe(10);
     });
   });
 });
