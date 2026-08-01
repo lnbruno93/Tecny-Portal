@@ -666,6 +666,14 @@ export const usados = {
 
 export const inventario = {
   productos:       (params = {}) => api('/api/inventario/productos?' + new URLSearchParams(params)),
+  // 2026-08-01 (task #279, pedido cliente Nook Tech): vista agrupada.
+  // Backend hace GROUP BY (clase_id, nombre, gb) y devuelve grupos con
+  // counts por estado + rangos precio/batería. Mismos filtros que
+  // /productos (buscar, vista, clase_id, categoria_id, deposito_id, etc.)
+  // — el schema Zod es idéntico. Frontend colapsa por default y al
+  // expandir hace fetch de las filas individuales via `productos({...,
+  // clase_id, nombre, gb})` — el drill-down exact match ya existía.
+  productosAgrupado: (params = {}) => api('/api/inventario/productos/agrupado?' + new URLSearchParams(params)),
   // 2026-07-11: nuevo tab "Equipos usados". Filtra condicion='usado' y
   // hace LEFT JOIN a canjes+ventas+contactos para exponer origen (canje/manual)
   // y trazabilidad (venta_order_id, cliente_nombre, cliente_telefono).

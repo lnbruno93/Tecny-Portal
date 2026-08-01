@@ -860,6 +860,26 @@ body {
   }
 }
 
+/* ── Inventario vista Agrupada (task #279, 2026-08-01) ──
+   Reglas del header de grupo colapsable. cursor:pointer en la clase
+   (no inline style — CSP anti-regression) y color de error (mensaje
+   inline cuando falla el fetch de expand). */
+.inv-grupo-header {
+  cursor: pointer;
+}
+.inv-grupo-header:hover td {
+  background: rgba(255, 255, 255, 0.03);
+}
+.inv-grupo-header-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.inv-agrupado-error {
+  color: var(--danger, #c33);
+}
+
 /* ── EditableCell: feedback de hover para celdas editables ──
    Indica visualmente que la celda es clickeable para editar in-place. */
 .editable-cell {

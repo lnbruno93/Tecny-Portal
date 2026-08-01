@@ -52,6 +52,11 @@ import { rangeToParams, RANGE_PRESETS } from '../lib/dateRange';
 import Badge from '../components/Badge';
 import Seg from '../components/Seg';
 import { SkeletonRow } from '../components/Skeleton';
+// 2026-08-01 (task #279 — pedido cliente Nook Tech): vista agrupada
+// opcional (toggle Lista/Agrupada en toolbar). Agrupa por Categoría +
+// Nombre + GB para reducir el largo visual de la lista. Ver
+// `InventarioAgrupado.jsx` para el contrato + rationale.
+import InventarioAgrupado from './inventario/InventarioAgrupado';
 // 2026-06-29 Multi-país F3: dropdowns moneda gated por tenant.pais.
 import { useMonedasTenant } from '../lib/useMonedasTenant';
 
@@ -98,6 +103,15 @@ const PAGE_SIZE_DEFAULT = 100;
 // LocalStorage key — el user setting persiste entre sesiones. La URL param
 // `?rows=N` sigue teniendo precedencia (deep-link).
 const PAGE_SIZE_LS_KEY = 'inventario:pageSize';
+
+// 2026-08-01 (task #279): vista agrupada opt-in. Igual patrón que pageSize
+// — URL param `?agrupada=1` gana sobre localStorage; sin URL, LS decide;
+// sin LS, default 'lista'. Persiste entre sesiones.
+const VIEW_MODE_LS_KEY = 'inventario:viewMode';
+const VIEW_MODE_OPTIONS = [
+  { value: 'lista',    label: 'Lista' },
+  { value: 'agrupada', label: 'Agrupada' },
+];
 
 const ESTADO_DISPLAY = {
   disponible: { label: 'Disponible', tone: 'pos' },
@@ -282,6 +296,25 @@ export default function Inventario() {
     // el tab). URL solo si != default — mantiene URLs limpias por defecto.
     try { window.localStorage.setItem(PAGE_SIZE_LS_KEY, String(n)); } catch (_) { /* SSR / private mode */ }
     setParam('rows', String(n), String(PAGE_SIZE_DEFAULT));
+  }, [setParam]);
+
+  // 2026-08-01 (task #279): vista modo (lista o agrupada). Mismo pattern
+  // que pageSize: URL param `?vg=agrupada` gana sobre LS, LS sobre default.
+  // Default = 'lista' (compat backwards, ningún tenant existente ve cambio
+  // hasta que active el toggle).
+  const viewMode = (() => {
+    const urlVal = searchParams.get('vg');
+    if (VIEW_MODE_OPTIONS.some(o => o.value === urlVal)) return urlVal;
+    if (typeof window !== 'undefined') {
+      const lsVal = window.localStorage.getItem(VIEW_MODE_LS_KEY);
+      if (VIEW_MODE_OPTIONS.some(o => o.value === lsVal)) return lsVal;
+    }
+    return 'lista';
+  })();
+  const setViewMode = useCallback((v) => {
+    if (!VIEW_MODE_OPTIONS.some(o => o.value === v)) return;
+    try { window.localStorage.setItem(VIEW_MODE_LS_KEY, v); } catch (_) { /* SSR / private mode */ }
+    setParam('vg', v, 'lista');
   }, [setParam]);
 
   // 2026-07-04 (#507): filtro de fecha para vista='vendidos'. Default 'todo' →
@@ -1476,6 +1509,16 @@ export default function Inventario() {
                 <option key={n} value={n}>{n}</option>
               ))}
             </select>
+            {/* 2026-08-01 (task #279): toggle Lista/Agrupada. Persiste en
+                URL param ?vg + localStorage. Default 'lista' — ningún
+                tenant existente ve cambio hasta activar. */}
+            <label className="field-label u-mb-0-mr-4 u-ml-12">Vista</label>
+            <Seg
+              options={VIEW_MODE_OPTIONS}
+              value={viewMode}
+              onChange={setViewMode}
+              ariaLabel="Modo de visualización de la grilla"
+            />
           </div>
           <div className="input-group u-w-300">
             <span className="addon addon-l"><Icons.Search size={14} /></span>
@@ -1634,6 +1677,52 @@ export default function Inventario() {
                 </button>
               )}
             </div>
+          );
+        })()
+      ) : viewMode === 'agrupada' ? (
+        // 2026-08-01 (task #279): vista agrupada por Categoría + Nombre + GB.
+        // Componente separado (InventarioAgrupado) que hace fetch al endpoint
+        // /productos/agrupado y renderiza grupos colapsables. Al expandir un
+        // grupo, hace un segundo fetch de las filas individuales del grupo
+        // via /productos con drill-down (clase_id + nombre + gb). Reusa el
+        // MISMO InventarioRow del render de lista plana → misma edición
+        // inline, mismos handlers, sin duplicar código.
+        //
+        // Pasamos `params` reconstruyendo la lógica de loadProductos — sin
+        // page/limit porque el agrupado paginará sobre grupos (limit=100
+        // por default del endpoint es suficiente para los tenants actuales).
+        (() => {
+          const gparams = { vista: vistaFiltro };
+          if (vistaFiltro === 'vendidos') Object.assign(gparams, rangeToParams(vendidosRange));
+          if (isUuid(claseFilter)) gparams.clase_id = claseFilter;
+          else if (claseFilter === 'tecnico') gparams.estado = 'en_tecnico';
+          else if (claseFilter === 'usados') gparams.condicion = 'usado';
+          else if (claseFilter && claseFilter.startsWith('cat:')) gparams.categoria_id = claseFilter.slice(4);
+          else if (claseFilter && claseFilter !== 'todos') {
+            const c = clases.find(x => x.slug_legacy === claseFilter);
+            if (c) gparams.clase_id = c.id;
+            else gparams.clase = claseFilter;
+          }
+          if (dSearch.trim()) gparams.buscar = dSearch.trim();
+          if (depositoFiltro && depositoFiltro !== 'todos') gparams.deposito_id = depositoFiltro;
+          if (Object.keys(drillFilters).length) {
+            Object.assign(gparams, drillFilters);
+            gparams.vista = 'todos_ocultos';
+          }
+          return (
+            <InventarioAgrupado
+              params={gparams}
+              monedaLocal={monedaLocal}
+              provOptions={provOptions}
+              canEditProducto={canEditProducto}
+              canDeleteProducto={canDeleteProducto}
+              canSeeCostos={true}
+              inlineUpdate={inlineUpdate}
+              openEdit={openEdit}
+              handleDelete={handleDelete}
+              onOpenHistorial={setHistorialProductoId}
+              InventarioRow={InventarioRow}
+            />
           );
         })()
       ) : (
