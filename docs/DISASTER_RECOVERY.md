@@ -99,6 +99,32 @@ independencia de la Mac, evaluar Railway Scheduler (~$5/mes, cron en su red
 privada). Para una operación de 1 persona con Mac que casi siempre está
 prendida, el cron local es aceptable.
 
+**Decisión 2026-08-01 (task #232)**: **mantener cron en la Mac**, NO migrar
+a Railway Scheduler todavía. Racional:
+
+- Backblaze storage cuesta ~$0.011/mes (despreciable).
+- Railway Scheduler cuesta ~$5/mes = **$60/año** por la independencia.
+- Escala actual: 1 persona (Lucas), Mac prendida el ~95% de las mañanas,
+  10-12 tenants activos, sin viajes que dejen la Mac apagada varios días.
+- Peor caso hoy: 1 día sin backup si la Mac está apagada → RPO ~48h en
+  vez de ~24h. Tolerable para el nivel operativo actual.
+
+**Re-evaluar migración a Railway Scheduler cuando ALGUNA sea true**:
+
+1. Vas a estar 3+ días seguidos con la Mac apagada (viaje, reset, cambio de
+   equipo). Solución temporal: `sudo pmset schedule wakeorpoweron ...` para
+   despertar la Mac 5 min antes de las 9 AM.
+2. Escalás a 30+ tenants activos — el RPO de 48h en peor caso empieza a
+   pesar más que $60/año.
+3. Tenés capability multi-operador (más de 1 persona con acceso al DR
+   runbook) — cron local personal deja de ser fit.
+4. Cualquier cliente con SLA contractual de RPO ≤ 24h garantizado.
+
+Cuando aplique, la migración es: crear un Railway Scheduler job que corra
+`scripts/ipro-backup.sh` (o su equivalente containerizado), setear las
+variables `B2_KEY_ID` / `B2_APP_KEY` / `DATABASE_URL` en el env del job,
+y comentar la línea del crontab local. El script SQL de backup no cambia.
+
 **Costo Backblaze** (junio 2026): $0.006/GB/mes storage + $0.01/GB egress
 (restore). Con dumps diarios de ~5MB durante 365 días = ~1.8GB acumulado
 = ~$0.011/mes storage. Despreciable.
