@@ -521,6 +521,35 @@ export default function Ventas() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setPrimaryAction, vendedores]);
 
+  // 2026-08-01 (task #281): deep-link `?action=nueva` desde el FAB global
+  // `<NuevaVentaFab />` en Shell.jsx. El FAB navega a /ventas?action=nueva&t=<ts>
+  // desde cualquier pantalla; este effect detecta el param y abre el modal
+  // Nueva Venta directo. El `t` (timestamp) permite re-disparar el effect
+  // si el user clickea el FAB dos veces estando ya en /ventas (React Router
+  // no re-renderiza si el location no cambia).
+  //
+  // Dedup con `lastActionRef` — comparamos la combinación `action:ts` para
+  // que dos clicks en el mismo instante (misma ts) no dupliquen la apertura,
+  // pero uno posterior sí re-abra.
+  const lastActionRef = useRef(null);
+  const actionParam = searchParams.get('action');
+  const actionTsParam = searchParams.get('t');
+  useEffect(() => {
+    if (actionParam !== 'nueva') return;
+    const key = `nueva:${actionTsParam || '0'}`;
+    if (lastActionRef.current === key) return;
+    lastActionRef.current = key;
+    openVenta(null);
+    // Limpiar los params del URL para evitar re-abrir al refrescar la página.
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('action');
+      next.delete('t');
+      return next;
+    }, { replace: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actionParam, actionTsParam]);
+
   // 2026-07-15 (task #134/#135): deep-link `?open=<venta_id>` desde Cmd+K.
   // Cuando el usuario clickea un resultado de "Ventas" en la búsqueda global,
   // el CommandPalette navega a /ventas?open=<id>. Este effect fetchea esa
