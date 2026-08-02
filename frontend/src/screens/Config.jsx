@@ -68,6 +68,11 @@ export default function Config() {
   const [pct, setPct]           = useState(3);
   const [inputVal, setInputVal] = useState('3');
   const [tarjetas, setTarjetas] = useState([]); // [{id, nombre, pct_input, _original}]
+  // 2026-08-01 (task #280): toggle "Ocultar ganancia en modal de Ventas".
+  // `hideGanancia` = valor actual del switch; `hideGananciaOriginal` = valor
+  // persistido en DB (para detectar dirty). Mismo pattern que pct+inputVal.
+  const [hideGanancia, setHideGanancia] = useState(false);
+  const [hideGananciaOriginal, setHideGananciaOriginal] = useState(false);
   const [saving, setSaving]     = useState(false);
   const [saved, setSaved]       = useState(false);
   const [error, setError]       = useState('');
@@ -117,6 +122,11 @@ export default function Config() {
         const v = Number(cfg?.pct_financiera ?? 3);
         setPct(v);
         setInputVal(String(v));
+        // Toggle privacidad (task #280) — carga desde el mismo endpoint que
+        // ya devuelve la fila entera de `config`. Default false (compat).
+        const hg = cfg?.ocultar_ganancia_venta === true;
+        setHideGanancia(hg);
+        setHideGananciaOriginal(hg);
         // Solo cajas con es_tarjeta=true. listCajas() ya filtra deleted_at,
         // ordenamos por orden + nombre para que el listado sea estable.
         const tcs = (cajasList || [])
@@ -139,10 +149,11 @@ export default function Config() {
   const simRet  = simBase * (simPct / 100);
   const simNeto = simBase - simRet;
 
-  // Dirty global: Financiera cambió o cualquier tarjeta tiene pct distinto al original.
+  // Dirty global: Financiera cambió, tarjetas cambiaron, o toggle privacidad cambió.
   const finDirty = parseFloat(inputVal) !== pct;
   const tarjetasDirty = tarjetas.some(t => parseFloat(t.pct_input) !== t._original);
-  const dirty = finDirty || tarjetasDirty;
+  const gananciaDirty = hideGanancia !== hideGananciaOriginal;
+  const dirty = finDirty || tarjetasDirty || gananciaDirty;
 
   function setTarjetaPct(id, value) {
     setTarjetas(ts => ts.map(t => t.id === id ? { ...t, pct_input: value } : t));
@@ -173,6 +184,11 @@ export default function Config() {
       // (los que pasaron) y dejamos el error visible.
       const updates = [];
       if (finDirty) updates.push(['fin', configApi.update({ pct_financiera: valFin })]);
+      // Toggle privacidad (task #280) — mismo endpoint que pct_financiera. El
+      // schema Zod backend acepta ambos opcionales; podríamos combinarlos en
+      // 1 sola request, pero los mantenemos separados para simplicidad del
+      // rollback state (si falla uno, el otro puede haber persistido).
+      if (gananciaDirty) updates.push(['ganancia', configApi.update({ ocultar_ganancia_venta: hideGanancia })]);
       tarjetas.forEach(t => {
         if (parseFloat(t.pct_input) !== t._original) {
           updates.push(['tar:' + t.id, cajasApi.updateCaja(t.id, { comision_pct: parseFloat(t.pct_input) })]);
@@ -181,6 +197,7 @@ export default function Config() {
       await Promise.all(updates.map(([, p]) => p));
       // Sync state: lo persistido pasa a ser el nuevo "original".
       if (finDirty) setPct(valFin);
+      if (gananciaDirty) setHideGananciaOriginal(hideGanancia);
       setTarjetas(ts => ts.map(t => ({ ...t, _original: parseFloat(t.pct_input) })));
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
@@ -194,6 +211,7 @@ export default function Config() {
   function handleCancel() {
     setInputVal(String(pct));
     setTarjetas(ts => ts.map(t => ({ ...t, pct_input: String(t._original) })));
+    setHideGanancia(hideGananciaOriginal);
     setError('');
     setSaved(false);
   }
@@ -409,6 +427,46 @@ export default function Config() {
                 <div className="muted tiny u-lh-14">{d}</div>
               </div>
             ))}
+          </div>
+        </div>
+      </div>
+
+      {/* 2026-08-01 (task #280, pedido tenant): toggle privacidad para
+          ocultar el bloque "Preview de ganancia" del modal de Ventas.
+          Cuando el operador carga ventas frente al cliente en el mostrador,
+          el cliente ve la pantalla y puede leer el margen del negocio →
+          incómodo. Toggle per-tenant, default apagado (muestra ganancia).
+          Se guarda con el mismo botón "Guardar cambios" del card de arriba. */}
+      <div className="card u-mt-16">
+        <div className="card-hd">
+          <div className="u-fw-600-fs-15">Privacidad en Ventas</div>
+          <div className="muted tiny u-mt-2">
+            Qué mostrar en la pantalla al cargar una venta
+          </div>
+        </div>
+        <div className="u-p-0-0-16">
+          <label className="u-flex-center-gap-10" htmlFor="config-hide-ganancia">
+            <input
+              type="checkbox"
+              id="config-hide-ganancia"
+              data-testid="config-hide-ganancia"
+              checked={hideGanancia}
+              onChange={e => {
+                setHideGanancia(e.target.checked);
+                setSaved(false);
+                setError('');
+              }}
+            />
+            <span className="u-fw-600-fs-14">Ocultar "Ganancia" en el modal de Ventas</span>
+          </label>
+          <div className="muted tiny u-mt-6 u-lh-14">
+            Cuando está activado, no se muestran las líneas <strong>Ganancia bruta</strong>,
+            <strong> Vuelto entregado</strong> ni <strong>Ganancia real</strong> en el modal
+            de nueva venta. Útil si cargás ventas frente al cliente y no querés que vea el margen.
+            El resto (Total venta, Cubierto, Diferencia) sigue visible para verificar el pago.
+          </div>
+          <div className="muted tiny u-mt-4">
+            Estado guardado: <span className="mono u-fw-700">{hideGananciaOriginal ? 'Oculto' : 'Visible'}</span>
           </div>
         </div>
       </div>

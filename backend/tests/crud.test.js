@@ -289,6 +289,84 @@ describe('GET /api/config', () => {
   });
 });
 
+// 2026-08-01 (task #280): toggle ocultar_ganancia_venta — pedido tenant.
+// Config extendida con toggle boolean. Default false (compat). PATCH
+// parcial: podés cambiar solo el toggle sin re-enviar pct_financiera.
+describe('PUT /api/config — ocultar_ganancia_venta (task #280)', () => {
+  it('default false para tenant nuevo (compat backwards)', async () => {
+    const res = await request(app)
+      .get('/api/config')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    // Puede ser false (recién seedeado) o el valor previo si otro test lo cambió.
+    expect(typeof res.body.ocultar_ganancia_venta).toBe('boolean');
+  });
+
+  it('admin puede prender el toggle sin re-enviar pct_financiera', async () => {
+    const res = await request(app)
+      .put('/api/config')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ ocultar_ganancia_venta: true });
+    expect(res.status).toBe(200);
+    expect(res.body.ocultar_ganancia_venta).toBe(true);
+    // pct_financiera se preserva (COALESCE): el valor previo no se pisó.
+    expect(typeof res.body.pct_financiera).toBe('string'); // NUMERIC → string
+  });
+
+  it('admin puede apagar el toggle', async () => {
+    await request(app)
+      .put('/api/config')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ ocultar_ganancia_venta: true });
+    const res = await request(app)
+      .put('/api/config')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ ocultar_ganancia_venta: false });
+    expect(res.status).toBe(200);
+    expect(res.body.ocultar_ganancia_venta).toBe(false);
+  });
+
+  it('admin puede tocar pct_financiera sin re-enviar el toggle (PATCH parcial)', async () => {
+    // Prime state: prender el toggle.
+    await request(app)
+      .put('/api/config')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ ocultar_ganancia_venta: true });
+    // Cambiar solo pct_financiera — toggle debe preservarse.
+    const res = await request(app)
+      .put('/api/config')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ pct_financiera: 7 });
+    expect(res.status).toBe(200);
+    expect(Number(res.body.pct_financiera)).toBe(7);
+    expect(res.body.ocultar_ganancia_venta).toBe(true); // preserved
+  });
+
+  it('rechaza body vacío con 400 (refine "al menos un campo")', async () => {
+    const res = await request(app)
+      .put('/api/config')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('rechaza tipo incorrecto (string en lugar de boolean) con 400', async () => {
+    const res = await request(app)
+      .put('/api/config')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ ocultar_ganancia_venta: 'true' });
+    expect(res.status).toBe(400);
+  });
+
+  it('rechaza usuario sin adminOnly con 403', async () => {
+    const res = await request(app)
+      .put('/api/config')
+      .set('Authorization', `Bearer ${opToken}`)
+      .send({ ocultar_ganancia_venta: true });
+    expect(res.status).toBe(403);
+  });
+});
+
 // ── #443: system-limits + #445: last-tc ────────────────────────────────
 describe('GET /api/config/system-limits (#443)', () => {
   it('devuelve la lista de límites informativos', async () => {
