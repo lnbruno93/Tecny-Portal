@@ -624,17 +624,15 @@ function RecurrenteEditRow({ draft, setDraft, categorias, onCreateCategoria, onS
       <td>
         <div className="flex-row u-gap-6-col-stretch">
           <input
-            className="input" autoFocus
+            className="input u-input-num-full-14-noright" autoFocus
             placeholder='ej: "Sueldo Gonza L"'
             value={draft.concepto}
             onChange={(e) => setDraft({ ...draft, concepto: e.target.value })}
-            className="u-input-num-full-14-noright"
           />
           <select
-            className="input"
+            className="input u-input-num-full-125"
             value={draft.categoria_id}
             onChange={(e) => handleCategoriaChange(e.target.value)}
-            className="u-input-num-full-125"
             title="Categorizá para ver el desglose por rubro"
           >
             <option value="">— Sin categorizar —</option>
@@ -662,31 +660,46 @@ function RecurrenteEditRow({ draft, setDraft, categorias, onCreateCategoria, onS
       <td>
         <div className="flex-row u-gap-6-center-end">
           <select
-            className="input" value={draft.moneda}
+            className="input u-w-78-fs-13-p-6-8" value={draft.moneda}
             onChange={(e) => setDraft({ ...draft, moneda: e.target.value })}
-            className="u-w-78-fs-13-p-6-8"
           >
             {Array.from(new Set([...monedas, draft.moneda].filter(Boolean)))
               .map(m => <option key={m} value={m}>{m}</option>)}
           </select>
           {/* 2026-06-29 Multi-país F3: si la moneda es la local (ARS o UYU),
-              mostrar input TC para convertir a USD. Antes ARS-only. */}
+              mostrar input TC para convertir a USD. Antes ARS-only.
+              2026-08-02 (task #283): agregado preview inline "→ USD X.XX"
+              debajo del TC cuando el user tipeó monto + tc válidos. Antes
+              tenía que guardar y mirar el listado para ver la conversión
+              — pedido de Lucas ("debería poder poner los ARS, el TC y que
+              me muestre cuánto queda en USD"). Reusa el helper `montoUsd`
+              local (mismo cálculo que renderiza el listado más abajo).
+              También: el input tenía DOS atributos `className` — React
+              tomaba solo el último ("u-flex-1-mw-120-fs-14-td-right-p-6-10")
+              y perdía "input mono". Los mergeamos en uno. */}
           {(draft.moneda === 'ARS' || draft.moneda === 'UYU') ? (
-            <input
-              className="input mono" type="number" inputMode="decimal" min="0" step="50"
-              placeholder="TC"
-              title="Tipo de cambio para pasar el monto ARS a USD"
-              value={draft.tc}
-              onChange={(e) => setDraft({ ...draft, tc: e.target.value })}
-              className="u-flex-1-mw-120-fs-14-td-right-p-6-10"
-            />
+            <div className="u-flex-col-end-gap-2">
+              <input
+                className="input mono u-flex-1-mw-120-fs-14-td-right-p-6-10"
+                type="number" inputMode="decimal" min="0" step="50"
+                placeholder="TC"
+                title="Tipo de cambio para pasar el monto ARS a USD"
+                value={draft.tc}
+                onChange={(e) => setDraft({ ...draft, tc: e.target.value })}
+              />
+              {Number(draft.monto) > 0 && Number(draft.tc) > 0 && (
+                <span className="tiny mono u-color-pos" title="Equivalente en USD al TC ingresado">
+                  → USD {fmt(montoUsd(draft.monto, draft.moneda, draft.tc), 2)}
+                </span>
+              )}
+            </div>
           ) : (
             <input
-              className="input mono" type="number" inputMode="decimal" min="0" step="10"
+              className="input mono u-flex-1-mw-120-fs-14-td-right-p-6-10"
+              type="number" inputMode="decimal" min="0" step="10"
               placeholder="Monto USD"
               value={draft.monto}
               onChange={(e) => setDraft({ ...draft, monto: e.target.value })}
-              className="u-flex-1-mw-120-fs-14-td-right-p-6-10"
             />
           )}
         </div>
