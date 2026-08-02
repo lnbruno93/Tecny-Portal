@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Icons } from '../components/Icons';
-import { config as configApi, cajas as cajasApi } from '../lib/api';
+// 2026-08-02 (task #284): cajasApi/blockInvalidNumberKeys/fmt eran usados
+// por la sección "Comisiones de métodos de pago" que se movió al Cotizador.
+// Solo queda `configApi` para el toggle de privacidad (task #280).
+import { config as configApi } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
-import { fmt } from '../lib/format';
-import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import AlertasModule from './Alertas';
 import TwoFaSection from '../components/TwoFaSection';
 import MantenimientoSection from '../components/MantenimientoSection';
@@ -60,17 +61,17 @@ export default function Config() {
     'seguridad';
   const initialTab = wantedFromHash || firstAvailableTab;
   const [tab, setTab]           = useState(initialTab); // 'general' | 'alertas' | 'seguridad' | 'mantenimiento'
-  // Sección unificada "Comisiones de métodos de pago" (2026-06-14, pedido Lucas):
-  //   · `pct` / `inputVal`     — Financiera (= config.pct_financiera)
-  //   · `tarjetas`             — métodos es_tarjeta=true con su comision_pct.
-  //     Cada uno guarda `_original` para detectar dirty-state granular y solo
-  //     pegar al endpoint los que realmente cambiaron.
-  const [pct, setPct]           = useState(3);
-  const [inputVal, setInputVal] = useState('3');
-  const [tarjetas, setTarjetas] = useState([]); // [{id, nombre, pct_input, _original}]
+  // 2026-08-02 (task #284): las comisiones de métodos de pago (Financiera +
+  // Tarjetas) fueron MOVIDAS a Cotizador → Tarjetas de crédito. Config →
+  // General ahora solo tiene el toggle de "Privacidad en Ventas" (task #280)
+  // + las Limitaciones del sistema. Racional: el operador ve realmente el
+  // impacto de cada % en el Cotizador, no en Config; y la deuda técnica de
+  // tener el UI acá + el cotizador leyendo hardcoded era latente (Cotizador
+  // ignoraba las % del tenant hasta el fix del #284).
+  //
   // 2026-08-01 (task #280): toggle "Ocultar ganancia en modal de Ventas".
   // `hideGanancia` = valor actual del switch; `hideGananciaOriginal` = valor
-  // persistido en DB (para detectar dirty). Mismo pattern que pct+inputVal.
+  // persistido en DB (para detectar dirty).
   const [hideGanancia, setHideGanancia] = useState(false);
   const [hideGananciaOriginal, setHideGananciaOriginal] = useState(false);
   const [saving, setSaving]     = useState(false);
@@ -111,94 +112,34 @@ export default function Config() {
     }
   }
 
+  // 2026-08-02 (task #284): antes también fetcheaba pct_financiera + cajas
+  // TC porque el UI las editaba. Ahora ese trabajo se movió a Cotizador →
+  // Tarjetas de crédito (el hook useComisionesTenant), y acá solo queda el
+  // toggle de privacidad (task #280).
   useEffect(() => {
-    // Carga paralela: config (pct_financiera) + lista de cajas (para extraer
-    // las tarjetas). Si una falla, defaults razonables y mostramos error.
-    Promise.all([
-      configApi.get().catch(e => { throw e; }),
-      cajasApi.listCajas().catch(() => []),
-    ])
-      .then(([cfg, cajasList]) => {
-        const v = Number(cfg?.pct_financiera ?? 3);
-        setPct(v);
-        setInputVal(String(v));
-        // Toggle privacidad (task #280) — carga desde el mismo endpoint que
-        // ya devuelve la fila entera de `config`. Default false (compat).
+    let alive = true;
+    configApi.get()
+      .then(cfg => {
+        if (!alive) return;
         const hg = cfg?.ocultar_ganancia_venta === true;
         setHideGanancia(hg);
         setHideGananciaOriginal(hg);
-        // Solo cajas con es_tarjeta=true. listCajas() ya filtra deleted_at,
-        // ordenamos por orden + nombre para que el listado sea estable.
-        const tcs = (cajasList || [])
-          .filter(c => c.es_tarjeta)
-          .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0) || String(a.nombre).localeCompare(String(b.nombre)))
-          .map(c => ({
-            id: c.id, nombre: c.nombre,
-            pct_input: String(Number(c.comision_pct ?? 0)),
-            _original: Number(c.comision_pct ?? 0),
-          }));
-        setTarjetas(tcs);
       })
-      .catch(e => setError(e.message))
-      .finally(() => setLoading(false));
+      .catch(e => { if (alive) setError(e.message); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
   }, []);
 
-  // ── Live simulation ────────────────────────────────────────────────────────
-  const simBase = 1_000_000;
-  const simPct  = parseFloat(inputVal) || 0;
-  const simRet  = simBase * (simPct / 100);
-  const simNeto = simBase - simRet;
-
-  // Dirty global: Financiera cambió, tarjetas cambiaron, o toggle privacidad cambió.
-  const finDirty = parseFloat(inputVal) !== pct;
-  const tarjetasDirty = tarjetas.some(t => parseFloat(t.pct_input) !== t._original);
   const gananciaDirty = hideGanancia !== hideGananciaOriginal;
-  const dirty = finDirty || tarjetasDirty || gananciaDirty;
-
-  function setTarjetaPct(id, value) {
-    setTarjetas(ts => ts.map(t => t.id === id ? { ...t, pct_input: value } : t));
-    setSaved(false);
-    setError('');
-  }
+  const dirty = gananciaDirty;
 
   async function handleSave() {
-    // Validación: todos los valores en [0, 100].
-    const valFin = parseFloat(inputVal);
-    if (isNaN(valFin) || valFin < 0 || valFin > 100) {
-      setError('Financiera: valor inválido. Ingresá un número entre 0 y 100.');
-      return;
-    }
-    for (const t of tarjetas) {
-      const v = parseFloat(t.pct_input);
-      if (isNaN(v) || v < 0 || v > 100) {
-        setError(`${t.nombre}: valor inválido. Ingresá un número entre 0 y 100.`);
-        return;
-      }
-    }
     setSaving(true);
     setError('');
     setSaved(false);
     try {
-      // Pegamos en paralelo solo lo que cambió. Si un endpoint falla, los demás
-      // pueden haber persistido — refrescamos local state desde lo que sí guardó
-      // (los que pasaron) y dejamos el error visible.
-      const updates = [];
-      if (finDirty) updates.push(['fin', configApi.update({ pct_financiera: valFin })]);
-      // Toggle privacidad (task #280) — mismo endpoint que pct_financiera. El
-      // schema Zod backend acepta ambos opcionales; podríamos combinarlos en
-      // 1 sola request, pero los mantenemos separados para simplicidad del
-      // rollback state (si falla uno, el otro puede haber persistido).
-      if (gananciaDirty) updates.push(['ganancia', configApi.update({ ocultar_ganancia_venta: hideGanancia })]);
-      tarjetas.forEach(t => {
-        if (parseFloat(t.pct_input) !== t._original) {
-          updates.push(['tar:' + t.id, cajasApi.updateCaja(t.id, { comision_pct: parseFloat(t.pct_input) })]);
-        }
-      });
-      await Promise.all(updates.map(([, p]) => p));
-      // Sync state: lo persistido pasa a ser el nuevo "original".
-      if (finDirty) setPct(valFin);
-      if (gananciaDirty) setHideGananciaOriginal(hideGanancia);
-      setTarjetas(ts => ts.map(t => ({ ...t, _original: parseFloat(t.pct_input) })));
+      if (gananciaDirty) await configApi.update({ ocultar_ganancia_venta: hideGanancia });
+      setHideGananciaOriginal(hideGanancia);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (e) {
@@ -209,8 +150,6 @@ export default function Config() {
   }
 
   function handleCancel() {
-    setInputVal(String(pct));
-    setTarjetas(ts => ts.map(t => ({ ...t, pct_input: String(t._original) })));
     setHideGanancia(hideGananciaOriginal);
     setError('');
     setSaved(false);
@@ -275,159 +214,36 @@ export default function Config() {
       {tab === 'general' && canGeneral && (
       <>
 
-      {/* ── Split layout ──────────────────────────────────────────────────── */}
-      <div className="u-config-split-340">
-        {/* Left: Comisiones de métodos de pago (2026-06-14, pedido Lucas).
-            Unifica el % de Financiera con el % de cada tarjeta es_tarjeta=true.
-            Antes había que editar las tarjetas por separado en Cajas → Config —
-            ahora todo el costo financiero del negocio se ajusta acá. */}
-        <div className="card">
-          <div className="card-hd">
-            <div className="u-fw-600-fs-15">Comisiones de métodos de pago</div>
-            <div className="muted tiny u-mt-2">
-              Se aplican al cobrar con cada método (Tema C — descontado de la ganancia)
-            </div>
-          </div>
-
-          <div className="u-p-0-0-16">
-            {/* Fila Transferencia (= pct_financiera) */}
-            <div className="field u-mb-16">
-              <div className="field-label">Transferencias <span className="muted">(Financiera)</span></div>
-              <div className="u-flex-center-gap-10">
-                <div className="input-group u-mw-160">
-                  <input
-                    type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
-                    step="0.1" min="0" max="100"
-                    className="input mono u-fw-700-fs-16"
-                    data-testid="config-pct-financiera"
-                    value={inputVal}
-                    onChange={e => {
-                      setInputVal(e.target.value);
-                      setSaved(false);
-                      setError('');
-                    }}
-                  />
-                  <span className="addon u-color-accent-fw-700">%</span>
-                </div>
-                <span className="muted tiny">
-                  Guardado: <span className="mono u-fw-700">{pct.toFixed(1)}%</span>
-                </span>
-              </div>
-            </div>
-
-            {/* Filas Tarjetas de Crédito */}
-            <div className="u-mb-16">
-              <div className="field-label u-mb-8">Tarjetas de crédito</div>
-              {tarjetas.length === 0 ? (
-                <div className="muted tiny u-p-6-0">
-                  No hay tarjetas configuradas. Creá una en Cajas → Config marcándola como tarjeta.
-                </div>
-              ) : (
-                <div className="stack u-gap-8">
-                  {tarjetas.map(t => {
-                    const tDirty = parseFloat(t.pct_input) !== t._original;
-                    return (
-                      <div key={t.id} className="u-config-tarjeta-row">
-                        <div className="u-fs-13-fw-600">{t.nombre}</div>
-                        <div className="input-group">
-                          <input
-                            type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
-                            step="0.1" min="0" max="100"
-                            className="input mono u-fw-700-fs-15"
-                            data-testid={`config-pct-tarjeta-${t.id}`}
-                            value={t.pct_input}
-                            onChange={e => setTarjetaPct(t.id, e.target.value)}
-                          />
-                          <span className="addon u-color-accent-fw-700">%</span>
-                        </div>
-                        <span className="muted tiny u-text-right">
-                          {tDirty
-                            ? <>Guardado: <span className="mono">{t._original.toFixed(1)}%</span></>
-                            : <span className="mono">{t._original.toFixed(1)}%</span>}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Simulación (solo para Financiera — las tarjetas el operador
-                ya entiende el % de cada cuota) */}
-            <div className="u-config-sim-box">
-              <div className="muted tiny u-config-sim-title">
-                Simulación Financiera con ARS 1.000.000
-              </div>
-              <div className="stack u-gap-6">
-                <div className="flex-between">
-                  <span className="muted tiny">Bruto</span>
-                  <span className="mono u-fw-600">ARS 1.000.000</span>
-                </div>
-                <div className="flex-between">
-                  <span className="muted tiny">Retención ({simPct.toFixed(1)}%)</span>
-                  <span className="mono u-color-accent-fw-600">
-                    ARS {fmt(simRet)}
-                  </span>
-                </div>
-                <div className="flex-between u-config-sim-total">
-                  <span className="u-fs-13-fw-600">Nos queda</span>
-                  <span className="mono pos u-fw-700-fs-15">
-                    ARS {fmt(simNeto)}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Error / success messages */}
-            {error && (
-              <div className="u-alert-neg">
-                {error}
-              </div>
-            )}
-            {saved && (
-              <div className="u-alert-pos">
-                Configuración guardada correctamente.
-              </div>
-            )}
-
-            <div className="flex-row u-gap-8">
-              <button
-                className="btn btn-primary"
-                onClick={handleSave}
-                disabled={saving || !dirty}
-                data-testid="config-comisiones-save"
-              >
-                <Icons.Check size={15} />
-                {saving ? 'Guardando…' : dirty ? 'Guardar cambios' : 'Sin cambios'}
-              </button>
-              {dirty && (
-                <button className="btn btn-ghost" onClick={handleCancel}>
-                  Cancelar
-                </button>
-              )}
-            </div>
+      {/* Hint que "Comisiones de métodos de pago" se movió al Cotizador
+          (task #284). Si un admin llega acá buscando editar las %, le damos
+          el pointer. */}
+      <div className="card u-mb-16">
+        <div className="card-hd">
+          <div className="u-fw-600-fs-15">Comisiones de métodos de pago</div>
+          <div className="muted tiny u-mt-2">
+            Se movieron al Cotizador para que puedas ajustar y ver el impacto en vivo. <a href="/cotizador">Ir al Cotizador →</a>
           </div>
         </div>
+      </div>
 
-        {/* Right: system limitations */}
-        <div className="card">
-          <div className="card-hd">
-            <div className="u-fw-600-fs-15">Limitaciones del sistema</div>
-            <div className="muted tiny u-mt-2">
-              Comportamientos que conviene tener presentes
+      {/* Limitaciones del sistema (informativo) */}
+      <div className="card">
+        <div className="card-hd">
+          <div className="u-fw-600-fs-15">Limitaciones del sistema</div>
+          <div className="muted tiny u-mt-2">
+            Comportamientos que conviene tener presentes
+          </div>
+        </div>
+        <div className="u-config-limits-grid">
+          {systemLimits.map(({ t, d }) => (
+            <div
+              key={t}
+              className="u-config-limit-card"
+            >
+              <div className="u-fw-600-fs-13-mb-4">{t}</div>
+              <div className="muted tiny u-lh-14">{d}</div>
             </div>
-          </div>
-          <div className="u-config-limits-grid">
-            {systemLimits.map(({ t, d }) => (
-              <div
-                key={t}
-                className="u-config-limit-card"
-              >
-                <div className="u-fw-600-fs-13-mb-4">{t}</div>
-                <div className="muted tiny u-lh-14">{d}</div>
-              </div>
-            ))}
-          </div>
+          ))}
         </div>
       </div>
 
@@ -436,7 +252,8 @@ export default function Config() {
           Cuando el operador carga ventas frente al cliente en el mostrador,
           el cliente ve la pantalla y puede leer el margen del negocio →
           incómodo. Toggle per-tenant, default apagado (muestra ganancia).
-          Se guarda con el mismo botón "Guardar cambios" del card de arriba. */}
+          2026-08-02 (task #284): ahora tiene su propio save (antes compartía
+          con la sección de comisiones que se movió al Cotizador). */}
       <div className="card u-mt-16">
         <div className="card-hd">
           <div className="u-fw-600-fs-15">Privacidad en Ventas</div>
@@ -467,6 +284,26 @@ export default function Config() {
           </div>
           <div className="muted tiny u-mt-4">
             Estado guardado: <span className="mono u-fw-700">{hideGananciaOriginal ? 'Oculto' : 'Visible'}</span>
+          </div>
+
+          {/* Feedback + save */}
+          {error && <div className="u-alert-neg u-mt-14">{error}</div>}
+          {saved && <div className="u-alert-pos u-mt-14">Configuración guardada correctamente.</div>}
+          <div className="flex-row u-gap-8 u-mt-14">
+            <button
+              className="btn btn-primary"
+              onClick={handleSave}
+              disabled={saving || !dirty}
+              data-testid="config-privacidad-save"
+            >
+              <Icons.Check size={15} />
+              {saving ? 'Guardando…' : dirty ? 'Guardar cambios' : 'Sin cambios'}
+            </button>
+            {dirty && (
+              <button className="btn btn-ghost" onClick={handleCancel}>
+                Cancelar
+              </button>
+            )}
           </div>
         </div>
       </div>

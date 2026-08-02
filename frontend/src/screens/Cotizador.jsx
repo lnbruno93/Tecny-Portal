@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import { fmt } from '../lib/format'; // Hygiene H2 auditoría 2026-06-06
-import { tenantProfile, config as configApi } from '../lib/api'; // 2026-06-22 + #445 lastTc
+import { tenantProfile, config as configApi, cajas as cajasApi } from '../lib/api'; // 2026-06-22 + #445 lastTc + task #284 comisiones
 import { useAuth } from '../contexts/AuthContext'; // 2026-06-22 tab Configuración (Mi negocio)
 import { isTenantAdmin } from '../lib/userHasCap'; // 2026-06-25 Bug #1 — fix owner edit
 import BusinessProfileSection from '../components/BusinessProfileSection'; // idem
@@ -59,35 +59,103 @@ function buildGoogleLine(profile) {
 //   - 1 cuota (11%): factor = 1/0.89 = 1.1236 → cliente paga contado×1.1236
 //   - Tarjeta liquida: 1.1236 × 0.89 = 1.0 → comercio recibe contado limpio ✅
 //
-// Expresamos los costos como COMISIONES (la comisión PURA que cobra cada
-// método, no la suma final) y derivamos el COEFS automáticamente. Así el
-// día que cambie la comisión real, se actualiza un solo lugar y el factor
-// se recalcula.
-const COMISIONES = {
-  contado: 0,        // 0% — efectivo, sin recargo
-  transf:  0.03,     // 3% — transferencia bancaria
-  c1:      0.11,     // 11% — tarjeta de crédito 1 pago
-  c3:      0.235,    // 23.5% — tarjeta 3 cuotas
-  c6:      0.28,     // 28% — tarjeta 6 cuotas
-};
-
+// 2026-08-02 (task #284): las comisiones ya NO son hardcoded — se leen de
+// la config del tenant (`configApi.get()` para financiera + `cajasApi.
+// listCajas()` para las tarjetas con `es_tarjeta=true`). Antes, todos los
+// tenants Tecny cotizaban con los % del PO (Lucas) sin importar lo que
+// configuraran en Config → General. Bug latente hasta la migración de
+// esta sección a Cotizador > Tarjetas de crédito.
+//
 // Factor por el que hay que MULTIPLICAR el precio contado para pasarle el
-// costo de la comisión al cliente sin perder margen.
+// costo de la comisión al cliente sin perder margen. Sigue igual — es matemática.
 const factor = (c) => 1 / (1 - c);
-
-// Coeficientes derivados. Cambiar siempre COMISIONES, nunca acá.
-const COEFS = {
-  contado: factor(COMISIONES.contado),   // 1.0
-  transf:  factor(COMISIONES.transf),    // 1.0309…
-  c1:      factor(COMISIONES.c1),        // 1.1236…
-  c3:      factor(COMISIONES.c3),        // 1.3072…
-  c6:      factor(COMISIONES.c6),        // 1.3889…
-};
 
 // Helper para mostrar el porcentaje EFECTIVO en los labels — el % real que
 // el cliente paga arriba del contado, no la comisión cruda. Para 11% de
 // comisión, el cliente paga 12.36% más que el contado, no 11%.
-const pctEfectivo = (c) => ((factor(c) - 1) * 100).toFixed(c >= 0.1 ? 2 : 2);
+const pctEfectivo = (c) => ((factor(c) - 1) * 100).toFixed(2);
+
+// ─── Hook: comisiones del tenant ─────────────────────────────────────────────
+// 2026-08-02 (task #284): centraliza el fetch + save de las comisiones que
+// afectan el cotizador (transferencia + tarjetas de crédito).
+//
+// Fuentes:
+//   · Transferencia (Financiera) = `config.pct_financiera` (tabla `config`)
+//   · Tarjetas de crédito        = `metodos_pago` con `es_tarjeta=true`,
+//                                   ordenadas por `orden ASC, nombre ASC`.
+//                                   Cada una tiene `comision_pct`.
+//
+// Antes esto vivía en Config → General, pero era un lugar poco natural para
+// el operador (el Cotizador es donde ve el impacto de cada %). Se movió al
+// Cotizador — Config solo mantiene la privacidad de ventas (task #280).
+//
+// El save es "batch por diff": solo se pega al endpoint para lo que cambió,
+// para no invalidar innecesariamente el server ni gastar audit trail vacío.
+//
+// El caller decide si mostrar/hidear la sección de edición (via isAdmin).
+// Los reads son públicos al cotizador (cualquier user con `cotizador.trabajar`
+// que llegue al tab ya ve las % — así el cálculo del cotizador es correcto
+// para todos los users, no solo admin).
+function useComisionesTenant() {
+  const [pctFinanciera, setPctFinanciera] = useState(3);
+  const [tarjetas, setTarjetas] = useState([]); // [{id, nombre, pct, _original}]
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [savedTick, setSavedTick] = useState(0); // bump para forzar re-render sin dirty
+
+  useEffect(() => {
+    let alive = true;
+    Promise.all([
+      configApi.get().catch(e => { throw e; }),
+      cajasApi.listCajas().catch(() => []),
+    ])
+      .then(([cfg, cajasList]) => {
+        if (!alive) return;
+        const v = Number(cfg?.pct_financiera ?? 3);
+        setPctFinanciera(v);
+        const tcs = (cajasList || [])
+          .filter(c => c.es_tarjeta)
+          .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0) || String(a.nombre).localeCompare(String(b.nombre)))
+          .map(c => ({
+            id: c.id, nombre: c.nombre,
+            pct: Number(c.comision_pct ?? 0),
+            _original: Number(c.comision_pct ?? 0),
+          }));
+        setTarjetas(tcs);
+      })
+      .catch(e => { if (alive) setError(e.message || 'No se pudieron cargar las comisiones.'); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [savedTick]);
+
+  const setTarjetaPct = (id, val) => {
+    setTarjetas(ts => ts.map(t => t.id === id ? { ...t, pct: val } : t));
+  };
+
+  async function save(newPctFin) {
+    // Diff: solo pegamos lo que cambió. Si nada cambió, no hacemos nada
+    // (dirty-check lo maneja el caller).
+    const updates = [];
+    if (Number(newPctFin) !== Number(pctFinanciera)) {
+      updates.push(configApi.update({ pct_financiera: Number(newPctFin) }));
+    }
+    tarjetas.forEach(t => {
+      if (Number(t.pct) !== Number(t._original)) {
+        updates.push(cajasApi.updateCaja(t.id, { comision_pct: Number(t.pct) }));
+      }
+    });
+    if (updates.length === 0) return;
+    await Promise.all(updates);
+    // Re-fetch para sincronizar _original con lo persistido.
+    setSavedTick(t => t + 1);
+  }
+
+  return {
+    pctFinanciera, setPctFinanciera,
+    tarjetas, setTarjetaPct,
+    loading, error, save,
+  };
+}
 
 // ─── Tab: Tarjetas de crédito ────────────────────────────────────────────────
 
@@ -99,6 +167,48 @@ function TabTarjetas() {
   // ventas recientes.
   const { monedaLocal } = useMonedasTenant();
   const symLocal = symbolFor(monedaLocal);
+  const { user } = useAuth() || {};
+  const isAdmin = isTenantAdmin(user);
+  // 2026-08-02 (task #284): comisiones dinámicas por tenant, ya no hardcoded.
+  // Ver hook useComisionesTenant abajo.
+  const {
+    pctFinanciera, setPctFinanciera,
+    tarjetas, setTarjetaPct,
+    loading: loadingCom, error: errCom, save: saveComisiones,
+  } = useComisionesTenant();
+  // Dirty check + save state para la sección editable inline. Solo owner/admin
+  // ven la sección (isAdmin arriba). Otros users cotizan con las % actuales
+  // sin poder tocarlas.
+  const [pctFinInput, setPctFinInput] = useState('');
+  useEffect(() => { setPctFinInput(String(pctFinanciera)); }, [pctFinanciera]);
+  const [savingCom, setSavingCom] = useState(false);
+  const [savedComOk, setSavedComOk] = useState(false);
+  const [saveComErr, setSaveComErr] = useState('');
+  const comisionesDirty =
+    parseFloat(pctFinInput) !== Number(pctFinanciera) ||
+    tarjetas.some(t => Number(t.pct) !== Number(t._original));
+  async function handleSaveComisiones() {
+    const vFin = parseFloat(pctFinInput);
+    if (isNaN(vFin) || vFin < 0 || vFin > 100) {
+      setSaveComErr('Financiera: valor inválido (0–100).'); return;
+    }
+    for (const t of tarjetas) {
+      const v = Number(t.pct);
+      if (isNaN(v) || v < 0 || v > 100) {
+        setSaveComErr(`${t.nombre}: valor inválido (0–100).`); return;
+      }
+    }
+    setSavingCom(true); setSaveComErr(''); setSavedComOk(false);
+    try {
+      await saveComisiones(vFin);
+      setSavedComOk(true);
+      setTimeout(() => setSavedComOk(false), 2500);
+    } catch (e) {
+      setSaveComErr(e.message || 'No se pudieron guardar las comisiones.');
+    } finally {
+      setSavingCom(false);
+    }
+  }
   // #445 + follow-up 2026-07-01: TC persistente en localStorage. Al montar,
   // si el operador ya lo tipeó antes (en cualquier sesión), lo recuperamos
   // instantáneamente. Sólo hidratamos desde el backend cuando localStorage
@@ -150,50 +260,68 @@ function TabTarjetas() {
   const setProd = (id, field, val) =>
     setProds(prods.map(p => p.id === id ? { ...p, [field]: val } : p));
 
+  // 2026-08-02 (task #284): cálculo dinámico basado en la config real del
+  // tenant. Antes usaba `COEFS.c1/c3/c6` hardcoded — bug latente porque
+  // TODOS los tenants Tecny cotizaban con los % de Lucas. Ahora cada
+  // tenant cotiza con SUS propias tarjetas (cantidad y % según lo que
+  // configuró en la sección de arriba, que persiste vía cajasApi).
+  //
+  // Trade-off: el shape del cálculo cambió de {c1,c3,c6} fijos → array
+  // dinámico `tarjetas[]`. Los usos downstream (render + copyText) se
+  // actualizaron para iterar sobre el array.
+  const pctFinDec = Number(pctFinanciera) / 100 || 0;
   const calculo = useMemo(() => {
+    const factTransf = factor(pctFinDec);
+    const factTarjetas = tarjetas.map(t => factor(Number(t.pct) / 100 || 0));
     const lines = prods.map(p => {
       const base = (parseFloat(p.usd) || 0) * tc;
       return {
         p,
-        contado: Math.round(base),
-        transf:  Math.round(base * COEFS.transf),
-        c1:      Math.round(base * COEFS.c1),
-        c3:      Math.round(base * COEFS.c3),
-        c6:      Math.round(base * COEFS.c6),
+        contado:  Math.round(base),
+        transf:   Math.round(base * factTransf),
+        tarjetas: tarjetas.map((t, i) => ({
+          id:     t.id,
+          nombre: t.nombre,
+          pct:    Number(t.pct) || 0,
+          monto:  Math.round(base * factTarjetas[i]),
+        })),
       };
     });
-    const tots = lines.reduce(
-      (a, l) => ({
-        contado: a.contado + l.contado,
-        transf:  a.transf  + l.transf,
-        c1: a.c1 + l.c1,
-        c3: a.c3 + l.c3,
-        c6: a.c6 + l.c6,
-      }),
-      { contado: 0, transf: 0, c1: 0, c3: 0, c6: 0 }
-    );
-    return { lines, tots };
-  }, [prods, tc]);
+    const totContado = lines.reduce((a, l) => a + l.contado, 0);
+    const totTransf  = lines.reduce((a, l) => a + l.transf, 0);
+    const totTarjetas = tarjetas.map((t, i) => ({
+      id:     t.id,
+      nombre: t.nombre,
+      monto:  lines.reduce((a, l) => a + (l.tarjetas[i]?.monto || 0), 0),
+    }));
+    return { lines, tots: { contado: totContado, transf: totTransf, tarjetas: totTarjetas } };
+  }, [prods, tc, pctFinDec, tarjetas]);
 
   const copyText = () => {
     let txt = 'Te comparto la cotización que me solicitaste:\n';
-    calculo.lines.forEach(({ p, contado, transf, c1, c3, c6 }) => {
+    calculo.lines.forEach(({ p, contado, transf, tarjetas: lineTarjs }) => {
       txt += `\n- ${p.nom || 'Producto'}${p.vari ? ' ' + p.vari : ''}\n`;
       // F5: TC con símbolo país-aware ("$" para AR, "$U" para UY).
       txt += `- Precio: USD ${fmt(p.usd)} | TC ${symLocal}${fmt(tc)}\n\n`;
       txt += `- Contado en pesos ${monedaLocal}: ${symLocal}${fmt(contado)}\n`;
       txt += `- Transferencia ${monedaLocal}: ${symLocal}${fmt(transf)}\n\n`;
-      txt += `- 💳 1 cuota: ${symLocal}${fmt(c1)}\n`;
-      txt += `- 💳 3 cuotas: ${symLocal}${fmt(c3)} (${symLocal}${fmt(Math.round(c3 / 3))}/cuota)\n`;
-      txt += `- 💳 6 cuotas: ${symLocal}${fmt(c6)} (${symLocal}${fmt(Math.round(c6 / 6))}/cuota)\n`;
+      // Task #284: iterar dinámico por tarjetas del tenant. Extraemos # de
+      // cuotas del nombre si matchea "N cuota(s)" (ej. "TC | 3 Cuotas" → 3)
+      // para agregar el desglose "por cuota" — puramente cosmético.
+      lineTarjs.forEach(t => {
+        const m = String(t.nombre || '').match(/(\d+)\s*cuota/i);
+        const n = m ? parseInt(m[1], 10) : 1;
+        const perCuota = n > 1 ? ` (${symLocal}${fmt(Math.round(t.monto / n))}/cuota)` : '';
+        txt += `- 💳 ${t.nombre}: ${symLocal}${fmt(t.monto)}${perCuota}\n`;
+      });
     });
     if (calculo.lines.length > 1) {
       txt += `\n━━━━━━━━━━━━━━━\n`;
       txt += `TOTAL CONTADO: ${symLocal}${fmt(calculo.tots.contado)}\n`;
       txt += `TOTAL TRANSFERENCIA: ${symLocal}${fmt(calculo.tots.transf)}\n\n`;
-      txt += `💳 TOTAL 1 cuota: ${symLocal}${fmt(calculo.tots.c1)}\n`;
-      txt += `💳 TOTAL 3 cuotas: ${symLocal}${fmt(calculo.tots.c3)}\n`;
-      txt += `💳 TOTAL 6 cuotas: ${symLocal}${fmt(calculo.tots.c6)}\n`;
+      calculo.tots.tarjetas.forEach(t => {
+        txt += `💳 TOTAL ${t.nombre}: ${symLocal}${fmt(t.monto)}\n`;
+      });
     }
     // 2026-06-22 fix multi-tenant: la frase de Google (nombre del negocio +
     // reseñas) ahora se inyecta dinámicamente desde el perfil del tenant.
@@ -216,7 +344,126 @@ function TabTarjetas() {
     setTimeout(() => setCopiado(false), 1800);
   };
 
+  // Simulación Financiera para preview de la sección de comisiones (mismo
+  // patrón que la card vieja de Config → General). Base fija 1M ARS.
+  const simBase = 1_000_000;
+  const simPctFin = parseFloat(pctFinInput) || 0;
+  const simRet = simBase * (simPctFin / 100);
+  const simNeto = simBase - simRet;
+
   return (
+    <>
+      {/* ── Sección Comisiones (editable solo owner/admin, task #284) ────
+          Antes vivía en Config → General pero era ajeno al Cotizador,
+          donde el operador ve realmente el impacto de cada %. Aquí puede
+          ajustar y comprobar en vivo el mensaje que sale al cliente. */}
+      {isAdmin && !loadingCom && (
+        <div className="card u-mb-14">
+          <div className="card-hd">
+            <div className="u-fw-600-fs-15">Comisiones de métodos de pago</div>
+            <div className="muted tiny u-mt-2">
+              Se aplican al cotizar (y también al cobrar con cada método en Ventas). Solo admin del negocio.
+            </div>
+          </div>
+          <div className="u-p-0-0-16">
+            {/* Financiera */}
+            <div className="field u-mb-16">
+              <div className="field-label">Transferencias <span className="muted">(Financiera)</span></div>
+              <div className="u-flex-center-gap-10">
+                <div className="input-group u-mw-160">
+                  <input
+                    type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
+                    step="0.1" min="0" max="100"
+                    className="input mono u-fw-700-fs-16"
+                    data-testid="cotizador-pct-financiera"
+                    value={pctFinInput}
+                    onChange={e => { setPctFinInput(e.target.value); setSaveComErr(''); setSavedComOk(false); }}
+                  />
+                  <span className="addon u-color-accent-fw-700">%</span>
+                </div>
+                <span className="muted tiny">
+                  Guardado: <span className="mono u-fw-700">{Number(pctFinanciera).toFixed(1)}%</span>
+                </span>
+              </div>
+            </div>
+
+            {/* Tarjetas */}
+            <div className="u-mb-16">
+              <div className="field-label u-mb-8">Tarjetas de crédito</div>
+              {tarjetas.length === 0 ? (
+                <div className="muted tiny u-p-6-0">
+                  No hay tarjetas configuradas. Creá una en Cajas → Config marcándola como tarjeta.
+                </div>
+              ) : (
+                <div className="stack u-gap-8">
+                  {tarjetas.map(t => {
+                    const tDirty = Number(t.pct) !== Number(t._original);
+                    return (
+                      <div key={t.id} className="u-config-tarjeta-row">
+                        <div className="u-fs-13-fw-600">{t.nombre}</div>
+                        <div className="input-group">
+                          <input
+                            type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
+                            step="0.1" min="0" max="100"
+                            className="input mono u-fw-700-fs-15"
+                            data-testid={`cotizador-pct-tarjeta-${t.id}`}
+                            value={t.pct}
+                            onChange={e => { setTarjetaPct(t.id, e.target.value); setSaveComErr(''); setSavedComOk(false); }}
+                          />
+                          <span className="addon u-color-accent-fw-700">%</span>
+                        </div>
+                        <span className="muted tiny u-text-right">
+                          {tDirty
+                            ? <>Guardado: <span className="mono">{Number(t._original).toFixed(1)}%</span></>
+                            : <span className="mono">{Number(t._original).toFixed(1)}%</span>}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Simulación Financiera con ARS 1.000.000 */}
+            <div className="u-config-sim-box">
+              <div className="muted tiny u-config-sim-title">
+                Simulación Financiera con ARS 1.000.000
+              </div>
+              <div className="stack u-gap-6">
+                <div className="flex-between">
+                  <span className="muted tiny">Bruto</span>
+                  <span className="mono u-fw-600">ARS 1.000.000</span>
+                </div>
+                <div className="flex-between">
+                  <span className="muted tiny">Retención ({simPctFin.toFixed(1)}%)</span>
+                  <span className="mono u-color-accent-fw-600">ARS {fmt(simRet)}</span>
+                </div>
+                <div className="flex-between u-config-sim-total">
+                  <span className="u-fs-13-fw-600">Nos queda</span>
+                  <span className="mono pos u-fw-700-fs-15">ARS {fmt(simNeto)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Feedback + save */}
+            {saveComErr && <div className="u-alert-neg">{saveComErr}</div>}
+            {savedComOk && <div className="u-alert-pos">Comisiones guardadas.</div>}
+            {errCom && <div className="u-alert-neg">{errCom}</div>}
+            <div className="flex-row u-gap-8">
+              <button
+                className="btn btn-primary"
+                onClick={handleSaveComisiones}
+                disabled={savingCom || !comisionesDirty}
+                data-testid="cotizador-comisiones-save"
+              >
+                <Icons.Check size={15} />
+                {savingCom ? 'Guardando…' : comisionesDirty ? 'Guardar cambios' : 'Sin cambios'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     <div className="quote-grid">
       {/* ── Left: inputs ── */}
       <div>
@@ -302,7 +549,7 @@ function TabTarjetas() {
           </button>
         </div>
 
-        {calculo.lines.map(({ p, contado, transf, c1, c3, c6 }) => (
+        {calculo.lines.map(({ p, contado, transf, tarjetas: lineTarjs }) => (
           <div key={p.id} className="u-quote-product-line">
             <div className="u-fw-600-fs-135-mb-8">
               {p.nom || 'Producto'}{' '}
@@ -315,29 +562,24 @@ function TabTarjetas() {
               <span className="val mono pos u-fw-600">{symLocal}{fmt(contado)}</span>
             </div>
             <div className="quote-line">
-              <span className="lbl">Transferencia (+{pctEfectivo(COMISIONES.transf)}%)</span>
+              <span className="lbl">Transferencia (+{pctEfectivo(pctFinDec)}%)</span>
               <span className="val mono pos u-fw-600">{symLocal}{fmt(transf)}</span>
             </div>
-            <div className="quote-line u-mt-6">
-              <span className="lbl">💳 1 cuota (+{pctEfectivo(COMISIONES.c1)}%)</span>
-              <span className="val mono u-color-accent-fw-600">
-                {symLocal}{fmt(c1)}
-              </span>
-            </div>
-            <div className="quote-line">
-              <span className="lbl">💳 3 cuotas (+{pctEfectivo(COMISIONES.c3)}%)</span>
-              <span className="val mono u-color-accent-fw-600">
-                {symLocal}{fmt(c3)}{' '}
-                <small className="muted">· {symLocal}{fmt(Math.round(c3 / 3))}/c</small>
-              </span>
-            </div>
-            <div className="quote-line">
-              <span className="lbl">💳 6 cuotas (+{pctEfectivo(COMISIONES.c6)}%)</span>
-              <span className="val mono u-color-accent-fw-600">
-                {symLocal}{fmt(c6)}{' '}
-                <small className="muted">· {symLocal}{fmt(Math.round(c6 / 6))}/c</small>
-              </span>
-            </div>
+            {/* Task #284: renderizado dinámico. Cantidad de cuotas se extrae
+                del nombre para el "por cuota" — puramente cosmético. */}
+            {lineTarjs.map((t, i) => {
+              const m = String(t.nombre || '').match(/(\d+)\s*cuota/i);
+              const n = m ? parseInt(m[1], 10) : 1;
+              return (
+                <div key={t.id} className={i === 0 ? 'quote-line u-mt-6' : 'quote-line'}>
+                  <span className="lbl">💳 {t.nombre} (+{pctEfectivo(t.pct / 100)}%)</span>
+                  <span className="val mono u-color-accent-fw-600">
+                    {symLocal}{fmt(t.monto)}
+                    {n > 1 && <>{' '}<small className="muted">· {symLocal}{fmt(Math.round(t.monto / n))}/c</small></>}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         ))}
 
@@ -351,18 +593,12 @@ function TabTarjetas() {
               <span className="lbl">Total transferencia</span>
               <span className="val mono pos u-fw-600">{symLocal}{fmt(calculo.tots.transf)}</span>
             </div>
-            <div className="quote-line u-mt-4">
-              <span className="lbl">💳 Total 1 cuota</span>
-              <span className="val mono u-color-accent-fw-600">{symLocal}{fmt(calculo.tots.c1)}</span>
-            </div>
-            <div className="quote-line">
-              <span className="lbl">💳 Total 3 cuotas</span>
-              <span className="val mono u-color-accent-fw-600">{symLocal}{fmt(calculo.tots.c3)}</span>
-            </div>
-            <div className="quote-line">
-              <span className="lbl">💳 Total 6 cuotas</span>
-              <span className="val mono u-color-accent-fw-600">{symLocal}{fmt(calculo.tots.c6)}</span>
-            </div>
+            {calculo.tots.tarjetas.map((t, i) => (
+              <div key={t.id} className={i === 0 ? 'quote-line u-mt-4' : 'quote-line'}>
+                <span className="lbl">💳 Total {t.nombre}</span>
+                <span className="val mono u-color-accent-fw-600">{symLocal}{fmt(t.monto)}</span>
+              </div>
+            ))}
           </>
         )}
 
@@ -372,6 +608,7 @@ function TabTarjetas() {
         </div>
       </div>
     </div>
+    </>
   );
 }
 
@@ -384,6 +621,12 @@ function TabUsd() {
   // 2026-06-29 Multi-país F5: ver TabTarjetas para racionale de monedaLocal.
   const { monedaLocal } = useMonedasTenant();
   const symLocal = symbolFor(monedaLocal);
+  // Task #284: TabUsd solo usa la comisión de Transferencia (Financiera).
+  // Fetchea via el mismo hook que TabTarjetas — así las 2 tabs cotizan
+  // con la config real del tenant y no con hardcoded values.
+  const { pctFinanciera } = useComisionesTenant();
+  const pctTransfDec = Number(pctFinanciera) / 100 || 0;
+  const factTransf = factor(pctTransfDec);
   // #445 + follow-up 2026-07-01: TC persistente. Ver TabTarjetas para
   // racionale — este tab comparte el mismo valor via lib/cotizadorTc.js.
   const [tc, setTc]         = useState(() => getStoredTc() ?? 1400);
@@ -429,13 +672,13 @@ function TabUsd() {
       return {
         p,
         usdRaw: u,
-        // 2026-06-13: COEFS.transf (1/(1-comisión)) para que la transferencia
-        // liquide el contado limpio.
+        // 2026-06-13: factor(pct) = 1/(1-comisión) para que la transferencia
+        // liquide el contado limpio. Task #284: pctFinanciera viene del hook.
         ef:   Math.round(u * tc),
-        tars: Math.round(u * tc * COEFS.transf),
+        tars: Math.round(u * tc * factTransf),
         // 2026-06-15: redondear a entero (consistente con ef/tars en ARS).
         // En USD también cotizamos en montos redondos (USD 928 en vez de 927.84).
-        tusd: Math.round(u * COEFS.transf),
+        tusd: Math.round(u * factTransf),
       };
     });
     const tots = lines.reduce(
@@ -492,14 +735,14 @@ function TabUsd() {
       key: 'tars',
       val: optTars,
       set: setOptTars,
-      label: `Transferencia ${monedaLocal} (+${pctEfectivo(COMISIONES.transf)}%)`,
+      label: `Transferencia ${monedaLocal} (+${pctEfectivo(pctTransfDec)}%)`,
       sub: 'Cobro en pesos con recargo',
     },
     {
       key: 'tusd',
       val: optTusd,
       set: setOptTusd,
-      label: `Transferencia USD (+${pctEfectivo(COMISIONES.transf)}%)`,
+      label: `Transferencia USD (+${pctEfectivo(pctTransfDec)}%)`,
       sub: 'Cobro en dólares con recargo',
     },
   ];
@@ -643,13 +886,13 @@ function TabUsd() {
                 )}
                 {optTars && (
                   <div className="quote-line">
-                    <span className="lbl">Transferencia {monedaLocal} (+{pctEfectivo(COMISIONES.transf)}%)</span>
+                    <span className="lbl">Transferencia {monedaLocal} (+{pctEfectivo(pctTransfDec)}%)</span>
                     <span className="val mono pos u-fw-700">{symLocal}{fmt(tars)}</span>
                   </div>
                 )}
                 {optTusd && (
                   <div className="quote-line">
-                    <span className="lbl">Transferencia USD (+{pctEfectivo(COMISIONES.transf)}%)</span>
+                    <span className="lbl">Transferencia USD (+{pctEfectivo(pctTransfDec)}%)</span>
                     <span className="val mono u-color-accent-fw-700">
                       USD {fmt(tusd)}
                     </span>
