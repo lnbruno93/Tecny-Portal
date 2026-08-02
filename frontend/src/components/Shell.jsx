@@ -13,6 +13,10 @@ import UnverifiedBanner from './UnverifiedBanner';
 import ExpiredBanner from './ExpiredBanner';
 import ChangePasswordModal from './ChangePasswordModal';
 import ChatWidget from './ChatWidget';
+// 2026-08-01 (task #281): FAB "Nueva venta" — atajo flotante para crear
+// venta desde cualquier sección. Se apila arriba del chat FAB. Gated por
+// cap ventas.trabajar (el propio componente hace early-return).
+import NuevaVentaFab from './NuevaVentaFab';
 // 2026-06-29 #458 Red B2B F5: bell de notificaciones cross-tenant en topbar.
 // 2026-07-17: renombrado desde RedB2BNotificationsBell — el bell ahora
 // unifica Novedades (release notes) + Red B2B en un solo dropdown con
@@ -597,6 +601,12 @@ export default function Shell() {
         </div>
       </div>
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      {/* 2026-08-01 (task #281): atajo global "Nueva venta" — se auto-oculta
+          si el user no tiene cap ventas.trabajar. Renderizado ANTES del
+          ChatWidget para que en el DOM aparezca "arriba" (aunque el CSS
+          fixed positioning define la posición real, este orden ayuda a
+          screen readers a leer los atajos en orden de prioridad). */}
+      <NuevaVentaFab />
       {/* 2026-06-20 #340 Fase 1: Asistente Tecny — FAB + Modal. Sin guard
           de permisos: el bot es read-only y usa RLS scope del backend, así
           que el user solo ve datos a los que ya tiene acceso. */}

@@ -2470,6 +2470,37 @@ body.modal-open { overflow: hidden; }
   z-index: 70;
   transition: transform .15s ease, box-shadow .15s ease;
 }
+
+/* 2026-08-01 (task #281): FAB "Nueva venta" — atajo global apilado
+   ARRIBA del chat bot. bottom = 24 (chat) + 52 (chat h) + 12 (gap) = 88.
+   Mismo tamaño y stack visual que .chat-fab para dar sensación de "par
+   de atajos". Color distinto (surface/border) para diferenciarlo del
+   asistente y no competir por atención visual — el chat es el CTA
+   principal, este es una utilidad recurrente para operadores. */
+.venta-fab {
+  position: fixed;
+  right: 24px;
+  bottom: 88px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .28), 0 2px 6px rgba(0, 0, 0, .18);
+  z-index: 70;
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.venta-fab:hover { transform: scale(1.04); box-shadow: 0 10px 28px rgba(0, 0, 0, .32); }
+.venta-fab:active { transform: scale(0.98); }
+.venta-fab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
 .chat-fab:hover { transform: scale(1.04); box-shadow: 0 10px 28px rgba(0, 0, 0, .32); }
 .chat-fab:active { transform: scale(0.98); }
 .chat-fab:focus-visible {
