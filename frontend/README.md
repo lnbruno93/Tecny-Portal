@@ -33,7 +33,7 @@ src/
 
 ## Setup local
 
-Requiere Node 20+. El backend tiene que estar corriendo en `localhost:3001`
+Requiere Node 22+. El backend tiene que estar corriendo en `localhost:3001`
 (ver `/backend/.env.example` o `/README.md` del repo).
 
 ```bash

@@ -38,7 +38,7 @@ Maneja:
 |---|---|---|
 | Frontend | React 19 + Vite + react-router | PWA. Bundle ~600kb gzip. |
 | Frontend tests | Vitest | 156 tests |
-| Backend | Node 20 + Express | JWT HS256, helmet, compression |
+| Backend | Node 22 + Express | JWT HS256, helmet, compression |
 | Backend tests | Jest + supertest | 539 tests integration |
 | DB | PostgreSQL 18 | node-pg-migrate, sin ORM |
 | Auth | JWT HS256 + bcrypt + lockout + 2FA TOTP opcional | Ver §8 decisiones durables; sin OAuth todavía |
