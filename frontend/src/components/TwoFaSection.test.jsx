@@ -8,7 +8,7 @@
 // Mockea api/twoFa y el componente TwoFaSetup (ya tiene sus tests propios).
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, fireEvent, waitFor, cleanup, configure } from '@testing-library/react';
+import { render, fireEvent, waitFor, cleanup, configure, within } from '@testing-library/react';
 import { ToastProvider } from '../contexts/ToastContext';
 import { ConfirmProvider } from './ConfirmModal';
 
@@ -93,7 +93,11 @@ describe('TwoFaSection — estado NO configurado', () => {
     const { findByText, getByText } = renderSection();
     fireEvent.click(await findByText('Activar 2FA'));
     fireEvent.click(getByText('mock-cancel'));
-    await waitFor(() => expect(findByText('No activado')).resolves.toBeTruthy());
+    // findByText ya waita internamente hasta encontrar el texto (o timeout).
+    // Antes envolvíamos en waitFor(() => expect(findByText(...).resolves...))
+    // — pattern retorcido + redundante. findByText por sí solo es
+    // determinístico y da mejor error messages.
+    await findByText('No activado');
   });
 });
 
@@ -185,14 +189,24 @@ describe('TwoFaSection — flow de regenerate recovery codes', () => {
   });
 
   it('si user cancela el modal de código, NO llama regenerateRecovery', async () => {
-    const { findByText, getAllByText } = renderSection();
+    const { findByText, findByPlaceholderText, queryByPlaceholderText } = renderSection();
     fireEvent.click(await findByText('Regenerar recovery codes'));
     fireEvent.click(await findByText('Continuar'));
-    // Esperamos al modal de código y clickeamos Cancelar (puede haber dos botones "Cancelar"
-    // si los confirm modals legacy quedan abiertos — tomamos el del modal de código).
-    const cancelBtns = await waitFor(() => getAllByText('Cancelar'));
-    fireEvent.click(cancelBtns[cancelBtns.length - 1]);
-    await new Promise(r => setTimeout(r, 50));
+    // Esperamos al TwoFaCodeModal por su input único (placeholder "6 dígitos…").
+    // Targeting semántico > getAllByText('Cancelar')[last] que era ambiguo cuando
+    // había ConfirmModal + TwoFaCodeModal ambos en el DOM.
+    const input = await findByPlaceholderText(/6 dígitos|6 d.gitos/);
+    // El TwoFaCodeModal contiene botones "Cancelar" y "Confirmar". El modal es
+    // el ancestro con role=dialog que contiene el input.
+    const dialog = input.closest('[role="dialog"]');
+    expect(dialog).toBeTruthy();
+    fireEvent.click(within(dialog).getByText('Cancelar'));
+    // Assertion determinística: el modal debe desaparecer del DOM.
+    // Reemplaza el `await new Promise(r => setTimeout(r, 50))` anterior que
+    // era timing-dependent (50ms suficiente en local, potencialmente no en CI
+    // saturado). Ahora esperamos el efecto observable — modal cerrado —
+    // que es lo que garantiza que el resolve del promise se disparó.
+    await waitFor(() => expect(queryByPlaceholderText(/6 dígitos|6 d.gitos/)).toBeNull());
     expect(twoFa.regenerateRecovery).not.toHaveBeenCalled();
   });
 });
@@ -254,29 +268,40 @@ describe('TwoFaSection — estado SETUP PENDIENTE (task #497)', () => {
   it('click en "Cancelar setup" + confirm → llama twoFa.cancelSetup()', async () => {
     const { findByText } = renderSection();
     fireEvent.click(await findByText('Cancelar setup'));
-    // ConfirmModal aparece — click "Cancelar setup" (confirmLabel).
-    // Ese label aparece 2x: el botón de la card y el del confirm modal. Buscamos
-    // el que aparece cuando el confirm ya está montado — el último rendered.
-    const confirmBtn = await waitFor(() => {
-      // Cuando el confirm modal aparece, hay un botón "Cancelar setup" adicional
-      // (el confirmLabel del useConfirm). Esperamos a que hayan >= 2 y clickeamos
-      // el último (el del confirm modal).
-      const btns = document.querySelectorAll('button');
-      const matches = Array.from(btns).filter(b => b.textContent.trim() === 'Cancelar setup');
-      if (matches.length < 2) throw new Error('waiting for confirm modal');
-      return matches[matches.length - 1];
+    // El label "Cancelar setup" aparece 2x cuando el confirm modal se abre:
+    // el botón de la card + el `confirmLabel` del useConfirm. Targeting
+    // semántico via el dialog (role=dialog aparece SOLO en el ConfirmModal
+    // aquí — la card no tiene dialog). Reemplaza el DOM query manual
+    // (document.querySelectorAll + filter + throw) que era fragile.
+    const dialog = await waitFor(() => {
+      const d = document.querySelector('[role="dialog"]');
+      if (!d) throw new Error('waiting for confirm modal');
+      return d;
     });
-    fireEvent.click(confirmBtn);
+    fireEvent.click(within(dialog).getByText('Cancelar setup'));
     await waitFor(() => expect(twoFa.cancelSetup).toHaveBeenCalled());
   });
 
   it('si user cancela el confirm modal, NO llama cancelSetup', async () => {
-    const { findByText, getAllByText } = renderSection();
+    const { findByText } = renderSection();
     fireEvent.click(await findByText('Cancelar setup'));
-    // ConfirmModal aparece — click "Cancelar" (label default del hook).
-    const cancelBtns = await waitFor(() => getAllByText('Cancelar'));
-    fireEvent.click(cancelBtns[cancelBtns.length - 1]);
-    await new Promise(r => setTimeout(r, 50));
+    // Targeting semántico: el confirm modal es el único con role=dialog en
+    // este flujo (no hay TwoFaCodeModal en el estado SETUP PENDIENTE).
+    // Reemplaza el getAllByText('Cancelar')[last] que era ambiguo si otro
+    // texto "Cancelar" aparecía en la página.
+    const dialog = await waitFor(() => {
+      const d = document.querySelector('[role="dialog"]');
+      if (!d) throw new Error('waiting for confirm modal');
+      return d;
+    });
+    fireEvent.click(within(dialog).getByText('Cancelar'));
+    // Assertion determinística: el dialog debe desaparecer del DOM.
+    // Reemplaza el `await new Promise(r => setTimeout(r, 50))` anterior que
+    // era timing-dependent — 50ms podría no ser suficiente en CI saturado
+    // (Docker, Postgres pool contention, etc). Ahora esperamos el efecto
+    // observable — modal cerrado — que garantiza que el resolve(false) del
+    // useConfirm ya se disparó y el handler retornó sin llamar cancelSetup.
+    await waitFor(() => expect(document.querySelector('[role="dialog"]')).toBeNull());
     expect(twoFa.cancelSetup).not.toHaveBeenCalled();
   });
 });
