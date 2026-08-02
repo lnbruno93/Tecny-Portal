@@ -70,7 +70,9 @@ beforeAll(async () => {
     tenantRol: 'member',
     capRol:    'custom',
   });
-  await grantCaps(u1.id, ['inventario.editar']);
+  // Necesita `inventario.ver` para GET /share-link (usado por los asserts
+  // "verificar que el link no cambió") + `inventario.editar` para el PATCH.
+  await grantCaps(u1.id, ['inventario.ver', 'inventario.editar']);
   editorSinDesactivarToken = await loginAs('editor_no_desact', 'test_editor_pass_123');
 
   // ── User 2: editor CON desactivar ──
@@ -83,7 +85,7 @@ beforeAll(async () => {
     tenantRol: 'member',
     capRol:    'custom',
   });
-  await grantCaps(u2.id, ['inventario.editar', 'inventario.share_link_desactivar']);
+  await grantCaps(u2.id, ['inventario.ver', 'inventario.editar', 'inventario.share_link_desactivar']);
   editorConDesactivarToken = await loginAs('editor_desact', 'test_editor_pass_123');
 
   // ── User 3: owner del tenant (bypass) ──
