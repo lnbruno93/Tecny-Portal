@@ -17,6 +17,7 @@ const rateLimit = require('express-rate-limit');
 const db = require('../config/database');
 const requireAuth = require('../middleware/auth');
 const requireCapability = require('../middleware/requireCapability');
+const { hasCapability } = require('../middleware/requireCapability');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const logger = require('../lib/logger');
@@ -160,17 +161,27 @@ adminRouter.get('/', requireCapability('inventario.ver'), async (req, res, next)
  * PATCH /api/inventario/share-link
  *
  * Actualiza config del link. Todos los campos opcionales. Devuelve el link
- * completo post-update. Solo el owner + admins del tenant pueden mutar
- * (usamos `inventario.editar` para no proliferar capabilities específicas).
+ * completo post-update. El gate general es `inventario.editar` — cubre los
+ * campos "reversibles" (whatsapp, mensaje_extra, mostrar_bateria,
+ * mostrar_precio, activo:true).
  *
- * 2026-07-26 (audit 07-25 Track B P1-7): la acción `activo: false`
- * desactiva el share link público — irreversible desde la perspectiva del
- * cliente que tiene el link cacheado (WhatsApp, bookmarks). El audit sugirió
- * cap dedicada `share_link.desactivar` — se pospuso por costo (migration +
- * admin UI). En su lugar: audit log con `severity: HIGH` + `high_impact:
- * true` para trail forensico + facilitar alerting Sentry en el dashboard
- * (dedicated rule buscando estos eventos). Consistente con el criterio del
- * audit ("dejar `activo` bajo `inventario.editar` es aceptable").
+ * 2026-08-02 (task #229 — cierra audit 07-25 Track B P1-7): la acción
+ * destructiva `activo: false` desactiva el share link público —
+ * irreversible desde la perspectiva del cliente que tiene el link cacheado
+ * (WhatsApp, bookmarks). Ahora exige la cap DEDICADA
+ * `inventario.share_link_desactivar` ADEMÁS del gate general
+ * `inventario.editar`. Owner/admin del tenant bypassean (isBypassRole).
+ *
+ * Nota: el check inline (dentro del handler, no en el middleware) es
+ * intencional — el middleware `requireCapability` corre antes de que se
+ * parsee el body, no puede decidir "cuál cap aplicar según lo que llega".
+ * Con `hasCapability(req.user, slug)` mantenemos el check consistente con
+ * el resto del sistema (mismo bypass logic, misma resolución de caps del
+ * JWT vs DB fallback).
+ *
+ * El audit log sigue marcando `high_impact:true` en desactivaciones — Sentry
+ * alert rule busca ese flag para notificar a Lucas. Complementa (no
+ * reemplaza) el nuevo gate por cap.
  */
 adminRouter.patch('/', requireCapability('inventario.editar'), validate(updateShareLinkSchema), async (req, res, next) => {
   try {
@@ -181,6 +192,18 @@ adminRouter.patch('/', requireCapability('inventario.editar'), validate(updateSh
         return await getOrCreateShareLink(client, req.tenantId);
       });
       return res.json(link);
+    }
+
+    // Gate inline para desactivación: si el body pide activo:false, el user
+    // necesita `inventario.share_link_desactivar`. Reactivar (activo:true)
+    // pasa con solo `inventario.editar` — no es destructivo, es reversible.
+    if (changes.activo === false) {
+      const puede = await hasCapability(req.user, 'inventario.share_link_desactivar');
+      if (!puede) {
+        return res.status(403).json({
+          error: 'No tenés permiso para desactivar el link público. Pedile al owner del negocio que te habilite la capability "Desactivar el link público de usados".',
+        });
+      }
     }
 
     const updated = await db.withTenant(req.tenantId, async (client) => {
@@ -225,13 +248,17 @@ adminRouter.patch('/', requireCapability('inventario.editar'), validate(updateSh
  * Genera un token nuevo. El viejo queda inválido (los clientes que lo
  * tenían bookmarkeado ven "listado no disponible"). Marca `rotated_at`.
  *
- * 2026-07-26 (audit 07-25 Track B P1-7): rotate es IRREVERSIBLE desde la
- * perspectiva del cliente — todos los bookmarks/copias del link viejo
- * mueren. Misma decisión que PATCH activo:false — cap dedicada
- * `share_link.rotate` se pospuso por costo. Audit log con `high_impact:
- * true` provee trail forensico + Sentry alerting.
+ * 2026-08-02 (task #229 — cierra audit 07-25 Track B P1-7): rotate es
+ * IRREVERSIBLE desde la perspectiva del cliente — todos los bookmarks/
+ * copias del link viejo mueren. Ahora exige cap dedicada
+ * `inventario.share_link_rotate` (antes usaba `inventario.editar`). Un
+ * user con `inventario.editar` puede seguir editando whatsapp/mensaje/
+ * toggles pero sin poder rotar. Owner/admin bypassean.
+ *
+ * Audit log con `high_impact:true` sigue igual — complementa (no reemplaza)
+ * el nuevo gate por cap.
  */
-adminRouter.post('/rotate', requireCapability('inventario.editar'), async (req, res, next) => {
+adminRouter.post('/rotate', requireCapability('inventario.share_link_rotate'), async (req, res, next) => {
   try {
     const rotated = await db.withTenant(req.tenantId, async (client) => {
       const before = await getOrCreateShareLink(client, req.tenantId);

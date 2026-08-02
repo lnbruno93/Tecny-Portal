@@ -72,6 +72,14 @@ const PANTALLAS = [
     { id: 'crear',           label: 'Agregar productos' },
     { id: 'editar',          label: 'Editar productos' },
     { id: 'eliminar',        label: 'Eliminar productos' },
+    // #229 (audit 07-25 P1-7): 2 caps dedicadas para las acciones destructivas
+    // del share link público de Equipos Usados. Ambas son irreversibles desde
+    // la perspectiva del cliente que tiene el link cacheado (WhatsApp, bookmarks)
+    // — separarlas de `inventario.editar` permite conceder edición de whatsapp/
+    // mensaje/toggles sin dar acceso a tumbar el link. Owner/admin bypassean.
+    // Migration seed: 20260802100000_share_link_caps_dedicadas.js
+    { id: 'share_link_desactivar', label: 'Desactivar el link público de usados' },
+    { id: 'share_link_rotate',     label: 'Rotar el token del link público de usados' },
   ]},
   { id: 'proveedores', label: 'Proveedores | Compras', capabilities: [
     { id: 'trabajar',        label: 'Acceder al módulo' },

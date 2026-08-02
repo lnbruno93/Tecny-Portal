@@ -13,12 +13,30 @@ vi.mock('../lib/api', () => ({
   },
 }));
 
+// task #229 (2026-08-02): mock del AuthContext para poder controlar las caps
+// del user en cada test. Default: owner del tenant (bypass total) — replica
+// el comportamiento pre-#229 donde todos los tests asumían acceso completo.
+let _mockUser = null;
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({ user: _mockUser }),
+}));
+
+const USER_OWNER = { id: 1, role: 'op', tenant_cap_rol: 'owner', caps: [] };
+const USER_EDITOR_SIN_DESTRUCTIVAS = {
+  id: 2,
+  role: 'op',
+  tenant_cap_rol: 'custom',
+  caps: ['inventario.editar'],
+  // Sin `inventario.share_link_desactivar` ni `inventario.share_link_rotate`.
+};
+
 import { inventario as inventarioApi } from '../lib/api';
 import ShareLinkPanel from './ShareLinkPanel';
 import { ToastProvider } from '../contexts/ToastContext';
 import { ConfirmProvider } from '../components/ConfirmModal';
 
-function renderPanel() {
+function renderPanel({ user = USER_OWNER } = {}) {
+  _mockUser = user;
   return render(
     <ConfirmProvider>
       <ToastProvider>
@@ -113,5 +131,49 @@ describe('ShareLinkPanel — panel del operador del share link', () => {
     // Expandir → botón "Reactivar link"
     fireEvent.click(screen.getByRole('button', { name: /Link público de equipos usados/i }));
     expect(await screen.findByRole('button', { name: /Reactivar link/i })).toBeInTheDocument();
+  });
+
+  // task #229 (2026-08-02): defense-in-depth UX del split de caps
+  // destructivas. El backend enforcea igual — estos tests validan que el
+  // frontend ADEMÁS deshabilita los botones para dar señal visual antes
+  // del 403.
+  describe('gates de caps destructivas (task #229)', () => {
+    it('user sin share_link_desactivar → botón "Desactivar link" disabled + tooltip explicativo', async () => {
+      inventarioApi.shareLink.get.mockResolvedValue(linkOK);
+      renderPanel({ user: USER_EDITOR_SIN_DESTRUCTIVAS });
+      fireEvent.click(await screen.findByRole('button', { name: /Link público de equipos usados/i }));
+
+      const btn = await screen.findByRole('button', { name: /Desactivar link/i });
+      expect(btn).toBeDisabled();
+      expect(btn.getAttribute('title')).toMatch(/Necesitás la capability.*Desactivar/i);
+    });
+
+    it('user sin share_link_rotate → botón "Rotar token" disabled + tooltip explicativo', async () => {
+      inventarioApi.shareLink.get.mockResolvedValue(linkOK);
+      renderPanel({ user: USER_EDITOR_SIN_DESTRUCTIVAS });
+      fireEvent.click(await screen.findByRole('button', { name: /Link público de equipos usados/i }));
+
+      const btn = await screen.findByRole('button', { name: /Rotar token/i });
+      expect(btn).toBeDisabled();
+      expect(btn.getAttribute('title')).toMatch(/Necesitás la capability.*Rotar/i);
+    });
+
+    it('user sin desactivar pero link ya está desactivado → botón "Reactivar" NO disabled (reactivar es reversible)', async () => {
+      inventarioApi.shareLink.get.mockResolvedValue({ ...linkOK, activo: false });
+      renderPanel({ user: USER_EDITOR_SIN_DESTRUCTIVAS });
+      fireEvent.click(await screen.findByRole('button', { name: /Link público de equipos usados/i }));
+
+      const btn = await screen.findByRole('button', { name: /Reactivar link/i });
+      expect(btn).not.toBeDisabled();
+    });
+
+    it('owner del tenant (bypass) → ambos botones habilitados aunque no tenga caps en `caps[]`', async () => {
+      inventarioApi.shareLink.get.mockResolvedValue(linkOK);
+      renderPanel({ user: USER_OWNER });
+      fireEvent.click(await screen.findByRole('button', { name: /Link público de equipos usados/i }));
+
+      expect(await screen.findByRole('button', { name: /Desactivar link/i })).not.toBeDisabled();
+      expect(await screen.findByRole('button', { name: /Rotar token/i })).not.toBeDisabled();
+    });
   });
 });

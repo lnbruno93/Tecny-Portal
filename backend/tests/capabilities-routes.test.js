@@ -92,7 +92,8 @@ describe('GET /api/capabilities/catalog', () => {
     const total = r.body.pantallas.reduce((acc, p) => acc + p.capabilities.length, 0);
     // 46 → 49 tras #500 (agregamos inventario.crear/editar/eliminar).
     // 49 → 50 tras 2026-07-04 (agregamos ventas.ver_ganancias).
-    expect(total).toBe(50);
+    // 50 → 52 tras task #229 2026-08-02 (agregamos inventario.share_link_desactivar + share_link_rotate).
+    expect(total).toBe(52);
     expect(r.body.roles).toContain('owner');
     expect(r.body.roles).toContain('custom');
   });

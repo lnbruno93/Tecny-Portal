@@ -16,6 +16,8 @@ import { Icons } from '../components/Icons';
 import { inventario } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
+import { useAuth } from '../contexts/AuthContext';
+import { userHasCap } from '../lib/userHasCap';
 
 // Construye la URL pública absoluta a partir del token. Usa el origin
 // actual (funciona en dev, staging y prod sin config extra).
@@ -41,6 +43,20 @@ function fmtUltimoAcceso(iso) {
 export default function ShareLinkPanel() {
   const { toast } = useToast();
   const confirm = useConfirm();
+  // 2026-08-02 defensive: `useAuth()` puede devolver null si el componente
+  // se renderiza fuera del AuthProvider (tests que no lo montan, storybooks,
+  // etc.). Sin el fallback `|| {}`, el destructuring tira TypeError y
+  // rompe el component tree. `userHasCap(undefined, ...)` devuelve false →
+  // los botones destructivos quedan disabled (behavior seguro por default).
+  const { user } = useAuth() || {};
+
+  // task #229 (2026-08-02): las 2 acciones destructivas ahora tienen cap
+  // dedicada. Owner/admin bypassean vía userHasCap. Un user 'custom' con
+  // `inventario.editar` pero sin las nuevas caps puede editar los campos
+  // reversibles pero ve los botones deshabilitados — el backend enforcea
+  // igual (defense-in-depth).
+  const canDesactivar = userHasCap(user, 'inventario.share_link_desactivar');
+  const canRotar      = userHasCap(user, 'inventario.share_link_rotate');
 
   const [link, setLink] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -287,14 +303,28 @@ export default function ShareLinkPanel() {
               <button className="btn btn-sm btn-primary" onClick={onSave} disabled={saving}>
                 {saving ? 'Guardando…' : 'Guardar cambios'}
               </button>
-              <button className="btn btn-sm btn-ghost" onClick={onRotate} title="Genera un token nuevo, el link viejo queda inválido">
+              <button
+                className="btn btn-sm btn-ghost"
+                onClick={onRotate}
+                disabled={!canRotar}
+                title={canRotar
+                  ? 'Genera un token nuevo, el link viejo queda inválido'
+                  : 'Necesitás la capability "Rotar el token del link público" (pedísela al owner del negocio)'}
+              >
                 🔄 Rotar token
               </button>
             </div>
             <button
               className={`btn btn-sm btn-ghost ${link.activo ? 'u-color-neg' : ''}`}
               onClick={onToggleActivo}
-              title={link.activo ? 'Desactivar el link — clientes ven mensaje "no disponible"' : 'Reactivar el link'}
+              disabled={link.activo && !canDesactivar}
+              title={
+                link.activo
+                  ? (canDesactivar
+                      ? 'Desactivar el link — clientes ven mensaje "no disponible"'
+                      : 'Necesitás la capability "Desactivar el link público" (pedísela al owner del negocio)')
+                  : 'Reactivar el link'
+              }
             >
               {link.activo ? '⏸ Desactivar link' : '▶ Reactivar link'}
             </button>
