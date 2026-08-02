@@ -291,7 +291,7 @@ jobs:
       # ALTER SYSTEM, o `SET LOCAL row_security = off` contra tabla FORCE
       # RLS), el step revienta con el mensaje exacto de Postgres.
       #
-      # Ver `docs/RUNBOOK-migration-rls-force.md` para diagnóstico + fix.
+      # Ver `docs/RUNBOOK_MIGRATION_RLS_FORCE.md` para diagnóstico + fix.
       # ────────────────────────────────────────────────────────────────────
       - name: Migrations from-scratch as ipro_app NOSUPERUSER (owner-of-schema)
         working-directory: backend

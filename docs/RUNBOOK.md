@@ -6,6 +6,7 @@
 Para procedimientos cotidianos (deploys, backups) ver [OPERATIONS.md](OPERATIONS.md).
 Para cómo está montado el monitoring ver [OBSERVABILITY.md](OBSERVABILITY.md).
 Para escenarios de pérdida/corrupción de datos ver [DISASTER_RECOVERY.md](DISASTER_RECOVERY.md).
+Para drift entre prod/staging/deploy-previews (CSP, RLS, env vars, DB) ver [MULTI_ENV_DRIFT.md](MULTI_ENV_DRIFT.md).
 
 ---
 

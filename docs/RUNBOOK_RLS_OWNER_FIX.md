@@ -1,5 +1,12 @@
 # Runbook: RLS Owner Fix (drift 7 tablas)
 
+> **Doc parent** (multi-env drift): [`MULTI_ENV_DRIFT.md`](MULTI_ENV_DRIFT.md) —
+> categoría "Schema / permisos DB (RLS)" + toxic assumption #2 ("prod y staging
+> comparten la DB"). Este runbook es el procedimiento operativo específico para
+> resolver el drift de las 7 tablas. Runbook hermano:
+> [`RUNBOOK_MIGRATION_RLS_FORCE.md`](RUNBOOK_MIGRATION_RLS_FORCE.md) (fix pattern
+> canónico para migrations con `UPDATE` sobre tabla FORCE RLS).
+
 ## Contexto
 
 La migration `20260724000002_backfill_nullif_rls_tables.js` intentaba

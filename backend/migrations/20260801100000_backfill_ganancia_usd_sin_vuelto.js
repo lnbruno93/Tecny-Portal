@@ -60,7 +60,7 @@
  * (La versión previa de esta migration usaba `SET LOCAL row_security = off`
  *  → rompió los deploys Railway prod 2026-08-01 desde ~05:15 UTC hasta
  *  ~15:44 UTC. 10h de downtime para todos los tenants. Ver
- *  `docs/RUNBOOK-migration-rls-force.md`.)
+ *  `docs/RUNBOOK_MIGRATION_RLS_FORCE.md`.)
  *
  * Solución canónica (el hint literal de Postgres): desactivar
  * temporalmente FORCE, hacer el UPDATE, restaurar FORCE. Todo dentro

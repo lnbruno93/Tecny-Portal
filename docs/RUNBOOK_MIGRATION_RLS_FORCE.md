@@ -1,5 +1,12 @@
 # Runbook: Migration falla en prod por FORCE ROW LEVEL SECURITY
 
+> **Doc parent** (multi-env drift): [`MULTI_ENV_DRIFT.md`](MULTI_ENV_DRIFT.md) —
+> categoría "Schema / permisos DB (RLS)" + toxic assumption #3 ("CI corre
+> migrations con el mismo role que prod") y #5 ("emails Build failed! de
+> Railway == build falló"). Runbook hermano:
+> [`RUNBOOK_RLS_OWNER_FIX.md`](RUNBOOK_RLS_OWNER_FIX.md) (drift de las 7 tablas
+> con owner incorrecto).
+
 ## Contexto
 
 **Incident 2026-08-01 (~10h downtime todos los tenants)**: PR #965 mergeado
@@ -180,10 +187,14 @@ Esto restaura el estado pre-migration.
 
 ## Referencias
 
-- Sentry issue relacionado: (ninguno — el error muere en el buffer del
-  container antes de que Sentry lo capture).
+- Doc parent (multi-env drift): [`MULTI_ENV_DRIFT.md`](MULTI_ENV_DRIFT.md) —
+  categoría "Schema / permisos DB (RLS)" + toxic assumptions #3 y #5.
 - Runbook complementario: [`RUNBOOK_RLS_OWNER_FIX.md`](RUNBOOK_RLS_OWNER_FIX.md)
   (7 tablas con owner mismatch — problema distinto pero mismo dominio).
+- Runbook preventivo: [`runbooks/rls-bulk-migration.md`](runbooks/rls-bulk-migration.md)
+  (guía para escribir migrations con bulk UPDATE sobre tablas FORCE RLS).
+- Sentry issue relacionado: (ninguno — el error muere en el buffer del
+  container antes de que Sentry lo capture).
 - Post-mortem: task #274 (P0 completado 2026-08-01), task #275 (re-merge
   con fix).
 - Fix del CI: nuevo step "Migrations from-scratch as ipro_app NOSUPERUSER
