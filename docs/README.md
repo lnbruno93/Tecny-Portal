@@ -17,6 +17,9 @@ corresponde a tu pregunta.
 | Recuperar datos de un incidente | [DISASTER_RECOVERY.md](DISASTER_RECOVERY.md) |
 | Medir performance / regresiones | [LOAD_BASELINE.md](LOAD_BASELINE.md) |
 | Setear el entorno de staging | [STAGING.md](STAGING.md) |
+| **Tocar config multi-env (netlify.toml, RLS, env vars)** — LEER ANTES | [MULTI_ENV_DRIFT.md](MULTI_ENV_DRIFT.md) |
+| Escribir migration con `UPDATE`/backfill sobre tabla RLS | [RUNBOOK_MIGRATION_RLS_FORCE.md](RUNBOOK_MIGRATION_RLS_FORCE.md) |
+| Resolver drift de owner en tablas RLS (7 tablas caso 07-25) | [RUNBOOK_RLS_OWNER_FIX.md](RUNBOOK_RLS_OWNER_FIX.md) |
 | Llamar a la API directo | [API_REFERENCE.md](API_REFERENCE.md) |
 | Saber cómo se gestionan archivos | [STORAGE.md](STORAGE.md) |
 | Crear / prender / apagar un feature flag | [FEATURE_FLAGS.md](FEATURE_FLAGS.md) |
@@ -42,6 +45,17 @@ corresponde a tu pregunta.
 
                 STAGING.md
         (setup entorno de pruebas)
+                │
+     MULTI_ENV_DRIFT.md ────────────┐
+     (prevenir divergencia          │
+      prod/staging/preview)         │
+                                    ├─── RUNBOOK_MIGRATION_RLS_FORCE.md
+                                    │    (fix migration + backfill sobre
+                                    │     tabla FORCE RLS — incidente 08-01)
+                                    │
+                                    └─── RUNBOOK_RLS_OWNER_FIX.md
+                                         (resolver drift owner en tablas
+                                          RLS — incidente 07-25)
 ```
 
 ---
