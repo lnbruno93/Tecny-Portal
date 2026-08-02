@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import { fmt } from '../lib/format'; // Hygiene H2 auditoría 2026-06-06
-import { tenantProfile, config as configApi, cajas as cajasApi } from '../lib/api'; // 2026-06-22 + #445 lastTc + task #284 comisiones
+import { tenantProfile, config as configApi, cajas as cajasApi, cotizador as cotizadorApi } from '../lib/api'; // 2026-06-22 + #445 lastTc + task #284 comisiones + task #286 endpoint scoped
 import { useAuth } from '../contexts/AuthContext'; // 2026-06-22 tab Configuración (Mi negocio)
 import { isTenantAdmin } from '../lib/userHasCap'; // 2026-06-25 Bug #1 — fix owner edit
 import BusinessProfileSection from '../components/BusinessProfileSection'; // idem
@@ -76,8 +76,8 @@ const factor = (c) => 1 / (1 - c);
 const pctEfectivo = (c) => ((factor(c) - 1) * 100).toFixed(2);
 
 // ─── Hook: comisiones del tenant ─────────────────────────────────────────────
-// 2026-08-02 (task #284): centraliza el fetch + save de las comisiones que
-// afectan el cotizador (transferencia + tarjetas de crédito).
+// 2026-08-02 (task #284 + #286): centraliza el fetch + save de las comisiones
+// que afectan el cotizador (transferencia + tarjetas de crédito).
 //
 // Fuentes:
 //   · Transferencia (Financiera) = `config.pct_financiera` (tabla `config`)
@@ -89,13 +89,22 @@ const pctEfectivo = (c) => ((factor(c) - 1) * 100).toFixed(2);
 // el operador (el Cotizador es donde ve el impacto de cada %). Se movió al
 // Cotizador — Config solo mantiene la privacidad de ventas (task #280).
 //
+// LECTURA (task #286): usa `cotizadorApi.comisiones()` — endpoint dedicado
+// del feature Cotizador gated con `cotizador.trabajar` (cap que tiene el
+// vendedor). Antes leíamos de configApi.get() + cajasApi.listCajas(), pero
+// esos endpoints están gated con caps que el vendedor NO tiene → 403
+// silencioso → el resultado del Cotizador salía SIN líneas TC. Regresión
+// cazada por Lucas post-deploy #979. Ver backend/src/routes/cotizador.js
+// para el rationale + payload shape.
+//
+// ESCRITURA (save): sigue usando configApi.update() + cajasApi.updateCaja()
+// — endpoints existentes con audit trail y las guardas de admin ya en su
+// lugar. El `save` sólo lo llama el ComisionesPanel del tab Configuración
+// y ese panel solo se muestra a admins (isTenantAdmin). Un vendedor nunca
+// llega a llamar el save (renderizado hidden).
+//
 // El save es "batch por diff": solo se pega al endpoint para lo que cambió,
 // para no invalidar innecesariamente el server ni gastar audit trail vacío.
-//
-// El caller decide si mostrar/hidear la sección de edición (via isAdmin).
-// Los reads son públicos al cotizador (cualquier user con `cotizador.trabajar`
-// que llegue al tab ya ve las % — así el cálculo del cotizador es correcto
-// para todos los users, no solo admin).
 function useComisionesTenant() {
   const [pctFinanciera, setPctFinanciera] = useState(3);
   const [tarjetas, setTarjetas] = useState([]); // [{id, nombre, pct, _original}]
@@ -105,22 +114,19 @@ function useComisionesTenant() {
 
   useEffect(() => {
     let alive = true;
-    Promise.all([
-      configApi.get().catch(e => { throw e; }),
-      cajasApi.listCajas().catch(() => []),
-    ])
-      .then(([cfg, cajasList]) => {
+    cotizadorApi.comisiones()
+      .then((data) => {
         if (!alive) return;
-        const v = Number(cfg?.pct_financiera ?? 3);
-        setPctFinanciera(v);
-        const tcs = (cajasList || [])
-          .filter(c => c.es_tarjeta)
-          .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0) || String(a.nombre).localeCompare(String(b.nombre)))
-          .map(c => ({
-            id: c.id, nombre: c.nombre,
-            pct: Number(c.comision_pct ?? 0),
-            _original: Number(c.comision_pct ?? 0),
-          }));
+        setPctFinanciera(Number(data?.pctFinanciera ?? 3));
+        // El backend ya devuelve las tarjetas filtradas (es_tarjeta=true) y
+        // ordenadas (orden ASC, nombre ASC). Aquí sólo mapeamos al shape
+        // interno del hook (nombre `pct` + `_original` para el diff-save).
+        const tcs = (data?.tarjetas || []).map(t => ({
+          id: t.id,
+          nombre: t.nombre,
+          pct: Number(t.comision_pct ?? 0),
+          _original: Number(t.comision_pct ?? 0),
+        }));
         setTarjetas(tcs);
       })
       .catch(e => { if (alive) setError(e.message || 'No se pudieron cargar las comisiones.'); })

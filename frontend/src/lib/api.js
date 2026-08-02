@@ -847,6 +847,19 @@ export const capabilities = {
   },
 };
 
+// 2026-08-02 (task #286, P0 vendedor): endpoint dedicado del feature
+// Cotizador. Devuelve { pctFinanciera, tarjetas: [{id, nombre,
+// comision_pct}] } gated con `cotizador.trabajar` — lo puede consumir
+// cualquier user que ve el Cotizador (incluido vendedor). Antes de este
+// endpoint el hook useComisionesTenant() combinaba configApi.get() +
+// cajasApi.listCajas(), ambos gated con caps que el vendedor NO tiene
+// (config.general y cajas.ver) → 403 silencioso → tarjetas vacías → el
+// resultado del Cotizador no mostraba líneas TC. Ver
+// backend/src/routes/cotizador.js para el rationale completo.
+export const cotizador = {
+  comisiones: () => api('/api/cotizador/comisiones'),
+};
+
 export const config = {
   get: () => api('/api/config'),
   update: (data) => api('/api/config', 'PUT', data),

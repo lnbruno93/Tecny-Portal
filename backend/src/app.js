@@ -99,6 +99,7 @@ const cajaTransferenciasRoutes = require('./routes/cajaTransferencias');
 const sanidadRoutes      = require('./routes/sanidad');
 const cambiosRoutes      = require('./routes/cambios');
 const tarjetasRoutes     = require('./routes/tarjetas');
+const cotizadorRoutes    = require('./routes/cotizador');
 const enviosRoutes       = require('./routes/envios');
 const searchRoutes       = require('./routes/search');
 const releaseNotesRoutes = require('./routes/releaseNotes');
@@ -940,6 +941,13 @@ app.use('/api/caja-transferencias', requireAuth, requireCapability('egresos.ver'
 app.use('/api/sanidad',       requireAuth, requireCapability('sanidad.trabajar'), sanidadRoutes);
 app.use('/api/cambios',       requireAuth, requireCapability('cambios.trabajar'), cambiosRoutes);
 app.use('/api/tarjetas',      requireAuth, requireCapability('tarjetas.trabajar'), tarjetasRoutes);
+
+// Cotizador — capability `cotizador.trabajar` (misma que el rol vendedor
+// tiene por default). 2026-08-02 task #286: nuevo mount para el endpoint
+// GET /comisiones que devuelve pctFinanciera + tarjetas sin pasar por
+// /api/config ni /api/cajas (cuyos mounts NO tienen la cap del vendedor).
+// Ver routes/cotizador.js para el rationale completo (regresión PR #978).
+app.use('/api/cotizador',     requireAuth, requireCapability('cotizador.trabajar'), cotizadorRoutes);
 
 // Envíos — requires `envios.trabajar`.
 app.use('/api/envios',        requireAuth, requireCapability('envios.trabajar'), enviosRoutes);
