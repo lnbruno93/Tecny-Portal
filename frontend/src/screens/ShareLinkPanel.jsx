@@ -43,7 +43,12 @@ function fmtUltimoAcceso(iso) {
 export default function ShareLinkPanel() {
   const { toast } = useToast();
   const confirm = useConfirm();
-  const { user } = useAuth();
+  // 2026-08-02 defensive: `useAuth()` puede devolver null si el componente
+  // se renderiza fuera del AuthProvider (tests que no lo montan, storybooks,
+  // etc.). Sin el fallback `|| {}`, el destructuring tira TypeError y
+  // rompe el component tree. `userHasCap(undefined, ...)` devuelve false →
+  // los botones destructivos quedan disabled (behavior seguro por default).
+  const { user } = useAuth() || {};
 
   // task #229 (2026-08-02): las 2 acciones destructivas ahora tienen cap
   // dedicada. Owner/admin bypassean vía userHasCap. Un user 'custom' con
