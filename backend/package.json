@@ -17,7 +17,7 @@
     "load-test": "node loadtest/run.js"
   },
   "engines": {
-    "node": "20.x"
+    "node": "22.x"
   },
   "overrides": {
     "uuid": "^11.0.0"
