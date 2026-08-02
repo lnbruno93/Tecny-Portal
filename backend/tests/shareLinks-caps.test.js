@@ -26,12 +26,14 @@ const { setupTestDb, teardownTestDb, createTestUser } = require('./helpers/setup
 let pool;
 
 // Helper: crea user con caps custom explícitas via user_capabilities.
+// La tabla tiene `enabled BOOLEAN NOT NULL` — sin default, hay que setearlo
+// explícito en el INSERT.
 async function grantCaps(userId, caps) {
   for (const cap of caps) {
     await pool.query(
-      `INSERT INTO user_capabilities (user_id, capability_slug, tenant_id)
-       VALUES ($1, $2, 1)
-       ON CONFLICT (user_id, capability_slug, tenant_id) DO NOTHING`,
+      `INSERT INTO user_capabilities (user_id, capability_slug, tenant_id, enabled)
+       VALUES ($1, $2, 1, true)
+       ON CONFLICT (tenant_id, user_id, capability_slug) DO UPDATE SET enabled = EXCLUDED.enabled`,
       [userId, cap]
     );
   }
