@@ -107,7 +107,11 @@ router.get('/', async (req, res, next) => {
 // su pct_aplicado snapshoteado (o se sellan lazy en el primer touch).
 router.put('/', adminOnly, validate(updateConfigSchema), async (req, res, next) => {
   try {
-    const { pct_financiera } = req.body;
+    // 2026-08-01 (task #280): PATCH parcial — updateamos solo lo que vino
+    // en el body con COALESCE. El schema valida que venga al menos uno.
+    // Antes: `pct_financiera` era required + siempre re-escrito. Ahora
+    // podés cambiar solo `ocultar_ganancia_venta` sin tocar la comisión.
+    const { pct_financiera, ocultar_ganancia_venta } = req.body;
     // 2026-06-15 multi-tenant PR 1: la PK de config es (tenant_id, id).
     // El INSERT no especifica tenant_id — depende del DEFAULT dinámico
     // (current_setting('app.current_tenant')::int con fallback a 1).
@@ -117,11 +121,22 @@ router.put('/', adminOnly, validate(updateConfigSchema), async (req, res, next) 
     // Tenants legacy creados antes de ese fix necesitan SQL manual de seed
     // — ver hot-fix instrucciones en docs/.
     const rows = await db.withTenant(req.tenantId, async (client) => {
+      // INSERT usa defaults de la DB para los campos no provistos (COALESCE
+      // en NULL → default de la columna). En UPDATE hacemos COALESCE con
+      // el valor actual para preservar lo que no vino en el body.
+      // Casts explícitos ($1::numeric, $2::boolean) — con $1=NULL el default
+      // literal (3, FALSE) determinaría el tipo mal, y valores decimales como
+      // 3.5 crashearían con "invalid input syntax for type integer: 3.5"
+      // (routine pg_strtoint32_safe). Postgres necesita el tipo pinneado.
       const { rows } = await client.query(
-        `INSERT INTO config (id, pct_financiera) VALUES (1, $1)
-         ON CONFLICT (tenant_id, id) DO UPDATE SET pct_financiera = $1, updated_at = NOW()
+        `INSERT INTO config (id, pct_financiera, ocultar_ganancia_venta)
+         VALUES (1, COALESCE($1::numeric, 3), COALESCE($2::boolean, FALSE))
+         ON CONFLICT (tenant_id, id) DO UPDATE SET
+           pct_financiera         = COALESCE($1::numeric, config.pct_financiera),
+           ocultar_ganancia_venta = COALESCE($2::boolean, config.ocultar_ganancia_venta),
+           updated_at             = NOW()
          RETURNING *`,
-        [pct_financiera]
+        [pct_financiera ?? null, ocultar_ganancia_venta ?? null]
       );
       await audit(client, 'config', 'UPDATE', 1, { despues: rows[0], user_id: req.user.id });
       return rows;

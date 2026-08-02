@@ -204,6 +204,12 @@ export default function Ventas() {
   // transferencia. Cargado en loadCatalogos, no se refetcha durante la sesión —
   // si Lucas lo cambia en Config, se actualiza al re-entrar a Ventas.
   const [pctFinanciera, setPctFinanciera] = useState(0);
+  // 2026-08-01 (task #280, pedido tenant): toggle per-tenant para ocultar
+  // el bloque "Preview de ganancia" del modal de Ventas. El operador carga
+  // ventas frente al cliente en algunas gestiones; el cliente ve la pantalla
+  // → incómodo mostrar el margen del negocio. Config.jsx > General tiene
+  // el switch para prenderlo/apagarlo. Se carga junto con pctFinanciera.
+  const [hideGanancia, setHideGanancia] = useState(false);
   const [garantias, setGarantias] = useState([]);
   const [clientesCC, setClientesCC] = useState([]);
   const [contactos, setContactos] = useState([]);
@@ -320,6 +326,7 @@ export default function Ventas() {
     setClasesInv(unwrap(cls).filter(c => c.activa && !c.es_sin_categoria));
     setDepositos(unwrap(dep));
     setPctFinanciera(Number(cfg?.pct_financiera) || 0);
+    setHideGanancia(cfg?.ocultar_ganancia_venta === true);
   }, []);
 
   useEffect(() => { loadCatalogos(); }, [loadCatalogos]);
@@ -2559,7 +2566,12 @@ export default function Ventas() {
                       "Pérdida" cuando real < 0, color rojo, prefijo "−".
                       Mismo tratamiento para Ganancia bruta.
                     */}
-                    {cart.length > 0 && (() => {
+                    {/* 2026-08-01 (task #280): si el tenant activó "Ocultar
+                        ganancia" en Config, no rendereamos el bloque preview.
+                        El operador puede seguir viendo Cubierto/Diferencia
+                        (que están afuera de este condicional) pero no la
+                        ganancia bruta/real ni el impacto del vuelto. */}
+                    {cart.length > 0 && !hideGanancia && (() => {
                       // Threshold chico para evitar flip por floating-point (ej: -0.001).
                       const brutaNeg = totales.bruta < -0.005;
                       const realNeg  = totales.real  < -0.005;
