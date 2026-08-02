@@ -27,6 +27,22 @@ vi.mock('../lib/api', () => ({
   },
   config: {
     lastTc: vi.fn().mockResolvedValue({ tc: 1400, source: 'fallback', pais: 'AR' }),
+    // task #284: el hook useComisionesTenant hace fetch de la config para
+    // leer pct_financiera. Default 3% (matchea el default histórico del tenant).
+    get: vi.fn().mockResolvedValue({ pct_financiera: 3, ocultar_ganancia_venta: false }),
+    update: vi.fn().mockResolvedValue({ ok: true }),
+  },
+  // task #284: el hook también fetchea listCajas para armar el array de
+  // tarjetas de crédito. Devolvemos 3 cajas TC con los mismos % del legacy
+  // hardcode (11 / 23.5 / 28) para que el output visual siga matcheando lo
+  // que estos tests originales esperaban.
+  cajas: {
+    listCajas: vi.fn().mockResolvedValue([
+      { id: 101, nombre: 'TC | 1 Cuota',  es_tarjeta: true, comision_pct: 11,   orden: 1 },
+      { id: 102, nombre: 'TC | 3 Cuotas', es_tarjeta: true, comision_pct: 23.5, orden: 2 },
+      { id: 103, nombre: 'TC | 6 Cuotas', es_tarjeta: true, comision_pct: 28,   orden: 3 },
+    ]),
+    updateCaja: vi.fn().mockResolvedValue({ ok: true }),
   },
   // BusinessProfileSection importa tenantProfile.get (ya mockeado arriba) — el
   // tab Configuración no es el foco de estos tests pero el módulo debe importar
