@@ -4328,6 +4328,12 @@ body.modal-open { overflow: hidden; }
 .u-quote-product-line:not(:last-child) { border-bottom: 1px solid var(--hairline); }
 .u-align-self-end             { align-self: flex-end; }
 .u-quote-tc-ref               { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--hairline); }
+/* 2026-08-02 (task #285): valor de tarjeta en resultado del cotizador.
+   Antes: monto + "· $X/c" inline en 1 línea, empujaba el label a 2 líneas
+   cuando la cuota era 3 o 6 (label largo con "+X%"). Ahora: stackea el
+   monto y el "por cuota" vertical, alineados a la derecha. */
+.u-quote-tarjeta-val          { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-align: right; }
+.u-quote-tarjeta-per-cuota    { font-size: 11px; line-height: 1; }
 .u-stack-gap-10-mb-16         { gap: 10px; margin-bottom: 16px; }
 .u-pay-opt                    { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: all 0.12s; }
 .u-pay-opt-active             { background: var(--accent-soft); border-color: var(--accent); }

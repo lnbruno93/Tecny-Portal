@@ -157,6 +157,169 @@ function useComisionesTenant() {
   };
 }
 
+// ─── Panel: edición de comisiones (tab Configuración) ────────────────────────
+// 2026-08-02 (task #285): antes vivía dentro de TabTarjetas, pero era ajeno
+// al contenido de ese tab (edición de config vs cotización real). Movido al
+// tab "Configuración" del Cotizador junto con BusinessProfileSection.
+//
+// TabTarjetas y TabUsd siguen usando useComisionesTenant() para LEER las %
+// que aplican al cálculo — el fetch corre en cada mount, así que si el user
+// edita acá y vuelve al tab de cotización, se refleja automáticamente.
+// Ver DECISIÓN durable 66 (memory: aprovechar fetch fresh en re-mount).
+function ComisionesPanel() {
+  const {
+    pctFinanciera, tarjetas, setTarjetaPct,
+    loading, error, save,
+  } = useComisionesTenant();
+  const [pctFinInput, setPctFinInput] = useState('');
+  useEffect(() => { setPctFinInput(String(pctFinanciera)); }, [pctFinanciera]);
+  const [saving, setSaving] = useState(false);
+  const [savedOk, setSavedOk] = useState(false);
+  const [saveErr, setSaveErr] = useState('');
+
+  const dirty =
+    parseFloat(pctFinInput) !== Number(pctFinanciera) ||
+    tarjetas.some(t => Number(t.pct) !== Number(t._original));
+
+  async function handleSave() {
+    const vFin = parseFloat(pctFinInput);
+    if (isNaN(vFin) || vFin < 0 || vFin > 100) {
+      setSaveErr('Financiera: valor inválido (0–100).'); return;
+    }
+    for (const t of tarjetas) {
+      const v = Number(t.pct);
+      if (isNaN(v) || v < 0 || v > 100) {
+        setSaveErr(`${t.nombre}: valor inválido (0–100).`); return;
+      }
+    }
+    setSaving(true); setSaveErr(''); setSavedOk(false);
+    try {
+      await save(vFin);
+      setSavedOk(true);
+      setTimeout(() => setSavedOk(false), 2500);
+    } catch (e) {
+      setSaveErr(e.message || 'No se pudieron guardar las comisiones.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) return null;
+
+  // Simulación Financiera para preview (base fija 1M ARS).
+  const simBase = 1_000_000;
+  const simPctFin = parseFloat(pctFinInput) || 0;
+  const simRet = simBase * (simPctFin / 100);
+  const simNeto = simBase - simRet;
+
+  return (
+    <div className="card u-mb-14">
+      <div className="card-hd">
+        <div className="u-fw-600-fs-15">Comisiones de métodos de pago</div>
+        <div className="muted tiny u-mt-2">
+          Se aplican al cotizar (y también al cobrar con cada método en Ventas).
+        </div>
+      </div>
+      <div className="u-p-0-0-16">
+        {/* Financiera */}
+        <div className="field u-mb-16">
+          <div className="field-label">Transferencias <span className="muted">(Financiera)</span></div>
+          <div className="u-flex-center-gap-10">
+            <div className="input-group u-mw-160">
+              <input
+                type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
+                step="0.1" min="0" max="100"
+                className="input mono u-fw-700-fs-16"
+                data-testid="cotizador-pct-financiera"
+                value={pctFinInput}
+                onChange={e => { setPctFinInput(e.target.value); setSaveErr(''); setSavedOk(false); }}
+              />
+              <span className="addon u-color-accent-fw-700">%</span>
+            </div>
+            <span className="muted tiny">
+              Guardado: <span className="mono u-fw-700">{Number(pctFinanciera).toFixed(1)}%</span>
+            </span>
+          </div>
+        </div>
+
+        {/* Tarjetas */}
+        <div className="u-mb-16">
+          <div className="field-label u-mb-8">Tarjetas de crédito</div>
+          {tarjetas.length === 0 ? (
+            <div className="muted tiny u-p-6-0">
+              No hay tarjetas configuradas. Creá una en Cajas → Config marcándola como tarjeta.
+            </div>
+          ) : (
+            <div className="stack u-gap-8">
+              {tarjetas.map(t => {
+                const tDirty = Number(t.pct) !== Number(t._original);
+                return (
+                  <div key={t.id} className="u-config-tarjeta-row">
+                    <div className="u-fs-13-fw-600">{t.nombre}</div>
+                    <div className="input-group">
+                      <input
+                        type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
+                        step="0.1" min="0" max="100"
+                        className="input mono u-fw-700-fs-15"
+                        data-testid={`cotizador-pct-tarjeta-${t.id}`}
+                        value={t.pct}
+                        onChange={e => { setTarjetaPct(t.id, e.target.value); setSaveErr(''); setSavedOk(false); }}
+                      />
+                      <span className="addon u-color-accent-fw-700">%</span>
+                    </div>
+                    <span className="muted tiny u-text-right">
+                      {tDirty
+                        ? <>Guardado: <span className="mono">{Number(t._original).toFixed(1)}%</span></>
+                        : <span className="mono">{Number(t._original).toFixed(1)}%</span>}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Simulación Financiera con ARS 1.000.000 */}
+        <div className="u-config-sim-box">
+          <div className="muted tiny u-config-sim-title">
+            Simulación Financiera con ARS 1.000.000
+          </div>
+          <div className="stack u-gap-6">
+            <div className="flex-between">
+              <span className="muted tiny">Bruto</span>
+              <span className="mono u-fw-600">ARS 1.000.000</span>
+            </div>
+            <div className="flex-between">
+              <span className="muted tiny">Retención ({simPctFin.toFixed(1)}%)</span>
+              <span className="mono u-color-accent-fw-600">ARS {fmt(simRet)}</span>
+            </div>
+            <div className="flex-between u-config-sim-total">
+              <span className="u-fs-13-fw-600">Nos queda</span>
+              <span className="mono pos u-fw-700-fs-15">ARS {fmt(simNeto)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Feedback + save */}
+        {saveErr && <div className="u-alert-neg">{saveErr}</div>}
+        {savedOk && <div className="u-alert-pos">Comisiones guardadas.</div>}
+        {error && <div className="u-alert-neg">{error}</div>}
+        <div className="flex-row u-gap-8">
+          <button
+            className="btn btn-primary"
+            onClick={handleSave}
+            disabled={saving || !dirty}
+            data-testid="cotizador-comisiones-save"
+          >
+            <Icons.Check size={15} />
+            {saving ? 'Guardando…' : dirty ? 'Guardar cambios' : 'Sin cambios'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Tab: Tarjetas de crédito ────────────────────────────────────────────────
 
 function TabTarjetas() {
@@ -167,48 +330,9 @@ function TabTarjetas() {
   // ventas recientes.
   const { monedaLocal } = useMonedasTenant();
   const symLocal = symbolFor(monedaLocal);
-  const { user } = useAuth() || {};
-  const isAdmin = isTenantAdmin(user);
   // 2026-08-02 (task #284): comisiones dinámicas por tenant, ya no hardcoded.
-  // Ver hook useComisionesTenant abajo.
-  const {
-    pctFinanciera, setPctFinanciera,
-    tarjetas, setTarjetaPct,
-    loading: loadingCom, error: errCom, save: saveComisiones,
-  } = useComisionesTenant();
-  // Dirty check + save state para la sección editable inline. Solo owner/admin
-  // ven la sección (isAdmin arriba). Otros users cotizan con las % actuales
-  // sin poder tocarlas.
-  const [pctFinInput, setPctFinInput] = useState('');
-  useEffect(() => { setPctFinInput(String(pctFinanciera)); }, [pctFinanciera]);
-  const [savingCom, setSavingCom] = useState(false);
-  const [savedComOk, setSavedComOk] = useState(false);
-  const [saveComErr, setSaveComErr] = useState('');
-  const comisionesDirty =
-    parseFloat(pctFinInput) !== Number(pctFinanciera) ||
-    tarjetas.some(t => Number(t.pct) !== Number(t._original));
-  async function handleSaveComisiones() {
-    const vFin = parseFloat(pctFinInput);
-    if (isNaN(vFin) || vFin < 0 || vFin > 100) {
-      setSaveComErr('Financiera: valor inválido (0–100).'); return;
-    }
-    for (const t of tarjetas) {
-      const v = Number(t.pct);
-      if (isNaN(v) || v < 0 || v > 100) {
-        setSaveComErr(`${t.nombre}: valor inválido (0–100).`); return;
-      }
-    }
-    setSavingCom(true); setSaveComErr(''); setSavedComOk(false);
-    try {
-      await saveComisiones(vFin);
-      setSavedComOk(true);
-      setTimeout(() => setSavedComOk(false), 2500);
-    } catch (e) {
-      setSaveComErr(e.message || 'No se pudieron guardar las comisiones.');
-    } finally {
-      setSavingCom(false);
-    }
-  }
+  // Solo LEE — el UI de edición vive en tab Configuración (ComisionesPanel).
+  const { pctFinanciera, tarjetas } = useComisionesTenant();
   // #445 + follow-up 2026-07-01: TC persistente en localStorage. Al montar,
   // si el operador ya lo tipeó antes (en cualquier sesión), lo recuperamos
   // instantáneamente. Sólo hidratamos desde el backend cuando localStorage
@@ -344,126 +468,7 @@ function TabTarjetas() {
     setTimeout(() => setCopiado(false), 1800);
   };
 
-  // Simulación Financiera para preview de la sección de comisiones (mismo
-  // patrón que la card vieja de Config → General). Base fija 1M ARS.
-  const simBase = 1_000_000;
-  const simPctFin = parseFloat(pctFinInput) || 0;
-  const simRet = simBase * (simPctFin / 100);
-  const simNeto = simBase - simRet;
-
   return (
-    <>
-      {/* ── Sección Comisiones (editable solo owner/admin, task #284) ────
-          Antes vivía en Config → General pero era ajeno al Cotizador,
-          donde el operador ve realmente el impacto de cada %. Aquí puede
-          ajustar y comprobar en vivo el mensaje que sale al cliente. */}
-      {isAdmin && !loadingCom && (
-        <div className="card u-mb-14">
-          <div className="card-hd">
-            <div className="u-fw-600-fs-15">Comisiones de métodos de pago</div>
-            <div className="muted tiny u-mt-2">
-              Se aplican al cotizar (y también al cobrar con cada método en Ventas). Solo admin del negocio.
-            </div>
-          </div>
-          <div className="u-p-0-0-16">
-            {/* Financiera */}
-            <div className="field u-mb-16">
-              <div className="field-label">Transferencias <span className="muted">(Financiera)</span></div>
-              <div className="u-flex-center-gap-10">
-                <div className="input-group u-mw-160">
-                  <input
-                    type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
-                    step="0.1" min="0" max="100"
-                    className="input mono u-fw-700-fs-16"
-                    data-testid="cotizador-pct-financiera"
-                    value={pctFinInput}
-                    onChange={e => { setPctFinInput(e.target.value); setSaveComErr(''); setSavedComOk(false); }}
-                  />
-                  <span className="addon u-color-accent-fw-700">%</span>
-                </div>
-                <span className="muted tiny">
-                  Guardado: <span className="mono u-fw-700">{Number(pctFinanciera).toFixed(1)}%</span>
-                </span>
-              </div>
-            </div>
-
-            {/* Tarjetas */}
-            <div className="u-mb-16">
-              <div className="field-label u-mb-8">Tarjetas de crédito</div>
-              {tarjetas.length === 0 ? (
-                <div className="muted tiny u-p-6-0">
-                  No hay tarjetas configuradas. Creá una en Cajas → Config marcándola como tarjeta.
-                </div>
-              ) : (
-                <div className="stack u-gap-8">
-                  {tarjetas.map(t => {
-                    const tDirty = Number(t.pct) !== Number(t._original);
-                    return (
-                      <div key={t.id} className="u-config-tarjeta-row">
-                        <div className="u-fs-13-fw-600">{t.nombre}</div>
-                        <div className="input-group">
-                          <input
-                            type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
-                            step="0.1" min="0" max="100"
-                            className="input mono u-fw-700-fs-15"
-                            data-testid={`cotizador-pct-tarjeta-${t.id}`}
-                            value={t.pct}
-                            onChange={e => { setTarjetaPct(t.id, e.target.value); setSaveComErr(''); setSavedComOk(false); }}
-                          />
-                          <span className="addon u-color-accent-fw-700">%</span>
-                        </div>
-                        <span className="muted tiny u-text-right">
-                          {tDirty
-                            ? <>Guardado: <span className="mono">{Number(t._original).toFixed(1)}%</span></>
-                            : <span className="mono">{Number(t._original).toFixed(1)}%</span>}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Simulación Financiera con ARS 1.000.000 */}
-            <div className="u-config-sim-box">
-              <div className="muted tiny u-config-sim-title">
-                Simulación Financiera con ARS 1.000.000
-              </div>
-              <div className="stack u-gap-6">
-                <div className="flex-between">
-                  <span className="muted tiny">Bruto</span>
-                  <span className="mono u-fw-600">ARS 1.000.000</span>
-                </div>
-                <div className="flex-between">
-                  <span className="muted tiny">Retención ({simPctFin.toFixed(1)}%)</span>
-                  <span className="mono u-color-accent-fw-600">ARS {fmt(simRet)}</span>
-                </div>
-                <div className="flex-between u-config-sim-total">
-                  <span className="u-fs-13-fw-600">Nos queda</span>
-                  <span className="mono pos u-fw-700-fs-15">ARS {fmt(simNeto)}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Feedback + save */}
-            {saveComErr && <div className="u-alert-neg">{saveComErr}</div>}
-            {savedComOk && <div className="u-alert-pos">Comisiones guardadas.</div>}
-            {errCom && <div className="u-alert-neg">{errCom}</div>}
-            <div className="flex-row u-gap-8">
-              <button
-                className="btn btn-primary"
-                onClick={handleSaveComisiones}
-                disabled={savingCom || !comisionesDirty}
-                data-testid="cotizador-comisiones-save"
-              >
-                <Icons.Check size={15} />
-                {savingCom ? 'Guardando…' : comisionesDirty ? 'Guardar cambios' : 'Sin cambios'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
     <div className="quote-grid">
       {/* ── Left: inputs ── */}
       <div>
@@ -566,16 +571,26 @@ function TabTarjetas() {
               <span className="val mono pos u-fw-600">{symLocal}{fmt(transf)}</span>
             </div>
             {/* Task #284: renderizado dinámico. Cantidad de cuotas se extrae
-                del nombre para el "por cuota" — puramente cosmético. */}
+                del nombre para el "por cuota" — puramente cosmético.
+                Task #285: cuando N>1, stackear el "por cuota" DEBAJO del
+                monto en vez de al lado (con "·"). Antes el layout quedaba
+                desbalanceado en cuotas 3/6 — el ancho del value expresado
+                horizontal empujaba el label a 2 líneas ("TC | 3 Cuotas
+                (+30.72%)" se cortaba). Ahora el valor ocupa 1 línea de ancho
+                predecible + 1 línea chiquita muted debajo si hay desglose. */}
             {lineTarjs.map((t, i) => {
               const m = String(t.nombre || '').match(/(\d+)\s*cuota/i);
               const n = m ? parseInt(m[1], 10) : 1;
               return (
                 <div key={t.id} className={i === 0 ? 'quote-line u-mt-6' : 'quote-line'}>
                   <span className="lbl">💳 {t.nombre} (+{pctEfectivo(t.pct / 100)}%)</span>
-                  <span className="val mono u-color-accent-fw-600">
-                    {symLocal}{fmt(t.monto)}
-                    {n > 1 && <>{' '}<small className="muted">· {symLocal}{fmt(Math.round(t.monto / n))}/c</small></>}
+                  <span className="val mono u-color-accent-fw-600 u-quote-tarjeta-val">
+                    <span>{symLocal}{fmt(t.monto)}</span>
+                    {n > 1 && (
+                      <small className="muted u-quote-tarjeta-per-cuota">
+                        {symLocal}{fmt(Math.round(t.monto / n))}/c
+                      </small>
+                    )}
                   </span>
                 </div>
               );
@@ -608,7 +623,6 @@ function TabTarjetas() {
         </div>
       </div>
     </div>
-    </>
   );
 }
 
@@ -999,7 +1013,19 @@ export default function Cotizador() {
 
       {tab === 'tarjetas' && <TabTarjetas />}
       {tab === 'usd'      && <TabUsd />}
-      {tab === 'config'   && <BusinessProfileSection isAdmin={isAdmin} />}
+      {tab === 'config'   && (
+        <>
+          {/* 2026-08-02 (task #285): Comisiones movidas al tab Configuración
+              (antes vivían en Tarjetas de crédito — pedido de Lucas). Se ve
+              solo si isAdmin: un vendedor con acceso al Cotizador no debería
+              poder tocar las % del negocio. El propio ComisionesPanel usa
+              useComisionesTenant() → cualquier vendedor logueado igual carga
+              las % en el cotizador vía TabTarjetas/TabUsd, solo que no puede
+              editarlas. */}
+          {isAdmin && <ComisionesPanel />}
+          <BusinessProfileSection isAdmin={isAdmin} />
+        </>
+      )}
     </div>
   );
 }
