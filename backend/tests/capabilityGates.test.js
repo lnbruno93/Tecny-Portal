@@ -131,6 +131,15 @@ const GATES = [
     cap:  'inventario.eliminar',
     req:  () => request(app).delete('/api/inventario/productos/999999'),
   },
+  // task #229 (2026-08-02) — 2 caps dedicadas del share link. Rotate exige
+  // la cap a nivel middleware; el gate de desactivar es inline en el handler
+  // (validado en shareLinks-caps.test.js con mayor detalle — acá solo la
+  // regresión "sin ninguna cap el endpoint debe rebotar").
+  {
+    name: 'POST /api/inventario/share-link/rotate requiere inventario.share_link_rotate',
+    cap:  'inventario.share_link_rotate',
+    req:  () => request(app).post('/api/inventario/share-link/rotate'),
+  },
 ];
 
 describe.each(GATES)('capability gate — $name', (G) => {
