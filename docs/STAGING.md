@@ -2,6 +2,11 @@
 
 Guía para montar un entorno **público y aislado** donde otras personas puedan probar y sugerir mejoras, **sin tocar producción ni los datos reales**.
 
+> **Antes de tocar config multi-env** (netlify.toml, env vars, migrations RLS, DB
+> Railway): leer [`MULTI_ENV_DRIFT.md`](MULTI_ENV_DRIFT.md). Sufrimos 4 incidentes
+> de drift entre 07-27 y 08-01 (uno P0 con 10h downtime) — el doc consolida las
+> categorías, guardrails de CI, runbooks específicos, y toxic assumptions a evitar.
+
 ## Arquitectura
 
 ```

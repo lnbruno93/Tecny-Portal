@@ -1,5 +1,11 @@
 # Runbook — Migraciones con bulk UPDATE sobre tablas con FORCE RLS
 
+> **Doc parent** (multi-env drift): [`../MULTI_ENV_DRIFT.md`](../MULTI_ENV_DRIFT.md) —
+> categoría "Schema / permisos DB (RLS)". Runbooks hermanos:
+> [`../RUNBOOK_MIGRATION_RLS_FORCE.md`](../RUNBOOK_MIGRATION_RLS_FORCE.md)
+> (diagnostic checklist para el caso 08-01) +
+> [`../RUNBOOK_RLS_OWNER_FIX.md`](../RUNBOOK_RLS_OWNER_FIX.md) (drift de owner).
+
 **Fecha:** 2026-07-09 (postmortem del incidente de deploys de la serie F3).
 **Aplica a:** cualquier migration futura que haga `UPDATE` masivo sobre `productos`, `ventas`, `movimientos_cc`, u otras tablas multi-tenant con `FORCE ROW LEVEL SECURITY`.
 
