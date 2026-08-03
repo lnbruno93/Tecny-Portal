@@ -175,7 +175,13 @@ export default function MovimientoCCDetalleModal({ movimiento, cliente, onClose,
 
   const items = Array.isArray(movimiento.items) ? movimiento.items : [];
   const tipoLabel = TIPO_LABEL[movimiento.tipo] || movimiento.tipo;
-  const puedeEditar = movimiento.tipo === 'compra'; // Solo compras (backend guard)
+  // Movimientos con venta_id != NULL vienen de sincronizarCuentaCorriente
+  // (ventaSync.js) — son ventas retail replicadas al ledger B2B. La fuente
+  // de verdad de sus items es `venta_items` (tabla retail). Editarlas desde
+  // acá desincronizaría la venta original → botón "Editar" oculto. El user
+  // debe ir al módulo Ventas para modificar la venta origen.
+  const esVentaRetail = !!movimiento.venta_id;
+  const puedeEditar = movimiento.tipo === 'compra' && !esVentaRetail;
 
   // Suma de valores de items — útil para chequear que matchee monto_total
   // (puede haber discrepancias legítimas si hubo descuentos/ajustes).
@@ -312,6 +318,14 @@ export default function MovimientoCCDetalleModal({ movimiento, cliente, onClose,
             <div className="field">
               <div className="field-label">Notas</div>
               <div className="u-color-text-2">{movimiento.notas}</div>
+            </div>
+          )}
+
+          {mode === 'view' && esVentaRetail && (
+            <div className="muted tiny u-mt-8">
+              Este movimiento proviene de una venta minorista. Los ítems se
+              muestran para consulta — para modificarlos, editá la venta original
+              desde el módulo Ventas.
             </div>
           )}
 
