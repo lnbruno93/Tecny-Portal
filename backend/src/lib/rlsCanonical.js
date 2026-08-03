@@ -69,6 +69,13 @@ const TABLAS_TENANT_SCOPED = Object.freeze([
   'conciliacion_lineas',
   'conciliaciones',
   'config',
+  // 2026-08-03 (task #290): tipos de contacto editables per-tenant.
+  // Reemplaza la lista hardcoded del CHECK constraint que estaba en la
+  // migration inicial 20260521000001. Ver migration
+  // 20260803020000_contacto_tipos_editables.js.
+  // Orden ASCII: 'contacto_tipos' viene ANTES de 'contactos' porque `_`
+  // (0x5F) < 'o' (0x6F) en el 8vo char (matchea sort() default en JS).
+  'contacto_tipos',
   'contactos',
   'cross_tenant_notifications',
   'depositos',
