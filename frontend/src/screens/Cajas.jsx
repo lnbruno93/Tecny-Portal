@@ -719,6 +719,32 @@ export default function Cajas() {
                     </div>
                   </div>
                   <div className="u-flex-gap-8">
+                    {/* 2026-08-03: shortcut "Saldar deuda" — pedido por Lucas.
+                        Solo visible cuando el contacto tiene saldo positivo (nos
+                        debe algo). Pre-llena el modal con tipo=pago + montos
+                        exactos del saldo → user confirma con 1 click en vez de
+                        tipear los montos de memoria. Sigue siendo editable
+                        antes de submit (por si acaso el pago no es completo). */}
+                    {(Number(selectedContacto.saldo_ars) > 0 || Number(selectedContacto.saldo_usd) > 0) && (
+                      <button
+                        className="btn btn-primary u-fs-12-p-4-10"
+                        title="Registra un pago que salda el saldo actual (podés editar los montos antes de guardar)"
+                        onClick={() => {
+                          setDeudaForm({
+                            ...EMPTY_DEUDA(),
+                            contacto_id: String(selectedContactoId),
+                            tipo: 'pago',
+                            monto_ars: Number(selectedContacto.saldo_ars) > 0 ? String(selectedContacto.saldo_ars) : '',
+                            monto_usd: Number(selectedContacto.saldo_usd) > 0 ? String(selectedContacto.saldo_usd) : '',
+                            concepto: 'Saldo de deuda',
+                          });
+                          setDeudaError('');
+                          setShowDeuda(true);
+                        }}
+                      >
+                        <Icons.Check size={13} /> Saldar deuda
+                      </button>
+                    )}
                     <button
                       className="btn btn-ghost u-fs-12-p-4-10"
                       onClick={() => {
