@@ -3586,7 +3586,12 @@ body.modal-open { overflow: hidden; }
 /* 2-prop */
 .u-fs-11-mt-2            { font-size: 11px; margin-top: 2px; }
 .u-fs-10-fw-400          { font-size: 10px; font-weight: 400; }
-.u-flex-1-o-auto         { flex: 1; overflow: auto; }
+/* 2026-08-03 bug reportado por Lautaro Bisman: en CuentasCC + Proyectos la lista
+   izquierda no scrolleaba. Root cause: `flex: 1` sin `min-height: 0` deja el
+   default `min-height: auto` (= content size), lo que hace que el item crezca
+   a su contenido en vez de scrollear dentro del espacio disponible. `overflow:
+   auto` queda inutil. Fix: agregar `min-height: 0; min-width: 0`. */
+.u-flex-1-o-auto         { flex: 1; overflow: auto; min-height: 0; min-width: 0; }
 .u-flex-1-mw-160         { flex: 1; min-width: 160px; }
 .u-flex-1-h-36-fs-14     { flex: 1; height: 36px; font-size: 14px; }
 .u-flex-1-h-1-bg-border  { flex: 1; height: 1px; background: var(--border); }
