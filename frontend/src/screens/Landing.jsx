@@ -21,7 +21,7 @@
 // React Router NO intercepta hash links cuando el path no cambia.
 
 import { useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import './Landing.css';
 // 2026-07-19 Sprint 1 H3 — observabilidad de la landing pública.
 // Helpers para: dataLayer events (provider-agnóstico), performance marks,

@@ -13,7 +13,7 @@
 // Design: reusa el look del Login (card centrado sobre bg neutro).
 
 import { useEffect, useId, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import HCaptcha from '@hcaptcha/react-hcaptcha';
 import { publicInvite, saveToken } from '../lib/api.js';
 import { Btn } from '../components/primitives/index.jsx';

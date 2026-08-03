@@ -17,7 +17,7 @@
 //   · ToC inline al inicio para navegación rápida — el contenido es largo
 //     y la lectura completa no es realista en mobile.
 
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import './LegalPages.css';
 
 // ────────────────────────────────────────────────────────────────────────

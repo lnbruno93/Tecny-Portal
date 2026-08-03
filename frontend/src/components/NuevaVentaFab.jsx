@@ -14,7 +14,7 @@
 // del route + validate del handler) hace que el gating frontend sea UX,
 // no security.
 
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router';
 import { useAuth } from '../contexts/AuthContext';
 import { userHasCap } from '../lib/userHasCap';
 import Icons from './Icons';

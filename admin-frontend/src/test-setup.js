@@ -9,8 +9,8 @@ import * as axeMatchers from 'vitest-axe/matchers';
 // Smoke tests por screen viven en src/__tests__/a11y.test.jsx.
 expect.extend(axeMatchers);
 
-// jsdom 29 dejó de incluir localStorage por default (https://github.com/jsdom/jsdom/pull/3669
-// y siguientes). Tampoco lo expone Node 22 sin --localstorage-file (es
+// jsdom 30 no incluye localStorage por default (https://github.com/jsdom/jsdom/pull/3669
+// y siguientes). Tampoco lo expone Node 22+ sin --localstorage-file (es
 // experimental). Polyfill manual con un Map en memoria — suficiente para
 // tests, y se resetea entre archivos porque vitest crea un jsdom nuevo por
 // archivo. Si en el futuro algún test necesita persistencia o mock más fino,
@@ -21,6 +21,16 @@ expect.extend(axeMatchers);
 //   - lib/api.js → localStorage.getItem(...) (acceso global, sin window.)
 //   - tests → localStorage.clear() (también global)
 //   - React DOM → window.localStorage (a veces, internamente)
+//
+// 2026-08-02 (task #287): defineProperty INCONDICIONAL. El check previo
+// `if (typeof globalThis.localStorage === 'undefined')` fallaba en Node
+// 22+ — el mero acto de evaluar `typeof globalThis.localStorage` toca el
+// built-in experimental del runtime y emite `ExperimentalWarning:
+// localStorage is not available because --localstorage-file was not
+// provided` por cada worker de vitest (~10 warnings por corrida en
+// admin-frontend). Sobreescribir siempre con el mock ni siquiera necesita
+// el check y elimina el warning limpio. Mismo pattern que
+// frontend/src/test-setup.js.
 function createStorageMock() {
   const store = new Map();
   return {
@@ -33,28 +43,19 @@ function createStorageMock() {
   };
 }
 
+const defineStorage = (obj, name) => {
+  try {
+    Object.defineProperty(obj, name, {
+      value: createStorageMock(),
+      writable: true,
+      configurable: true,
+    });
+  } catch { /* noop — algunos runtimes bloquean redefinir */ }
+};
+
+defineStorage(globalThis, 'localStorage');
+defineStorage(globalThis, 'sessionStorage');
 if (typeof window !== 'undefined') {
-  if (!window.localStorage) {
-    Object.defineProperty(window, 'localStorage', {
-      value: createStorageMock(),
-      writable: true,
-      configurable: true,
-    });
-  }
-  if (!window.sessionStorage) {
-    Object.defineProperty(window, 'sessionStorage', {
-      value: createStorageMock(),
-      writable: true,
-      configurable: true,
-    });
-  }
-}
-// Algunos módulos hacen `localStorage.foo(...)` sin window., así que también
-// lo exponemos en globalThis. Node 22 imprime un ExperimentalWarning si no
-// está definido — el assignment lo silencia (no usamos el built-in nativo).
-if (typeof globalThis.localStorage === 'undefined' && typeof window !== 'undefined') {
-  globalThis.localStorage = window.localStorage;
-}
-if (typeof globalThis.sessionStorage === 'undefined' && typeof window !== 'undefined') {
-  globalThis.sessionStorage = window.sessionStorage;
+  defineStorage(window, 'localStorage');
+  defineStorage(window, 'sessionStorage');
 }

@@ -14,7 +14,7 @@
 // queda como default export.
 
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { redB2b, cajas } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 

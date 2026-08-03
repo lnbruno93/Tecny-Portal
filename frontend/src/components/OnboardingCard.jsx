@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { onboarding as onboardingApi, auth as authApi } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 

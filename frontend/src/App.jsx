@@ -3,7 +3,7 @@ import { Suspense } from 'react';
 // React.lazy por lazyWithRetry — envuelve el import() con retry defensivo
 // (2 retries con backoff 500ms/1500ms) antes de propagar. Ver lib/lazyWithRetry.js.
 import lazy from './lib/lazyWithRetry';
-import { BrowserRouter, Routes, Route, Navigate, Outlet, useParams } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useParams } from 'react-router';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { PageActionsProvider } from './contexts/PageActionsContext';

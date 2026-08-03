@@ -23,7 +23,7 @@
 //      - otros → banner de error genérico.
 
 import { useState } from 'react';
-import { useSearchParams, useNavigate, Link } from 'react-router-dom';
+import { useSearchParams, useNavigate, Link } from 'react-router';
 import { auth as authApi } from '../lib/api.js';
 import { Btn } from '../components/primitives/index.jsx';
 import { Icons } from '../components/Icons.jsx';

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 
 // TANDA 2.7 anti-enum: el Signup ya NO usa setAuthFromSignup ni useNavigate
 // (no hay auto-login post-success). Mock solo de lib/api.signup; toggle ojito

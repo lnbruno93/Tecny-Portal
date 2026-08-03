@@ -1,8 +1,8 @@
 // Shell.jsx — Sidebar + Topbar + Outlet layout shell.
-// Adapted from design handoff shell.jsx for Vite + React with react-router-dom.
+// Adapted from design handoff shell.jsx for Vite + React with react-router.
 
 import { useState, useEffect } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';

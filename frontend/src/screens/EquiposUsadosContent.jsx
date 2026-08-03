@@ -25,7 +25,7 @@
 //     abrir la venta de origen (mismo pattern que el chip de drill-down).
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { Icons } from '../components/Icons';
 import { inventario } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';

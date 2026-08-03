@@ -8,7 +8,7 @@
 //                             → placeholders ComingSoon (no implementadas todavía)
 
 import { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router';
 import Login from './pages/Login.jsx';
 import Layout from './components/Layout.jsx';
 import { useAuth } from './contexts/AuthContext.jsx';

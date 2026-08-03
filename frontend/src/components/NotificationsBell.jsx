@@ -39,7 +39,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { Icons } from './Icons';
 import { redB2b as redB2bApi, releaseNotes as releaseNotesApi } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';

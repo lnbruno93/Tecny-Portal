@@ -16,7 +16,7 @@
 //   - Errores manejados: 404, 410 (link inactivo), 429 (rate limit), 5xx.
 
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams } from 'react-router';
 import { publico } from '../lib/api';
 // 2026-07-27 (audit 07-25 Externa P2-4 fix): PublicoUsados es la superficie
 // PÚBLICA más expuesta (link sin auth). Antes NO reportaba errores al backend

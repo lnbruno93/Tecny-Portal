@@ -8,7 +8,7 @@
 // Debounce 180ms sobre el input para no martillar la API en cada tecla.
 
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { Icons } from './Icons';
 // Auditoría 2026-06-30 F-02→05: descripción del Cotizador hardcoded "USD →
 // ARS" — para tenants UY toca "USD → UYU". Moneda local dinámica.
