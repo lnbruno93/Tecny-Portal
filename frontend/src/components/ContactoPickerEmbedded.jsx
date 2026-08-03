@@ -16,11 +16,12 @@
 //   defaultNuevoTipo — 'amigo' (Deuda) | 'inversor' (Inversión), default para
 //                     contactos creados desde acá. Solo afecta el initial.
 import { Icons } from './Icons';
-
-// El value 'ipro team' es legacy (constraint DB pre-rebrand 2026-06-18 #324).
-const TIPO_LABEL = { amigo: 'Amigo', familiar: 'Familiar', cliente: 'Cliente', inversor: 'Inversor', 'ipro team': 'Tecny Team' };
+// task #290: tipos dinámicos per-tenant. Reemplaza el TIPO_LABEL hardcoded
+// que había acá (mismo bug rebrand que Contactos.jsx + Cajas.jsx).
+import { useContactoTipos } from '../lib/useContactoTipos';
 
 export default function ContactoPickerEmbedded({ form, setForm, allContacts }) {
+  const { tipos, labelFor } = useContactoTipos();
   return (
     <div className="field">
       <label className="field-label">Contacto <span className="u-color-neg">*</span></label>
@@ -46,7 +47,7 @@ export default function ContactoPickerEmbedded({ form, setForm, allContacts }) {
           <option value="">— Seleccionar —</option>
           {allContacts.map(c => (
             <option key={c.id} value={c.id}>
-              {c.nombre}{c.apellido ? ` ${c.apellido}` : ''} ({TIPO_LABEL[c.tipo] || c.tipo})
+              {c.nombre}{c.apellido ? ` ${c.apellido}` : ''} ({labelFor(c.tipo)})
             </option>
           ))}
         </select>
@@ -69,11 +70,7 @@ export default function ContactoPickerEmbedded({ form, setForm, allContacts }) {
             <select className="input"
                     value={form.nuevoTipo}
                     onChange={e => setForm(f => ({ ...f, nuevoTipo: e.target.value }))}>
-              <option value="amigo">Amigo</option>
-              <option value="familiar">Familiar</option>
-              <option value="cliente">Cliente</option>
-              <option value="inversor">Inversor</option>
-              <option value="ipro team">Tecny Team</option>
+              {tipos.map(t => <option key={t.slug} value={t.slug}>{t.nombre}</option>)}
             </select>
           </div>
         </div>
