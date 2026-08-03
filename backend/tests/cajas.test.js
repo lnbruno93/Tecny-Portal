@@ -19,6 +19,11 @@ let token;
 let contactoId;
 let deudaId;
 let inversionId;
+// 2026-08-03 (task caja trazabilidad): tests preciso cajas ARS + USD porque
+// los POST /deudas (tipo=pago) y POST /inversiones requieren caja_id (Zod
+// refine). Creo ambas en el beforeAll.
+let cajaArsId;
+let cajaUsdId;
 
 beforeAll(async () => {
   pool = await setupTestDb();
@@ -35,6 +40,18 @@ beforeAll(async () => {
     .set('Authorization', `Bearer ${token}`)
     .send({ nombre: 'Ana', apellido: 'García', tipo: 'inversor' });
   contactoId = cRes.body.id;
+
+  // Crear cajas ARS + USD para linkear a las deudas/inversiones de los tests.
+  const arsRes = await request(app)
+    .post('/api/cajas/cajas')
+    .set('Authorization', `Bearer ${token}`)
+    .send({ nombre: 'Test ARS Efectivo', moneda: 'ARS' });
+  cajaArsId = arsRes.body.id;
+  const usdRes = await request(app)
+    .post('/api/cajas/cajas')
+    .set('Authorization', `Bearer ${token}`)
+    .send({ nombre: 'Test USD Efectivo', moneda: 'USD' });
+  cajaUsdId = usdRes.body.id;
 });
 
 afterAll(async () => {
@@ -77,7 +94,7 @@ describe('POST /api/cajas/deudas', () => {
     deudaId = res.body.id;
   });
 
-  it('crea un movimiento tipo "pago"', async () => {
+  it('crea un movimiento tipo "pago" (con caja_id — REQUIRED post 2026-08-03)', async () => {
     const res = await request(app)
       .post('/api/cajas/deudas')
       .set('Authorization', `Bearer ${token}`)
@@ -87,10 +104,12 @@ describe('POST /api/cajas/deudas', () => {
         tipo:        'pago',
         monto_ars:   10000,
         monto_usd:   0,
+        caja_id:     cajaArsId,
       });
 
     expect(res.status).toBe(201);
     expect(res.body.tipo).toBe('pago');
+    expect(res.body.caja_id).toBe(cajaArsId);
   });
 
   it('rechaza tipo inválido → 400', async () => {
@@ -100,6 +119,75 @@ describe('POST /api/cajas/deudas', () => {
       .send({ fecha: '2026-01-15', contacto_id: contactoId, tipo: 'credito', monto_ars: 100 });
 
     expect(res.status).toBe(400);
+  });
+});
+
+// ─── 2026-08-03: tests de trazabilidad Deudas ↔ Cajas (task caja_id) ───
+// Contacto separado para no interferir con el state de los tests anteriores
+// (que validan resumen/DELETE con saldos exactos).
+describe('POST /api/cajas/deudas — trazabilidad caja (2026-08-03)', () => {
+  let contactoTraceId;
+  beforeAll(async () => {
+    const cRes = await request(app)
+      .post('/api/contactos')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nombre: 'TraceCaja', apellido: 'Test08-03', tipo: 'amigo' });
+    contactoTraceId = cRes.body.id;
+  });
+
+  it('rechaza pago sin caja_id → 400 con mensaje "caja"', async () => {
+    const res = await request(app)
+      .post('/api/cajas/deudas')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        fecha:       '2026-05-01',
+        contacto_id: contactoTraceId,
+        tipo:        'pago',
+        monto_ars:   1000,
+      });
+    expect(res.status).toBe(400);
+    // El middleware validate envuelve el error de Zod refine en { error: 'Datos inválidos', fields: [{ field: 'caja_id', error: 'msg' }] }
+    const fieldsMsg = (res.body.fields || []).map(f => f.error).join(' ');
+    expect(fieldsMsg).toMatch(/caja/i);
+  });
+
+  it('pago con caja_id crea también caja_movimiento origen=deuda', async () => {
+    const res = await request(app)
+      .post('/api/cajas/deudas')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        fecha:       '2026-05-02',
+        contacto_id: contactoTraceId,
+        tipo:        'pago',
+        monto_ars:   5000,
+        monto_usd:   0,
+        caja_id:     cajaArsId,
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.caja_id).toBe(cajaArsId);
+    // Verificar caja_movimiento asociado con origen='deuda'
+    const movRes = await request(app)
+      .get('/api/cajas/movimientos?caja_id=' + cajaArsId + '&origen=deuda')
+      .set('Authorization', `Bearer ${token}`);
+    expect(movRes.status).toBe(200);
+    expect(movRes.body.data.some(m => Number(m.monto) === 5000 && m.tipo === 'ingreso')).toBe(true);
+  });
+
+  it('pago con caja de moneda incompatible → 400 con mensaje explicativo', async () => {
+    const res = await request(app)
+      .post('/api/cajas/deudas')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        fecha:       '2026-05-03',
+        contacto_id: contactoTraceId,
+        tipo:        'pago',
+        monto_ars:   1000,   // ARS
+        monto_usd:   0,
+        caja_id:     cajaUsdId, // caja USD → mismatch
+      });
+    expect(res.status).toBe(400);
+    // El mensaje viene del handler explícito (no de Zod). res.body.error contiene el string.
+    expect(String(res.body.error || res.body.message || '')).toMatch(/USD/i);
   });
 });
 
@@ -146,7 +234,7 @@ describe('GET /api/cajas/deudas', () => {
 
 // ─── Inversiones ──────────────────────────────────────────────
 describe('POST /api/cajas/inversiones', () => {
-  it('crea una inversión con tasa', async () => {
+  it('crea una inversión con tasa (caja_id REQUIRED post 2026-08-03)', async () => {
     const res = await request(app)
       .post('/api/cajas/inversiones')
       .set('Authorization', `Bearer ${token}`)
@@ -155,11 +243,13 @@ describe('POST /api/cajas/inversiones', () => {
         contacto_id: contactoId,
         monto:       2000,
         tasa:        '3% mensual',
+        caja_id:     cajaUsdId,
       });
 
     expect(res.status).toBe(201);
     expect(parseFloat(res.body.monto)).toBe(2000);
     expect(res.body.tasa).toBe('3% mensual');
+    expect(res.body.caja_id).toBe(cajaUsdId);
     inversionId = res.body.id;
   });
 
@@ -167,10 +257,45 @@ describe('POST /api/cajas/inversiones', () => {
     const res = await request(app)
       .post('/api/cajas/inversiones')
       .set('Authorization', `Bearer ${token}`)
-      .send({ fecha: '2026-02-10', contacto_id: contactoId, monto: 500 });
+      .send({ fecha: '2026-02-10', contacto_id: contactoId, monto: 500, caja_id: cajaUsdId });
 
     expect(res.status).toBe(201);
     expect(res.body.tasa).toBeNull();
+  });
+
+});
+
+// ─── 2026-08-03: tests de trazabilidad Inversiones ↔ Cajas ─────
+// Contacto separado — el resumen test previo depende del state de contactoId.
+describe('POST /api/cajas/inversiones — trazabilidad caja (2026-08-03)', () => {
+  let contactoInvTraceId;
+  beforeAll(async () => {
+    const cRes = await request(app)
+      .post('/api/contactos')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nombre: 'TraceInv', apellido: 'Test08-03', tipo: 'inversor' });
+    contactoInvTraceId = cRes.body.id;
+  });
+
+  it('rechaza inversión sin caja_id → 400', async () => {
+    const res = await request(app)
+      .post('/api/cajas/inversiones')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ fecha: '2026-02-11', contacto_id: contactoInvTraceId, monto: 100 });
+    expect(res.status).toBe(400);
+  });
+
+  it('inversión crea caja_movimiento origen=inversion', async () => {
+    const invRes = await request(app)
+      .post('/api/cajas/inversiones')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ fecha: '2026-03-15', contacto_id: contactoInvTraceId, monto: 750, caja_id: cajaUsdId });
+    expect(invRes.status).toBe(201);
+    const movRes = await request(app)
+      .get('/api/cajas/movimientos?caja_id=' + cajaUsdId + '&origen=inversion')
+      .set('Authorization', `Bearer ${token}`);
+    expect(movRes.status).toBe(200);
+    expect(movRes.body.data.some(m => Number(m.monto) === 750 && m.tipo === 'ingreso')).toBe(true);
   });
 });
 
@@ -322,6 +447,7 @@ describe('Cajas — mega-form transaccional (contacto_nuevo)', () => {
         fecha: '2026-06-03',
         contacto_nuevo: { nombre: 'Carla', tipo: 'inversor' },
         monto: 5000,
+        caja_id: cajaUsdId,  // 2026-08-03: caja_id ahora REQUIRED en inversiones
       });
     expect(res.status).toBe(201);
     expect(Number(res.body.monto)).toBe(5000);

@@ -9,7 +9,7 @@ const { round2, assertMonedaValidaParaPais } = require('../lib/money');
 const { createTenantScopedCache } = require('../lib/cacheTtl');
 const { CAJAS_RESUMEN } = require('../lib/cacheConfig');
 const { getCajasList, invalidateCajas } = require('../lib/cajasCache');
-const { postCajaMovimiento } = require('../lib/cajaLedger');
+const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
 const {
   createDeudaSchema, queryDeudasSchema,
   createInversionSchema, queryInversionesSchema,
@@ -41,6 +41,7 @@ router.get('/deudas', validate(queryDeudasSchema, 'query'), async (req, res, nex
       const dataRes = await client.query(
         `SELECT m.id, m.fecha, m.contacto_id, m.tipo AS mov_tipo,
                 m.monto_ars, m.monto_usd, m.concepto, m.created_at,
+                m.caja_id, m.tc,
                 c.nombre, c.apellido, c.tipo AS contacto_tipo
          ${baseQuery}
          ORDER BY m.fecha DESC, m.id DESC
@@ -61,9 +62,18 @@ router.post('/deudas', requireCapability('cajas.crear'), validate(createDeudaSch
   // se crea el contacto + el movimiento en una sola tx. Si falla el INSERT del
   // movimiento, el contacto se revierte → no quedan contactos huérfanos. Antes
   // el frontend hacía 2 requests separados y un error en el 2do dejaba data inconsistente.
+  //
+  // 2026-08-03 (task caja trazabilidad): además, si viene `caja_id`, creamos
+  // atomicamente un caja_movimiento reflejando el flujo real del dinero:
+  //   - tipo=pago  → caja recibe cash (ingreso). REQUERIDO por Zod refine.
+  //   - tipo=debe  → caja entrega cash (egreso). OPCIONAL — el user puede
+  //     omitir si es una deuda "en el aire" (ej. prometí pagar Netflix).
+  // Todo en la misma tx: si postCajaMovimiento falla (saldo insuf, moneda
+  // mismatch, caja borrada), se rollback la deuda también. Nada de estado
+  // inconsistente.
   const client = await db.connect();
   try {
-    const { fecha, contacto_id, contacto_nuevo, tipo, monto_ars, monto_usd, concepto } = req.body;
+    const { fecha, contacto_id, contacto_nuevo, tipo, monto_ars, monto_usd, concepto, caja_id, tc } = req.body;
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
     await client.query(
@@ -85,11 +95,56 @@ router.post('/deudas', requireCapability('cajas.crear'), validate(createDeudaSch
     }
 
     const { rows } = await client.query(
-      `INSERT INTO movimientos_deudas (fecha, contacto_id, tipo, monto_ars, monto_usd, concepto)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [fecha, cid, tipo, monto_ars, monto_usd, concepto ?? null]
+      `INSERT INTO movimientos_deudas (fecha, contacto_id, tipo, monto_ars, monto_usd, concepto, caja_id, tc)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [fecha, cid, tipo, monto_ars, monto_usd, concepto ?? null, caja_id ?? null, tc ?? null]
     );
     await audit(client, 'movimientos_deudas', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
+
+    // Espejar en caja_movimientos si el user linkeó una caja. El helper
+    // postCajaMovimiento valida moneda/saldo/lock; si falla, rollback total.
+    if (caja_id) {
+      const { rows: cajaRows } = await client.query(
+        'SELECT moneda FROM metodos_pago WHERE id = $1 AND deleted_at IS NULL',
+        [caja_id]
+      );
+      if (!cajaRows[0]) {
+        const e = new Error('La caja seleccionada no existe.'); e.status = 400; throw e;
+      }
+      const cajaMoneda = cajaRows[0].moneda;
+      // Elegir monto según moneda de la caja. `movimientos_deudas` solo tiene
+      // monto_ars y monto_usd (no monto_uyu) — si caja es UYU, no hay match
+      // posible. Rechazamos explícitamente para no dejar caja_movimiento
+      // "invisible" (silent no-op sería data inconsistency: la deuda se
+      // cierra pero la caja no crece).
+      let monto = 0;
+      if (cajaMoneda === 'ARS') {
+        monto = Number(monto_ars || 0);
+      } else if (cajaMoneda === 'USD' || cajaMoneda === 'USDT') {
+        monto = Number(monto_usd || 0);
+      } else {
+        const e = new Error(`La moneda de la caja (${cajaMoneda}) no está soportada en pagos de deuda. Usá una caja ARS o USD/USDT.`);
+        e.status = 400; throw e;
+      }
+      if (monto <= 0) {
+        const e = new Error(`Elegiste una caja ${cajaMoneda} pero el monto ${cajaMoneda === 'ARS' ? 'ARS' : 'USD'} es 0. Poné el monto o cambiá de caja.`);
+        e.status = 400; throw e;
+      }
+      await postCajaMovimiento(client, {
+        caja_id,
+        fecha,
+        tipo:     tipo === 'pago' ? 'ingreso' : 'egreso',
+        monto,
+        moneda:   cajaMoneda,
+        tc:       tc ?? null,
+        origen:   'deuda',
+        ref_tabla:'movimientos_deudas',
+        ref_id:   rows[0].id,
+        concepto: concepto ?? (tipo === 'pago' ? 'Cobro de deuda' : 'Préstamo entregado'),
+        user_id:  req.user.id,
+      });
+    }
+
     await client.query('COMMIT');
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -103,12 +158,21 @@ router.delete('/deudas/:id', requireCapability('cajas.crear'), async (req, res, 
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
 
+    // 2026-08-03 (task caja trazabilidad): además del soft-delete de la
+    // deuda, revertimos el caja_movimiento asociado (si existe) para que
+    // el saldo de la caja se restaure. `reverseCajaMovimientos` valida que
+    // el reverse no deje la caja en negativo (409 si sí) — protección
+    // contra "anular un cobro histórico dejaría la caja quebrada porque
+    // ya se gastó ese dinero".
     const row = await db.withTenant(req.tenantId, async (client) => {
       const { rows } = await client.query(
         'UPDATE movimientos_deudas SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',
         [id]
       );
       if (!rows[0]) return null;
+      // Revert caja_movimiento (si la deuda tenía caja linkeada). No-op
+      // silencioso para deudas legacy (caja_id NULL → 0 movimientos que reversar).
+      await reverseCajaMovimientos(client, 'movimientos_deudas', id);
       await audit(client, 'movimientos_deudas', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
       return rows[0];
     });
@@ -140,6 +204,7 @@ router.get('/inversiones', validate(queryInversionesSchema, 'query'), async (req
       const countRes = await client.query(`SELECT COUNT(*) ${baseQuery}`, params);
       const dataRes = await client.query(
         `SELECT m.id, m.fecha, m.contacto_id, m.monto, m.tasa, m.created_at,
+                m.caja_id, m.tc,
                 c.nombre, c.apellido, c.tipo AS contacto_tipo
          ${baseQuery}
          ORDER BY m.fecha DESC, m.id DESC
@@ -157,9 +222,15 @@ router.get('/inversiones', validate(queryInversionesSchema, 'query'), async (req
 
 router.post('/inversiones', requireCapability('cajas.crear'), validate(createInversionSchema), async (req, res, next) => {
   // Mega-form transaccional (ver comentario equivalente en POST /deudas).
+  //
+  // 2026-08-03 (task caja trazabilidad): caja_id es REQUERIDO por Zod
+  // (createInversionSchema) — una inversión SIEMPRE alimenta una caja
+  // concreta (el capital del inversor entra a algún lado: efectivo,
+  // banco, USDT, etc.). Espejamos un caja_movimiento tipo=ingreso
+  // atomicamente en la misma tx.
   const client = await db.connect();
   try {
-    const { fecha, contacto_id, contacto_nuevo, monto, tasa } = req.body;
+    const { fecha, contacto_id, contacto_nuevo, monto, tasa, caja_id, tc } = req.body;
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
     await client.query(
@@ -180,11 +251,37 @@ router.post('/inversiones', requireCapability('cajas.crear'), validate(createInv
     }
 
     const { rows } = await client.query(
-      `INSERT INTO movimientos_inversiones (fecha, contacto_id, monto, tasa)
-       VALUES ($1,$2,$3,$4) RETURNING *`,
-      [fecha, cid, monto, tasa ?? null]
+      `INSERT INTO movimientos_inversiones (fecha, contacto_id, monto, tasa, caja_id, tc)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [fecha, cid, monto, tasa ?? null, caja_id, tc ?? null]
     );
     await audit(client, 'movimientos_inversiones', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
+
+    // Espejar en caja_movimientos. Las inversiones son USD por diseño del
+    // modal (createInversionSchema.monto es 1 solo número USD-nominal). Si
+    // la caja destino es de otra moneda (ARS/UYU), el helper falla con
+    // moneda mismatch — el frontend debe forzar caja USD/USDT en el select.
+    const { rows: cajaRows } = await client.query(
+      'SELECT moneda FROM metodos_pago WHERE id = $1 AND deleted_at IS NULL',
+      [caja_id]
+    );
+    if (!cajaRows[0]) {
+      const e = new Error('La caja seleccionada no existe.'); e.status = 400; throw e;
+    }
+    await postCajaMovimiento(client, {
+      caja_id,
+      fecha,
+      tipo:     'ingreso',
+      monto:    Number(monto),
+      moneda:   cajaRows[0].moneda,
+      tc:       tc ?? null,
+      origen:   'inversion',
+      ref_tabla:'movimientos_inversiones',
+      ref_id:   rows[0].id,
+      concepto: tasa ? `Inversión (${tasa})` : 'Inversión',
+      user_id:  req.user.id,
+    });
+
     await client.query('COMMIT');
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -198,12 +295,15 @@ router.delete('/inversiones/:id', requireCapability('cajas.crear'), async (req, 
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
 
+    // 2026-08-03: revertir caja_movimiento asociado (si existe). Ver
+    // comentario equivalente en DELETE /deudas/:id.
     const row = await db.withTenant(req.tenantId, async (client) => {
       const { rows } = await client.query(
         'UPDATE movimientos_inversiones SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',
         [id]
       );
       if (!rows[0]) return null;
+      await reverseCajaMovimientos(client, 'movimientos_inversiones', id);
       await audit(client, 'movimientos_inversiones', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
       return rows[0];
     });
