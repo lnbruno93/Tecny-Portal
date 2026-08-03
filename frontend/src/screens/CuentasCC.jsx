@@ -12,6 +12,7 @@ import { fmt, fmtSigned, fmtFecha } from '../lib/format';
 import VentaB2BModal from '../components/VentaB2BModal';
 import CobranzaMasivaModal from '../components/CobranzaMasivaModal';
 import MercaderiaRecibidaModal from '../components/MercaderiaRecibidaModal';
+import MovimientoCCDetalleModal from '../components/MovimientoCCDetalleModal';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import CajaSelectHint from '../components/CajaSelectHint';
 import TcWarning from '../components/TcWarning';
@@ -593,6 +594,10 @@ export default function CuentasCC() {
   const [showClienteModal, setShowClienteModal] = useState(false);
   const [showVentaModal,   setShowVentaModal]   = useState(false);
   const [showCobranzaMasiva, setShowCobranzaMasiva] = useState(false);
+  // 2026-08-03 (task #298): modal de detalle de un movimiento B2B — reusar
+  // patrón de CompraProveedorDetalleModal para que Lautaro/Nook Tech vean
+  // TODOS los items de un movimiento sin depender del drilldown inline.
+  const [detalleMov, setDetalleMov] = useState(null);
   // 2026-07-17 (task #155) — cliente cancela deuda entregando mercadería.
   // Los items ingresan al Inventario + el saldo del cliente baja. Sólo se
   // ofrece el botón si el cliente tiene saldo distinto de 0.
@@ -1292,14 +1297,20 @@ export default function CuentasCC() {
                     // completo: partner, pagos multidivisa, historial). Para rows
                     // normales B2B no cambia nada — siguen sin click handler.
                     const isCrossTenant = m.cross_tenant_operation_id != null;
-                    const handleRowClick = isCrossTenant
-                      ? (e) => {
-                          // Ignorar clicks que vengan de un botón dentro de la fila
-                          // (Trash, chevron de expand) para no pisar sus handlers.
-                          if (e.target.closest && e.target.closest('button')) return;
-                          navigate(`/red-b2b/operaciones/${m.cross_tenant_operation_id}`);
-                        }
-                      : undefined;
+                    // 2026-08-03 (task #298): row click abre modal de detalle
+                    // (o navega a operación cross-tenant si aplica). Ignora
+                    // clicks en botones internos (Trash, chevron expand) para
+                    // no pisar sus handlers.
+                    const handleRowClick = (e) => {
+                      if (e.target.closest && e.target.closest('button')) return;
+                      if (isCrossTenant) {
+                        navigate(`/red-b2b/operaciones/${m.cross_tenant_operation_id}`);
+                      } else if (!m._pending) {
+                        // No abrir modal en filas pendientes de guardar
+                        // (optimistic UI todavía sin id real).
+                        setDetalleMov(m);
+                      }
+                    };
                     return (
                       <>
                       <tr
@@ -1310,7 +1321,7 @@ export default function CuentasCC() {
                           'u-cuentas-mov-row' +
                           (isExpanded ? ' u-cuentas-mov-row-expanded' : '') +
                           (m._pending ? ' u-cuentas-mov-row-pending' : '') +
-                          (isCrossTenant ? ' u-cursor-pointer' : '')
+                          (!m._pending ? ' u-cursor-pointer' : '')
                         }
                       >
                         <td className="cell muted mono">{fmtFecha(m.fecha)}</td>
@@ -1410,6 +1421,15 @@ export default function CuentasCC() {
           </div>
         )}
       </div>
+
+      {/* 2026-08-03 (task #298): modal detalle movimiento B2B */}
+      {detalleMov && (
+        <MovimientoCCDetalleModal
+          movimiento={detalleMov}
+          cliente={cliente}
+          onClose={() => setDetalleMov(null)}
+        />
+      )}
 
       {/* Editar cliente */}
       {showEdit && cliente && (
