@@ -15,7 +15,7 @@
     "check:backend-anti-regression": "node scripts/security/backend-anti-regression-check.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.0",
+    "@playwright/test": "^1.62.1",
     "bcrypt": "^6.0.0",
     "dotenv": "^16.4.5",
     "pg": "^8.22.0",
