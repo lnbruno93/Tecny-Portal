@@ -2,6 +2,7 @@ const router = require('express').Router();
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { randomBytes } = require('crypto');
+const { z } = require('zod');
 const db = require('../config/database');
 const requireAuth = require('../middleware/auth');
 const validate = require('../lib/validate');
@@ -783,6 +784,170 @@ router.post('/refresh', async (req, res, next) => {
     });
   } catch (err) {
     logger.error({ err: err.message }, '[refresh] error');
+    next(err);
+  }
+});
+
+// 2026-08-03 (task #228 pragmatic — Opción A): endpoints multi-tenant per user.
+//
+// Contexto: `resolveUserTenant` embebe SIEMPRE el tenant de menor ID en el JWT
+// aunque el user tenga rows en varios `tenant_users` (super-admins invitados,
+// futuro partnership Red B2B). Antes no había forma de cambiar el "tenant
+// activo" sin loguear/desloguear.
+//
+// Fix pragmático (~2-3h de trabajo) vs refactor completo (~1 semana con
+// header X-Active-Tenant-Id + JWT con lista de tenants): mantenemos el JWT
+// shape actual (1 tenant embebido) pero agregamos un endpoint que re-emite
+// el JWT con otro tenant_id + capabilities recargadas. El middleware
+// requireAuth NO cambia — sigue leyendo `tenant_id` del payload.
+//
+// Trade-off: el switch requiere una request extra (vs header stateless), pero
+// evita refactor cross-cutting en capabilities/withTenant/frontend. Aceptable
+// para los 2-5 super-admins actuales; si escala a 10+ users con switching
+// frecuente, evaluar migrar al pattern header stateless (docstring de
+// resolveUserTenant en lib/userTenant.js).
+
+// GET /api/auth/tenants — lista los tenants a los que pertenece el user
+// autenticado. El frontend usa esto para poblar el dropdown "Organización
+// activa" en el header (solo visible si len(tenants) > 1). Response marca
+// cuál está activo (según JWT actual) para que el dropdown muestre el
+// checkmark inicial correcto.
+router.get('/tenants', requireAuth, async (req, res, next) => {
+  try {
+    // tenant_users NO tiene RLS → query directa sin withTenant. Igual que
+    // resolveUserTenant en lib/userTenant.js. JOIN a tenants para nombre/pais
+    // (evita N+1 round-trips desde el frontend). Filtramos tenants soft-deleted.
+    const { rows } = await db.query(
+      `SELECT tu.tenant_id AS id, tu.rol,
+              t.nombre, t.pais, t.plan, t.suspended_at IS NULL AS is_active
+         FROM tenant_users tu
+         JOIN tenants t ON t.id = tu.tenant_id
+        WHERE tu.user_id = $1 AND t.deleted_at IS NULL
+        ORDER BY t.nombre ASC NULLS LAST, tu.tenant_id ASC`,
+      [req.user.id]
+    );
+    res.json({
+      tenants: rows,
+      active_tenant_id: req.tenantId,
+    });
+  } catch (err) {
+    logger.error({ err: err.message, userId: req.user.id }, '[auth-tenants] error');
+    next(err);
+  }
+});
+
+// POST /api/auth/switch-tenant — re-emite JWT con otro tenant activo.
+//
+// Body: { tenant_id: number }
+// Guards:
+//   · Auth: middleware requireAuth (user autenticado)
+//   · Ownership: el user DEBE tener row en tenant_users para ese tenant_id.
+//     Sin este check, un user cualquiera podría switchear al tenant 1
+//     (Tecny) y ver sus datos — fail-CLOSED.
+//   · Tenant vivo: si el tenant está soft-deleted, rechazamos con 404
+//     (evita que un tenant históricamente borrado siga siendo switcheable).
+//
+// Response: mismo shape que /login — { token, user: { ..., tenant, caps, ... } }
+// Frontend reemplaza el token en el AuthContext + refresca datos.
+//
+// Nota: NO re-emitimos refresh token. El refresh token está atado al USER
+// (no al tenant) — sigue válido; solo el access token cambia el tenant
+// activo. Si el user hace logout, el refresh se revoca normal.
+const switchTenantSchema = z.object({
+  tenant_id: z.coerce.number().int().positive('tenant_id inválido'),
+}).strict();
+router.post('/switch-tenant', requireAuth, validate(switchTenantSchema), async (req, res, next) => {
+  try {
+    const targetTenantId = req.body.tenant_id;
+
+    // 1) Verificar que el user pertenece al tenant target (fail-closed).
+    //    tenant_users NO tiene RLS → query directa.
+    const { rows: membership } = await db.query(
+      `SELECT tu.tenant_id, tu.rol
+         FROM tenant_users tu
+         JOIN tenants t ON t.id = tu.tenant_id
+        WHERE tu.user_id = $1 AND tu.tenant_id = $2 AND t.deleted_at IS NULL`,
+      [req.user.id, targetTenantId]
+    );
+    if (!membership[0]) {
+      // No leakear si el tenant existe o no — mensaje neutro para ambos casos
+      // (tenant inexistente, tenant no pertenece al user, tenant soft-deleted).
+      return res.status(403).json({
+        error: 'No tenés acceso a esta organización.',
+        code: 'TENANT_NOT_ACCESSIBLE',
+      });
+    }
+    const tenant = { tenant_id: membership[0].tenant_id, rol: membership[0].rol };
+
+    // 2) Si ya está en ese tenant, no-op — devolvemos el mismo shape para
+    //    que el frontend igual reciba token válido (idempotente).
+    //    NO returnamos early con el JWT actual porque el user puede haber
+    //    cambiado de rol en ese tenant mientras estaba logueado; recomputamos
+    //    caps para reflejar cualquier cambio.
+
+    // 3) Reload user row (defensivo: el user pudo haber cambiado
+    //    is_super_admin, email, etc. entre login y switch).
+    const { rows: userRows } = await db.query(
+      `SELECT id, nombre, username, email, role, is_super_admin, email_verified_at
+         FROM users WHERE id = $1 AND deleted_at IS NULL`,
+      [req.user.id]
+    );
+    if (!userRows[0]) {
+      return res.status(401).json({ error: 'Usuario no encontrado.', code: 'USER_GONE' });
+    }
+    const user = userRows[0];
+
+    // 4) Recargar capabilities para el tenant nuevo. Mismo pattern que /login.
+    let capInfo = null;
+    let capsResponse = null;
+    let rolResponse = null;
+    if (user.role !== 'admin') {
+      try {
+        const { rol, caps } = await loadUserCapsForTenant(user.id, tenant.tenant_id);
+        capInfo = { rol, caps: capsForJwt(rol, caps) };
+        rolResponse = rol;
+        capsResponse = caps === null ? null : Array.from(caps);
+      } catch (e) {
+        logger.warn({ err: e, userId: user.id, tenantId: tenant.tenant_id },
+          '[switch-tenant] error resolviendo capabilities — sigue sin capInfo (fallback DB en middleware)');
+      }
+    }
+
+    // 5) Invalidar cache de auth meta (cross-instance Redis). Fuerza que
+    //    la próxima request del user re-fetche desde DB con el tenant nuevo.
+    //    Sin esto, otra réplica con el row cacheado seguiría respondiendo
+    //    con el tenant viejo hasta el TTL de 60s.
+    userAuthCache.invalidateUserAuth(user.id);
+
+    // 6) Build tenant info nuevo para el response (nombre/plan/pais).
+    const tenantInfo = await buildTenantInfo(tenant.tenant_id);
+
+    // 7) Audit event — deja rastro de switches para forense.
+    db.withTenant(tenant.tenant_id, (client) =>
+      audit(client, 'users', 'SWITCH_TENANT', user.id, {
+        req,
+        despues: { from_tenant_id: req.tenantId, to_tenant_id: tenant.tenant_id, rol: tenant.rol },
+      })
+    ).catch((err) => logger.warn({ err: err.message, userId: user.id },
+      '[auth-audit] SWITCH_TENANT no persistido'));
+
+    res.json({
+      token: makeToken(user, tenant, capInfo),
+      user: {
+        id: user.id,
+        nombre: user.nombre,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        email_verified: !!user.email_verified_at,
+        is_super_admin: !!user.is_super_admin,
+        tenant_cap_rol: rolResponse,
+        caps: capsResponse,
+        tenant: tenantInfo,
+      },
+    });
+  } catch (err) {
+    logger.error({ err: err.message, userId: req.user.id }, '[switch-tenant] error');
     next(err);
   }
 });

@@ -22,6 +22,9 @@ import NuevaVentaFab from './NuevaVentaFab';
 // unifica Novedades (release notes) + Red B2B en un solo dropdown con
 // secciones. Ver comentarios en NotificationsBell.jsx.
 import NotificationsBell from './NotificationsBell';
+// 2026-08-03 (task #228 Opción A): dropdown en el UserPill para users con
+// >1 tenant. Se auto-oculta si el user pertenece a un solo tenant.
+import TenantSwitcher from './TenantSwitcher';
 import { alertas as alertasApi, releaseNotes as releaseNotesApi } from '../lib/api';
 import { userHasCap, userHasAnyCap, isTenantAdmin } from '../lib/userHasCap';
 // 2026-06-29 Multi-país F3: badge país en topbar (sec 5.3 design doc).
@@ -366,6 +369,10 @@ function UserPill() {
             {roleLabel} · @{user.username}
           </div>
         </div>
+        {/* 2026-08-03 (task #228 Opción A): dropdown para cambiar de tenant
+            activo. Solo aparece si el user pertenece a >1 tenant — para el
+            99% de users no impacta visualmente. */}
+        <TenantSwitcher />
         {/* 2026-06-19 #338: toggle dark/light. Icono sol cuando estamos en
             dark (action: "ir a light"), luna cuando estamos en light (action:
             "ir a dark"). aria-label describe el destino, no el estado actual. */}

@@ -48,6 +48,27 @@ export function AuthProvider({ children }) {
     setUser(null);
   }, []);
 
+  // 2026-08-03 (task #228 Opción A): switch de tenant activo para users con
+  // rows en >1 tenant_users (super-admins invitados, futuros partners Red B2B).
+  // Backend re-emite JWT con tenant_id nuevo + recarga capabilities. Frontend
+  // guarda el token nuevo y hace hard-reload para que TODAS las queries en
+  // memoria (react-query cache, useEffect data, etc.) se re-fetchen desde cero
+  // con el tenant nuevo. Sin reload, los datos stale del tenant anterior
+  // seguirían visibles hasta refresh manual.
+  //
+  // Trade-off: reload rompe el estado de UI (formularios abiertos, scroll,
+  // etc.). Aceptable porque el switch es una acción intencional del user
+  // (equivalente a un logout+login mental). Alternativa "invalidar caches
+  // uno por uno" quedaría para si escala a switching frecuente.
+  const switchTenant = useCallback(async (tenantId) => {
+    const data = await authApi.switchTenant(tenantId);
+    saveToken(data.token);
+    // Reload full — la forma más segura de garantizar que TODAS las queries
+    // vuelen con el tenant nuevo (RLS reset). Cero riesgo de data leak.
+    window.location.reload();
+    return data;
+  }, []);
+
   // TANDA 2.2: refreshUser — invocado por <VerifyEmail /> después de un
   // verify exitoso. Re-fetch GET /api/auth/me para que `user.email_verified`
   // pase de false a true en memoria y el banner desaparezca. Si el user no
@@ -69,8 +90,8 @@ export function AuthProvider({ children }) {
   // estables vía useCallback con deps vacías; user/loading son los únicos
   // que cambian de verdad.
   const value = useMemo(
-    () => ({ user, loading, login, logout, refreshUser }),
-    [user, loading, login, logout, refreshUser]
+    () => ({ user, loading, login, logout, refreshUser, switchTenant }),
+    [user, loading, login, logout, refreshUser, switchTenant]
   );
 
   return (

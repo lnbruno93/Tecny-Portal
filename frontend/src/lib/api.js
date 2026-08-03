@@ -310,6 +310,12 @@ export const auth = {
     'POST',
     { token, newPassword }
   ),
+  // 2026-08-03 (task #228 Opción A): multi-tenant switch pragmático.
+  // getTenants → lista tenants del user (para poblar dropdown en el header,
+  // solo visible si len(tenants) > 1). switchTenant → re-emite JWT con
+  // otro tenant activo. Ver docstring del endpoint backend para trade-off.
+  getTenants: () => api('/api/auth/tenants'),
+  switchTenant: (tenantId) => api('/api/auth/switch-tenant', 'POST', { tenant_id: tenantId }),
 };
 
 // 2FA endpoints. Todos requieren JWT válido (requireAuth) — usan el wrapper api()
