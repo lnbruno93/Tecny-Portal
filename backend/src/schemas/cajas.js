@@ -1,5 +1,5 @@
 const { z } = require('zod');
-const { TIPOS_CONTACTO, ORIGENES } = require('./contactos');
+const { ORIGENES } = require('./contactos');
 // Multi-país F2: enum compartido (acepta UYU). País-aware en el handler.
 const { MonedaEnum } = require('./_common');
 
@@ -8,10 +8,16 @@ const { MonedaEnum } = require('./_common');
 // HTTP separados — si el segundo fallaba, quedaba contacto huérfano. Ahora se
 // puede mandar `contacto_nuevo` en lugar de `contacto_id` y el backend crea
 // ambos en la misma tx. Schema reusado por createDeudaSchema y createInversionSchema.
+//
+// 2026-08-03 (task #290): tipo pasó de z.enum(TIPOS_CONTACTO) hardcoded a
+// string flexible (min 1, max 50). La validación de existencia contra
+// contacto_tipos activos del tenant vive en el handler (routes/cajas.js
+// invoca el mismo pattern que routes/contactos.js — a wire cuando aparezca
+// un tenant con test que use tipo custom).
 const contactoNuevoSchema = z.object({
   nombre:   z.string().trim().min(1, 'Nombre requerido').max(100),
   apellido: z.string().trim().max(100).optional().nullable(),
-  tipo:     z.enum(TIPOS_CONTACTO).optional(),
+  tipo:     z.string().trim().min(1).max(50).optional(),
 }).strict();
 
 // XOR refinement: o contacto_id o contacto_nuevo, exactamente uno. Si el
