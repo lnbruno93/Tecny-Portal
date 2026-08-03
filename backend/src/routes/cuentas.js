@@ -42,6 +42,24 @@ const logger = require('../lib/logger');
 // router — es un compromise pragmático.
 const { invalidateDashboardVentas } = require('./ventas');
 
+// 2026-08-03 (task #300 Fase B): rate-limit dedicado para PUT /movimientos/:id.
+// El edit reprocesa items (INSERT/UPDATE/DELETE en items_movimiento_cc), toca
+// stock (UPDATE productos con guard de stock + revert), y potencialmente
+// re-postea caja (reverse + post). Es write-heavy con locks — mismo perfil
+// que POST movimientos proveedor. 30 edits / 15 min por user es generoso
+// para uso humano (el modal es de detalle, no bulk).
+const editMovimientoLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.id != null
+    ? `cc-mov-edit:${req.user.id}`
+    : `cc-mov-edit:ip:${ipKeyGenerator(req)}`,
+  message: { error: 'Demasiadas ediciones de movimientos B2B en poco tiempo. Probá en unos minutos.' },
+  skip: () => process.env.NODE_ENV === 'test',
+});
+
 // Rate-limit específico para cobranza masiva: 10 req / 15 min por user.
 // Cada lote puede ser de hasta 100 cobranzas → write-heavy y mantiene
 // locks de cajas un tiempo. Bloquea DoS interno (auditoría #H-07).
@@ -65,6 +83,7 @@ const {
   createClienteCCSchema,
   updateClienteCCSchema,
   createMovimientoCCSchema,
+  updateMovimientoCCSchema,
   updateEstadoMovimientoCCSchema,
   cobranzaMasivaSchema,
 } = require('../schemas/cuentas');
@@ -1044,6 +1063,514 @@ router.patch('/movimientos/:id/estado', validate(updateEstadoMovimientoCCSchema)
     res.json({ ok: true, estado: result.row.estado });
   } catch (err) { next(err); }
 });
+
+// ─── PUT /movimientos/:id — edit inline del movimiento (Fase B, task #300) ────
+//
+// Simétrico al PUT /movimientos/:mid de proveedores.js (task #262). Sólo aplica
+// a tipo=compra por diseño (el resto de tipos son atómicos: no tiene sentido
+// editar items en pago/devolución — anular + recrear en su lugar).
+//
+// Editables:
+//   · fecha, descripcion, notas
+//   · items (diff-based) — INSERT nuevos con producto_id descuenta stock,
+//     DELETE existentes con producto_id revierte stock
+//
+// NO editables (razones de integridad contable — anular + recrear si necesario):
+//   · cliente_cc_id, tipo, monto_total (recomputado), caja_id, moneda, tc,
+//     estado
+//
+// Sync inventario bidireccional:
+//   · Item NUEVO con producto_id → descuenta stock (guard 409 si insuficiente)
+//   · Item EXISTENTE con producto_id → no toca stock (campos NO ligados a
+//     stock son editables: color, notas, verificado, valor). Si el user
+//     quiere cambiar producto_id o cantidad, debe REMOVER el item + AGREGAR
+//     uno nuevo (dispara revert + descount).
+//   · Item REMOVIDO con producto_id → revierte stock (suma cantidad al producto)
+//   · Guard 409: no se puede remover un item cuyo producto ya se vendió en
+//     otra venta.
+//
+// Ajuste caja: si mov.caja_id != NULL (venta B2B contado) y el monto_total
+// cambia, hacemos reverseCajaMovimientos + postCajaMovimiento. Para monedas
+// !== USD, requerimos mov.tc para poder convertir el nuevo monto USD a la
+// moneda nativa de la caja.
+//
+// Multi-tenant: SET LOCAL app.current_tenant en toda la tx. RLS canónica
+// filtra selects/updates.
+router.put('/movimientos/:id', editMovimientoLimiter,
+  validate(updateMovimientoCCSchema),
+  async (req, res, next) => {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
+
+    const idem = parseIdempotencyKey(req);
+    if (idem.error) return res.status(400).json({ error: idem.error, reason: 'idempotency_key_invalid' });
+
+    const { fecha, descripcion, notas, items: itemsBody } = req.body;
+    const bodyItems = Array.isArray(itemsBody) ? itemsBody : null;  // null = "no tocar items"
+
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`SELECT set_config('app.current_tenant', $1::text, true)`, [String(req.tenantId)]);
+
+      // Idempotency replay: si el caller reintenta con la misma key y ya
+      // triunfó, devolvemos el movimiento sin re-ejecutar diff+stock.
+      // Nota: PUT rara vez usa Idempotency-Key (los edits no suelen re-tratarse
+      // como POSTs), pero por defensa cubrimos network flakes de reintentos.
+      if (idem.key) {
+        const existing = await findExistingByIdempotencyKey(client, 'movimientos_cc', idem.key);
+        if (existing && existing.id === id) {
+          await client.query('ROLLBACK');
+          return res.status(200).json({ ...existing, idempotent_replay: true });
+        }
+      }
+
+      // 1) Lock del movimiento + ownership check (mismo patrón que DELETE).
+      const { rows: movs } = await client.query(
+        'SELECT * FROM movimientos_cc WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
+        [id]
+      );
+      if (!movs[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Movimiento no encontrado' }); }
+      const mov = movs[0];
+
+      // Ownership check: mismo patrón que DELETE handler (auditoría #B-07).
+      // Un user con permiso `cuentas` solo puede editar movimientos que él
+      // mismo creó. Admins + owners del tenant pueden editar cualquiera.
+      const isOwner = mov.created_by_user_id === req.user.id;
+      const isBypass = req.user.role === 'admin'
+        || req.user.tenant_cap_rol === 'owner'
+        || req.user.tenant_cap_rol === 'admin';
+      if (!isOwner && !isBypass) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'No tenés permiso para editar este movimiento (lo creó otro usuario).' });
+      }
+
+      // 2) Validación de tipo: solo 'compra' es editable via este endpoint.
+      if (mov.tipo !== 'compra') {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          error: `Solo se pueden editar ventas B2B (tipo='compra'). Este movimiento es tipo='${mov.tipo}'. Para modificarlo, anulalo y creá uno nuevo.`,
+          tipo: mov.tipo,
+        });
+      }
+
+      // 3) Cargar items actuales con snapshot del producto asociado (para
+      //    validar guards y sync inventario).
+      const currentItemsRes = await client.query(
+        `SELECT i.*,
+                p.id       AS p_producto_id,
+                p.estado   AS producto_estado,
+                p.nombre   AS producto_nombre,
+                p.cantidad AS producto_cantidad
+           FROM items_movimiento_cc i
+      LEFT JOIN productos p
+             ON p.id = i.producto_id
+            AND p.deleted_at IS NULL
+          WHERE i.movimiento_cc_id = $1
+          ORDER BY i.id`,
+        [id]
+      );
+      // Normalizamos: producto_id = solo si el producto está vivo (no soft-deleted).
+      const currentItems = currentItemsRes.rows.map(r => ({
+        ...r,
+        producto_id_alive: r.p_producto_id, // solo si producto no soft-deleted
+      }));
+      const currentById = new Map(currentItems.map(i => [i.id, i]));
+
+      // 4) Diff: toUpdate / toInsert / toRemove
+      let toUpdate = [], toInsert = [], toRemove = [];
+      if (bodyItems !== null) {
+        // Validar que items con id pertenezcan a este mov
+        for (const bi of bodyItems) {
+          if (bi.id && !currentById.has(bi.id)) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({
+              error: `Item id=${bi.id} no pertenece a este movimiento`,
+              item_id: bi.id,
+            });
+          }
+        }
+        const bodyIdsSet = new Set(bodyItems.filter(i => i.id).map(i => i.id));
+        toRemove = currentItems.filter(i => !bodyIdsSet.has(i.id));
+        toUpdate = bodyItems.filter(i => i.id);
+        toInsert = bodyItems.filter(i => !i.id);
+      }
+
+      // 5) Cross-módulo: si el edit toca stock (nuevos items con producto_id,
+      //    o remoción de items con producto_id vivo), requerir permiso inventario.
+      const nuevosConProd = toInsert.filter(bi => bi.producto_id);
+      const removidosConProd = toRemove.filter(i => i.producto_id_alive);
+      const tocaStock = nuevosConProd.length > 0 || removidosConProd.length > 0;
+      if (tocaStock) {
+        const { hasCapability } = require('../middleware/requireCapability');
+        const ok = await hasCapability(req.user, 'inventario.ver');
+        if (!ok) {
+          await client.query('ROLLBACK');
+          return res.status(403).json({
+            error: 'Para editar items que descuentan/reponen stock necesitás también permiso de Inventario.',
+          });
+        }
+      }
+
+      // 6) Guard: items a UPDATE con producto_id NO pueden cambiar
+      //    producto_id ni cantidad. Simplifica lógica de sync inventario:
+      //    el user debe remover + agregar para cambiar producto/cantidad.
+      for (const bi of toUpdate) {
+        const orig = currentById.get(bi.id);
+        if (orig.producto_id_alive) {
+          // producto_id: si viene en body distinto al original, rechazar.
+          const nuevoPid = bi.producto_id != null ? Number(bi.producto_id) : null;
+          const origPid = Number(orig.producto_id_alive);
+          if (nuevoPid !== null && nuevoPid !== origPid) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({
+              error: `Item id=${bi.id}: no se puede cambiar producto_id de un item existente (${origPid} → ${nuevoPid}). Remové el item y agregá uno nuevo.`,
+              item_id: bi.id,
+            });
+          }
+          // cantidad: idem — cambiar cantidad tocaría stock post-hoc.
+          const nuevaCant = bi.cantidad != null ? Number(bi.cantidad) : 1;
+          const origCant  = Number(orig.cantidad || 1);
+          if (nuevaCant !== origCant) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({
+              error: `Item id=${bi.id}: no se puede cambiar cantidad de un item existente vinculado a Inventario (${origCant} → ${nuevaCant}). Remové el item y agregá uno nuevo.`,
+              item_id: bi.id,
+            });
+          }
+        }
+      }
+
+      // 7) Guard: no se puede remover un item cuyo producto ya se vendió en
+      //    OTRA venta posterior (mismo patrón que DELETE via cancelMovimientoCC).
+      //
+      //    Nota: NO alcanza con chequear `producto_estado === 'vendido'`, porque
+      //    un producto puede estar 'vendido' precisamente por ESTE movimiento
+      //    (cantidad quedó en 0 tras el descuento del POST original). En ese
+      //    caso removerlo + revertir stock es exactamente lo esperado.
+      //
+      //    Detección: buscar si el producto figura en OTRA venta minorista
+      //    (venta_items) o B2B (items_movimiento_cc de OTRO movimiento vivo)
+      //    activa. Si sí, bloquear. Si no, permitir remove + revert.
+      const removeProdIds = toRemove.filter(i => i.producto_id_alive).map(i => i.producto_id_alive);
+      if (removeProdIds.length > 0) {
+        // Query única para eficiencia: retorna solo los producto_ids con
+        // ventas en OTROS movimientos.
+        const { rows: conVentaExterna } = await client.query(
+          `SELECT DISTINCT producto_id FROM (
+             -- Venta minorista con ese producto
+             SELECT vi.producto_id
+               FROM venta_items vi
+               JOIN ventas v ON v.id = vi.venta_id
+              WHERE vi.producto_id = ANY($1::int[])
+                AND v.deleted_at IS NULL
+             UNION ALL
+             -- Venta B2B en OTRO mov_cc (excluye el actual)
+             SELECT imcc.producto_id
+               FROM items_movimiento_cc imcc
+               JOIN movimientos_cc mcc ON mcc.id = imcc.movimiento_cc_id
+              WHERE imcc.producto_id = ANY($1::int[])
+                AND imcc.movimiento_cc_id <> $2
+                AND mcc.deleted_at IS NULL
+           ) x`,
+          [removeProdIds, id]
+        );
+        const bloqueadosSet = new Set(conVentaExterna.map(r => Number(r.producto_id)));
+        const vendidos = toRemove
+          .filter(i => i.producto_id_alive && bloqueadosSet.has(Number(i.producto_id_alive)))
+          .map(i => i.producto_nombre || i.producto || `producto #${i.producto_id_alive}`);
+        if (vendidos.length > 0) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({
+            error: `No se puede eliminar ${vendidos.length} producto(s) ya vendido(s) en otra venta: ${vendidos.slice(0, 3).join(', ')}${vendidos.length > 3 ? '…' : ''}. Anulá la(s) otra(s) venta(s) primero o dejá el ítem en esta venta.`,
+            productos_vendidos: vendidos,
+          });
+        }
+      }
+
+      // 8) Pre-validación stock para items nuevos con producto_id:
+      //    ordenar por producto_id ASC (evita deadlock #H-01) + best-effort
+      //    check (el UPDATE condicional al final es el guard real).
+      let prodMap = new Map();
+      const nuevosOrdenados = [...nuevosConProd].sort((a, b) => Number(a.producto_id) - Number(b.producto_id));
+      const nuevosPids = nuevosOrdenados.map(it => Number(it.producto_id));
+      if (nuevosPids.length > 0) {
+        // Dup check
+        const seenPids = new Set();
+        for (const pid of nuevosPids) {
+          if (seenPids.has(pid)) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+              error: `Producto #${pid} duplicado dentro de los items nuevos del edit`,
+              producto_id: pid,
+            });
+          }
+          seenPids.add(pid);
+        }
+        const { rows: prodRows } = await client.query(
+          `SELECT id, nombre, cantidad, estado, costo, costo_moneda FROM productos
+             WHERE id = ANY($1::int[]) AND deleted_at IS NULL
+             ORDER BY id`,
+          [nuevosPids]
+        );
+        prodMap = new Map(prodRows.map(p => [Number(p.id), p]));
+        for (const item of nuevosOrdenados) {
+          const p = prodMap.get(Number(item.producto_id));
+          if (!p) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: `Producto #${item.producto_id} no existe` });
+          }
+          if (Number(p.cantidad) < Number(item.cantidad || 1)) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+              error: `Stock insuficiente para "${p.nombre}": disponible ${p.cantidad}, pedido ${item.cantidad}`,
+              producto_id: item.producto_id,
+            });
+          }
+        }
+      }
+
+      // 9) Mutaciones — orden: UPDATE existentes, INSERT nuevos + descount,
+      //    DELETE removidos + revert.
+
+      // 9a. UPDATE items existentes (solo campos NO ligados a stock).
+      for (const bi of toUpdate) {
+        await client.query(
+          `UPDATE items_movimiento_cc
+              SET producto = $1, modelo = $2, tamano = $3, color = $4,
+                  imei_serial = $5, valor = $6, verificado = $7, notas = $8
+            WHERE id = $9`,
+          [
+            bi.producto ?? null, bi.modelo ?? null, bi.tamano ?? null, bi.color ?? null,
+            bi.imei_serial ?? null, bi.valor ?? null, bi.verificado ?? false, bi.notas ?? null,
+            bi.id,
+          ]
+        );
+      }
+
+      // 9b. INSERT items nuevos + descuento de stock (para items con producto_id).
+      let insertedItems = [];
+      if (toInsert.length > 0) {
+        // Snapshot de costo congelado (idem POST).
+        const costoSnap = (it) => {
+          if (!it.producto_id) return { unit: null, moneda: null };
+          const p = prodMap.get(Number(it.producto_id));
+          if (!p) return { unit: null, moneda: null };
+          return { unit: Number(p.costo) || 0, moneda: p.costo_moneda || 'USD' };
+        };
+        const itemInsertRes = await client.query(
+          `INSERT INTO items_movimiento_cc
+             (movimiento_cc_id, producto, modelo, tamano, color, imei_serial, valor, verificado, notas, producto_id, cantidad, costo_unit, costo_moneda)
+           SELECT $1, p, m, t, c, i, v, vf, n, pid, cant, cu, cm
+             FROM UNNEST(
+               $2::text[], $3::text[], $4::text[], $5::text[], $6::text[],
+               $7::numeric[], $8::boolean[], $9::text[], $10::int[], $11::int[],
+               $12::numeric[], $13::text[]
+             ) AS u(p, m, t, c, i, v, vf, n, pid, cant, cu, cm)
+           RETURNING *`,
+          [
+            id,
+            toInsert.map(it => it.producto ?? null),
+            toInsert.map(it => it.modelo ?? null),
+            toInsert.map(it => it.tamano ?? null),
+            toInsert.map(it => it.color ?? null),
+            toInsert.map(it => it.imei_serial ?? null),
+            toInsert.map(it => it.valor ?? null),
+            toInsert.map(it => it.verificado ?? false),
+            toInsert.map(it => it.notas ?? null),
+            toInsert.map(it => it.producto_id ?? null),
+            toInsert.map(it => Number(it.cantidad || 1)),
+            toInsert.map(it => costoSnap(it).unit),
+            toInsert.map(it => costoSnap(it).moneda),
+          ]
+        );
+        insertedItems = itemInsertRes.rows;
+
+        // Bulk UPDATE stock para nuevos con producto_id (esSalida siempre =
+        // true porque tipo=compra). Guard concurrencia con WHERE p.cantidad >= u.cant.
+        if (nuevosOrdenados.length > 0) {
+          const updateRes = await client.query(
+            `UPDATE productos p SET
+               cantidad = p.cantidad - u.cant,
+               estado = CASE
+                 WHEN p.cantidad - u.cant <= 0 THEN 'vendido'
+                 WHEN p.cantidad - u.cant > 0 AND p.estado = 'vendido' THEN 'disponible'
+                 ELSE p.estado
+               END
+             FROM UNNEST($1::int[], $2::int[]) AS u(pid, cant)
+             WHERE p.id = u.pid AND p.cantidad >= u.cant`,
+            [
+              nuevosOrdenados.map(it => Number(it.producto_id)),
+              nuevosOrdenados.map(it => Number(it.cantidad || 1)),
+            ]
+          );
+          if (updateRes.rowCount !== nuevosOrdenados.length) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+              error: 'Stock insuficiente por concurrencia — otra venta consumió el stock. Reintentá.',
+              esperado: nuevosOrdenados.length,
+              afectado: updateRes.rowCount,
+            });
+          }
+        }
+      }
+
+      // 9c. DELETE items removidos + REVERT stock (para items con producto_id vivo).
+      // items_movimiento_cc no tiene deleted_at (schema original) — HARD DELETE.
+      // El audit trail queda en el JSON del audit_logs abajo.
+      for (const orig of toRemove) {
+        await client.query('DELETE FROM items_movimiento_cc WHERE id = $1', [orig.id]);
+        if (orig.producto_id_alive) {
+          // Revert stock: SUMAR cantidad al producto (opuesto al descuento
+          // que hizo el POST original). Mismo patrón que cancelMovimientoCC.
+          const cantRevert = Number(orig.cantidad || 1);
+          await client.query(
+            `UPDATE productos SET
+               cantidad = cantidad + $1,
+               estado = CASE
+                 WHEN estado = 'vendido' THEN 'disponible'
+                 ELSE estado
+               END
+              WHERE id = $2 AND deleted_at IS NULL`,
+            [cantRevert, orig.producto_id_alive]
+          );
+        }
+      }
+
+      // 10) Recalcular monto_total desde SUM de valores de items vivos.
+      //     movimientos_cc.monto_total está en USD (SALDO_CASE lo asume).
+      //     items_movimiento_cc.valor asumimos en USD también (consistente
+      //     con la unidad del monto_total al momento de crear el movimiento).
+      let nuevoMontoUsd = Number(mov.monto_total);
+      if (bodyItems !== null) {
+        const sumRes = await client.query(
+          `SELECT COALESCE(SUM(valor), 0)::numeric AS total
+             FROM items_movimiento_cc
+            WHERE movimiento_cc_id = $1`,
+          [id]
+        );
+        nuevoMontoUsd = round2(Number(sumRes.rows[0].total));
+      }
+
+      await client.query(
+        `UPDATE movimientos_cc
+            SET fecha = COALESCE($1, fecha),
+                descripcion = $2,
+                notas = $3,
+                monto_total = $4
+          WHERE id = $5`,
+        [fecha ?? null, descripcion ?? null, notas ?? null, nuevoMontoUsd, id]
+      );
+
+      // 11) Ajustar caja_movimiento si el movimiento era contado (mov.caja_id
+      //     != NULL — venta B2B con cobro inmediato) y el monto o fecha cambió.
+      //     reverseCajaMovimientos borra + genera el reverse. Luego
+      //     postCajaMovimiento agrega el nuevo con el monto/fecha actualizados.
+      //     Neto: la caja queda ajustada al valor real.
+      const montoOriginalUsd = Number(mov.monto_total);
+      const montoCambio = Math.abs(montoOriginalUsd - nuevoMontoUsd) > 0.005;
+      const fechaCambio = fecha && String(fecha) !== String(mov.fecha).slice(0, 10);
+      if (mov.caja_id && (montoCambio || fechaCambio)) {
+        // Convertir el nuevoMontoUsd de vuelta a la moneda del pago original
+        // (necesario porque postCajaMovimiento persiste `monto` en la moneda
+        // nativa de la caja). Nota: la tabla `movimientos_cc` NO tiene columna
+        // moneda/tc (el POST solo la usa para convertir a USD via `toUsd`;
+        // luego persiste el USD en monto_total). Por lo tanto `mov.moneda` es
+        // siempre undefined — el ingreso original a caja se hizo en USD.
+        // Repostear también en USD (misma unidad, la caja acepta si su grupo
+        // es USD/USDT).
+        const movMoneda = mov.moneda || 'USD';
+        let nuevoMontoNativo;
+        if (movMoneda === 'USD') {
+          nuevoMontoNativo = nuevoMontoUsd;
+        } else if (mov.tc && Number(mov.tc) > 0) {
+          nuevoMontoNativo = round2(nuevoMontoUsd * Number(mov.tc));
+        } else {
+          // Edge case defensivo: si un futuro schema agregara moneda/tc a
+          // movimientos_cc y el mov quedó en no-USD sin TC, rechazamos con
+          // mensaje explícito en vez de corromper el saldo de la caja.
+          await client.query('ROLLBACK');
+          return res.status(400).json({
+            error: `No se puede recalcular el saldo de la caja: el movimiento está en ${movMoneda} sin tipo de cambio guardado. Anulá el movimiento y creá uno nuevo.`,
+            moneda: movMoneda,
+          });
+        }
+        await reverseCajaMovimientos(client, 'movimientos_cc', id);
+        await postCajaMovimiento(client, {
+          caja_id: mov.caja_id,
+          fecha: fecha ?? mov.fecha,
+          tipo: 'ingreso',
+          monto: nuevoMontoNativo,
+          moneda: movMoneda,
+          tc: mov.tc || null,
+          origen: 'b2b',
+          ref_tabla: 'movimientos_cc',
+          ref_id: id,
+          concepto: `Venta B2B (contado, editada) cliente #${mov.cliente_cc_id}`,
+          user_id: req.user.id,
+        });
+      }
+
+      // 12) Audit del cambio
+      await audit(client, 'movimientos_cc', 'UPDATE', id, {
+        antes: {
+          fecha: mov.fecha,
+          descripcion: mov.descripcion,
+          notas: mov.notas,
+          monto_total: montoOriginalUsd,
+          items_count: currentItems.length,
+        },
+        despues: {
+          fecha: fecha ?? mov.fecha,
+          descripcion: descripcion ?? mov.descripcion,
+          notas: notas ?? mov.notas,
+          monto_total: nuevoMontoUsd,
+          items_count: (bodyItems || currentItems).length,
+          items_removed: toRemove.length,
+          items_added: toInsert.length,
+          items_updated: toUpdate.length,
+          items_removed_reverted_stock: removidosConProd.length,
+          items_added_discounted_stock: nuevosConProd.length,
+        },
+        user_id: req.user.id,
+        _origen: 'edit_movimiento',
+      });
+
+      await client.query('COMMIT');
+
+      // Cache invalidation cross-instance
+      if (tocaStock) invalidateMetricas(req.tenantId);
+      invalidateDashboardVentas(req.tenantId);
+      if (mov.caja_id && (montoCambio || fechaCambio)) {
+        invalidateCajas(req.tenantId).catch((err) =>
+          logger.warn({ err: err.message, tenantId: req.tenantId },
+            '[cuentas] invalidateCajas post-PUT falló'));
+      }
+
+      // 13) Devolver estado fresh (items post-edit)
+      const finalMov = await db.withTenant(req.tenantId, async (ac) => {
+        const mv = await ac.query('SELECT * FROM movimientos_cc WHERE id = $1', [id]);
+        const it = await ac.query(
+          `SELECT * FROM items_movimiento_cc WHERE movimiento_cc_id = $1 ORDER BY id`,
+          [id]
+        );
+        return { ...mv.rows[0], items: it.rows };
+      });
+      res.json(finalMov);
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      if (isIdempotencyConflict(err)) {
+        return res.status(409).json({
+          error: 'Otro request con la misma Idempotency-Key está en curso. Reintentá en un instante.',
+          reason: 'idempotency_conflict',
+        });
+      }
+      next(err);
+    } finally {
+      client.release();
+    }
+  }
+);
 
 router.delete('/movimientos/:id', async (req, res, next) => {
   const id = parseId(req.params.id);

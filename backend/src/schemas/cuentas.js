@@ -170,6 +170,50 @@ const updateEstadoMovimientoCCSchema = z.object({
   estado: z.enum(['acreditado', 'pendiente'], { error: 'Estado debe ser acreditado o pendiente' }),
 }).strict();
 
+// ─── PUT /movimientos/:id — edit inline del movimiento (Fase B, task #300) ────
+//
+// Simétrico a `updateMovimientoProveedorSchema` en schemas/proveedores.js. Sólo
+// aplica a tipo=compra por diseño (el resto de tipos son atómicos: un pago
+// es un pago, un ajuste es un ajuste; no tiene sentido "editar" items en
+// esos casos — se anula y se recrea).
+//
+// Campos editables:
+//   · fecha:       optional — permite corregir fecha de registro
+//   · descripcion: optional/nullable
+//   · notas:       optional/nullable
+//   · items:       optional — diff-based (backend calcula toUpdate/toInsert/toRemove
+//                  contra state actual)
+//
+// NO editables (razones de integridad contable):
+//   · cliente_cc_id — el movimiento pertenece a otro cliente = anular + recrear
+//   · tipo — cambiar tipo cambia semántica del signo (compra/pago/devolucion)
+//   · monto_total — se recalcula desde items en el backend (sum de valores)
+//   · caja_id, moneda, tc, estado — implican reversión del asiento en caja,
+//     no soportado en Fase B (el user anula y recrea si necesita cambiar caja)
+//
+// Item con id existente:
+//   · Se identifica en toUpdate por `id`
+//   · producto_id NO editable — si el user quiere cambiar el producto asociado,
+//     debe remover el item y agregar uno nuevo (dispara stock revert + discount).
+//     Esto simplifica la lógica de sync inventario: item con producto_id sólo
+//     puede editarse en campos NO ligados a stock (color/notas/verificado/valor).
+//   · cantidad NO editable por la misma razón (touch stock).
+//
+// Item sin id: se trata como nuevo (toInsert), va al mismo flow de POST.
+const itemMovimientoCCEditSchema = itemMovimientoCCSchema.extend({
+  id: z.coerce.number().int().positive().optional(),
+});
+
+const updateMovimientoCCSchema = z.object({
+  fecha:       fechaNoFutura.optional(),
+  descripcion: z.string().trim().max(500).optional().nullable(),
+  notas:       z.string().trim().max(1000).optional().nullable(),
+  items:       z.array(itemMovimientoCCEditSchema).max(200, 'Máximo 200 ítems por movimiento').optional(),
+}).strict().refine(
+  d => Object.values(d).some(v => v !== undefined),
+  { message: 'Al menos un campo es requerido para actualizar' }
+);
+
 // ─── Cobranza masiva ─────────────────────────────────────────────────────────
 // N pagos en bloque. Cada fila tiene su propio cliente, monto, caja y TC.
 // Procesamiento atómico (todo o nada): si una fila falla, ninguna se aplica.
@@ -199,6 +243,7 @@ module.exports = {
   createClienteCCSchema,
   updateClienteCCSchema,
   createMovimientoCCSchema,
+  updateMovimientoCCSchema,
   updateEstadoMovimientoCCSchema,
   cobranzaMasivaSchema,
   CATEGORIAS_CC,

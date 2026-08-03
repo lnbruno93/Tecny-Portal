@@ -645,17 +645,25 @@ export default function CuentasCC() {
   }, [clientes]); // eslint-disable-line
 
   // ── Cargar detalle (movimientos paginados) ──
-  useEffect(() => {
-    if (!selectedId) return;
+  // 2026-08-03 (task #300): extraído a función reusable para poder refresh
+  // desde onSaved del MovimientoCCDetalleModal (edit inline Fase B).
+  function reloadClienteDetail(id) {
+    if (!id) return Promise.resolve();
     setLoadingDetail(true);
-    setClienteDetail(null);
-    Promise.all([cuentas.resumen(selectedId), cuentas.movimientos(selectedId, { page: 1, limit: 100 })])
+    return Promise.all([cuentas.resumen(id), cuentas.movimientos(id, { page: 1, limit: 100 })])
       .then(([resumen, movsResp]) => {
         setClienteDetail({ resumen, movimientos: movsResp.data || [] });
         setMovsPag(movsResp.pagination || { page: 1, pages: 1, total: 0 });
       })
       .catch(silentReport)
       .finally(() => setLoadingDetail(false));
+  }
+  useEffect(() => {
+    if (!selectedId) return;
+    // Reset primero — evita mostrar detalle stale del cliente anterior.
+    setClienteDetail(null);
+    reloadClienteDetail(selectedId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 
   // Cargar más movimientos antiguos (append)
@@ -1422,12 +1430,16 @@ export default function CuentasCC() {
         )}
       </div>
 
-      {/* 2026-08-03 (task #298): modal detalle movimiento B2B */}
+      {/* 2026-08-03 (task #298 Fase A + task #300 Fase B): modal detalle
+          movimiento B2B con toggle view/edit. onSaved refresca el detalle
+          del cliente (movimientos + resumen) para que el edit se vea al
+          instante sin re-selección manual. */}
       {detalleMov && (
         <MovimientoCCDetalleModal
           movimiento={detalleMov}
           cliente={cliente}
           onClose={() => setDetalleMov(null)}
+          onSaved={() => selectedId && reloadClienteDetail(selectedId)}
         />
       )}
 

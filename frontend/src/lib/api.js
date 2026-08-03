@@ -557,6 +557,13 @@ export const cuentas = {
     api('/api/cuentas/movimientos', 'POST', data, 15000,
       idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : null),
   deleteMovimiento: (id) => api(`/api/cuentas/movimientos/${id}`, 'DELETE'),
+  // PUT edit inline de un movimiento B2B (Fase B, task #300). Solo tipo=compra.
+  // Backend hace diff-based sync de items + revert/discount stock automático.
+  // Idempotency-Key opcional (rara para PUT — el user rara vez reintenta un edit,
+  // pero cubre network flakes).
+  updateMovimiento: (id, data, idempotencyKey = null) =>
+    api(`/api/cuentas/movimientos/${id}`, 'PUT', data, 15000,
+      idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : null),
   // Devolución inline de un item de una venta B2B: marca el item con
   // devuelto_at, crea mov_cc tipo 'devolucion' asociado, restaura stock y
   // ajusta saldo. Junio 2026 — PR del feature ↺.
