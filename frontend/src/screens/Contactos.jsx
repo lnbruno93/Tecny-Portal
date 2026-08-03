@@ -594,8 +594,8 @@ function TiposPanel({ tiposAll, onClose, onChanged, toast, confirm }) {
   }
 
   return (
-    <div className="modal-backdrop">
-      <div className="modal">
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal u-mw-520" onClick={(e) => e.stopPropagation()}>
         <div className="modal-hd">
           <div>
             <div className="u-fw-600-fs-16">Tipos de contacto</div>
@@ -603,7 +603,7 @@ function TiposPanel({ tiposAll, onClose, onChanged, toast, confirm }) {
           </div>
           <button type="button" className="icon-btn" onClick={onClose} aria-label="Cerrar">✕</button>
         </div>
-        <div className="modal-bd">
+        <div className="modal-body">
           <form className="flex-row u-gap-8-mb-16" onSubmit={handleCreate}>
             <input
               type="text"
