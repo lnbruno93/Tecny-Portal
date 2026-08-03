@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { silentReport } from '../lib/reportError';
 import { downloadBlob } from '../lib/downloadBlob';
 import { Icons } from '../components/Icons';

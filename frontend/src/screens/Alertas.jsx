@@ -9,7 +9,7 @@
 // con count + lista expandible + link al lugar de acción.
 
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { Icons } from '../components/Icons';
 import { alertas as alertasApi } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';

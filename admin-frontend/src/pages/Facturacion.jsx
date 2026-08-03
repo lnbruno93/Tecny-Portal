@@ -11,7 +11,7 @@
 // y se agrega /facturas separada para el histórico transaccional.
 
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { adminApi } from '../lib/api.js';
 import { Btn, Card, Badge, PageHead, Tabs } from '../components/primitives/index.jsx';
 import { fmtMoney, fmtDate, fmt } from '../lib/format.js';

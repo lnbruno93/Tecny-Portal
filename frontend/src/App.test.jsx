@@ -8,12 +8,12 @@
  *   - loading=false, user={…}       → renderiza <Outlet /> (las rutas anidadas)
  *
  * Mockeamos useAuth para forzar cada combinación. Mockeamos también Outlet de
- * react-router-dom para validar que efectivamente fue lo que se renderizó en
+ * react-router para validar que efectivamente fue lo que se renderizó en
  * el caso "happy path" — no necesitamos toda la jerarquía de rutas.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route } from 'react-router';
 
 // Mocks
 vi.mock('./contexts/AuthContext', () => ({
@@ -22,8 +22,8 @@ vi.mock('./contexts/AuthContext', () => ({
 }));
 
 // Mock Outlet — devuelve un sentinel reconocible para los tests.
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual('react-router-dom');
+vi.mock('react-router', async () => {
+  const actual = await vi.importActual('react-router');
   return {
     ...actual,
     Outlet: () => <div data-testid="protected-outlet">PROTECTED</div>,
@@ -54,7 +54,7 @@ import { useAuth } from './contexts/AuthContext';
 // pattern exacto (3 branches sobre useAuth) y validamos que las decisiones
 // son las correctas. NOTA: si la implementación de App.jsx cambia, este test
 // debe actualizarse manualmente — es el costo de no tener exports.
-import { Outlet } from 'react-router-dom';
+import { Outlet } from 'react-router';
 import Login from './screens/Login';
 
 function AuthGuardUnderTest() {

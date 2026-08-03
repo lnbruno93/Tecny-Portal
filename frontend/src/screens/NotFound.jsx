@@ -6,7 +6,7 @@
  * matchea). Útil para typos en deep links de mail / PWA refresh sobre rutas
  * viejas.
  */
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { Icons } from '../components/Icons';
 
 export default function NotFound() {

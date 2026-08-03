@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { silentReport } from '../lib/reportError';
 import { Icons } from '../components/Icons';
 import { envios, ventas, cajas as cajasApi, inventario, cuentas as cuentasApi, config as configApi, ocr as ocrApi } from '../lib/api';

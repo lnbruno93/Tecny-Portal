@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter } from 'react-router';
 
 // Mock del adminApi ANTES del import de los módulos que lo usan.
 // vi.mock se hoist-ea al tope; el factory se evalúa lazy.
@@ -27,8 +27,8 @@ vi.mock('../../lib/api.js', () => ({
 
 // Mock de useNavigate — verificamos la llamada en el test de click.
 const navigateMock = vi.fn();
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual('react-router-dom');
+vi.mock('react-router', async () => {
+  const actual = await vi.importActual('react-router');
   return {
     ...actual,
     useNavigate: () => navigateMock,

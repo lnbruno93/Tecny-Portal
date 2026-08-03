@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 import { Icons } from '../components/Icons';
 // 2026-08-02 (task #284): cajasApi/blockInvalidNumberKeys/fmt eran usados
 // por la sección "Comisiones de métodos de pago" que se movió al Cotizador.

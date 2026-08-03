@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router';
 
 // PR-X3 Red B2B: mockeamos useAuth para poder controlar si el user tiene cap
 // `cross_tenant.write` (gate del tab "Pendientes Red B2B").

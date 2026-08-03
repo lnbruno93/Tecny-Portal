@@ -14,7 +14,7 @@
 // F4 agrega: vista de conciliación bilateral. F5 agrega: notifs en topbar.
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { redB2b } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 import { fmtMoney, fmtFecha } from '../lib/format';

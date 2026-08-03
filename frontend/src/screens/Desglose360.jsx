@@ -14,7 +14,7 @@
  *     ni la URL si el usuario quiere compartir el link).
  */
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router';
 import { Icons } from '../components/Icons';
 import { inventario } from '../lib/api';
 import { exportCsv } from '../lib/exportCsv';

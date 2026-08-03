@@ -8,7 +8,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter } from 'react-router';
 
 // Mock del módulo api.js. Único método que ForgotPassword necesita es
 // auth.forgotPassword — el resto de exports lo dejamos vacío para satisfacer

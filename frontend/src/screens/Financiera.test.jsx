@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 // 2026-06-30 F-09: Financiera ahora usa useSearchParams para persistir
 // tab + filtros, así que necesita un Router en el árbol de tests.
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router';
 
 // Tests del form "Registrar pago de financiera" (tab Pagos). Cubre los
 // fixes de TANDAs 1–3 del sprint USD (auditoría focal 2026-06):

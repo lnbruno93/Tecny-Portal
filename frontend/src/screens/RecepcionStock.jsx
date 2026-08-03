@@ -25,7 +25,7 @@
  *     contra el caso "alguien más cargó el mismo IMEI mientras yo scaneaba").
  */
 import { useEffect, useState, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router';
 import { inventario, proveedores as proveedoresApi } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';

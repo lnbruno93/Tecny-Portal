@@ -12,7 +12,7 @@
 // campos — la UI debería seguir renderizando sin crashes.
 
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router';
 import { adminApi } from '../lib/api.js';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { Btn, Card, Badge } from '../components/primitives/index.jsx';

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useSearchParams, useNavigate, Link } from 'react-router-dom';
+import { useSearchParams, useNavigate, Link } from 'react-router';
 import { auth as authApi } from '../lib/api';
 // 2026-06-18 #322: política centralizada en lib/passwordPolicy. Antes vivía
 // duplicada inline acá (con la misma lógica).

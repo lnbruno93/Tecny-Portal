@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { silentReport } from '../lib/reportError';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router';
 import { Icons } from '../components/Icons';
 import { cuentas, cajas as cajasApi } from '../lib/api';
 import { usePageActions } from '../contexts/PageActionsContext';

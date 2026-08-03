@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 
 // PR-X2 Red B2B: useNavigate se mockea para verificar que el click en una row
 // cross-tenant redirige a /red-b2b/operaciones/:id (detalle de la operación
 // cross-tenant con contexto completo: partner, pagos multidivisa, historial).
 const navigateMock = vi.fn();
-vi.mock('react-router-dom', async (orig) => {
+vi.mock('react-router', async (orig) => {
   const actual = await orig();
   return { ...actual, useNavigate: () => navigateMock };
 });

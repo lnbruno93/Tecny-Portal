@@ -17,7 +17,7 @@
 // cuando muestra el banner "necesitás activar 2FA".
 
 import { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { PageHead, Card, Badge, Btn, Seg } from '../components/primitives/index.jsx';
 import TwoFaSection from '../components/TwoFaSection.jsx';

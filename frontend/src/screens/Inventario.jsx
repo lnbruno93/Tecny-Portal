@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router';
 import { Icons } from '../components/Icons';
 import { inventario, proveedores as proveedoresApi, cajas as cajasApi, redB2b } from '../lib/api';
 import { userHasCap } from '../lib/userHasCap';

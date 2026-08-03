@@ -9,7 +9,7 @@
 // optional chaining + defaults en TODO lo que mostramos al user.
 
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { adminApi } from '../lib/api.js';
 import { Btn, Badge, Status, Card, Seg, PageHead } from '../components/primitives/index.jsx';
 import { Icons } from '../components/Icons.jsx';

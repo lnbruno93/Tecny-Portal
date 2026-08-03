@@ -1,5 +1,5 @@
 // Pantalla 403 — se muestra cuando el usuario navega a un módulo sin permiso.
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 export default function Forbidden() {
   const navigate = useNavigate();

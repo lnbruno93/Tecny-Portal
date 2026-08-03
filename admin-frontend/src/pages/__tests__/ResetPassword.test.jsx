@@ -8,12 +8,12 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter } from 'react-router';
 
 // Mock del navigate para que podamos aserverar redirect a /login post-success
 // sin necesidad de esperar el setTimeout real.
 const navigateMock = vi.fn();
-vi.mock('react-router-dom', async (importOriginal) => {
+vi.mock('react-router', async (importOriginal) => {
   const mod = await importOriginal();
   return { ...mod, useNavigate: () => navigateMock };
 });

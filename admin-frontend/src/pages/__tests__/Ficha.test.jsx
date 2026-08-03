@@ -12,7 +12,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter } from 'react-router';
 
 // Mockeamos adminApi antes del import de los módulos que lo usan.
 vi.mock('../../lib/api.js', () => ({
@@ -30,10 +30,10 @@ vi.mock('../../lib/api.js', () => ({
   resolveApiBase: (u) => u || 'http://localhost',
 }));
 
-// Mock de react-router-dom: inyectamos useParams con id fijo + useNavigate stub.
+// Mock de react-router: inyectamos useParams con id fijo + useNavigate stub.
 const navigateMock = vi.fn();
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual('react-router-dom');
+vi.mock('react-router', async () => {
+  const actual = await vi.importActual('react-router');
   return {
     ...actual,
     useNavigate: () => navigateMock,

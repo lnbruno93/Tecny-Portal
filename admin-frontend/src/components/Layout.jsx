@@ -7,7 +7,7 @@
 // porque es la única forma de salir de un estado de sesión roto.
 
 import { useState } from 'react';
-import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { Icon, Icons } from './Icons.jsx';
 import CreateTenantModal from './modals/CreateTenantModal.jsx';

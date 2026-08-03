@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useEffect } from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router';
 
 vi.mock('../lib/api', () => {
   const paginated = { data: [], pagination: { page: 1, pages: 1, total: 0 } };

@@ -18,7 +18,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 
 // Mock de la lib/api. Mockeamos `redB2b` con vi.fn() en cada método para que
 // los tests puedan inspeccionar las llamadas.

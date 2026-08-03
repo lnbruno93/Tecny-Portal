@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { Icons } from '../components/Icons';
 import { contactos as contactosApi } from '../lib/api';
 import { useDebouncedValue } from '../lib/useDebouncedValue';

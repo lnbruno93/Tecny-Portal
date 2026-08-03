@@ -4,7 +4,7 @@
 // al back-office aún teniendo creds válidas.
 
 import { useState, useRef } from 'react';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router';
 import HCaptcha from '@hcaptcha/react-hcaptcha';
 import { adminApi } from '../lib/api.js';
 import { useAuth } from '../contexts/AuthContext.jsx';

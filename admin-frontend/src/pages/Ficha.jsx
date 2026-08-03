@@ -14,7 +14,7 @@
 // Defensive coding everywhere — optional chaining, Array.isArray, defaults.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router';
 import { adminApi } from '../lib/api.js';
 import {
   Btn, Badge, Status, Card, Seg, Tabs, PageHead,

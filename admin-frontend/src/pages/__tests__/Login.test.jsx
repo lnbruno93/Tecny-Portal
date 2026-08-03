@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter } from 'react-router';
 
 // Mockear adminApi ANTES del import de los módulos que lo usan. Vitest
 // hoist-ea vi.mock al tope del archivo, pero el factory se evalúa lazy.
