@@ -8,26 +8,7 @@ vi.mock('../lib/api', () => ({
     list: (...args) => listMock(...args),
     create: vi.fn(), update: vi.fn(), delete: vi.fn(),
   },
-  // task #290: contactoTipos endpoint mock (usado por useContactoTipos hook).
-  contactoTipos: {
-    list: vi.fn().mockResolvedValue([
-      { id: 't1', slug: 'cliente', nombre: 'Cliente', orden: 1, activo: true, is_system: true },
-      { id: 't2', slug: 'amigo', nombre: 'Amigo', orden: 2, activo: true, is_system: true },
-    ]),
-    create: vi.fn(), update: vi.fn(), delete: vi.fn(),
-  },
 }));
-
-// task #290: auth mock — Contactos.jsx ahora usa useAuth para decidir si
-// mostrar el botón admin "Tipos". Default a un user sin tenant_users (nada
-// admin) — el botón queda oculto y los tests base pasan igual.
-vi.mock('../contexts/AuthContext', async (orig) => {
-  const actual = await orig();
-  return {
-    ...actual,
-    useAuth: () => ({ user: { id: 1, caps: [] }, loading: false }),
-  };
-});
 
 import Contactos from './Contactos';
 import { ToastProvider } from '../contexts/ToastContext';

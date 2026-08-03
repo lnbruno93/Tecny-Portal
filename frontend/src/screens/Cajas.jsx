@@ -15,8 +15,6 @@ import Badge from '../components/Badge';
 import RelevoCajaModal from '../components/RelevoCajaModal';
 // 2026-06-29 Multi-país F3: monedas según país del tenant en form alta caja.
 import { useMonedasTenant } from '../lib/useMonedasTenant';
-// task #290: tipos de contacto dinámicos per-tenant.
-import { useContactoTipos } from '../lib/useContactoTipos';
 
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
@@ -25,13 +23,10 @@ function todayISO() {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-// 2026-08-03 (task #290): TIPO_LABEL ya NO es hardcoded. Los labels vienen
-// dinámicamente de `useContactoTipos().labelFor(slug)` — cada tenant tiene
-// su propia lista editable desde Contactos > "Tipos".
-// TIPO_TONE queda hardcoded por ahora — el color del badge es cosmético y
-// solo aplica a los 5 slugs originales (los custom nuevos usan 'default').
-// Extender a per-tipo si aparece el requerimiento.
 const TIPO_TONE  = { amigo: 'info', familiar: 'accent', cliente: 'pos', inversor: 'warn', 'ipro team': 'default' };
+// El value 'ipro team' es legacy (constraint DB pre-rebrand 2026-06-18 #324).
+// Mantenemos el value para no romper rows existentes; solo cambia el display.
+const TIPO_LABEL = { amigo: 'Amigo', familiar: 'Familiar', cliente: 'Cliente', inversor: 'Inversor', 'ipro team': 'Tecny team' };
 
 // Badge ahora vive en frontend/src/components/Badge.jsx (U-13 dedup,
 // auditoría 2026-06-10) — importado arriba.
@@ -81,10 +76,6 @@ const EMPTY_INV = () => ({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function Cajas() {
-  // task #290: tipos dinámicos per-tenant. `tipos` (solo activos) para el
-  // dropdown de nuevo contacto; `labelFor` para mostrar el pretty label
-  // de un slug (ej. 'ipro team' → 'Tecny Team').
-  const { tipos: contactoTipos, labelFor: labelForTipo } = useContactoTipos();
   const { toast } = useToast();
   // 2026-06-29 Multi-país F3: monedas disponibles para nueva caja según tenant.
   const { monedas, monedaLocal } = useMonedasTenant();
@@ -687,7 +678,7 @@ export default function Cajas() {
                           className={'tbl-row-click' + (c.contacto_id === selectedContactoId ? ' u-cajas-row-selected' : '')}
                           onClick={() => setSelectedContactoId(c.contacto_id === selectedContactoId ? null : c.contacto_id)}>
                         <td className="u-fw-600">{c.nombre} {c.apellido || ''}</td>
-                        <td><Badge tone={TIPO_TONE[c.contacto_tipo] || 'default'}>{labelForTipo(c.contacto_tipo)}</Badge></td>
+                        <td><Badge tone={TIPO_TONE[c.contacto_tipo] || 'default'}>{TIPO_LABEL[c.contacto_tipo] || c.contacto_tipo}</Badge></td>
                         <td className={'num mono u-fw-600 ' + (c.saldo_ars > 0 ? 'u-color-neg' : c.saldo_ars < 0 ? 'u-color-pos' : 'u-color-text-muted')}>
                           {c.saldo_ars !== 0 ? fmt(c.saldo_ars) : <span className="dim">—</span>}
                         </td>
@@ -710,7 +701,7 @@ export default function Cajas() {
                     <h3>{selectedContacto.nombre} {selectedContacto.apellido || ''}</h3>
                     <div className="muted tiny u-mt-2">
                       <Badge tone={TIPO_TONE[selectedContacto.contacto_tipo] || 'default'}>
-                        {labelForTipo(selectedContacto.contacto_tipo)}
+                        {TIPO_LABEL[selectedContacto.contacto_tipo] || selectedContacto.contacto_tipo}
                       </Badge>
                       <span className="u-ml-8">
                         Saldo ARS: <strong className={selectedContacto.saldo_ars > 0 ? 'neg' : 'pos'}>{fmt(selectedContacto.saldo_ars)}</strong>
@@ -877,7 +868,7 @@ export default function Cajas() {
                           </td>
                           <td className="muted mono tiny">{fmtFecha(g.ultimaFecha)}</td>
                           <td className="u-fw-600">{g.nombre}</td>
-                          <td><Badge tone={TIPO_TONE[g.contacto_tipo] || 'default'}>{labelForTipo(g.contacto_tipo)}</Badge></td>
+                          <td><Badge tone={TIPO_TONE[g.contacto_tipo] || 'default'}>{TIPO_LABEL[g.contacto_tipo] || g.contacto_tipo}</Badge></td>
                           <td>
                             {tasaResumen
                               ? tasaResumen === 'varias'
@@ -1166,12 +1157,12 @@ export default function Cajas() {
                   </div>
                   <div className="field">
                     <label className="field-label">Tipo de contacto</label>
-                    {/* task #290: opciones dinámicas per-tenant desde
-                        `useContactoTipos()`. Antes hardcoded a 5 valores fijos
-                        con "Tecny Team" pretty label sobre slug legacy
-                        'ipro team'. Ahora consistente con Contactos.jsx. */}
                     <select className="input" value={cForm.tipo} onChange={e => setCForm(f => ({ ...f, tipo: e.target.value }))}>
-                      {contactoTipos.map(t => <option key={t.slug} value={t.slug}>{t.nombre}</option>)}
+                      <option value="amigo">Amigo</option>
+                      <option value="familiar">Familiar</option>
+                      <option value="cliente">Cliente</option>
+                      <option value="inversor">Inversor</option>
+                      <option value="ipro team">Tecny Team</option>
                     </select>
                   </div>
                   {cError && <div className="u-color-neg-fs-13">{cError}</div>}

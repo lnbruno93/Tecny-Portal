@@ -93,7 +93,6 @@ const configRoutes       = require('./routes/config');
 const tenantProfileRoutes = require('./routes/tenant-profile');
 const ocrRoutes          = require('./routes/ocr');
 const contactosRoutes    = require('./routes/contactos');
-const contactoTiposRoutes = require('./routes/contactoTipos');
 const cajasRoutes        = require('./routes/cajas');
 const egresosRoutes      = require('./routes/egresos');
 const cajaTransferenciasRoutes = require('./routes/cajaTransferencias');
@@ -928,11 +927,6 @@ app.use('/api/ocr',           requireAuth, requireCapability('financiera.trabaja
 //   · POST/PUT/DELETE — requieren capability `contactos.crear_borrar`
 //     (enforced en cada handler de routes/contactos.js).
 app.use('/api/contactos',     requireAuth, contactosRoutes);
-// Tipos de contacto — CRUD per-tenant. GET abierto a cualquier user
-// autenticado (los dropdowns del portal lo consumen desde varios lugares
-// gateados por sus propias caps). POST/PATCH/DELETE requieren
-// contactos.crear_borrar (enforced dentro del router). Ver task #290.
-app.use('/api/contacto-tipos', requireAuth, contactoTiposRoutes);
 
 // Cajas — capability `cajas.ver` (gate operacional principal).
 app.use('/api/cajas',         requireAuth, requireCapability('cajas.ver'), cajasRoutes);

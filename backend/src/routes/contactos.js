@@ -136,22 +136,6 @@ router.get('/export', async (req, res, next) => {
 // audit dentro de la misma TX. Antes el audit corría post-write con pool global:
 // si el proceso moría entre el INSERT/UPDATE y el audit, los cambios quedaban
 // persistidos sin trazabilidad. Patrón sistémico que cerramos incrementalmente.
-// task #290: validación del tipo contra contacto_tipos del tenant.
-// Antes había un CHECK constraint hardcoded en contactos.tipo (5 valores
-// fijos); ahora los valores son dinámicos per-tenant y el CHECK se dropeó.
-// La validación pasa a la app: el slug debe existir en contacto_tipos con
-// activo=true. Sin este chequeo, un caller malicioso podría insertar valores
-// arbitrarios en contactos.tipo (por ejemplo, XSS via nombre en dropdowns).
-async function validarTipoContacto(client, tenantId, tipo) {
-  if (tipo === null || tipo === undefined || tipo === '') return true; // opcional
-  const { rows } = await client.query(
-    `SELECT 1 FROM contacto_tipos
-      WHERE tenant_id = $1 AND slug = $2 AND deleted_at IS NULL AND activo = TRUE`,
-    [tenantId, tipo]
-  );
-  return rows.length > 0;
-}
-
 router.post('/', requireCapability('contactos.crear_borrar'), validate(createContactoSchema), async (req, res, next) => {
   const client = await db.connect();
   try {
@@ -161,15 +145,6 @@ router.post('/', requireCapability('contactos.crear_borrar'), validate(createCon
       [String(req.tenantId)]
     );
     const { nombre, apellido, telefono, dni, email, fecha_nacimiento, tipo, origen } = req.body;
-
-    // Validar tipo contra contacto_tipos (default 'cliente' siempre existe
-    // porque es un slug del seed is_system=true).
-    const tipoFinal = tipo ?? 'cliente';
-    if (!(await validarTipoContacto(client, req.tenantId, tipoFinal))) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'Tipo de contacto inválido o desactivado' });
-    }
-
     const { rows } = await client.query(
       `INSERT INTO contactos (nombre, apellido, telefono, dni, email, fecha_nacimiento, tipo, origen)
        VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,'cliente'),COALESCE($8,'manual')) RETURNING *`,
@@ -202,14 +177,6 @@ router.put('/:id', requireCapability('contactos.crear_borrar'), validate(updateC
     if (!before[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Contacto no encontrado' }); }
 
     const { nombre, apellido, telefono, dni, email, fecha_nacimiento, tipo, origen } = req.body;
-
-    // task #290: si viene tipo, validarlo contra contacto_tipos activos.
-    // Si es null/undefined (no se envía), no toca el tipo actual.
-    if (tipo !== undefined && tipo !== null && !(await validarTipoContacto(client, req.tenantId, tipo))) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'Tipo de contacto inválido o desactivado' });
-    }
-
     const { rows } = await client.query(
       `UPDATE contactos SET
         nombre           = COALESCE($1, nombre),

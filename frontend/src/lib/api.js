@@ -642,19 +642,6 @@ export const proyectos = {
   deleteMovimiento: (id) => api(`/api/proyectos/movimientos/${id}`, 'DELETE'),
 };
 
-// 2026-08-03 (task #290): tipos de contacto editables per-tenant.
-// Reemplaza las 3 listas hardcoded que había en frontend (Contactos.jsx,
-// Cajas.jsx, ContactoPickerEmbedded.jsx) — cada tenant crea/edita/borra
-// sus propios tipos. Los 5 defaults (Cliente/Amigo/Familiar/Inversor/
-// Tecny Team) tienen is_system=true (no borrable, solo renombrable/
-// desactivable). Consumers: `useContactoTipos()` hook en el mismo dir.
-export const contactoTipos = {
-  list:   () => api('/api/contacto-tipos'),
-  create: (data) => api('/api/contacto-tipos', 'POST', data),
-  update: (id, data) => api(`/api/contacto-tipos/${id}`, 'PATCH', data),
-  delete: (id) => api(`/api/contacto-tipos/${id}`, 'DELETE'),
-};
-
 export const contactos = {
   list: (params = {}) => api('/api/contactos?' + new URLSearchParams(params)),
   // 2026-07-04 (#508): lista dedup de emails para copiar al portapapeles y

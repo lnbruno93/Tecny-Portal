@@ -43,8 +43,6 @@ const { sendVerificationEmail, sendWelcomeEmail } = require('../lib/email');
 const { signupSchema, verifyEmailSchema } = require('../schemas/signup');
 // F3.a: seed de las 9 clases base + "Sin categoría" en clases_producto.
 const { seedClasesProducto } = require('../lib/seedClasesProducto');
-// task #290: seed de los 5 tipos de contacto default per-tenant.
-const { seedContactoTipos } = require('../lib/seedContactoTipos');
 // 2026-06-23 F4: TOOLS murió. El signup ahora crea al owner con rol='owner'
 // en tenant_user_roles, que en el nuevo sistema capability-based equivale
 // a bypass total (igual que admin global del sistema viejo).
@@ -373,14 +371,6 @@ router.post('/signup', validate(signupSchema), async (req, res, next) => {
     // CONFLICT — safe si se re-corre el flujo por retry.
     // Helper: backend/src/lib/seedClasesProducto.js (mirror en la migration).
     await seedClasesProducto(client, tenant.id);
-
-    // 5c-ter. 2026-08-03 task #290: seed de los 5 tipos de contacto default
-    // (Cliente/Amigo/Familiar/Inversor/Tecny Team). Reemplaza la lista
-    // hardcoded en frontend + CHECK constraint que se dropeó en la migration
-    // 20260803020000. Idempotente vía ON CONFLICT (matchea UNIQUE
-    // (tenant_id, slug) partial). Sin esto, el tenant nuevo tiene el dropdown
-    // vacío y no puede crear contactos.
-    await seedContactoTipos(client, tenant.id);
 
     // 5cb. 2026-06-29 Multi-país F2 (#471): seed de alertas_config para el
     // tenant nuevo. Sin esto el tool get_alertas del bot devuelve vacío y
