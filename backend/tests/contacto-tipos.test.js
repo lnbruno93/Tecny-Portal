@@ -34,17 +34,18 @@ beforeAll(async () => {
 afterAll(async () => { await teardownTestDb(pool); });
 
 describe('CRUD /api/contacto-tipos', () => {
-  it('GET / lista los 5 defaults seedeados por la migration', async () => {
+  it('GET / lista los 4 tipos universales seedeados por la migration', async () => {
     const res = await request(app).get('/api/contacto-tipos').set(auth());
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
-    // Al menos los 5 defaults (puede haber más si tests previos crearon).
+    // Los 4 tipos universales para todos los tenants (post fix 2026-08-03:
+    // 'ipro team' NO se seedea por default; solo se agrega a tenants con
+    // contactos históricos usando ese slug — ver migration).
     const slugs = res.body.map(t => t.slug);
-    expect(slugs).toEqual(expect.arrayContaining(['cliente', 'amigo', 'familiar', 'inversor', 'ipro team']));
-    // 'ipro team' tiene label pretty 'Tecny Team' (cierra bug rebrand).
-    const iproTeam = res.body.find(t => t.slug === 'ipro team');
-    expect(iproTeam.nombre).toBe('Tecny Team');
-    expect(iproTeam.is_system).toBe(true);
+    expect(slugs).toEqual(expect.arrayContaining(['cliente', 'amigo', 'familiar', 'inversor']));
+    const cliente = res.body.find(t => t.slug === 'cliente');
+    expect(cliente.nombre).toBe('Cliente');
+    expect(cliente.is_system).toBe(true);
   });
 
   it('POST / crea un tipo nuevo con slug auto-generado (lowercase)', async () => {

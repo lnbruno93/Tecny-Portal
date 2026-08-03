@@ -33,13 +33,17 @@
  *    · UNIQUE `(tenant_id, slug)` sobre rows vivos.
  *    RLS canónica via `enableTenantRlsFor()`.
  *
- * 2. **Seed 5 defaults per-tenant existente**: cliente, amigo, familiar,
- *    inversor, ipro team. Los 5 con `is_system=true`. El slug 'ipro team'
- *    (con espacio, legacy value) se mantiene porque los contactos
- *    históricos usan ese value en `contactos.tipo`. El label pretty
- *    'Tecny Team' se muestra desde `nombre`. Cierra el bug rebrand
- *    sin necesidad de migrar `contactos.tipo` (que exigiría ALTER TABLE
- *    NO FORCE + UPDATE + FORCE pattern del runbook 08-01).
+ * 2. **Seed 4 tipos universales per-tenant existente**: cliente, amigo,
+ *    familiar, inversor con `is_system=true`. Aplican a todos los tenants.
+ *
+ * 3. **Seed 'ipro team' SOLO donde ya se usa**: buscamos qué tenants
+ *    tienen contactos existentes con `tipo='ipro team'` y les seedeamos
+ *    ese tipo (con label pretty "iPro Team", is_system=false para que
+ *    puedan borrarlo/renombrar). Otros tenants NO reciben este tipo —
+ *    su dropdown queda limpio. Corrección semántica: "Tecny" es el
+ *    nombre de la herramienta, "iPro" era el tenant original (negocio
+ *    de Lucas). El label correcto es "iPro Team" — el label previo
+ *    "Tecny Team" era un error del rebrand.
  *
  * 3. **DROP CHECK constraint** de `contactos.tipo`. La validación pasa a
  *    la app (backend valida contra `SELECT slug FROM contacto_tipos WHERE
@@ -102,32 +106,52 @@ exports.up = (pgm) => {
   // ─── 2. RLS canónica ────────────────────────────────────────────────
   enableTenantRlsFor(pgm, 'contacto_tipos');
 
-  // ─── 3. Seed 5 defaults per-tenant existente ────────────────────────
+  // ─── 3. Seed 4 tipos universales para TODOS los tenants ─────────────
   //
-  // Values matchean el CHECK constraint original (para preservar backward
-  // compat con `contactos.tipo` existente). El label 'Tecny Team' cierra
-  // el bug rebrand — antes se mostraba 'ipro team' raw en Contactos.jsx.
-  //
-  // is_system=true previene DELETE desde el CRUD. Owner puede renombrar
+  // Cliente/Amigo/Familiar/Inversor aplican a cualquier negocio.
+  // `is_system=true` previene DELETE desde el CRUD. Owner puede renombrar
   // (nombre), reordenar (orden), o desactivar (activo=false) pero no
-  // eliminar completamente.
-  //
-  // Idempotente: si el tenant ya tiene un slug con el mismo nombre, ON
-  // CONFLICT DO NOTHING skipea (no debería pasar en la primera corrida
-  // pero cubre re-run manual).
+  // eliminar completamente. Idempotente vía ON CONFLICT DO NOTHING.
   pgm.sql(`
     INSERT INTO contacto_tipos (tenant_id, slug, nombre, orden, activo, is_system)
     SELECT t.id, defs.slug, defs.nombre, defs.orden, TRUE, TRUE
       FROM tenants t
       CROSS JOIN (
         VALUES
-          ('cliente',    'Cliente',    1),
-          ('amigo',      'Amigo',      2),
-          ('familiar',   'Familiar',   3),
-          ('inversor',   'Inversor',   4),
-          ('ipro team',  'Tecny Team', 5)
+          ('cliente',  'Cliente',  1),
+          ('amigo',    'Amigo',    2),
+          ('familiar', 'Familiar', 3),
+          ('inversor', 'Inversor', 4)
       ) AS defs(slug, nombre, orden)
       WHERE t.deleted_at IS NULL
+    ON CONFLICT DO NOTHING;
+  `);
+
+  // ─── 4. Seed slug legacy 'ipro team' SOLO donde ya se usa ───────────
+  //
+  // Correción semántica (Lucas 2026-08-03): "Tecny" es el nombre de la
+  // herramienta, "iPro" era el tenant original (negocio de Lucas). El
+  // slug legacy 'ipro team' refiere al "equipo de iPro" — el nombre
+  // pretty correcto es "iPro Team", no "Tecny Team". Y ese tipo NO tiene
+  // sentido para otros tenants (Nook Tech, Tek Haus, etc.) — solo aplica
+  // al tenant iPro.
+  //
+  // En vez de asumir tenant_id=1 (frágil), buscamos qué tenants tienen
+  // contactos existentes con `tipo='ipro team'` y les seedeamos el tipo
+  // (con is_system=false, así lo pueden borrar/renombrar libremente).
+  // Los demás tenants NO reciben este tipo — su dropdown queda limpio
+  // con solo los 4 universales.
+  //
+  // Post-migration, tenants nuevos NUNCA reciben 'ipro team' (ver
+  // lib/seedContactoTipos.js — solo los 4 universales). Este tipo es
+  // puramente backward-compat para tenants con data histórica.
+  pgm.sql(`
+    INSERT INTO contacto_tipos (tenant_id, slug, nombre, orden, activo, is_system)
+    SELECT DISTINCT c.tenant_id, 'ipro team', 'iPro Team', 5, TRUE, FALSE
+      FROM contactos c
+      JOIN tenants t ON t.id = c.tenant_id AND t.deleted_at IS NULL
+     WHERE c.tipo = 'ipro team'
+       AND c.deleted_at IS NULL
     ON CONFLICT DO NOTHING;
   `);
 
