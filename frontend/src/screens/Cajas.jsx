@@ -251,10 +251,9 @@ export default function Cajas() {
   // inversión de los tabs 'deudas' e 'inversiones' abrían con `cajasList=[]`
   // → el <select> "Caja" renderizaba SIN opciones. Fix: cargar SIEMPRE al
   // mount (una sola vez, barato) porque las cajas se necesitan en los 3 tabs.
-  // Los eventos de refresh siguen gated por tab='config' para no re-fetch
-  // innecesario (los otros tabs no muestran saldos de cajas).
+  // Los eventos de refresh (cajas-changed) siguen gated por tab='config'
+  // para no re-fetch innecesario (los otros tabs no muestran saldos de cajas).
   useEffect(() => { loadCajas(); }, []);
-  useEffect(() => { if (tab === 'config') loadCajas(); }, [tab]);
 
   // B1 trazabilidad: tras correr backfill en Config → Mantenimiento, el
   // backend invalida su cache pero acá tenemos saldos en state local. Refresh
