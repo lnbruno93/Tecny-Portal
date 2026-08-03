@@ -103,10 +103,18 @@ exports.up = (pgm) => {
       WHERE deleted_at IS NULL AND activo = TRUE;
   `);
 
-  // ─── 2. RLS canónica ────────────────────────────────────────────────
-  enableTenantRlsFor(pgm, 'contacto_tipos');
-
-  // ─── 3. Seed 4 tipos universales para TODOS los tenants ─────────────
+  // ─── 2. Seed 4 tipos universales para TODOS los tenants ─────────────
+  //
+  // Orden crítico (post-mortem P0 08-03): los seeds VAN ANTES de
+  // enableTenantRlsFor(contacto_tipos). Razón: enableTenantRlsFor aplica
+  // ENABLE + FORCE ROW LEVEL SECURITY + policy `WITH CHECK (tenant_id =
+  // NULLIF(current_setting('app.current_tenant', true), '')::int)`. En
+  // el contexto de la migration NO hay app.current_tenant seteado →
+  // NULLIF resuelve NULL → cualquier INSERT viola WITH CHECK → migration
+  // falla → Railway container stops. Reproducido en prod con PR #986
+  // (revert PR #993). El fix es: seedear PRIMERO (tabla recién CREATE,
+  // RLS aún disabled — INSERT libre), enableTenantRlsFor DESPUÉS (los
+  // rows ya seedeados no re-validan WITH CHECK, solo INSERTs futuros).
   //
   // Cliente/Amigo/Familiar/Inversor aplican a cualquier negocio.
   // `is_system=true` previene DELETE desde el CRUD. Owner puede renombrar
@@ -127,7 +135,7 @@ exports.up = (pgm) => {
     ON CONFLICT DO NOTHING;
   `);
 
-  // ─── 4. Seed slug legacy 'ipro team' SOLO donde ya se usa ───────────
+  // ─── 3. Seed slug legacy 'ipro team' SOLO donde ya se usa ───────────
   //
   // Correción semántica (Lucas 2026-08-03): "Tecny" es el nombre de la
   // herramienta, "iPro" era el tenant original (negocio de Lucas). El
@@ -145,7 +153,16 @@ exports.up = (pgm) => {
   // Post-migration, tenants nuevos NUNCA reciben 'ipro team' (ver
   // lib/seedContactoTipos.js — solo los 4 universales). Este tipo es
   // puramente backward-compat para tenants con data histórica.
+  //
+  // Pattern runbook 08-01: `contactos` tiene FORCE RLS activo — sin
+  // app.current_tenant en migration, un SELECT devuelve 0 rows silente
+  // (fail-closed). Aplicamos NO FORCE temporal para que el SELECT
+  // funcione, INSERT, y restauramos FORCE. Todo dentro de la tx de
+  // node-pg-migrate → invariante preservado si algo falla (ROLLBACK
+  // restaura FORCE automáticamente).
   pgm.sql(`
+    ALTER TABLE contactos NO FORCE ROW LEVEL SECURITY;
+
     INSERT INTO contacto_tipos (tenant_id, slug, nombre, orden, activo, is_system)
     SELECT DISTINCT c.tenant_id, 'ipro team', 'iPro Team', 5, TRUE, FALSE
       FROM contactos c
@@ -153,9 +170,18 @@ exports.up = (pgm) => {
      WHERE c.tipo = 'ipro team'
        AND c.deleted_at IS NULL
     ON CONFLICT DO NOTHING;
+
+    ALTER TABLE contactos FORCE ROW LEVEL SECURITY;
   `);
 
-  // ─── 4. DROP CHECK constraint de contactos.tipo ─────────────────────
+  // ─── 4. RLS canónica sobre contacto_tipos ──────────────────────────
+  //
+  // DESPUÉS del seed — ver comentario del paso 2 sobre por qué. Los rows
+  // ya insertados quedan intactos (RLS no re-valida rows existentes al
+  // enable); solo aplica a INSERT/UPDATE/DELETE futuros desde la app.
+  enableTenantRlsFor(pgm, 'contacto_tipos');
+
+  // ─── 5. DROP CHECK constraint de contactos.tipo ─────────────────────
   //
   // La validación pasa a la app. Backend valida en INSERT/UPDATE que el
   // tipo esté en contacto_tipos activo del tenant. Ver
@@ -164,7 +190,7 @@ exports.up = (pgm) => {
   // Nota: NO migro los values existentes de `contactos.tipo` (ej. cambiar
   // 'ipro team' → 'tecny_team'). Eso requeriría el pattern del runbook
   // 08-01 (ALTER TABLE NO FORCE + UPDATE + FORCE) y no es necesario — el
-  // label pretty 'Tecny Team' viene ahora del JOIN con contacto_tipos.
+  // label pretty 'iPro Team' viene ahora del JOIN con contacto_tipos.
   pgm.sql(`
     ALTER TABLE contactos DROP CONSTRAINT IF EXISTS contactos_tipo_check;
   `);
