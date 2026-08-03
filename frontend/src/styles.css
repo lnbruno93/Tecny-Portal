@@ -4073,7 +4073,16 @@ body.modal-open { overflow: hidden; }
 /* — CuentasCC (Sprint 39) — */
 .u-tr-planilla-row            { background: rgba(99,102,241,0.04); border-top: 1px solid var(--hairline); }
 .u-border-top-accent          { border-top: 2px solid var(--accent) !important; }
-.u-cuentas-split-layout       { display: grid; grid-template-columns: 240px 1fr; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; flex: 1; min-height: 580px; }
+/* 2026-08-03 (task #297 real root cause): la row del grid es `auto` por
+   default → se auto-crece al content del cell más grande. Si la sidebar
+   tiene N clientes, row = N × ~60px → sidebar cell = N × 60px → NO hay
+   overflow interno → el `overflow: auto` de la lista nunca se activa.
+   Fix: `grid-template-rows: minmax(0, 1fr)` fuerza la row a 1 fracción
+   del grid height (sin permitir crecer al content). Con esto, la sidebar
+   queda constrained a la altura disponible y su `.u-flex-1-o-auto` con
+   `min-height: 0` finalmente activa el scroll interno. Pattern canónico
+   para grids con scroll interno en cells. */
+.u-cuentas-split-layout       { display: grid; grid-template-columns: 240px 1fr; grid-template-rows: minmax(0, 1fr); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; flex: 1; min-height: 580px; }
 .u-cuentas-table-860          { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 860px; font-size: 13px; }
 .u-btn-expand-inline          { background: none; border: none; cursor: pointer; margin-right: 6px; padding: 0; vertical-align: middle; }
 .u-badge-devuelto             { margin-left: 8px; padding: 1px 6px; border-radius: 4px; background: var(--neg); color: white; font-size: 10px; text-decoration: none; font-weight: 600; vertical-align: middle; }
