@@ -97,6 +97,12 @@ const TABLAS_TENANT_SCOPED = Object.freeze([
   'share_links',
   'tarjeta_movimientos',
   'tenant_user_roles',
+  // 2026-08-03 (task #149 Terceros refactor Fase 1 PR 1.1): schema aditivo
+  // para el modelo unificado cliente+proveedor. Coexisten con clientes_cc
+  // y proveedores hasta Fase 3 cutover. Ver docs/TERCEROS_REFACTOR_PLAN.md.
+  'tercero_items',
+  'tercero_movimientos',
+  'terceros',
   'user_capabilities',
   'vendedores',
   'venta_comprobantes',
