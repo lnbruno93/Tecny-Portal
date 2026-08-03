@@ -647,7 +647,15 @@ function TiposPanel({ tiposAll, onClose, onChanged, toast, confirm }) {
                       {t.nombre}
                     </button>
                   )}
-                  {t.is_system && <span className="muted tiny u-ml-8" title="Tipo del sistema (no se puede eliminar)">🔒</span>}
+                  {t.is_system && (
+                    <span
+                      className="muted u-ml-8"
+                      title="Tipo del sistema (no se puede eliminar, solo desactivar/renombrar)"
+                      style={{ display: 'inline-flex', alignItems: 'center', opacity: 0.5 }}
+                    >
+                      <Icons.Lock size={12} />
+                    </span>
+                  )}
                   {!t.activo && <span className="badge u-ml-8">Desactivado</span>}
                 </div>
                 <label className="flex-row u-gap-4 tiny u-flex-align-center" title="Mostrar en el dropdown al crear contactos">
