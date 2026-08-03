@@ -25,15 +25,6 @@ vi.mock('../lib/api', () => {
       list:   vi.fn().mockResolvedValue({ data: [] }),
       create: vi.fn(),
     },
-    // task #290: contactoTipos endpoint mock — Cajas.jsx ahora usa
-    // useContactoTipos() para reemplazar TIPO_LABEL hardcoded.
-    contactoTipos: {
-      list: vi.fn().mockResolvedValue([
-        { id: 't1', slug: 'amigo', nombre: 'Amigo', orden: 2, activo: true, is_system: true },
-        { id: 't2', slug: 'inversor', nombre: 'Inversor', orden: 4, activo: true, is_system: true },
-      ]),
-      create: vi.fn(), update: vi.fn(), delete: vi.fn(),
-    },
   };
 });
 

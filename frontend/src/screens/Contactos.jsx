@@ -1,10 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router';
 import { Icons } from '../components/Icons';
-import { contactos as contactosApi, contactoTipos as contactoTiposApi } from '../lib/api';
-import { useContactoTipos } from '../lib/useContactoTipos';
-import { useAuth } from '../contexts/AuthContext';
-import { isTenantAdmin } from '../lib/userHasCap';
+import { contactos as contactosApi } from '../lib/api';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { downloadBlob } from '../lib/downloadBlob';
 import { usePageActions } from '../contexts/PageActionsContext';
@@ -25,9 +22,7 @@ const ORIGENES = [
   { value: 'envios',      label: 'Envíos',      cls: 'badge' },
   { value: 'proyectos',   label: 'Proyectos',   cls: 'badge badge-info' },
 ];
-// 2026-08-03 (task #290): TIPOS ya NO es hardcoded — se leen dinámicamente
-// via `useContactoTipos()` hook. Cada tenant tiene su propia lista editable
-// desde el panel "Administrar tipos" que se muestra al admin (isTenantAdmin).
+const TIPOS = ['cliente', 'amigo', 'familiar', 'inversor', 'ipro team'];
 const origenMeta = (o) => ORIGENES.find(x => x.value === o) || { label: o || '—', cls: 'badge' };
 
 const EMPTY = { nombre: '', apellido: '', telefono: '', dni: '', email: '', tipo: 'cliente', origen: 'manual' };
@@ -36,13 +31,6 @@ export default function Contactos() {
   const { toast } = useToast();
   const confirm   = useConfirm();
   const { setPrimaryAction } = usePageActions();
-  const { user } = useAuth();
-  const isAdmin = isTenantAdmin(user);
-  // task #290: hook para los tipos de contacto editables per-tenant.
-  // Reemplaza la constante TIPOS hardcoded que había arriba.
-  const { tipos, tiposAll, reload: reloadTipos, labelFor: labelForTipo } = useContactoTipos();
-  // Panel admin CRUD (solo visible a isAdmin).
-  const [showTiposPanel, setShowTiposPanel] = useState(false);
 
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -295,18 +283,6 @@ export default function Contactos() {
           {ORIGENES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
         <span className="muted tiny u-ml-auto">{total} contacto{total === 1 ? '' : 's'}</span>
-        {/* task #290: botón admin para gestionar tipos de contacto (crear/
-            editar/borrar). Solo visible a owner/admin del tenant. */}
-        {isAdmin && (
-          <button
-            type="button"
-            className="btn btn-sm"
-            onClick={() => setShowTiposPanel(true)}
-            title="Administrar los tipos disponibles al crear un contacto"
-          >
-            <Icons.Settings size={13} /> Tipos
-          </button>
-        )}
         {/* 2026-07-04 (#508): dropdown Exportar mails con 3 acciones.
             Menú se cierra por click-outside (registrado condicionalmente en useEffect). */}
         <div ref={exportMenuRef} className="u-pos-rel">
@@ -484,10 +460,7 @@ export default function Contactos() {
                     <div className="field u-flex-1">
                       <label className="field-label">Tipo</label>
                       <select className="input" value={form.tipo} onChange={e => setField('tipo', e.target.value)}>
-                        {/* task #290: opciones dinámicas per-tenant. Antes hardcoded
-                            con "ipro team" raw legacy. Ahora label pretty ('Tecny Team')
-                            + editable desde el panel admin abajo. */}
-                        {tipos.map(t => <option key={t.slug} value={t.slug}>{t.nombre}</option>)}
+                        {TIPOS.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
                     </div>
                   </div>
@@ -502,176 +475,6 @@ export default function Contactos() {
           </div>
         </div>
       )}
-
-      {/* task #290: modal admin CRUD de tipos de contacto (solo isAdmin) */}
-      {showTiposPanel && (
-        <TiposPanel
-          tiposAll={tiposAll}
-          onClose={() => setShowTiposPanel(false)}
-          onChanged={reloadTipos}
-          toast={toast}
-          confirm={confirm}
-        />
-      )}
-    </div>
-  );
-}
-
-// ─── Panel admin: CRUD de tipos de contacto (task #290) ─────────────────────
-// Componente inline por simplicidad — no lo consume nadie más. Si crece,
-// extraer a `components/TiposContactoPanel.jsx`.
-//
-// UX:
-//   · Lista compacta con nombre + orden + toggle activo + acciones (editar,
-//     eliminar). is_system=true muestra un candado y deshabilita eliminar.
-//   · Inline add en el header ("Nuevo tipo" + input + botón Crear).
-//   · Edit inline (click en el nombre → input editable → Enter para guardar).
-//   · Eliminar con confirm — si el backend responde 409 con `contactos_en_uso`,
-//     mostrar mensaje y sugerir desactivar (activo=false) en vez de borrar.
-function TiposPanel({ tiposAll, onClose, onChanged, toast, confirm }) {
-  const [nuevoNombre, setNuevoNombre] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [editingId, setEditingId] = useState(null);
-  const [editValue, setEditValue] = useState('');
-
-  async function handleCreate(e) {
-    e.preventDefault();
-    if (!nuevoNombre.trim()) return;
-    setSaving(true);
-    try {
-      await contactoTiposApi.create({ nombre: nuevoNombre.trim() });
-      setNuevoNombre('');
-      onChanged();
-      toast.success('Tipo creado.');
-    } catch (err) {
-      toast.error(err.message || 'No se pudo crear el tipo.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleRename(t) {
-    if (!editValue.trim() || editValue.trim() === t.nombre) {
-      setEditingId(null);
-      return;
-    }
-    try {
-      await contactoTiposApi.update(t.id, { nombre: editValue.trim() });
-      setEditingId(null);
-      onChanged();
-      toast.success('Nombre actualizado.');
-    } catch (err) {
-      toast.error(err.message || 'No se pudo actualizar.');
-    }
-  }
-
-  async function handleToggleActivo(t) {
-    try {
-      await contactoTiposApi.update(t.id, { activo: !t.activo });
-      onChanged();
-    } catch (err) {
-      toast.error(err.message || 'No se pudo cambiar el estado.');
-    }
-  }
-
-  async function handleDelete(t) {
-    const ok = await confirm({
-      title: `¿Eliminar "${t.nombre}"?`,
-      body: 'Solo podés eliminar tipos que no estén siendo usados por ningún contacto. Si están en uso, podés desactivarlos para ocultarlos del dropdown sin perder los contactos.',
-      confirmText: 'Eliminar',
-      danger: true,
-    });
-    if (!ok) return;
-    try {
-      await contactoTiposApi.delete(t.id);
-      onChanged();
-      toast.success('Tipo eliminado.');
-    } catch (err) {
-      // Backend puede devolver 409 con contactos_en_uso; el mensaje ya viene
-      // formateado con el count.
-      toast.error(err.message || 'No se pudo eliminar.');
-    }
-  }
-
-  return (
-    <div className="modal-backdrop">
-      <div className="modal">
-        <div className="modal-hd">
-          <div>
-            <div className="u-fw-600-fs-16">Tipos de contacto</div>
-            <div className="muted tiny u-mt-2">Personalizá las opciones del dropdown "Tipo" al crear un contacto.</div>
-          </div>
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="Cerrar">✕</button>
-        </div>
-        <div className="modal-bd">
-          <form className="flex-row u-gap-8-mb-16" onSubmit={handleCreate}>
-            <input
-              type="text"
-              className="input u-flex-1"
-              placeholder="Nombre del nuevo tipo (ej. Distribuidor)"
-              value={nuevoNombre}
-              onChange={(e) => setNuevoNombre(e.target.value)}
-              maxLength={50}
-            />
-            <button type="submit" className="btn btn-primary btn-sm" disabled={saving || !nuevoNombre.trim()}>
-              {saving ? 'Creando…' : '+ Crear'}
-            </button>
-          </form>
-
-          <div className="u-fs-13">
-            {tiposAll.length === 0 && <div className="muted u-p-16">No hay tipos configurados.</div>}
-            {tiposAll.map((t) => (
-              <div key={t.id} className="flex-row u-gap-10 u-p-8 u-border-bottom u-flex-align-center">
-                <div className="u-flex-1">
-                  {editingId === t.id ? (
-                    <input
-                      autoFocus
-                      type="text"
-                      className="input input-sm"
-                      value={editValue}
-                      onChange={(e) => setEditValue(e.target.value)}
-                      onBlur={() => handleRename(t)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleRename(t);
-                        if (e.key === 'Escape') setEditingId(null);
-                      }}
-                      maxLength={50}
-                    />
-                  ) : (
-                    <button
-                      type="button"
-                      className="btn-link u-fw-500"
-                      onClick={() => { setEditingId(t.id); setEditValue(t.nombre); }}
-                      title="Click para renombrar"
-                    >
-                      {t.nombre}
-                    </button>
-                  )}
-                  {t.is_system && <span className="muted tiny u-ml-8" title="Tipo del sistema (no se puede eliminar)">🔒</span>}
-                  {!t.activo && <span className="badge u-ml-8">Desactivado</span>}
-                </div>
-                <label className="flex-row u-gap-4 tiny u-flex-align-center" title="Mostrar en el dropdown al crear contactos">
-                  <input type="checkbox" checked={t.activo} onChange={() => handleToggleActivo(t)} />
-                  Activo
-                </label>
-                <button
-                  type="button"
-                  className="icon-btn"
-                  onClick={() => handleDelete(t)}
-                  disabled={t.is_system}
-                  title={t.is_system ? 'No se puede eliminar (tipo del sistema)' : 'Eliminar'}
-                  aria-label="Eliminar tipo"
-                >
-                  <Icons.Trash size={14} />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="modal-ft">
-          <button type="button" className="btn" onClick={onClose}>Cerrar</button>
-        </div>
-      </div>
     </div>
   );
 }
