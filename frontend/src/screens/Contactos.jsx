@@ -649,9 +649,8 @@ function TiposPanel({ tiposAll, onClose, onChanged, toast, confirm }) {
                   )}
                   {t.is_system && (
                     <span
-                      className="muted u-ml-8"
+                      className="muted u-ml-8 u-opacity-05 u-inline-flex-center-8"
                       title="Tipo del sistema (no se puede eliminar, solo desactivar/renombrar)"
-                      style={{ display: 'inline-flex', alignItems: 'center', opacity: 0.5 }}
                     >
                       <Icons.Lock size={12} />
                     </span>
