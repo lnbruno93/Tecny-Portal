@@ -73,10 +73,17 @@ function groupDeudas(movs) {
 const EMPTY_DEUDA = () => ({
   fecha: todayISO(), contacto_id: '', tipo: 'debe', monto_ars: '', monto_usd: '', concepto: '',
   contactoMode: 'existente', nuevoNombre: '', nuevoApellido: '', nuevoTipo: 'amigo',
+  // 2026-08-03 (task trazabilidad caja): caja destino del pago (o origen del
+  // préstamo si tipo=debe). Required para tipo=pago via schema Zod.
+  caja_id: '', tc: '',
 });
 const EMPTY_INV = () => ({
   fecha: todayISO(), contacto_id: '', monto: '', tasa: '',
   contactoMode: 'existente', nuevoNombre: '', nuevoApellido: '', nuevoTipo: 'inversor',
+  // 2026-08-03 (task trazabilidad caja): caja destino donde entra la inversión.
+  // REQUERIDO (una inversión siempre alimenta una caja). Solo cajas de moneda
+  // USD/USDT son válidas — el modal filtra el select accordingly.
+  caja_id: '', tc: '',
 });
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -325,6 +332,16 @@ export default function Cajas() {
       // buildContactoPayload puede tirar 'validation' error si nombre/select faltan.
       const contactoPayload = buildContactoPayload(deudaForm);
 
+      // 2026-08-03 (task trazabilidad caja): caja_id requerido cuando tipo=pago
+      // (validado también en Zod backend). tc solo si la caja destino es de
+      // moneda distinta al monto (ej. pago ARS a caja USD → TC convierte para
+      // el monto_usd nativo del caja_movimiento).
+      if (deudaForm.tipo === 'pago' && !deudaForm.caja_id) {
+        setDeudaError('Elegí en qué caja recibís el pago.'); return;
+      }
+      const cajaIdNum = deudaForm.caja_id ? Number(deudaForm.caja_id) : null;
+      const tcNum = deudaForm.tc ? Number(deudaForm.tc) : null;
+
       const movimiento = await cajas.createDeuda({
         fecha:       deudaForm.fecha,
         ...contactoPayload,
@@ -332,6 +349,8 @@ export default function Cajas() {
         monto_ars,
         monto_usd,
         concepto:    deudaForm.concepto.trim() || null,
+        caja_id:     cajaIdNum,
+        tc:          tcNum,
       });
       const cid = movimiento.contacto_id;
       // Si se creó contacto nuevo, refrescamos la lista para próximos selects.
@@ -368,6 +387,10 @@ export default function Cajas() {
     const monto = parseFloat(invForm.monto);
     if (!monto || monto <= 0) { setInvError('El monto debe ser mayor a 0.'); return; }
 
+    // 2026-08-03 (task trazabilidad caja): caja_id REQUERIDO — la inversión
+    // siempre alimenta una caja concreta.
+    if (!invForm.caja_id) { setInvError('Elegí en qué caja se deposita la inversión.'); return; }
+
     setInvCreating(true); setInvError('');
     try {
       // Backend hace contacto + movimiento en una sola tx (atómico).
@@ -378,6 +401,8 @@ export default function Cajas() {
         ...contactoPayload,
         monto,
         tasa:        invForm.tasa.trim() || null,
+        caja_id:     Number(invForm.caja_id),
+        tc:          invForm.tc ? Number(invForm.tc) : null,
       });
       const cid = movimiento.contacto_id;
       if (contactoPayload.contacto_nuevo) {
@@ -728,8 +753,16 @@ export default function Cajas() {
                     {(Number(selectedContacto.saldo_ars) > 0 || Number(selectedContacto.saldo_usd) > 0) && (
                       <button
                         className="btn btn-primary u-fs-12-p-4-10"
-                        title="Registra un pago que salda el saldo actual (podés editar los montos antes de guardar)"
+                        title="Registra un pago que salda el saldo actual (elegí la caja donde lo recibís)"
                         onClick={() => {
+                          // Pre-select caja si el tenant tiene solo 1 caja activa
+                          // que matchee la moneda del saldo — evita 1 click.
+                          const monedaNecesaria = Number(selectedContacto.saldo_ars) > 0 ? 'ARS' : 'USD';
+                          const cajasCompatibles = cajasList.filter(c =>
+                            c.activo !== false &&
+                            (monedaNecesaria === 'ARS' ? c.moneda === 'ARS' : (c.moneda === 'USD' || c.moneda === 'USDT'))
+                          );
+                          const cajaDefault = cajasCompatibles.length === 1 ? String(cajasCompatibles[0].id) : '';
                           setDeudaForm({
                             ...EMPTY_DEUDA(),
                             contacto_id: String(selectedContactoId),
@@ -737,6 +770,7 @@ export default function Cajas() {
                             monto_ars: Number(selectedContacto.saldo_ars) > 0 ? String(selectedContacto.saldo_ars) : '',
                             monto_usd: Number(selectedContacto.saldo_usd) > 0 ? String(selectedContacto.saldo_usd) : '',
                             concepto: 'Saldo de deuda',
+                            caja_id: cajaDefault,
                           });
                           setDeudaError('');
                           setShowDeuda(true);
@@ -1264,11 +1298,31 @@ export default function Cajas() {
                         onChange={e => setDeudaForm(f => ({ ...f, monto_usd: e.target.value }))} />
                     </div>
                   </div>
+                  {/* 2026-08-03 (task trazabilidad caja): caja destino del pago
+                      (o origen del préstamo si tipo=debe). REQUERIDO cuando
+                      tipo=pago, OPCIONAL cuando tipo=debe.
+                      Cerrar una deuda debe alimentar una caja concreta — sino
+                      la deuda desaparece pero el saldo de cajas no refleja el
+                      ingreso. */}
                   <div className="field">
-                    <label className="field-label">Concepto</label>
-                    <input className="input" placeholder="ej. Préstamo viaje, Compra materiales…"
-                      value={deudaForm.concepto}
-                      onChange={e => setDeudaForm(f => ({ ...f, concepto: e.target.value }))} />
+                    <label className="field-label">
+                      Caja {deudaForm.tipo === 'pago' ? <span className="u-color-neg">*</span> : <span className="muted tiny">(opcional)</span>}
+                    </label>
+                    <select className="input"
+                      value={deudaForm.caja_id}
+                      onChange={e => setDeudaForm(f => ({ ...f, caja_id: e.target.value }))}>
+                      <option value="">— Elegí una caja —</option>
+                      {cajasList.filter(c => c.activo !== false).map(c => (
+                        <option key={c.id} value={c.id}>
+                          {c.nombre} ({c.moneda})
+                        </option>
+                      ))}
+                    </select>
+                    <div className="muted tiny u-mt-4">
+                      {deudaForm.tipo === 'pago'
+                        ? 'Dónde recibís el pago (efectivo, banco, Mercado Pago…). La caja crece con este monto.'
+                        : 'Dónde sale el dinero prestado. Si dejás vacío, la deuda se registra sin afectar cajas.'}
+                    </div>
                   </div>
                   {deudaError && <div className="u-color-neg-fs-13">{deudaError}</div>}
                 </div>
@@ -1319,6 +1373,30 @@ export default function Cajas() {
                     <input className="input" placeholder="ej. 5% mensual, TNA 60%…"
                       value={invForm.tasa}
                       onChange={e => setInvForm(f => ({ ...f, tasa: e.target.value }))} />
+                  </div>
+                  {/* 2026-08-03 (task trazabilidad caja): caja destino donde
+                      entra el capital del inversor. REQUERIDO. Como la
+                      inversión es USD-only (por diseño del modal), filtramos
+                      el select a cajas del grupo USD (moneda USD o USDT).
+                      Otras monedas (ARS/UYU) no aparecen para evitar el
+                      "moneda mismatch" del backend. */}
+                  <div className="field">
+                    <label className="field-label">Caja destino <span className="u-color-neg">*</span></label>
+                    <select className="input"
+                      value={invForm.caja_id}
+                      onChange={e => setInvForm(f => ({ ...f, caja_id: e.target.value }))}>
+                      <option value="">— Elegí una caja USD —</option>
+                      {cajasList
+                        .filter(c => c.activo !== false && (c.moneda === 'USD' || c.moneda === 'USDT'))
+                        .map(c => (
+                          <option key={c.id} value={c.id}>
+                            {c.nombre} ({c.moneda})
+                          </option>
+                        ))}
+                    </select>
+                    <div className="muted tiny u-mt-4">
+                      Dónde recibís el capital del inversor. Solo cajas USD/USDT.
+                    </div>
                   </div>
                   {invError && <div className="u-color-neg-fs-13">{invError}</div>}
                 </div>

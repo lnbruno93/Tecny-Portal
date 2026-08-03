@@ -39,10 +39,20 @@ const createDeudaSchema = z.object({
   monto_ars:      z.number().min(0).default(0),
   monto_usd:      z.number().min(0).default(0),
   concepto:       z.string().trim().max(500).optional().nullable(),
+  // 2026-08-03 (task caja trazabilidad): link opcional a la caja destino/origen
+  // del pago. Requerido para tipo=pago (nos cobran → alimenta caja) via refine
+  // de abajo. Opcional para tipo=debe (le prestamos → puede descontar caja).
+  caja_id:        z.number().int().positive().optional().nullable(),
+  // TC contextual necesario si la caja es de moneda distinta al monto (ej.
+  // pago 100000 ARS pero caja destino es USD → tc convierte a USD nativo).
+  tc:             z.coerce.number().positive().optional().nullable(),
 }).strict().refine(d => d.monto_ars > 0 || d.monto_usd > 0, {
   message: 'Al menos monto_ars o monto_usd debe ser mayor a 0',
   path: ['monto_ars'],
-}).refine(refineContactoXor, xorMessage);
+}).refine(refineContactoXor, xorMessage).refine(
+  d => d.tipo !== 'pago' || (typeof d.caja_id === 'number' && d.caja_id > 0),
+  { message: 'Al registrar un pago debés indicar en qué caja lo recibiste', path: ['caja_id'] }
+);
 
 const queryDeudasSchema = z.object({
   contacto_id: z.coerce.number().int().positive().optional(),
@@ -61,6 +71,12 @@ const createInversionSchema = z.object({
   contacto_nuevo: contactoNuevoSchema.optional(),
   monto:          z.number().positive('Monto debe ser positivo'),
   tasa:           z.string().trim().max(50).optional().nullable(),
+  // 2026-08-03 (task caja trazabilidad): caja destino donde entra el capital
+  // del inversor. REQUERIDO (una inversión siempre alimenta una caja concreta).
+  caja_id:        z.number().int().positive('Elegí en qué caja se depositó la inversión'),
+  // TC opcional (las inversiones son USD por diseño del modal, pero si la caja
+  // destino es USDT y el registro se hace en otra moneda equivalente, TC ayuda).
+  tc:             z.coerce.number().positive().optional().nullable(),
 }).strict().refine(refineContactoXor, xorMessage);
 
 const queryInversionesSchema = z.object({
@@ -158,7 +174,10 @@ const cajaRelevoSchema = z.object({
 
 // Ledger global: movimientos de todas las cajas con filtros (vista dedicada)
 // 2026-07-29: agregado 'relevo' — para filtrar en el historial del ledger.
-const ORIGENES_CAJA = ['venta', 'b2b', 'financiera', 'envio', 'egreso', 'proveedor', 'transferencia', 'ajuste', 'cambio', 'tarjeta', 'proyecto', 'relevo'];
+// 2026-08-03: 'deuda' e 'inversion' agregados para filtrar en el ledger los
+// caja_movimientos generados desde POST /cajas/deudas y /cajas/inversiones
+// (task trazabilidad Deudas↔Cajas + Inversiones↔Cajas).
+const ORIGENES_CAJA = ['venta', 'b2b', 'financiera', 'envio', 'egreso', 'proveedor', 'transferencia', 'ajuste', 'cambio', 'tarjeta', 'proyecto', 'relevo', 'deuda', 'inversion'];
 const queryLedgerSchema = z.object({
   caja_id: z.coerce.number().int().positive().optional(),
   desde:   z.string().date().optional(),
