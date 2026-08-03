@@ -529,6 +529,60 @@ router.get('/clientes/:id/movimientos', async (req, res, next) => {
         items = rows;
       }
 
+      // 2026-08-03 (bug Lautaro): movimientos_cc con venta_id != NULL vienen
+      // de `sincronizarCuentaCorriente()` en ventaSync.js — son ventas retail
+      // (tabla `ventas`) con pago CC que se replican al ledger B2B para que
+      // afecten el saldo del cliente. Los ITEMS de esas ventas viven en
+      // `venta_items`, NO en `items_movimiento_cc` (que solo se llena para
+      // movs B2B "nativos" creados desde POST /cuentas/movimientos).
+      //
+      // Antes de este parche, el modal detalle B2B (task #298 Fase A + #300
+      // Fase B) mostraba "sin productos" para estos movs — el user (Lautaro)
+      // no podía ver qué había vendido en la venta original.
+      //
+      // Fix: batch fetch de venta_items para los venta_id presentes y merge
+      // al mismo `itemsByMov`, mapeando al shape de items_movimiento_cc que
+      // el frontend ya sabe renderizar (producto, imei_serial, valor, etc.).
+      // Los items retail son READ-ONLY desde CC (el frontend ocultará el
+      // botón "Editar" cuando venta_id está set) porque editarlos acá
+      // desincronizaría la venta original. Fuente de verdad: módulo Ventas.
+      const ventaIds = movs.filter(m => m.venta_id).map(m => m.venta_id);
+      if (ventaIds.length) {
+        const { rows: viRows } = await client.query(
+          `SELECT vi.id, vi.venta_id, vi.producto_id, vi.descripcion,
+                  vi.imei, vi.cantidad, vi.precio_vendido, vi.moneda,
+                  p.gb AS producto_gb, p.color AS producto_color
+             FROM venta_items vi
+        LEFT JOIN productos p ON p.id = vi.producto_id AND p.deleted_at IS NULL
+            WHERE vi.venta_id = ANY($1::int[])
+            ORDER BY vi.id`,
+          [ventaIds]
+        );
+        // Mapa venta_id → movimiento_cc_id para reasignar el bucket.
+        const movByVentaId = {};
+        movs.forEach(m => { if (m.venta_id) movByVentaId[m.venta_id] = m.id; });
+        // Convertir cada venta_item al shape de items_movimiento_cc.
+        viRows.forEach(vi => {
+          const movId = movByVentaId[vi.venta_id];
+          if (!movId) return;
+          items.push({
+            id:              `vi-${vi.id}`,           // prefix evita colisión de IDs
+            movimiento_cc_id: movId,
+            producto:        vi.descripcion || null,  // nombre libre
+            modelo:          null,                     // no hay modelo separado
+            tamano:          vi.producto_gb || null,   // desde producto si vive
+            color:           vi.producto_color || null,
+            imei_serial:     vi.imei || null,
+            valor:           Number(vi.precio_vendido) || 0,
+            verificado:      true,                     // venta retail = confirmada
+            notas:           null,
+            producto_id:     vi.producto_id,
+            cantidad:        vi.cantidad,
+            _source:         'venta_items',            // marca para tracing/tests
+          });
+        });
+      }
+
       // Adjuntar items a cada movimiento
       const itemsByMov = {};
       items.forEach(item => {
