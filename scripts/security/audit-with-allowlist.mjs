@@ -73,6 +73,24 @@ const ALLOWLIST = [
     addedAt: '2026-07-24',
     expiresAt: '2026-10-24', // forzar re-evaluación en 3 meses
   },
+  {
+    // 2026-08-03: publicado hoy, follow-up del CVE-2026-14257 previo. Bypass
+    // de la mitigación del advisory anterior (GHSA-mh99-v99m-4gvg) — mismo
+    // package, misma cadena transitiva, misma superficie no explotable.
+    // Aplica el mismo razonamiento: archiver es el único caller y no acepta
+    // user input en brace patterns. Fix upstream aún no disponible.
+    advisoryId: 'GHSA-rgw5-rvv9-x895',
+    title: 'brace-expansion: DoS via unbounded intermediate arrays, bypassing the CVE-2026-14257 mitigation',
+    reason:
+      'Follow-up del advisory previo GHSA-mh99-v99m-4gvg (mismo package, misma cadena ' +
+      'archiver→glob→minimatch→brace-expansion). El bypass afecta a patterns de brace ' +
+      'con miles de intermediate arrays — igual que el previo, no llega al glob interno ' +
+      'porque archiver no acepta user input en el pattern. Fix upstream requiere bump ' +
+      'archiver@8.0.0 (breaking, sin timeline). Re-evaluar simultáneamente con el ' +
+      'advisory previo cuando archiver@8 esté disponible.',
+    addedAt: '2026-08-03',
+    expiresAt: '2026-11-03', // 3 meses; alinear con el resto de allowlist en la próxima re-evaluación
+  },
 ];
 
 // ── Main ─────────────────────────────────────────────────────────────────

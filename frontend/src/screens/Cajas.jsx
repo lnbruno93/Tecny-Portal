@@ -245,7 +245,15 @@ export default function Cajas() {
     }
     finally { setLoadingCajas(false); }
   }
-  useEffect(() => { if (tab === 'config') loadCajas(); }, [tab]);
+  // 2026-08-03 (task caja trazabilidad — bug reportado por Lucas post-#999):
+  // Antes esto era `if (tab === 'config') loadCajas()` — solo cargaba cajas
+  // cuando estabas en el tab Config. Consecuencia: los modales de deuda/
+  // inversión de los tabs 'deudas' e 'inversiones' abrían con `cajasList=[]`
+  // → el <select> "Caja" renderizaba SIN opciones. Fix: cargar SIEMPRE al
+  // mount (una sola vez, barato) porque las cajas se necesitan en los 3 tabs.
+  // Los eventos de refresh (cajas-changed) siguen gated por tab='config'
+  // para no re-fetch innecesario (los otros tabs no muestran saldos de cajas).
+  useEffect(() => { loadCajas(); }, []);
 
   // B1 trazabilidad: tras correr backfill en Config → Mantenimiento, el
   // backend invalida su cache pero acá tenemos saldos en state local. Refresh
