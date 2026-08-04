@@ -4,23 +4,39 @@
  * Rendering condicional: solo se muestra si el user tiene rows en >1
  * `tenant_users`. Para users normales (1 solo tenant) queda null → invisible.
  *
+ * UI (2026-08-04, iteración B post feedback Lucas):
+ *   Botón outline compacto (icono edificio + nombre truncado + chevron ▾).
+ *   Click abre popover flotante con lista de tenants. El activo tiene
+ *   check verde ✓; los otros son clickables → dispara switch. Reemplaza al
+ *   `<select>` nativo del prototipo A (que se veía sin borde/corte en el
+ *   topbar oscuro y no coincidía con el estilo de los icon-btn vecinos).
+ *
  * Flow:
  *   1. Al mount, fetch GET /api/auth/tenants → guarda lista + tenant activo.
- *   2. Si len > 1, renderiza un `<select>` con las opciones (activo pre-selected).
- *   3. onChange → useAuth().switchTenant(id) → backend re-emite JWT + AuthContext
- *      hace `window.location.reload()` para refrescar TODA la UI desde cero
- *      (evita data leaks del tenant anterior en react-query cache, memoized
- *      useEffect data, etc.).
+ *   2. Si len > 1, renderiza el botón outline con el nombre del tenant activo.
+ *   3. Click en botón → toggle popover. Click en otro tenant → switchTenant
+ *      → hard-reload (garantía cero data leak del anterior).
+ *   4. Escape o click-outside → cierra popover sin efecto.
  *
- * Se renderiza dentro del `user-pill` en Shell.jsx. El WARN log
+ * Se renderiza dentro del `.topbar` en Shell.jsx (post PR #1006). El WARN log
  * `resolveUserTenant_multi_tenant_ambiguity` seguirá disparándose para users
- * con >1 tenant, pero ahora tienen forma de cambiar sin logout+login.
+ * con >1 tenant, pero ahora tienen forma UX de cambiar sin logout+login.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { auth as authApi } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { friendlyError } from '../lib/friendlyError';
+import { Icons } from './Icons';
+
+// Trunca nombres largos de tenant al mostrar en el botón (los muy largos
+// desbordan el topbar en resoluciones intermedias). 20 chars cabe cómodo en
+// desktop >= 1024px sin desalinear los otros elementos del topbar.
+const MAX_LABEL_CHARS = 20;
+function truncate(s) {
+  if (!s) return '—';
+  return s.length > MAX_LABEL_CHARS ? s.slice(0, MAX_LABEL_CHARS - 1) + '…' : s;
+}
 
 export default function TenantSwitcher() {
   const { switchTenant } = useAuth();
@@ -28,6 +44,8 @@ export default function TenantSwitcher() {
   const [tenants, setTenants] = useState(null); // null = loading, [] = single-tenant, [...] = multi
   const [activeId, setActiveId] = useState(null);
   const [switching, setSwitching] = useState(false);
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,13 +63,35 @@ export default function TenantSwitcher() {
     return () => { cancelled = true; };
   }, []);
 
+  // Click outside + Escape para cerrar el popover.
+  useEffect(() => {
+    if (!open) return;
+    function onDocClick(e) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) setOpen(false);
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
   // Solo mostrar si el user pertenece a >1 tenant.
   if (!tenants || tenants.length < 2) return null;
 
-  async function handleChange(e) {
-    const targetId = Number(e.target.value);
-    if (!targetId || targetId === activeId || switching) return;
+  const active = tenants.find(t => t.id === activeId) || tenants[0];
+
+  async function handleSelect(targetId) {
+    if (!targetId || targetId === activeId || switching) {
+      setOpen(false);
+      return;
+    }
     setSwitching(true);
+    setOpen(false);
     try {
       await switchTenant(targetId);
       // switchTenant hace window.location.reload() — no llegamos acá.
@@ -63,19 +103,49 @@ export default function TenantSwitcher() {
   }
 
   return (
-    <select
-      className="input u-fs-12 u-flex-shrink-0"
-      value={activeId ?? ''}
-      onChange={handleChange}
-      disabled={switching}
-      aria-label="Cambiar organización activa"
-      title="Cambiar organización activa"
-    >
-      {tenants.map(t => (
-        <option key={t.id} value={t.id}>
-          {t.nombre || `Tenant #${t.id}`}
-        </option>
-      ))}
-    </select>
+    <div ref={wrapperRef} className="tenant-switcher-wrap u-position-relative u-flex-shrink-0">
+      <button
+        type="button"
+        className="btn-tenant-switcher"
+        onClick={() => setOpen(v => !v)}
+        disabled={switching}
+        aria-label={`Organización activa: ${active.nombre || 'Tenant #' + active.id}. Click para cambiar.`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        title={active.nombre || `Tenant #${active.id}`}
+      >
+        <Icons.Building size={14} />
+        <span className="tenant-switcher-label">{truncate(active.nombre)}</span>
+        <Icons.ChevronDown size={12} />
+      </button>
+
+      {open && (
+        <ul className="tenant-switcher-menu" role="listbox" aria-label="Organizaciones disponibles">
+          {tenants.map(t => {
+            const isActive = t.id === activeId;
+            return (
+              <li key={t.id} role="option" aria-selected={isActive}>
+                <button
+                  type="button"
+                  className={`tenant-switcher-item${isActive ? ' is-active' : ''}`}
+                  onClick={() => handleSelect(t.id)}
+                  disabled={switching}
+                >
+                  <span className="tenant-switcher-item-name">
+                    {t.nombre || `Tenant #${t.id}`}
+                  </span>
+                  {t.rol && <span className="tenant-switcher-item-rol">{t.rol}</span>}
+                  {isActive && (
+                    <span className="tenant-switcher-item-check" aria-label="Activo">
+                      <Icons.Check size={14} />
+                    </span>
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }
