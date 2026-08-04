@@ -17,6 +17,8 @@ import { redB2b } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { fmtMoney, fmtFecha } from '../lib/format';
+import { Icons } from '../components/Icons';
+import { downloadDetalleXlsx } from '../lib/detalleXlsx';
 import RedB2BRegistrarPagoModal from '../components/RedB2BRegistrarPagoModal';
 
 const STATUS_LABELS = {
@@ -123,6 +125,53 @@ export default function RedB2BOperacionDetalle() {
     }
   }
 
+  // 2026-08-04 (task #305, pedido Lautaro): descargar el detalle como XLSX.
+  // Layout: header key-value (Op, Partner, Rol, Estado, Total USD/ARS, TC,
+  // Notas) + tabla de items (# / Producto / Cantidad / Precio USD / Precio ARS
+  // / Subtotal USD) + fila Total con suma en USD. El label del producto
+  // respeta la perspectiva actual (isSeller: "mi catálogo" vs "partner").
+  function handleDownloadXlsx() {
+    if (!op) return;
+    const partner = op.partner?.nombre || 'partner';
+    const isSellerLocal = op.my_side === 'seller';
+    const fechaFile = String(op.created_at || '').slice(0, 10);
+    const filename = `red-b2b_op-${op.id}_${partner}_${fechaFile}`;
+    const statusInfoLocal = STATUS_LABELS[op.status] || { label: op.status };
+    const sideLabel = isSellerLocal ? 'Vendedor' : 'Comprador';
+    const productoColLabel = `Producto (${isSellerLocal ? 'mi catálogo' : 'partner'})`;
+    const rows = (op.items || []).map((it, i) => {
+      const pid = isSellerLocal ? it.seller_producto_id : it.buyer_producto_id;
+      const subUsd = Number(it.precio_unitario_usd) * Number(it.cantidad);
+      return [
+        i + 1,
+        `#${pid}`,
+        Number(it.cantidad) || 0,
+        Number(it.precio_unitario_usd) || 0,
+        Number(it.precio_unitario_ars) || 0,
+        Number(subUsd) || 0,
+      ];
+    });
+    const sumaUsd = rows.reduce((acc, r) => acc + (Number(r[5]) || 0), 0);
+    downloadDetalleXlsx({
+      filename,
+      sheetName: `Op ${op.id} ${fechaFile}`,
+      header: [
+        { label: 'Operación',    value: `#${op.id}` },
+        { label: 'Partner',      value: partner },
+        { label: 'Rol',          value: sideLabel },
+        { label: 'Estado',       value: statusInfoLocal.label },
+        { label: 'Total USD',    value: Number(op.total_usd) || 0 },
+        { label: 'Total ARS',    value: Number(op.total_ars) || 0 },
+        { label: 'TC usado',     value: op.tc_used ? Number(op.tc_used) : '' },
+        { label: 'Creada',       value: fmtFecha(op.created_at) },
+        { label: 'Notas',        value: op.notes || '' },
+      ],
+      columns: ['#', productoColLabel, 'Cantidad', 'Precio USD', 'Precio ARS', 'Subtotal USD'],
+      rows,
+      sumaTotal: sumaUsd,
+    });
+  }
+
   if (loading) {
     return (
       <div className="screen-wrap">
@@ -178,16 +227,27 @@ export default function RedB2BOperacionDetalle() {
           </div>
         </div>
 
-        {canCancel && (
+        <div className="u-flex-gap-8-wrap">
           <button
             type="button"
-            className="btn btn-danger"
-            onClick={openCancelModal}
-            disabled={cancelling}
+            className="btn btn-ghost"
+            onClick={handleDownloadXlsx}
+            title="Descargar detalle como Excel (.xlsx)"
+            data-testid="red-b2b-op-download-xlsx"
           >
-            {cancelling ? 'Cancelando…' : 'Cancelar operación'}
+            <Icons.Download size={14} /> Descargar Excel
           </button>
-        )}
+          {canCancel && (
+            <button
+              type="button"
+              className="btn btn-danger"
+              onClick={openCancelModal}
+              disabled={cancelling}
+            >
+              {cancelling ? 'Cancelando…' : 'Cancelar operación'}
+            </button>
+          )}
+        </div>
       </header>
 
       <section className="card u-p-16-mb-16">

@@ -31,6 +31,7 @@ import { Icons } from './Icons';
 import { proveedores as provApi } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 import { friendlyError } from '../lib/friendlyError';
+import { downloadDetalleXlsx } from '../lib/detalleXlsx';
 
 // Formato helper compartido con la grilla.
 function fmt(n) {
@@ -160,6 +161,39 @@ export default function CompraProveedorDetalleModal({ movimiento, proveedor, onC
     setFechaDraft(String(movimiento.fecha || '').slice(0, 10));
     setError(null);
     setMode('view');
+  }
+
+  // 2026-08-04 (task #305, pedido Lautaro): descargar el detalle como XLSX.
+  // Layout: header key-value (Tipo/Fecha/Proveedor/Monto/Caja/Notas) + tabla
+  // de items con Producto/Modelo/Cap./Color/IMEI/Valor/Verificado + fila Total.
+  function handleDownloadXlsx() {
+    const prov = proveedor?.nombre || 'proveedor';
+    const fechaFile = String(movimiento.fecha || '').slice(0, 10);
+    const filename = `compra-proveedor_${prov}_${fechaFile}_#${movimiento.id}`;
+    const moneda = movimiento.moneda || 'USD';
+    downloadDetalleXlsx({
+      filename,
+      sheetName: `Compra ${fechaFile}`,
+      header: [
+        { label: 'Tipo',        value: tipoLabel },
+        { label: 'Fecha',       value: fmtFecha(movimiento.fecha) },
+        { label: 'Proveedor',   value: prov },
+        { label: `Monto ${moneda}`, value: montoMovMoneda },
+        { label: 'Caja',        value: cajaText },
+        { label: 'Notas',       value: movimiento.notas || '' },
+      ],
+      columns: ['Producto', 'Modelo', 'Cap.', 'Color', 'IMEI/Serial', `Valor ${moneda}`, 'Verificado'],
+      rows: items.map(it => [
+        it.producto || '',
+        it.modelo || '',
+        it.tamano || '',
+        it.color || '',
+        it.imei_serial || '',
+        Number(it.valor) || 0,
+        it.verificado ? '✓' : '',
+      ]),
+      sumaTotal: sumaItemsMoneda,
+    });
   }
 
   async function handleSave() {
@@ -421,6 +455,15 @@ export default function CompraProveedorDetalleModal({ movimiento, proveedor, onC
         <div className="modal-ft">
           {mode === 'view' ? (
             <>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={handleDownloadXlsx}
+                title="Descargar detalle como Excel (.xlsx)"
+                data-testid="compra-prov-download-xlsx"
+              >
+                <Icons.Download size={14} /> Descargar Excel
+              </button>
               {puedeEditar && (
                 <button
                   type="button"
