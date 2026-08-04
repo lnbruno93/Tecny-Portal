@@ -36,6 +36,7 @@ import { Icons } from './Icons';
 import { cuentas as cuentasApi } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 import { friendlyError } from '../lib/friendlyError';
+import { downloadDetalleXlsx } from '../lib/detalleXlsx';
 
 // Formato helper — matchea el pattern del CompraProveedorDetalleModal.
 function fmt(n) {
@@ -209,6 +210,38 @@ export default function MovimientoCCDetalleModal({ movimiento, cliente, onClose,
     setDescripcionDraft(movimiento.descripcion || '');
     setError(null);
     setMode('view');
+  }
+
+  // 2026-08-04 (task #305, pedido Lautaro): descargar el detalle como XLSX.
+  // Usa el helper compartido lib/detalleXlsx que arma el aoa y dispara download.
+  // Filename incluye tipo + cliente + fecha + id — único y ordenable.
+  function handleDownloadXlsx() {
+    const cli = [cliente?.nombre, cliente?.apellido].filter(Boolean).join(' ') || 'cliente';
+    const fechaFile = String(movimiento.fecha || '').slice(0, 10);
+    const filename = `venta-b2b_${cli}_${fechaFile}_#${movimiento.id}`;
+    downloadDetalleXlsx({
+      filename,
+      sheetName: `Venta B2B ${fechaFile}`,
+      header: [
+        { label: 'Tipo',        value: tipoLabel },
+        { label: 'Fecha',       value: fmtFecha(movimiento.fecha) },
+        { label: 'Cliente',     value: cli },
+        { label: 'Monto USD',   value: montoTotal },
+        { label: 'Descripción', value: movimiento.descripcion || '' },
+        { label: 'Notas',       value: movimiento.notas || '' },
+      ],
+      columns: ['Producto', 'Modelo', 'Cap.', 'Color', 'IMEI/Serial', 'Valor USD', 'Verificado'],
+      rows: items.map(it => [
+        it.producto || '',
+        it.modelo || '',
+        it.tamano || '',
+        it.color || '',
+        it.imei_serial || '',
+        Number(it.valor) || 0,
+        it.verificado ? '✓' : '',
+      ]),
+      sumaTotal: sumaItems,
+    });
   }
 
   async function handleSave() {
@@ -515,6 +548,19 @@ export default function MovimientoCCDetalleModal({ movimiento, cliente, onClose,
         <div className="modal-ft">
           {mode === 'view' ? (
             <>
+              {/* 2026-08-04 (task #305, pedido Lautaro): descargar XLSX del
+                  detalle. Siempre visible en modo view (aunque no haya items —
+                  descarga la metadata igual). Solo modo view; en edit no
+                  aparece para no confundir con "guardar y descargar". */}
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={handleDownloadXlsx}
+                title="Descargar detalle como Excel (.xlsx)"
+                data-testid="mov-cc-download-xlsx"
+              >
+                <Icons.Download size={14} /> Descargar Excel
+              </button>
               {puedeEditar && (
                 <button
                   type="button"
