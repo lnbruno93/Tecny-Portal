@@ -369,10 +369,6 @@ function UserPill() {
             {roleLabel} · @{user.username}
           </div>
         </div>
-        {/* 2026-08-03 (task #228 Opción A): dropdown para cambiar de tenant
-            activo. Solo aparece si el user pertenece a >1 tenant — para el
-            99% de users no impacta visualmente. */}
-        <TenantSwitcher />
         {/* 2026-06-19 #338: toggle dark/light. Icono sol cuando estamos en
             dark (action: "ir a light"), luna cuando estamos en light (action:
             "ir a dark"). aria-label describe el destino, no el estado actual. */}
@@ -466,6 +462,13 @@ function Topbar({ onMenuClick, onSearchClick }) {
       >
         <Icons.Search size={17} />
       </button>
+      {/* 2026-08-04 (task #228 Opción A UX tweak): dropdown de cambio de
+          tenant activo en el topbar (antes estaba dentro del user-pill del
+          sidebar y se superponía con el nombre cuando el nombre del tenant
+          era largo — sidebar angosto ~200px). Acá tiene 500-800px de espacio
+          horizontal en desktop. Auto-oculto si el user pertenece a un solo
+          tenant → invisible para el 99% de users. */}
+      <TenantSwitcher />
       {/* 2026-06-29 #458 F5: bell de notificaciones Red B2B cross-tenant.
           Render condicional dentro del componente (skip si user sin
           cross_tenant.write — no aparece para tenants sin Red B2B). */}
