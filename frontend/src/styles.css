@@ -4273,7 +4273,10 @@ body.modal-open { overflow: hidden; }
 .u-config-split-340           { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; margin-bottom: 16px; }
 .u-p-0-0-16                   { padding: 0 0 16px; }
 .u-fw-700-fs-16               { font-weight: 700; font-size: 16px; }
-.u-config-tarjeta-row         { display: grid; grid-template-columns: 1fr 160px 110px; gap: 10px; align-items: center; }
+/* 2026-08-04 (task #304): 4ta columna auto para botón eliminar/confirmar
+   inline. Antes el layout tenía 3 columnas fijas (nombre + input + guardado)
+   — agregar el botón sin ampliar el grid rompía la alineación. */
+.u-config-tarjeta-row         { display: grid; grid-template-columns: 1fr 160px 110px auto; gap: 10px; align-items: center; }
 .u-config-sim-box             { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 16px; }
 .u-config-sim-title           { font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 10px; }
 .u-config-sim-total           { padding-top: 8px; border-top: 1px solid var(--hairline); margin-top: 4px; }

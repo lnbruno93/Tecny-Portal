@@ -202,9 +202,43 @@ function ComisionesPanel() {
   const [creating, setCreating] = useState(false);
   const [createErr, setCreateErr] = useState('');
 
+  // 2026-08-04 (task #304): eliminar tarjeta inline. Approach: PUT
+  // /cajas/:id con { es_tarjeta: false } en vez de DELETE real. La caja
+  // sigue existiendo (preserva histórico movimientos) pero desaparece del
+  // Cotizador porque el endpoint filtra WHERE es_tarjeta=true. Reversible
+  // desde Cajas > Config marcándola tarjeta de nuevo.
+  //
+  // Confirmación 2-step: `confirmingRemoveId` guarda el id de la fila en
+  // "modo confirmar" — click 1 pone el id, click 2 (mismo botón, ahora
+  // rojo) dispara. Auto-reset a los 4s si el user no confirma (evita
+  // dejarlo en confirm-mode indefinido).
+  const [confirmingRemoveId, setConfirmingRemoveId] = useState(null);
+  const [removingId, setRemovingId] = useState(null);
+  useEffect(() => {
+    if (confirmingRemoveId == null) return;
+    const t = setTimeout(() => setConfirmingRemoveId(null), 4000);
+    return () => clearTimeout(t);
+  }, [confirmingRemoveId]);
+
   const dirty =
     parseFloat(pctFinInput) !== Number(pctFinanciera) ||
     tarjetas.some(t => Number(t.pct) !== Number(t._original));
+
+  async function handleRemoveCard(id) {
+    if (removingId) return;
+    setRemovingId(id);
+    setSaveErr('');
+    try {
+      await cajasApi.updateCaja(id, { es_tarjeta: false });
+      setConfirmingRemoveId(null);
+      refetch();
+    } catch (e) {
+      setSaveErr(e?.message || 'No se pudo eliminar la tarjeta.');
+      setConfirmingRemoveId(null);
+    } finally {
+      setRemovingId(null);
+    }
+  }
 
   async function handleAddCard() {
     const cuotasN = parseInt(newCuotas, 10);
@@ -324,6 +358,8 @@ function ComisionesPanel() {
             <div className="stack u-gap-8">
               {tarjetas.map(t => {
                 const tDirty = Number(t.pct) !== Number(t._original);
+                const isConfirming = confirmingRemoveId === t.id;
+                const isRemoving = removingId === t.id;
                 return (
                   <div key={t.id} className="u-config-tarjeta-row">
                     <div className="u-fs-13-fw-600">{t.nombre}</div>
@@ -335,6 +371,7 @@ function ComisionesPanel() {
                         data-testid={`cotizador-pct-tarjeta-${t.id}`}
                         value={t.pct}
                         onChange={e => { setTarjetaPct(t.id, e.target.value); setSaveErr(''); setSavedOk(false); }}
+                        disabled={isRemoving}
                       />
                       <span className="addon u-color-accent-fw-700">%</span>
                     </div>
@@ -343,6 +380,36 @@ function ComisionesPanel() {
                         ? <>Guardado: <span className="mono">{Number(t._original).toFixed(1)}%</span></>
                         : <span className="mono">{Number(t._original).toFixed(1)}%</span>}
                     </span>
+                    {/* 2026-08-04 (task #304): botón eliminar con confirmación
+                        2-step inline. Click 1 → "¿Confirmar?" (4s timeout auto-
+                        reset). Click 2 → PUT es_tarjeta=false + refetch. NO
+                        DELETE real — la caja sigue en DB, solo desmarca es_tarjeta
+                        para que desaparezca del Cotizador (endpoint filtra WHERE
+                        es_tarjeta=true). Reversible desde Cajas > Config. */}
+                    {isConfirming ? (
+                      <button
+                        type="button"
+                        className="btn btn-danger btn-sm"
+                        onClick={() => handleRemoveCard(t.id)}
+                        disabled={isRemoving}
+                        title="Confirmar eliminación"
+                        data-testid={`cotizador-tarjeta-remove-confirm-${t.id}`}
+                      >
+                        {isRemoving ? '…' : '¿Confirmar?'}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        onClick={() => { setConfirmingRemoveId(t.id); setSaveErr(''); }}
+                        disabled={isRemoving}
+                        title="Eliminar tarjeta"
+                        aria-label={`Eliminar tarjeta ${t.nombre}`}
+                        data-testid={`cotizador-tarjeta-remove-${t.id}`}
+                      >
+                        <Icons.Trash size={14} />
+                      </button>
+                    )}
                   </div>
                 );
               })}
