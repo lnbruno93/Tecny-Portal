@@ -46,11 +46,22 @@ function _resolveExec(maybeClient, args) {
 async function ventasAgregadas(...allArgs) {
   const { exec, restArgs } = _resolveExec(allArgs[0], allArgs.slice(1));
   const [desde, hasta] = restArgs;
+  // 2026-08-04 (task #307, bug Lautaro Tek Haus): la `ganancia_usd`
+  // persistida en `ventas` es BRUTA — descuenta costo + comisión al
+  // vendedor pero NO la comisión del método de pago (Financiera 3%,
+  // tarjetas). El Dashboard KPI ya resta comision_total_metodos aparte,
+  // pero este helper alimenta el Resumen Mensual que exponía la bruta
+  // inflada. Fix: descontar acá en el mismo SELECT para consistencia.
+  // Sin migración — data en DB queda intacta, solo cambia el read.
   const { rows } = await exec.query(
     `SELECT
        COUNT(*) FILTER (WHERE estado <> 'cancelado')                                                      AS cant_ventas,
        COALESCE(SUM(total_usd)    FILTER (WHERE estado <> 'cancelado'), 0)                                AS ventas_usd,
-       COALESCE(SUM(ganancia_usd) FILTER (WHERE estado <> 'cancelado'), 0)                                AS ganancia_usd,
+       COALESCE(
+         SUM(ganancia_usd - COALESCE(comision_total_metodos, 0))
+           FILTER (WHERE estado <> 'cancelado'),
+         0
+       )                                                                                                  AS ganancia_usd,
        COALESCE(AVG(total_usd)    FILTER (WHERE estado <> 'cancelado' AND total_usd > 0), 0)              AS ticket_promedio_usd
      FROM ventas
      WHERE fecha BETWEEN $1 AND $2 AND deleted_at IS NULL`,

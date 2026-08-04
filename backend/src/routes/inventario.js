@@ -1331,6 +1331,11 @@ router.get('/productos/:id/historial', async (req, res, next) => {
         compra = rows[0] || null;
       }
 
+      // 2026-08-04 (task #307, bug Lautaro Tek Haus): restar
+      // `comision_total_metodos` de `ganancia_usd` para mostrar la ganancia
+      // NETA (con financiera 3% + tarjetas descontadas), consistente con
+      // la lista de ventas y el modal Editar Venta. Ver comentario en
+      // routes/ventas.js del mismo día para racional completo.
       const { rows: ventaRetail } = await client.query(`
         SELECT v.id             AS venta_id,
                v.fecha          AS fecha,
@@ -1338,7 +1343,9 @@ router.get('/productos/:id/historial', async (req, res, next) => {
                COALESCE(c.nombre, v.cliente_nombre) AS cliente_nombre,
                vi.precio_vendido AS precio_vendido,
                vi.moneda        AS moneda,
-               v.ganancia_usd   AS ganancia_usd,
+               ROUND((COALESCE(v.ganancia_usd, 0)
+                      - COALESCE(v.comision_total_metodos, 0))::numeric, 2)
+                                AS ganancia_usd,
                v.estado         AS estado
           FROM venta_items vi
           JOIN ventas v     ON v.id = vi.venta_id
