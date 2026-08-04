@@ -156,10 +156,15 @@ function useComisionesTenant() {
     setSavedTick(t => t + 1);
   }
 
+  // 2026-08-04 (task #303): refetch expuesto para que el caller pueda
+  // refrescar el listado tras crear una tarjeta nueva desde el modal
+  // ("+ Agregar tarjeta"). Bump del tick dispara el useEffect que re-fetchea.
+  const refetch = () => setSavedTick(t => t + 1);
+
   return {
     pctFinanciera, setPctFinanciera,
     tarjetas, setTarjetaPct,
-    loading, error, save,
+    loading, error, save, refetch,
   };
 }
 
@@ -175,7 +180,7 @@ function useComisionesTenant() {
 function ComisionesPanel() {
   const {
     pctFinanciera, tarjetas, setTarjetaPct,
-    loading, error, save,
+    loading, error, save, refetch,
   } = useComisionesTenant();
   const [pctFinInput, setPctFinInput] = useState('');
   useEffect(() => { setPctFinInput(String(pctFinanciera)); }, [pctFinanciera]);
@@ -183,9 +188,69 @@ function ComisionesPanel() {
   const [savedOk, setSavedOk] = useState(false);
   const [saveErr, setSaveErr] = useState('');
 
+  // 2026-08-04 (task #303): mini form inline "+ Agregar tarjeta" para evitar
+  // el jump a Cajas > Config cuando el user necesita agregar una tarjeta
+  // desde el Cotizador. Auto-genera el nombre "TC | N Cuota(s)" respetando
+  // la convention del regex `/(\d+)\s*cuota/i` que el Cotizador usa para
+  // extraer cuotas del label (ver comment de calculo.copyText más abajo).
+  // Cuotas más comunes en Tecny/AR: 1, 3, 6, 12, 18, 24.
+  const CUOTAS_OPCIONES = [1, 3, 6, 12, 18, 24];
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newCuotas, setNewCuotas] = useState('1');
+  const [newPct, setNewPct] = useState('');
+  const [newOrden, setNewOrden] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [createErr, setCreateErr] = useState('');
+
   const dirty =
     parseFloat(pctFinInput) !== Number(pctFinanciera) ||
     tarjetas.some(t => Number(t.pct) !== Number(t._original));
+
+  async function handleAddCard() {
+    const cuotasN = parseInt(newCuotas, 10);
+    const pctN = parseFloat(newPct);
+    const ordenN = newOrden === '' ? tarjetas.length : parseInt(newOrden, 10);
+    if (!Number.isFinite(cuotasN) || cuotasN < 1) {
+      setCreateErr('Elegí una cantidad de cuotas.'); return;
+    }
+    if (!Number.isFinite(pctN) || pctN < 0 || pctN > 100) {
+      setCreateErr('Porcentaje inválido (0-100).'); return;
+    }
+    if (!Number.isFinite(ordenN) || ordenN < 0) {
+      setCreateErr('Orden inválido.'); return;
+    }
+    // Auto-generar nombre respetando la convention `/(\d+)\s*cuota/i` que el
+    // Cotizador usa para extraer cuotas del label. Singular "Cuota" para N=1,
+    // plural "Cuotas" para N>1 (matchea la variante ya usada en producción
+    // por el tenant iPro: "TC | 1 Cuota", "TC | 3 Cuotas", "TC | 6 Cuotas").
+    const nombre = `TC | ${cuotasN} ${cuotasN === 1 ? 'Cuota' : 'Cuotas'}`;
+    setCreating(true); setCreateErr('');
+    try {
+      await cajasApi.createCaja({
+        nombre,
+        moneda: 'ARS',
+        es_tarjeta: true,
+        comision_pct: pctN,
+        orden: ordenN,
+      });
+      // Reset form + refetch para que la fila nueva aparezca.
+      setShowAddForm(false);
+      setNewCuotas('1');
+      setNewPct('');
+      setNewOrden('');
+      refetch();
+    } catch (e) {
+      // Backend puede rebotar por UNIQUE(nombre, tenant_id) — mensaje claro.
+      const msg = String(e?.message || '');
+      if (msg.includes('duplicate') || msg.toLowerCase().includes('ya existe')) {
+        setCreateErr(`Ya existe una tarjeta con nombre "${nombre}". Cambiá las cuotas o editá la existente.`);
+      } else {
+        setCreateErr(msg || 'No se pudo crear la tarjeta.');
+      }
+    } finally {
+      setCreating(false);
+    }
+  }
 
   async function handleSave() {
     const vFin = parseFloat(pctFinInput);
@@ -281,6 +346,102 @@ function ComisionesPanel() {
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* 2026-08-04 (task #303): mini form inline "+ Agregar tarjeta".
+              Colapsable — botón visible cuando cerrado, form cuando abierto.
+              Auto-cierra al crear exitosamente + refetch para mostrar la
+              fila nueva en la lista arriba. Cuotas dropdown + % input +
+              orden opcional (default = tarjetas.length). Nombre "TC | N
+              Cuota(s)" auto-generado desde el número de cuotas. */}
+          {!showAddForm ? (
+            <div className="u-mt-8">
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => { setShowAddForm(true); setCreateErr(''); }}
+                data-testid="cotizador-tarjeta-add-open"
+              >
+                <Icons.Plus size={14} /> Agregar tarjeta
+              </button>
+            </div>
+          ) : (
+            <div className="u-mt-8 card u-p-12 u-bg-surface-2">
+              <div className="u-fs-13-fw-600 u-mb-8">Nueva tarjeta</div>
+              <div className="stack u-gap-8">
+                <div className="row u-gap-8">
+                  <div className="field u-flex-1">
+                    <label className="field-label" htmlFor="cotiz-new-cuotas">Cuotas</label>
+                    <select
+                      id="cotiz-new-cuotas"
+                      className="input u-fs-13"
+                      value={newCuotas}
+                      onChange={e => { setNewCuotas(e.target.value); setCreateErr(''); }}
+                      disabled={creating}
+                      data-testid="cotizador-tarjeta-add-cuotas"
+                    >
+                      {CUOTAS_OPCIONES.map(n => (
+                        <option key={n} value={n}>{n} {n === 1 ? 'Cuota' : 'Cuotas'}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="field u-flex-1">
+                    <label className="field-label" htmlFor="cotiz-new-pct">Porcentaje (%)</label>
+                    <div className="input-group">
+                      <input
+                        id="cotiz-new-pct"
+                        type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
+                        step="0.1" min="0" max="100"
+                        className="input mono"
+                        placeholder="Ej: 11.5"
+                        value={newPct}
+                        onChange={e => { setNewPct(e.target.value); setCreateErr(''); }}
+                        disabled={creating}
+                        data-testid="cotizador-tarjeta-add-pct"
+                      />
+                      <span className="addon u-color-accent-fw-700">%</span>
+                    </div>
+                  </div>
+                  <div className="field u-flex-1">
+                    <label className="field-label" htmlFor="cotiz-new-orden">Orden</label>
+                    <input
+                      id="cotiz-new-orden"
+                      type="number" inputMode="numeric" onKeyDown={blockInvalidNumberKeys}
+                      step="1" min="0"
+                      className="input mono"
+                      placeholder={`Default: ${tarjetas.length}`}
+                      value={newOrden}
+                      onChange={e => { setNewOrden(e.target.value); setCreateErr(''); }}
+                      disabled={creating}
+                      data-testid="cotizador-tarjeta-add-orden"
+                    />
+                  </div>
+                </div>
+                <div className="muted tiny">
+                  Se creará como <span className="mono">"TC | {newCuotas} {parseInt(newCuotas, 10) === 1 ? 'Cuota' : 'Cuotas'}"</span> — marcada como tarjeta, moneda ARS.
+                </div>
+                {createErr && <div className="u-alert-neg">{createErr}</div>}
+                <div className="flex-row u-gap-8">
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={handleAddCard}
+                    disabled={creating || !newPct}
+                    data-testid="cotizador-tarjeta-add-submit"
+                  >
+                    {creating ? 'Creando…' : 'Crear tarjeta'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => { setShowAddForm(false); setCreateErr(''); }}
+                    disabled={creating}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>
