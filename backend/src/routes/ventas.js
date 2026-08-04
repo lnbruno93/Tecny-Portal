@@ -1447,11 +1447,29 @@ router.get('/', validate(queryVentasSchema, 'query'), async (req, res, next) => 
       });
 
       // Componer la respuesta en el orden devuelto por la query de paginación.
+      //
+      // 2026-08-04 (task #307, bug Lautaro Tek Haus): la `ganancia_usd`
+      // persistida en `ventas` es BRUTA — descuenta costo + comisión al
+      // vendedor por-item, pero NO descuenta la comisión del método de pago
+      // (Financiera 3%, tarjetas). El Dashboard KPI ya resta
+      // `comision_total_metodos` (línea 787) y el modal Editar Venta la
+      // resta en `computeVentaTotales` como "Ganancia real". El listado
+      // era el único que mostraba la bruta cruda → vendedor veía u$s101
+      // cuando la real era u$s85. Fix: restar acá post-SELECT para
+      // consistencia con el modal + dashboard sin migración.
+      //
+      // No aplica a B2B porque `ventas.comision_total_metodos` NO existe
+      // para movimientos_cc (los pagos B2B son cuenta corriente, sin
+      // procesadora de tarjeta / financiera).
       const data = pageRows
         .map(pr => {
           if (pr.origen === 'retail') {
             const v = retailById.get(pr.id);
-            return v ? { ...v, origen: 'retail' } : null;
+            if (!v) return null;
+            const bruta   = Number(v.ganancia_usd) || 0;
+            const comMet  = Number(v.comision_total_metodos) || 0;
+            const neta    = Math.round((bruta - comMet) * 100) / 100;
+            return { ...v, origen: 'retail', ganancia_usd: neta };
           }
           const r = b2bById.get(pr.id);
           return r ? mapB2B(r) : null;
