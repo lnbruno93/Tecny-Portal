@@ -26,8 +26,23 @@ const uuidLoose = z.string().regex(
   'clase_id inválido'
 );
 
+// 2026-08-04 (task #308, bug Lucas P0 data corruption):
+// **NINGÚN campo compartido con el UPDATE puede llevar `.default()` acá.**
+// Contexto histórico: originalmente `costo`, `precio_venta`, `cantidad`,
+// `costo_moneda`, `precio_moneda`, `tipo_carga`, `estado`, `trackear_stock`
+// llevaban `.default(...)` — cómodo para el POST create pero devastador para
+// `updateProductoSchema = baseProducto.strict().partial()`. Zod aplica
+// defaults ANTES del partial, así que un inline `PATCH { costo: 80 }` se
+// expandía a `{ costo: 80, precio_venta: 0, cantidad: 1, ... }`. El handler
+// hace `SET precio_venta = COALESCE(0, precio_venta)` → **el 0 gana** y
+// borraba el valor real en DB. El fix es aplicar los defaults SOLO en
+// `createProductoSchema` vía `.extend({...})` (ver más abajo) y en
+// `productoEnBulk`, dejando `baseProducto` sin defaults en los campos
+// compartidos. Mismo criterio ya existente para `condicion` / `oculto`
+// (comentario original que quedaba abajo — extendido acá a los campos
+// financieros donde el bug era mucho más grave).
 const baseProducto = z.object({
-  tipo_carga:     z.enum(['unitario', 'lote']).default('unitario'),
+  tipo_carga:     z.enum(['unitario', 'lote']),
   // F3.d-3: `clase` VARCHAR legacy se dropeó (migration 20260709000001).
   // El campo queda ACEPTADO opcional en el schema (deprecated) solo para
   // compat con clientes viejos que aún lo envíen — el handler lo ignora.
@@ -42,8 +57,8 @@ const baseProducto = z.object({
   categoria_id:   z.coerce.number().int().positive().optional().nullable(),
   deposito_id:    z.coerce.number().int().positive().optional().nullable(),
   proveedor:      z.string().trim().max(200).optional().nullable(),
-  costo:          z.coerce.number().min(0).default(0),
-  costo_moneda:   MonedaEnum.default('USD'),
+  costo:          z.coerce.number().min(0),
+  costo_moneda:   MonedaEnum,
   // 2026-08-01 (task #273, regla PO Lucas): TC del costo cuando la
   // moneda es local (ARS/UYU). Permite unificar el KPI valorizado en USD
   // y sumar todo el stock aunque se haya comprado en pesos. Refine abajo
@@ -51,11 +66,11 @@ const baseProducto = z.object({
   // (siempre null). Productos legacy sin TC (backfill NULL) siguen
   // aceptándose por backward compat — el KPI los excluye + warning en UI.
   costo_tc:       z.coerce.number().positive('El TC del costo debe ser mayor a 0').optional().nullable(),
-  precio_venta:   z.coerce.number().min(0).default(0),
-  precio_moneda:  MonedaEnum.default('USD'),
-  trackear_stock: z.boolean().default(true),
-  cantidad:       z.coerce.number().int().min(0).default(1),
-  estado:         z.enum(['disponible', 'vendido', 'en_tecnico', 'reservado']).default('disponible'),
+  precio_venta:   z.coerce.number().min(0),
+  precio_moneda:  MonedaEnum,
+  trackear_stock: z.boolean(),
+  cantidad:       z.coerce.number().int().min(0),
+  estado:         z.enum(['disponible', 'vendido', 'en_tecnico', 'reservado']),
   foto_data:      z.string().max(10_000_000).optional().nullable(),
   foto_nombre:    z.string().trim().max(255).optional().nullable(),
   // Enum cerrado: la auditoría detectó que un user con permiso `inventario`
@@ -71,14 +86,27 @@ const baseProducto = z.object({
   //   - `oculto`: sacar de la vista por defecto sin borrar; útil para limpiar
   //     la grilla manteniendo histórico de productos descontinuados.
   //
-  // Importante: NO usamos `.default()` acá porque al hacer `.partial()` para
-  // el UPDATE, Zod popularía estos campos cuando el cliente no los manda y
-  // romperíamos el patrón `COALESCE($i, col)` (siempre sobrescribiría). Los
-  // defaults reales viven en la columna DB (DEFAULT 'nuevo' / DEFAULT false)
-  // y se inyectan en el POST a mano (req.body.condicion ?? 'nuevo', etc).
+  // Sin `.default()` (mismo criterio que arriba). Los defaults reales viven
+  // en la columna DB (DEFAULT 'nuevo' / DEFAULT false) y se inyectan en el
+  // POST create manualmente (`.extend()` en createProductoSchema).
   condicion:      z.enum(['nuevo', 'usado']).optional(),
   oculto:         z.boolean().optional(),
 });
+
+// Defaults centralizados para create + bulk (NO update). Todo cambio acá se
+// propaga automáticamente a POST /productos y POST /productos/bulk. Un lugar
+// solo — evita el pattern anterior donde los defaults estaban dispersos en
+// el schema y se aplicaban en partial rompiendo COALESCE.
+const CREATE_DEFAULTS = {
+  tipo_carga:     z.enum(['unitario', 'lote']).default('unitario'),
+  costo:          z.coerce.number().min(0).default(0),
+  costo_moneda:   MonedaEnum.default('USD'),
+  precio_venta:   z.coerce.number().min(0).default(0),
+  precio_moneda:  MonedaEnum.default('USD'),
+  trackear_stock: z.boolean().default(true),
+  cantidad:       z.coerce.number().int().min(0).default(1),
+  estado:         z.enum(['disponible', 'vendido', 'en_tecnico', 'reservado']).default('disponible'),
+};
 
 // F3.d-3: la regla `unitarioCoherente` (celular sellado/usado + ipads
 // requieren cantidad=1) se movió del schema Zod al handler porque necesita
@@ -118,7 +146,10 @@ const costoTcRequeridoMsg = 'Costo en ARS/UYU requiere TC del costo (> 0) para c
 
 // .strict(): un campo extra (typo del cliente, JS field leak) da 400 explícito
 // en vez de pasar silencioso y persistirse sin querer / ser ignorado.
-const createProductoSchema = baseProducto.strict()
+// 2026-08-04 (task #308): defaults aplicados vía `.extend(CREATE_DEFAULTS)`
+// SOLO acá — no en `baseProducto` — para que `updateProductoSchema` (partial)
+// no los popule y rompa el pattern COALESCE.
+const createProductoSchema = baseProducto.extend(CREATE_DEFAULTS).strict()
   .refine(refineCostoTcRequerido, { message: costoTcRequeridoMsg, path: ['costo_tc'] });
 
 // Update partial: si el body toca `costo_moneda` o `costo`, revalidamos.
@@ -146,6 +177,9 @@ const updateProductoSchema = baseProducto.strict().partial()
 // (compra → venta → stock decrementado), rompiendo contabilidad.
 const productoEnBulk = baseProducto
   .omit({ foto_data: true, foto_nombre: true, foto_tipo: true })
+  // 2026-08-04 (task #308): re-aplicamos CREATE_DEFAULTS (baseProducto ya no
+  // los tiene). El estado se sobrescribe con literal('disponible') abajo.
+  .extend(CREATE_DEFAULTS)
   .extend({
     // 2026-07-27 (audit 07-25 Track B P2-6): estado restringido a
     // 'disponible' solamente. El bulk XLSX es SIEMPRE alta de stock nuevo
@@ -310,6 +344,7 @@ module.exports = {
   nombreSchema,
   nombresBulkSchema,
   baseProducto,                // se reutiliza desde proveedores (compra crea stock)
+  CREATE_DEFAULTS,             // task #308: defaults a re-aplicar en cualquier CREATE derivado
   createProductoSchema,
   updateProductoSchema,
   bulkProductoSchema,

@@ -1,5 +1,5 @@
 const { z } = require('zod');
-const { baseProducto } = require('./inventario');
+const { baseProducto, CREATE_DEFAULTS } = require('./inventario');
 const { fechaNoFutura, MonedaEnum } = require('./_common');
 
 const CATEGORIAS_CC       = ['VIP', 'A+', 'A-'];
@@ -19,8 +19,12 @@ const TIPOS_MOVIMIENTO_CC = ['compra', 'pago', 'devolucion', 'parte_de_pago', 'e
 // entrega mercadería (tipo=mercaderia_recibida). Reutiliza el mismo schema de
 // Inventario (sin foto). Espejo del que ya existe en schemas/proveedores.js
 // para las compras a proveedores.
+// 2026-08-04 (task #308): re-aplicamos CREATE_DEFAULTS (baseProducto ya no
+// los trae — los defaults viven solo en createProductoSchema/productoEnBulk
+// para no romper el partial de UPDATE inventario). Espejo de proveedores.
 const productoEnEntregaSchema = baseProducto
   .omit({ foto_data: true, foto_nombre: true, foto_tipo: true })
+  .extend(CREATE_DEFAULTS)
   .strict();
 
 // ─── Cliente CC ───────────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 const { z } = require('zod');
-const { baseProducto } = require('./inventario');
+const { baseProducto, CREATE_DEFAULTS } = require('./inventario');
 const { fechaNoFutura, MonedaEnum, requiereTc } = require('./_common');
 
 const createProveedorSchema = z.object({
@@ -31,8 +31,14 @@ const updateProveedorSchema = createProveedorSchema.partial().refine(
 //
 // 2026-07-11: categoria_id pasó a opcional (coherente con schemas/inventario.js).
 // Ver comentario allí sobre el sunset gradual de la dimensión "Colección".
+// 2026-08-04 (task #308): re-aplicamos CREATE_DEFAULTS (baseProducto ya no
+// los trae — los defaults viven solo en createProductoSchema/productoEnBulk
+// para no romper el partial de UPDATE). Sin este .extend, POST compra con
+// producto_stock rebota con 400 porque `tipo_carga`, `costo`, `precio_venta`,
+// `cantidad`, `estado`, `trackear_stock`, `*_moneda` no tendrían default.
 const productoEnCompraSchema = baseProducto
   .omit({ foto_data: true, foto_nombre: true, foto_tipo: true })
+  .extend(CREATE_DEFAULTS)
   .strict();
 
 // Ítem de una compra (productos comprados) — espejo de items_movimiento_cc (B2B)
