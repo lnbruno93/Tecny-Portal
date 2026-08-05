@@ -5186,3 +5186,9 @@ body.modal-open { overflow: hidden; }
 
 /* KPI grande estilo Resumen — número monoespaciado 32px + peso 700. */
 .u-fs-32-mono                  { font-family: var(--font-mono, ui-monospace, monospace); font-size: 32px; }
+
+/* task #311: separadores más amplios entre secciones de gráficos + gap
+   entre cards. u-mt-18-mb-8 se sentía apretado en vistas grandes; estos
+   dan más aire visual entre bloques. */
+.u-mt-24-mb-12                 { margin-top: 24px; margin-bottom: 12px; }
+.u-gap-20-flex-wrap            { gap: 20px; flex-wrap: wrap; }

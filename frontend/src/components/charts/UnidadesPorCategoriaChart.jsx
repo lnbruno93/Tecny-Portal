@@ -14,10 +14,15 @@ export default function UnidadesPorCategoriaChart({ data, loading = false }) {
     nombre:   `${r.emoji || '📦'} ${r.nombre}`,
     Unidades: Number(r.unidades) || 0,
   }));
+  // task #311: cuando no hay items evitamos mostrar "Top 0" (feo/confuso).
+  // El ChartCard ya muestra el emptyLabel — el subtítulo se mantiene neutral.
+  const subtitle = items.length > 0
+    ? `Top ${items.length} (retail + B2B)`
+    : 'Retail + B2B';
   return (
     <ChartCard
       title="Unidades vendidas por categoría"
-      subtitle={`Top ${items.length} (retail + B2B)`}
+      subtitle={subtitle}
       height="lg"
       loading={loading}
       empty={!loading && chartData.length === 0}
