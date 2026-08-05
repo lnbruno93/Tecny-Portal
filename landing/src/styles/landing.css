@@ -219,12 +219,13 @@
     radial-gradient(ellipse 600px 400px at 10% 40%, rgba(122,169,255,0.05), transparent 55%);
   pointer-events: none;
 }
-/* Hero stackeado 1-columna — texto arriba, mockup debajo con ancho
-   completo. 2026-08-05: probamos hero split 2-col (texto izq + mockup der)
-   pero el mockup necesita ancho generoso para que los KPI rows de 4
-   cards se lean bien; en la columna reducida quedaban cortados. Volvemos
-   al layout 1-col original. */
-.tecny-landing .hero-grid { position: relative; display: grid; grid-template-columns: 1fr; gap: 40px; max-width: 880px; }
+/* Hero stackeado 1-columna. 2026-08-05 (iter 3): agregado `margin: 0`
+   para forzar left-align. Antes con `max-width: 880px` + margin auto
+   heredado del `.wrap` padre, el hero-grid se centraba en el wrap
+   (que tiene 1200px) → borde izquierdo del hero 160px más adentro
+   que el eje izquierdo del resto de secciones. Con `margin: 0`
+   fuerza el hero a arrancar del mismo borde izquierdo que .s-head. */
+.tecny-landing .hero-grid { position: relative; display: grid; grid-template-columns: 1fr; gap: 40px; max-width: 880px; margin: 0; }
 .tecny-landing .eyebrow {
   display: inline-flex; align-items: center; gap: 8px;
   font-size: 12.5px; font-weight: 600; letter-spacing: 0.04em;
