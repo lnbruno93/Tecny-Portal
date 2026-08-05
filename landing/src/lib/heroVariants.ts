@@ -39,7 +39,7 @@ export interface CtaVariant {
 
 /** Variante default — usada en el server render + fallback si no matchea UTM. */
 export const DEFAULT_HERO: HeroVariant = {
-  eyebrow: 'El sistema para revendedores de tecnología',
+  eyebrow: 'Creado y pensado por vendedores de tecnología para vendedores de tecnología',
   headline: 'Tu negocio en una pantalla — sin planillas ni WhatsApp caóticos.',
   subheadline: null,
   blurb:
