@@ -2,27 +2,25 @@
  * ResumenGraficos — sub-vista dedicada a los 6 gráficos analíticos del
  * Resumen del mes (task #310, split UX post-feedback Lucas).
  *
- * Contexto: cuando task #309 agregó los 6 charts al Resumen, el scroll
- * quedó muy largo (KPIs + tablas + gráficos + top productos + top
- * vendedores). Lucas pidió separar los gráficos en su propia "hoja" con
- * link "Ver gráficos →" desde el Resumen. Este es esa hoja.
+ * Fase 1 (#309/#310): 6 gráficos + selector período inline.
+ * Fase 2 (#312): filtro por etiqueta + filtro por categoría + toggle
+ *   "Comparar vs mes anterior". Todos sync con URL query params.
  *
- * Ruta:   /resumen/graficos?periodo=YYYY-MM
+ * Ruta:   /resumen/graficos?periodo=YYYY-MM&etiqueta_id=N&clase_id=UUID&comparar=1
  * Cap:    resumen.ver (misma que /resumen)
  *
  * Data flow:
- *  · Lee `periodo` del query param (default: mes actual).
- *  · Fetch `/api/dashboard/resumen-mensual?periodo=X` una vez → alimenta
- *    B1, B2, B3, C1, A2 (todos vienen en `data.actual`).
- *  · A1 (serie 6 meses) tiene su propio fetch dentro del componente.
- *  · Sin comparativo — el comparativo mensual solo tiene sentido para
- *    KPIs numéricos, no para el análisis gráfico (ya se ve la evolución
- *    en A1 y las tendencias en las barras).
+ *  · Lee period + filtros del query param.
+ *  · Fetch `/api/dashboard/resumen-mensual?periodo=X&comparar_con=Y&...`
+ *    una vez → alimenta B1, B2, B3, C1, A2.
+ *  · A1 (serie 6 meses) tiene su propio fetch — recibe filtros por props.
+ *  · Comparativo: cuando ON, comparar_con = mes anterior (default: mismo mes).
+ *  · Fetch de catálogos (etiquetas + clases) al mount para poblar dropdowns.
  */
 
 import { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router';
-import { dashboard as dashApi } from '../lib/api';
+import { dashboard as dashApi, ventas as ventasApi, inventario as invApi } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 
 // Charts (task #309)
@@ -70,16 +68,41 @@ function labelMes(iso) {
 export default function ResumenGraficos() {
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
-  // Período del query param (deep-linkable). Default: mes actual.
-  const periodo = searchParams.get('periodo') || mesActualISO();
-  const backLink = `/resumen?periodo=${periodo}`;
+  // Período + filtros del query param (deep-linkables). Defaults sensatos.
+  const periodo    = searchParams.get('periodo')     || mesActualISO();
+  const etiquetaId = searchParams.get('etiqueta_id') || '';
+  const claseId    = searchParams.get('clase_id')    || '';
+  const comparar   = searchParams.get('comparar') === '1';
+  const backLink   = `/resumen?periodo=${periodo}`;
 
-  // task #311: setter que actualiza el URL query param. `replace: true` para
-  // que el browser back no acumule intermediates entre cambios de período.
-  function setPeriodo(nuevo) {
-    setSearchParams({ periodo: nuevo }, { replace: true });
+  // task #312: helper para actualizar múltiples params preservando los otros.
+  // Aceptamos '' o null para borrar un param específico.
+  function updateParams(patch) {
+    const next = new URLSearchParams(searchParams);
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === '' || v == null || v === false) next.delete(k);
+      else next.set(k, String(v));
+    }
+    setSearchParams(next, { replace: true });
   }
 
+  // Catálogos para dropdowns (fetch al mount, no cambia entre re-renders).
+  const [etiquetas, setEtiquetas] = useState([]);
+  const [clases,    setClases]    = useState([]);
+  useEffect(() => {
+    let alive = true;
+    Promise.all([
+      ventasApi.etiquetas().catch(() => []),
+      invApi.clases().catch(() => []),
+    ]).then(([etqs, clss]) => {
+      if (!alive) return;
+      setEtiquetas(Array.isArray(etqs) ? etqs : []);
+      setClases(Array.isArray(clss) ? clss : []);
+    });
+    return () => { alive = false; };
+  }, []);
+
+  // Data del período (+ comparado cuando toggle ON).
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
@@ -88,7 +111,12 @@ export default function ResumenGraficos() {
     let alive = true;
     setLoading(true);
     setError(null);
-    dashApi.resumenMensual({ periodo, comparar_con: periodo })  // mismo mes → sin delta
+    // Cuando comparar ON, comparar_con = mes anterior. Sino mismo mes (sin delta).
+    const compararCon = comparar ? mesOffsetISO(periodo, -1) : periodo;
+    const params = { periodo, comparar_con: compararCon };
+    if (etiquetaId) params.etiqueta_id = etiquetaId;
+    if (claseId)    params.clase_id    = claseId;
+    dashApi.resumenMensual(params)
       .then(res => { if (alive) { setData(res); setLoading(false); } })
       .catch(err => {
         if (!alive) return;
@@ -98,9 +126,11 @@ export default function ResumenGraficos() {
         setLoading(false);
       });
     return () => { alive = false; };
-  }, [periodo, toast]);
+  }, [periodo, etiquetaId, claseId, comparar, toast]);
 
-  const actual = data?.actual;
+  const actual    = data?.actual;
+  const comparado = data?.comparado;
+  const filtrosActivos = !!(etiquetaId || claseId);
 
   return (
     <div>
@@ -118,9 +148,8 @@ export default function ResumenGraficos() {
         </div>
       </div>
 
-      {/* task #311: selector de período inline (mismo pattern que /resumen).
-          Sync bidireccional con el URL query param para preservar
-          bookmarkability + browser back. */}
+      {/* task #311: selector de período inline. task #312: dropdowns +
+          toggle comparativo. Sync bidireccional con URL query params. */}
       <div className="card card-tight u-mb-16">
         <div className="flex-row u-gap-6-wrap-center">
           <span className="muted tiny u-mr-4">Período:</span>
@@ -131,9 +160,9 @@ export default function ResumenGraficos() {
                 className={'btn btn-sm ' + (activo ? 'btn-primary' : 'btn-ghost')}
                 onClick={() => {
                   const hoy = mesActualISO();
-                  if (p.v === 'este')   setPeriodo(hoy);
-                  else if (p.v === 'pasado') setPeriodo(mesOffsetISO(hoy, -1));
-                  else if (p.v === 'hace2')  setPeriodo(mesOffsetISO(hoy, -2));
+                  if (p.v === 'este')   updateParams({ periodo: hoy });
+                  else if (p.v === 'pasado') updateParams({ periodo: mesOffsetISO(hoy, -1) });
+                  else if (p.v === 'hace2')  updateParams({ periodo: mesOffsetISO(hoy, -2) });
                 }}>
                 {p.l}
               </button>
@@ -143,12 +172,65 @@ export default function ResumenGraficos() {
             <input
               type="month" className="input mono u-resumen-month-input"
               value={periodo}
-              onChange={e => setPeriodo(e.target.value)}
+              onChange={e => updateParams({ periodo: e.target.value })}
               max={mesActualISO()}
             />
           )}
           <span className="muted tiny u-ml-8">{labelMes(periodo)}</span>
         </div>
+
+        {/* task #312: segunda fila con filtros de composición + toggle comparativo. */}
+        <div className="flex-row u-gap-6-wrap-center u-mt-8">
+          <span className="muted tiny u-mr-4">Etiqueta:</span>
+          <select
+            className="input btn-sm"
+            value={etiquetaId}
+            onChange={e => updateParams({ etiqueta_id: e.target.value })}
+          >
+            <option value="">Todas</option>
+            {etiquetas.map(e => (
+              <option key={e.id} value={e.id}>{e.nombre}</option>
+            ))}
+          </select>
+
+          <span className="muted tiny u-mr-4 u-ml-8">Categoría:</span>
+          <select
+            className="input btn-sm"
+            value={claseId}
+            onChange={e => updateParams({ clase_id: e.target.value })}
+          >
+            <option value="">Todas</option>
+            {clases.map(c => (
+              <option key={c.id} value={c.id}>{c.emoji || '📦'} {c.nombre}</option>
+            ))}
+          </select>
+
+          <label className="u-flex-center-gap-8 u-ml-8 u-fs-13">
+            <input
+              type="checkbox"
+              checked={comparar}
+              onChange={e => updateParams({ comparar: e.target.checked ? '1' : '' })}
+            />
+            <span>Comparar vs mes anterior</span>
+          </label>
+
+          {filtrosActivos && (
+            <button
+              className="btn btn-sm btn-ghost u-ml-auto"
+              onClick={() => updateParams({ etiqueta_id: '', clase_id: '' })}
+              title="Quitar todos los filtros"
+            >
+              Limpiar filtros
+            </button>
+          )}
+        </div>
+
+        {filtrosActivos && (
+          <div className="muted tiny u-mt-8">
+            ⚠️ Con filtros activos, los <strong>egresos</strong> no se filtran
+            (son operativos generales). El margen neto puede aparecer distorsionado.
+          </div>
+        )}
       </div>
 
       {loading && <div className="empty">Cargando gráficos…</div>}
@@ -160,22 +242,35 @@ export default function ResumenGraficos() {
           <h3 className="u-mt-24-mb-12">Facturación y rentabilidad</h3>
           <div className="row u-gap-20-flex-wrap">
             <div className="u-flex-11-380">
-              <FacturacionEgresosChart hastaMes={periodo} meses={6} />
+              <FacturacionEgresosChart
+                hastaMes={periodo}
+                meses={6}
+                etiquetaId={etiquetaId || null}
+                claseId={claseId || null}
+              />
             </div>
             <div className="u-flex-1-1-220">
-              <MargenNetoCard margenActual={actual?.margen_neto_pct} />
+              <MargenNetoCard
+                margenActual={actual?.margen_neto_pct}
+                margenComparado={comparar ? comparado?.margen_neto_pct : null}
+              />
             </div>
           </div>
 
-          {/* Sección B — Composición de ventas */}
+          {/* Sección B — Composición de ventas.
+              Cuando etiqueta_id activo, ocultamos B2 (dona por etiqueta) porque
+              queda con 1 solo slice. Cuando clase_id activo, B1 y B3 muestran
+              solo esa categoría (1 barra) — igual se muestran para transparencia. */}
           <h3 className="u-mt-24-mb-12">Composición de ventas</h3>
           <div className="row u-gap-20-flex-wrap">
             <div className="u-flex-11-380">
               <UnidadesPorCategoriaChart data={actual?.ventas?.por_categoria} />
             </div>
-            <div className="u-flex-11-380">
-              <VentasPorEtiquetaChart data={actual?.ventas?.por_etiqueta} />
-            </div>
+            {!etiquetaId && (
+              <div className="u-flex-11-380">
+                <VentasPorEtiquetaChart data={actual?.ventas?.por_etiqueta} />
+              </div>
+            )}
           </div>
           <div className="row u-gap-20-flex-wrap">
             <div className="u-flex-11-380">

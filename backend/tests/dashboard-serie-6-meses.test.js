@@ -73,4 +73,32 @@ describe('GET /api/dashboard/serie-6-meses', () => {
     const r = await request(app).get('/api/dashboard/serie-6-meses?hasta=2026/06').set(auth());
     expect(r.status).toBe(400);
   });
+
+  // task #312: filtros opcionales etiqueta_id + clase_id.
+  it('acepta ?etiqueta_id=N y devuelve serie filtrada', async () => {
+    // Sin data específica, solo verificamos que no rebota + shape sigue OK.
+    const r = await request(app).get('/api/dashboard/serie-6-meses?meses=3&etiqueta_id=1').set(auth());
+    expect(r.status).toBe(200);
+    expect(r.body.data).toHaveLength(3);
+    for (const p of r.body.data) {
+      expect(typeof p.facturacion_usd).toBe('number');
+    }
+  });
+
+  it('rechaza etiqueta_id no numérico', async () => {
+    const r = await request(app).get('/api/dashboard/serie-6-meses?etiqueta_id=abc').set(auth());
+    expect(r.status).toBe(400);
+  });
+
+  it('rechaza clase_id que no es UUID', async () => {
+    const r = await request(app).get('/api/dashboard/serie-6-meses?clase_id=not-a-uuid').set(auth());
+    expect(r.status).toBe(400);
+  });
+
+  it('acepta clase_id UUID válido', async () => {
+    const uuid = '00000000-0000-0000-0000-000000000000';
+    const r = await request(app).get(`/api/dashboard/serie-6-meses?meses=2&clase_id=${uuid}`).set(auth());
+    expect(r.status).toBe(200);
+    expect(r.body.data).toHaveLength(2);
+  });
 });

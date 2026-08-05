@@ -41,14 +41,21 @@ const { hasCapability } = require('../middleware/requireCapability');
 // Acotamos a MAX_FETCHERS — al exceder, evictamos la entry más vieja (MRU
 // detrás por reinserción en cada acceso). 100 cubre ~8 años de pares mes
 // (12 × 8) × N tenants pequeños, suficiente para cualquier uso humano.
-// Cache scopeado por `${tenantId}|${periodoActual}|${periodoComparado}`.
+// Cache scopeado por `${tenantId}|${periodoActual}|${periodoComparado}|${etiquetaId}|${claseId}`.
 // El fetcher recibe la scopeKey, la parsea para extraer los componentes,
 // y ejecuta la query bajo withTenant para que RLS filtre por tenant.
+//
+// 2026-08-05 (task #312): scopeKey extendido con etiquetaId + claseId para
+// que combinaciones diferentes de filtros NO compartan cache. '_' = sin
+// filtro (más legible que empty string y evita colisión con IDs "").
 const cache = createTenantScopedCache({
   ...DASHBOARD_MENSUAL,
   fetcher: async (scopeKey) => {
-    const [tenantStr, periodoActual, periodoComparado] = scopeKey.split('|');
+    const [tenantStr, periodoActual, periodoComparado, etiquetaStr, claseStr] = scopeKey.split('|');
     const tenantId = Number(tenantStr);
+    const etiquetaId = etiquetaStr && etiquetaStr !== '_' ? Number(etiquetaStr) : null;
+    const claseId    = claseStr    && claseStr    !== '_' ? claseStr : null;
+    const opts = { etiquetaId, claseId };
     const { desde: dA, hasta: hA } = rangoMes(periodoActual);
     const { desde: dC, hasta: hC } = rangoMes(periodoComparado);
     // 2026-06-16 multi-tenant: ambos kpisDelPeriodo corren en UNA sola tx
@@ -56,8 +63,8 @@ const cache = createTenantScopedCache({
     // todas las tablas (ventas, venta_items, caja_movimientos, etc.).
     const { actual, comparado } = await db.withTenant(tenantId, async (client) => {
       const [actual, comparado] = await Promise.all([
-        kpisDelPeriodo(client, dA, hA),
-        kpisDelPeriodo(client, dC, hC),
+        kpisDelPeriodo(client, dA, hA, hA, opts),
+        kpisDelPeriodo(client, dC, hC, hC, opts),
       ]);
       return { actual, comparado };
     });
@@ -87,10 +94,19 @@ router.get('/resumen-mensual', async (req, res, next) => {
   try {
     const periodoActual    = req.query.periodo      || mesActual();
     const periodoComparado = req.query.comparar_con || mesAnterior(periodoActual);
+    // task #312: filtros opcionales.
+    const etiquetaId = req.query.etiqueta_id ? String(req.query.etiqueta_id) : '_';
+    const claseId    = req.query.clase_id    ? String(req.query.clase_id)    : '_';
     // Validación temprana: rangoMes lanza si el formato es inválido.
     rangoMes(periodoActual);
     rangoMes(periodoComparado);
-    const data = await cache.get(`${req.tenantId}|${periodoActual}|${periodoComparado}`);
+    if (etiquetaId !== '_' && !/^\d+$/.test(etiquetaId)) {
+      return res.status(400).json({ error: 'etiqueta_id debe ser un entero positivo' });
+    }
+    if (claseId !== '_' && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(claseId)) {
+      return res.status(400).json({ error: 'clase_id debe ser un UUID válido' });
+    }
+    const data = await cache.get(`${req.tenantId}|${periodoActual}|${periodoComparado}|${etiquetaId}|${claseId}`);
 
     // 2026-07-04 F5b (ver_ganancias): sin `ventas.ver_ganancias`, sacamos
     // `ganancia_usd` de los bloques `actual` y `comparado`. El frontend
@@ -126,9 +142,13 @@ const serie6mCache = createTenantScopedCache({
   ...DASHBOARD_MENSUAL,
   ttlSec: 300, // 5 min (serie temporal más estable que KPIs del mes actual)
   fetcher: async (scopeKey) => {
-    const [tenantStr, hastaStr, mesesStr] = scopeKey.split('|');
+    const [tenantStr, hastaStr, mesesStr, etiquetaStr, claseStr] = scopeKey.split('|');
     const tenantId = Number(tenantStr);
     const meses = Math.min(24, Math.max(1, Number(mesesStr) || 6));
+    // task #312: filtros opcionales — '_' = sin filtro.
+    const etiquetaId = etiquetaStr && etiquetaStr !== '_' ? Number(etiquetaStr) : null;
+    const claseId    = claseStr    && claseStr    !== '_' ? claseStr : null;
+    const opts = { etiquetaId, claseId };
     // Compone la lista de meses: [hasta, hasta-1, ..., hasta-(N-1)].
     const listaMeses = [];
     let cursor = hastaStr;
@@ -139,11 +159,16 @@ const serie6mCache = createTenantScopedCache({
     // Bundle liviano por mes: solo ventas.ventas_usd + ventas.ganancia_usd + egresos.total_usd.
     // NO usamos kpisDelPeriodo (más pesado: 11 helpers) — para 6 meses seríamos
     // 66 queries. Con este approach son 12 (2 × 6).
+    //
+    // 2026-08-05 (task #312): egresos NO se filtran por etiqueta/categoría
+    // (son operativos, no ligados a productos ni tags). Si hay filtros
+    // activos, egresos_usd sigue siendo global — el frontend debería
+    // mostrar warning "egresos no filtrables" para transparencia.
     const data = await db.withTenant(tenantId, async (client) => {
       return Promise.all(listaMeses.map(async (mes) => {
         const { desde, hasta } = rangoMes(mes);
         const [v, e] = await Promise.all([
-          ventasAgregadas(client, desde, hasta),
+          ventasAgregadas(client, desde, hasta, opts),
           egresosAgregados(client, desde, hasta),
         ]);
         const gananciaNeta = Number(v.ganancia_usd || 0) - Number(e.total_usd || 0);
@@ -163,11 +188,20 @@ router.get('/serie-6-meses', async (req, res, next) => {
   try {
     const hasta = req.query.hasta || mesActual();
     const meses = req.query.meses || '6';
+    // task #312: filtros opcionales.
+    const etiquetaId = req.query.etiqueta_id ? String(req.query.etiqueta_id) : '_';
+    const claseId    = req.query.clase_id    ? String(req.query.clase_id)    : '_';
     rangoMes(hasta);
     if (!/^\d{1,2}$/.test(String(meses)) || Number(meses) < 1 || Number(meses) > 24) {
       return res.status(400).json({ error: 'meses debe ser entero entre 1 y 24' });
     }
-    const bundle = await serie6mCache.get(`${req.tenantId}|${hasta}|${meses}`);
+    if (etiquetaId !== '_' && !/^\d+$/.test(etiquetaId)) {
+      return res.status(400).json({ error: 'etiqueta_id debe ser un entero positivo' });
+    }
+    if (claseId !== '_' && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(claseId)) {
+      return res.status(400).json({ error: 'clase_id debe ser un UUID válido' });
+    }
+    const bundle = await serie6mCache.get(`${req.tenantId}|${hasta}|${meses}|${etiquetaId}|${claseId}`);
 
     // 2026-08-05 (task #309): mismo criterio que resumen-mensual — sin
     // `ventas.ver_ganancias`, redactamos `ganancia_neta_usd` de cada punto

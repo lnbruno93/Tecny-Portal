@@ -45,14 +45,23 @@ function _resolveExec(maybeClient, args) {
 
 async function ventasAgregadas(...allArgs) {
   const { exec, restArgs } = _resolveExec(allArgs[0], allArgs.slice(1));
-  const [desde, hasta] = restArgs;
-  // 2026-08-04 (task #307, bug Lautaro Tek Haus): la `ganancia_usd`
-  // persistida en `ventas` es BRUTA — descuenta costo + comisión al
-  // vendedor pero NO la comisión del método de pago (Financiera 3%,
-  // tarjetas). El Dashboard KPI ya resta comision_total_metodos aparte,
-  // pero este helper alimenta el Resumen Mensual que exponía la bruta
-  // inflada. Fix: descontar acá en el mismo SELECT para consistencia.
-  // Sin migración — data en DB queda intacta, solo cambia el read.
+  const [desde, hasta, opts = {}] = restArgs;
+  const etiquetaId = opts.etiquetaId != null ? Number(opts.etiquetaId) : null;
+  const claseId    = opts.claseId    || null;
+  // 2026-08-04 (task #307): ganancia_usd persistida es BRUTA — descuenta
+  // costo + comisión al vendedor pero NO la comisión del método de pago
+  // (Financiera 3%, tarjetas). Descontamos comision_total_metodos acá para
+  // que Resumen Mensual y serie-6-meses tengan valores consistentes con el
+  // Dashboard KPI.
+  //
+  // 2026-08-05 (task #312): filtros opcionales etiquetaId + claseId. Cuando
+  // claseId presente, JOIN venta_items → productos (una venta con múltiples
+  // ítems de esa clase se cuenta 1 vez gracias a DISTINCT + subquery).
+  const params = [desde, hasta];
+  if (etiquetaId != null) params.push(etiquetaId);
+  if (claseId)            params.push(claseId);
+  const iEtq = etiquetaId != null ? params.indexOf(etiquetaId) + 1 : null;
+  const iCla = claseId    ? params.indexOf(claseId)    + 1 : null;
   const { rows } = await exec.query(
     `SELECT
        COUNT(*) FILTER (WHERE estado <> 'cancelado')                                                      AS cant_ventas,
@@ -63,9 +72,15 @@ async function ventasAgregadas(...allArgs) {
          0
        )                                                                                                  AS ganancia_usd,
        COALESCE(AVG(total_usd)    FILTER (WHERE estado <> 'cancelado' AND total_usd > 0), 0)              AS ticket_promedio_usd
-     FROM ventas
-     WHERE fecha BETWEEN $1 AND $2 AND deleted_at IS NULL`,
-    [desde, hasta]
+     FROM (
+       SELECT DISTINCT v.id, v.estado, v.total_usd, v.ganancia_usd, v.comision_total_metodos
+         FROM ventas v
+         ${claseId ? 'JOIN venta_items vi ON vi.venta_id = v.id JOIN productos p ON p.id = vi.producto_id' : ''}
+        WHERE v.fecha BETWEEN $1 AND $2 AND v.deleted_at IS NULL
+          ${etiquetaId != null ? `AND v.etiqueta_id = $${iEtq}::int` : ''}
+          ${claseId    ? `AND p.clase_id = $${iCla}::uuid` : ''}
+     ) sub`,
+    params
   );
   return {
     cant_ventas:         Number(rows[0].cant_ventas) || 0,
@@ -399,34 +414,51 @@ async function egresosAgregados(...allArgs) {
  * Retail: LEFT JOIN etiquetas para incluir ventas sin etiqueta ('Sin etiqueta').
  * B2B: aparece como una entrada más con etiqueta='B2B' para lectura unificada
  * en el gráfico dona del frontend.
+ *
+ * 2026-08-05 (task #312) — filtros opcionales:
+ *   · claseId: filtra retail por producto.clase_id (JOIN venta_items + productos).
+ *     También filtra B2B por clase_id del producto de sus items.
+ *   · etiquetaId: NO aplica acá (esta función AGRUPA por etiqueta; filtrar por
+ *     etiqueta específica dejaría el gráfico con 1 sola slice — el frontend
+ *     debería ocultar el gráfico en ese caso). Se ignora si viene.
+ *
  * Devuelve [{ etiqueta, color, n, usd }] ordenado por usd desc.
  */
 async function ventasPorEtiqueta(...allArgs) {
   const { exec, restArgs } = _resolveExec(allArgs[0], allArgs.slice(1));
-  const [desde, hasta] = restArgs;
+  const [desde, hasta, opts = {}] = restArgs;
+  const claseId = opts.claseId || null;
+  // Retail: cuando hay claseId, JOIN venta_items → productos y filtramos por
+  // p.clase_id. La venta se cuenta si TIENE al menos un ítem de esa categoría.
   const { rows: retail } = await exec.query(
     `SELECT COALESCE(e.nombre, 'Sin etiqueta') AS etiqueta,
             COALESCE(e.color, '#94a3b8')        AS color,
-            COUNT(*)::int                       AS n,
-            COALESCE(SUM(v.total_usd), 0)::numeric AS usd
+            COUNT(DISTINCT v.id)::int           AS n,
+            COALESCE(SUM(DISTINCT v.total_usd), 0)::numeric AS usd
        FROM ventas v
        LEFT JOIN etiquetas e ON e.id = v.etiqueta_id
+       ${claseId ? 'JOIN venta_items vi ON vi.venta_id = v.id JOIN productos p ON p.id = vi.producto_id' : ''}
       WHERE v.fecha BETWEEN $1 AND $2
         AND v.deleted_at IS NULL AND v.estado <> 'cancelado'
+        ${claseId ? 'AND p.clase_id = $3::uuid' : ''}
       GROUP BY 1, 2
       ORDER BY 4 DESC`,
-    [desde, hasta]
+    claseId ? [desde, hasta, claseId] : [desde, hasta]
   );
   const { rows: b2b } = await exec.query(
-    `SELECT COUNT(*)::int                       AS n,
+    `SELECT COUNT(DISTINCT m.id)::int                       AS n,
             COALESCE(SUM((
               SELECT SUM(i.valor) FROM items_movimiento_cc i
+               ${claseId ? 'JOIN productos p2 ON p2.id = i.producto_id' : ''}
                WHERE i.movimiento_cc_id = m.id AND i.devuelto_at IS NULL
+                 ${claseId ? 'AND p2.clase_id = $3::uuid' : ''}
             )), 0)::numeric                     AS usd
        FROM movimientos_cc m
+       ${claseId ? 'JOIN items_movimiento_cc mi ON mi.movimiento_cc_id = m.id JOIN productos p ON p.id = mi.producto_id' : ''}
       WHERE m.fecha BETWEEN $1 AND $2
-        AND m.deleted_at IS NULL AND m.tipo = 'compra'`,
-    [desde, hasta]
+        AND m.deleted_at IS NULL AND m.tipo = 'compra'
+        ${claseId ? 'AND p.clase_id = $3::uuid' : ''}`,
+    claseId ? [desde, hasta, claseId] : [desde, hasta]
   );
   const out = retail.map(r => ({
     etiqueta: r.etiqueta,
@@ -444,12 +476,24 @@ async function ventasPorEtiqueta(...allArgs) {
 /**
  * Unidades vendidas por CATEGORÍA (clase_id). Combina retail + B2B.
  * Devuelve [{ clase_id, nombre, emoji, unidades, usd }] Top 20 por unidades.
+ *
+ * 2026-08-05 (task #312) — filtros opcionales:
+ *   · etiquetaId: filtra retail por v.etiqueta_id. B2B NO tiene etiquetas
+ *     → cuando se aplica etiquetaId, B2B se excluye del resultado.
+ *   · claseId: filtra ítems por p.clase_id. Deja el gráfico con 1 sola
+ *     barra — el frontend debería ocultarlo/reemplazarlo en ese caso.
  */
 async function unidadesPorCategoria(...allArgs) {
   const { exec, restArgs } = _resolveExec(allArgs[0], allArgs.slice(1));
-  const [desde, hasta] = restArgs;
-  // Retail: agrupamos por clase_id del producto vendido (JOIN productos).
-  // Ítems manuales sin producto_id → clase_id NULL → 'Sin categoría'.
+  const [desde, hasta, opts = {}] = restArgs;
+  const etiquetaId = opts.etiquetaId != null ? Number(opts.etiquetaId) : null;
+  const claseId    = opts.claseId    || null;
+  // Retail
+  const retailParams = [desde, hasta];
+  if (etiquetaId != null) retailParams.push(etiquetaId);
+  if (claseId)            retailParams.push(claseId);
+  const iEtq = etiquetaId != null ? retailParams.indexOf(etiquetaId) + 1 : null;
+  const iCla = claseId    ? retailParams.indexOf(claseId)    + 1 : null;
   const { rows: retail } = await exec.query(
     `SELECT p.clase_id                            AS clase_id,
             COUNT(vi.id)::int                     AS unidades,
@@ -459,11 +503,14 @@ async function unidadesPorCategoria(...allArgs) {
        LEFT JOIN productos p ON p.id = vi.producto_id
       WHERE v.fecha BETWEEN $1 AND $2
         AND v.deleted_at IS NULL AND v.estado <> 'cancelado'
+        ${etiquetaId != null ? `AND v.etiqueta_id = $${iEtq}::int` : ''}
+        ${claseId    ? `AND p.clase_id = $${iCla}::uuid` : ''}
       GROUP BY p.clase_id`,
-    [desde, hasta]
+    retailParams
   );
-  // B2B: items_movimiento_cc.producto_id → productos.clase_id.
-  const { rows: b2b } = await exec.query(
+  // B2B: si hay etiquetaId, B2B se excluye (los movimientos_cc no tienen
+  // etiqueta_id — retornamos array vacío).
+  const b2b = etiquetaId != null ? [] : (await exec.query(
     `SELECT p.clase_id                            AS clase_id,
             COUNT(i.id)::int                      AS unidades,
             COALESCE(SUM(i.valor), 0)::numeric    AS usd
@@ -473,9 +520,10 @@ async function unidadesPorCategoria(...allArgs) {
       WHERE m.fecha BETWEEN $1 AND $2
         AND m.deleted_at IS NULL AND m.tipo = 'compra'
         AND i.devuelto_at IS NULL
+        ${claseId ? 'AND p.clase_id = $3::uuid' : ''}
       GROUP BY p.clase_id`,
-    [desde, hasta]
-  );
+    claseId ? [desde, hasta, claseId] : [desde, hasta]
+  )).rows;
   // Lookup nombres.
   const claseIds = [...new Set([...retail, ...b2b].map(r => r.clase_id).filter(Boolean))];
   let clases = new Map();
@@ -519,23 +567,46 @@ async function unidadesPorCategoria(...allArgs) {
  * Ventas por DÍA del mes (retail + B2B combinado). Devuelve array denso
  * (todos los días del período, con 0 cuando no hubo). Facilita gráfico
  * de barras estilo EstadísticasNube (screenshot Lucas).
+ *
+ * 2026-08-05 (task #312) — filtros opcionales:
+ *   · etiquetaId: filtra retail por v.etiqueta_id. B2B se excluye.
+ *   · claseId: filtra ambos (retail via venta_items, B2B via items_movimiento_cc)
+ *     por producto.clase_id. Días sin ventas de esa categoría quedan en 0.
  */
 async function ventasPorDia(...allArgs) {
   const { exec, restArgs } = _resolveExec(allArgs[0], allArgs.slice(1));
-  const [desde, hasta] = restArgs;
+  const [desde, hasta, opts = {}] = restArgs;
+  const etiquetaId = opts.etiquetaId != null ? Number(opts.etiquetaId) : null;
+  const claseId    = opts.claseId    || null;
+  // Params dinámicos: siempre desde/hasta ($1, $2). Etiqueta y clase son
+  // opcionales — solo se agregan cuando están presentes.
+  const params = [desde, hasta];
+  if (etiquetaId != null) params.push(etiquetaId);
+  if (claseId)            params.push(claseId);
+  const iEtq = etiquetaId != null ? params.indexOf(etiquetaId) + 1 : null;
+  const iCla = claseId    ? params.indexOf(claseId)    + 1 : null;
+  // Cuando hay claseId, JOIN venta_items → productos. COUNT(DISTINCT v.id)
+  // porque una venta con 2 items de la misma clase debe contar 1 vez.
+  // Cuando hay etiquetaId, B2B queda excluido (WHERE 1=0).
   const { rows } = await exec.query(
     `WITH retail AS (
-       SELECT v.fecha::date AS dia, COUNT(*)::int AS n_retail
+       SELECT v.fecha::date AS dia, COUNT(DISTINCT v.id)::int AS n_retail
          FROM ventas v
+         ${claseId ? 'JOIN venta_items vi ON vi.venta_id = v.id JOIN productos p ON p.id = vi.producto_id' : ''}
         WHERE v.fecha BETWEEN $1 AND $2
           AND v.deleted_at IS NULL AND v.estado <> 'cancelado'
+          ${etiquetaId != null ? `AND v.etiqueta_id = $${iEtq}::int` : ''}
+          ${claseId    ? `AND p.clase_id = $${iCla}::uuid` : ''}
         GROUP BY v.fecha::date
      ),
      b2b AS (
-       SELECT m.fecha::date AS dia, COUNT(*)::int AS n_b2b
+       SELECT m.fecha::date AS dia, COUNT(DISTINCT m.id)::int AS n_b2b
          FROM movimientos_cc m
+         ${claseId ? 'JOIN items_movimiento_cc mi ON mi.movimiento_cc_id = m.id JOIN productos p ON p.id = mi.producto_id' : ''}
         WHERE m.fecha BETWEEN $1 AND $2
           AND m.deleted_at IS NULL AND m.tipo = 'compra'
+          ${etiquetaId != null ? 'AND 1 = 0' : ''}
+          ${claseId    ? `AND p.clase_id = $${iCla}::uuid` : ''}
         GROUP BY m.fecha::date
      ),
      dias AS (
@@ -547,7 +618,7 @@ async function ventasPorDia(...allArgs) {
        LEFT JOIN retail r ON r.dia = d.dia
        LEFT JOIN b2b    b ON b.dia = d.dia
       ORDER BY d.dia`,
-    [desde, hasta]
+    params
   );
   return rows.map(r => ({
     dia: r.dia.toISOString ? r.dia.toISOString().slice(0, 10) : String(r.dia).slice(0, 10),
@@ -570,7 +641,11 @@ async function ventasPorDia(...allArgs) {
  */
 async function kpisDelPeriodo(...allArgs) {
   const { exec, restArgs } = _resolveExec(allArgs[0], allArgs.slice(1));
-  const [desde, hasta, fechaCorte = hasta] = restArgs;
+  // 2026-08-05 (task #312): 4to arg opcional `opts` con { etiquetaId, claseId }
+  // se propaga a los helpers de composición (por_etiqueta, por_categoria,
+  // por_dia) + a ventasAgregadas. Los demás helpers (topProductos, etc.) NO
+  // aceptan filtros por ahora — el listado top sigue global.
+  const [desde, hasta, fechaCorte = hasta, opts = {}] = restArgs;
   // 2026-08-05 (task #309): 3 helpers nuevos para gráficos del Resumen —
   // corren en paralelo con los del bundle original (sin costo latencia).
   const [
@@ -578,7 +653,7 @@ async function kpisDelPeriodo(...allArgs) {
     cajas, deudaCC, deudaProv, egresos,
     porEtiqueta, porCategoria, porDia,
   ] = await Promise.all([
-    ventasAgregadas(exec, desde, hasta),
+    ventasAgregadas(exec, desde, hasta, opts),
     topProductos(exec, desde, hasta),
     topVendedores(exec, desde, hasta),
     pagosPorMetodo(exec, desde, hasta),
@@ -586,9 +661,9 @@ async function kpisDelPeriodo(...allArgs) {
     deudaCCClientes(exec, fechaCorte),
     deudaProveedores(exec, fechaCorte),
     egresosAgregados(exec, desde, hasta),
-    ventasPorEtiqueta(exec, desde, hasta),
-    unidadesPorCategoria(exec, desde, hasta),
-    ventasPorDia(exec, desde, hasta),
+    ventasPorEtiqueta(exec, desde, hasta, opts),
+    unidadesPorCategoria(exec, desde, hasta, opts),
+    ventasPorDia(exec, desde, hasta, opts),
   ]);
 
   // Margen neto % = (ganancia_usd − egresos.total_usd) / ventas_usd × 100.
