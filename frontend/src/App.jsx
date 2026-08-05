@@ -81,7 +81,8 @@ const RedB2BOperacionDetalle   = lazy(() => import('./screens/RedB2BOperacionDet
 // como named export `RedB2BConfigContent` que el hub usa dentro del tab Configuración.
 // MOCKUP — pantalla de preview del nuevo modelo de permisos (Rol + Override).
 const Capital    = lazy(() => import('./screens/Capital'));
-const Resumen    = lazy(() => import('./screens/Resumen'));
+const Resumen         = lazy(() => import('./screens/Resumen'));
+const ResumenGraficos = lazy(() => import('./screens/ResumenGraficos'));
 // (Nota: Alertas ahora vive como tab dentro de Config.jsx, no como ruta propia)
 const Conciliacion = lazy(() => import('./screens/Conciliacion'));
 const Cambios    = lazy(() => import('./screens/Cambios'));
@@ -353,6 +354,14 @@ export default function App() {
                   <Route path="/resumen" element={
                     <RequirePermission cap="resumen.ver">
                       <ErrorBoundary><Resumen /></ErrorBoundary>
+                    </RequirePermission>
+                  } />
+                  {/* task #310 (split UX): sub-ruta hija con la vista de
+                      gráficos analíticos. Misma cap que Resumen; el link
+                      "Ver gráficos" en el header de /resumen lleva acá. */}
+                  <Route path="/resumen/graficos" element={
+                    <RequirePermission cap="resumen.ver">
+                      <ErrorBoundary><ResumenGraficos /></ErrorBoundary>
                     </RequirePermission>
                   } />
                   <Route path="/conciliacion" element={
