@@ -940,6 +940,9 @@ export const dashboard = {
   // Resumen mensual con comparativo. params: { periodo, comparar_con } (YYYY-MM).
   // Devuelve { actual, comparado, generado_en } — el delta % lo calcula el front.
   resumenMensual: (params = {}) => api('/api/dashboard/resumen-mensual?' + new URLSearchParams(params)),
+  // task #309: serie mensual liviana (ventas / egresos / ganancia neta)
+  // para el gráfico A1 del Resumen. params: { hasta: 'YYYY-MM', meses: 6 }.
+  serie6Meses:   (params = {}) => api('/api/dashboard/serie-6-meses?'   + new URLSearchParams(params)),
 };
 
 export const conciliacion = {

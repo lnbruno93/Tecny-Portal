@@ -24,7 +24,7 @@ const db = require('../config/database');
 // fetcher> + LRU + factory ahora vive en `createTenantScopedCache`.
 const { createTenantScopedCache } = require('../lib/cacheTtl');
 const { DASHBOARD_MENSUAL } = require('../lib/cacheConfig');
-const { kpisDelPeriodo, rangoMes, mesAnterior } = require('../lib/dashboardMensual');
+const { kpisDelPeriodo, rangoMes, mesAnterior, ventasAgregadas, egresosAgregados } = require('../lib/dashboardMensual');
 const { hasCapability } = require('../middleware/requireCapability');
 
 // Caché de funciones por (tenant, periodo, comparado). Cada llamada al endpoint
@@ -105,6 +105,81 @@ router.get('/resumen-mensual', async (req, res, next) => {
       });
     }
     res.json(data);
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    next(err);
+  }
+});
+
+// 2026-08-05 (task #309): serie mensual liviana para el gráfico A1
+// (Facturación vs Egresos vs Ganancia neta últimos N meses).
+//
+// Query params:
+//   - `meses`  (default: 6, max: 24) — cuántos meses hacia atrás incluir.
+//   - `hasta`  (default: mes actual) — mes final de la serie (YYYY-MM).
+//
+// Cache: TTL 5 min per-tenant per-rango. Los meses cerrados no cambian, el
+// mes actual cambia poco entre requests dentro de esa ventana.
+// Cap de meses (24) es defense-in-depth: sin cap, un cliente podría pedir
+// 10000 y hacer 10000 queries. En prod razonable 6-12; UI por ahora usa 6.
+const serie6mCache = createTenantScopedCache({
+  ...DASHBOARD_MENSUAL,
+  ttlSec: 300, // 5 min (serie temporal más estable que KPIs del mes actual)
+  fetcher: async (scopeKey) => {
+    const [tenantStr, hastaStr, mesesStr] = scopeKey.split('|');
+    const tenantId = Number(tenantStr);
+    const meses = Math.min(24, Math.max(1, Number(mesesStr) || 6));
+    // Compone la lista de meses: [hasta, hasta-1, ..., hasta-(N-1)].
+    const listaMeses = [];
+    let cursor = hastaStr;
+    for (let i = 0; i < meses; i++) {
+      listaMeses.unshift(cursor); // insert al principio → orden cronológico ascendente
+      cursor = mesAnterior(cursor);
+    }
+    // Bundle liviano por mes: solo ventas.ventas_usd + ventas.ganancia_usd + egresos.total_usd.
+    // NO usamos kpisDelPeriodo (más pesado: 11 helpers) — para 6 meses seríamos
+    // 66 queries. Con este approach son 12 (2 × 6).
+    const data = await db.withTenant(tenantId, async (client) => {
+      return Promise.all(listaMeses.map(async (mes) => {
+        const { desde, hasta } = rangoMes(mes);
+        const [v, e] = await Promise.all([
+          ventasAgregadas(client, desde, hasta),
+          egresosAgregados(client, desde, hasta),
+        ]);
+        const gananciaNeta = Number(v.ganancia_usd || 0) - Number(e.total_usd || 0);
+        return {
+          mes,
+          facturacion_usd: Number(v.ventas_usd || 0),
+          egresos_usd:     Number(e.total_usd || 0),
+          ganancia_neta_usd: Math.round(gananciaNeta * 100) / 100,
+        };
+      }));
+    });
+    return { data, generado_en: new Date().toISOString() };
+  },
+});
+
+router.get('/serie-6-meses', async (req, res, next) => {
+  try {
+    const hasta = req.query.hasta || mesActual();
+    const meses = req.query.meses || '6';
+    rangoMes(hasta);
+    if (!/^\d{1,2}$/.test(String(meses)) || Number(meses) < 1 || Number(meses) > 24) {
+      return res.status(400).json({ error: 'meses debe ser entero entre 1 y 24' });
+    }
+    const bundle = await serie6mCache.get(`${req.tenantId}|${hasta}|${meses}`);
+
+    // 2026-08-05 (task #309): mismo criterio que resumen-mensual — sin
+    // `ventas.ver_ganancias`, redactamos `ganancia_neta_usd` de cada punto
+    // de la serie. El frontend graficará solo facturacion vs egresos.
+    const canSeeGanancias = await hasCapability(req.user, 'ventas.ver_ganancias');
+    if (!canSeeGanancias) {
+      return res.json({
+        ...bundle,
+        data: bundle.data.map(({ ganancia_neta_usd, ...rest }) => rest),
+      });
+    }
+    res.json(bundle);
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     next(err);
