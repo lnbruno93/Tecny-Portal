@@ -5209,3 +5209,13 @@ body.modal-open { overflow: hidden; }
   border-color: var(--border-strong);
   box-shadow: var(--shadow-md);
 }
+/* task #315 (2026-08-05): iteración 4 del spacing. El fix #314 resolvió
+   el gap horizontal entre cards side-by-side, pero cuando hay 2 charts-row
+   apilados verticalmente (ej: sección "Composición de ventas" tiene row 1
+   con "Unidades + Etiqueta" y row 2 con "Facturación") quedaban pegados
+   verticalmente porque `gap` de flex sólo aplica entre hijos, no entre
+   siblings. Adjacent-sibling selector: sólo aplica al 2do charts-row en
+   adelante, no rompe el layout cuando hay uno solo (secciones A y C). */
+.charts-row + .charts-row {
+  margin-top: 40px;
+}
