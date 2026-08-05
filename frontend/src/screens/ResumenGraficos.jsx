@@ -240,7 +240,7 @@ export default function ResumenGraficos() {
         <>
           {/* Sección A — Facturación y rentabilidad */}
           <h3 className="u-mt-32-mb-12">Facturación y rentabilidad</h3>
-          <div className="row u-gap-32-flex-wrap">
+          <div className="row charts-row">
             <div className="u-flex-11-380">
               <FacturacionEgresosChart
                 hastaMes={periodo}
@@ -262,7 +262,7 @@ export default function ResumenGraficos() {
               queda con 1 solo slice. Cuando clase_id activo, B1 y B3 muestran
               solo esa categoría (1 barra) — igual se muestran para transparencia. */}
           <h3 className="u-mt-32-mb-12">Composición de ventas</h3>
-          <div className="row u-gap-32-flex-wrap">
+          <div className="row charts-row">
             <div className="u-flex-11-380">
               <UnidadesPorCategoriaChart data={actual?.ventas?.por_categoria} />
             </div>
@@ -272,7 +272,7 @@ export default function ResumenGraficos() {
               </div>
             )}
           </div>
-          <div className="row u-gap-32-flex-wrap">
+          <div className="row charts-row">
             <div className="u-flex-11-380">
               <FacturacionPorCategoriaChart data={actual?.ventas?.por_categoria} />
             </div>
@@ -280,7 +280,7 @@ export default function ResumenGraficos() {
 
           {/* Sección C — Actividad diaria */}
           <h3 className="u-mt-32-mb-12">Actividad diaria</h3>
-          <div className="row u-gap-32-flex-wrap">
+          <div className="row charts-row">
             <div className="u-flex-11-380">
               <VentasPorDiaChart data={actual?.ventas?.por_dia} />
             </div>
