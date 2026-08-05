@@ -259,7 +259,10 @@
    Hero.astro para el contexto de diseño. */
 .tecny-landing .portal {
   display: grid; grid-template-columns: 210px 1fr;
-  min-height: 720px; position: relative;
+  position: relative;
+  /* Sin min-height: el mockup crece con su contenido. Antes tenía 720px
+     fijo, que dejaba un enorme espacio vacío en el sidebar cuando el main
+     no llegaba a esa altura (reporte Lucas 2026-08-05). */
 }
 .tecny-landing .portal-main { display: flex; flex-direction: column; }
 
@@ -285,20 +288,24 @@
 .tecny-landing .side-body { flex: 1; overflow-y: hidden; padding-top: 8px; }
 /* Fade-out en el bottom del side-body para indicar visualmente que hay
    más items debajo (patrón UX cuando el sidebar es más largo que el
-   viewport). Sugiere "hay scroll" sin necesitar scrollbar. */
+   viewport). Sugiere "hay scroll" sin necesitar scrollbar.
+   Sin max-height: dejamos que side-body se estire con flex:1 hasta llenar
+   el sidebar (que a su vez matchea el alto del main por CSS grid). El
+   mask-image se aplica sobre TODO el body — como los items reales exceden
+   el espacio disponible por la altura del main, siempre queda un fade
+   auténtico al final. */
 .tecny-landing .side-body.side-body-fade {
-  max-height: 460px;
-  -webkit-mask-image: linear-gradient(to bottom, black 82%, transparent 100%);
-  mask-image: linear-gradient(to bottom, black 82%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 88%, transparent 100%);
+  mask-image: linear-gradient(to bottom, black 88%, transparent 100%);
 }
 .tecny-landing .side-cat {
   font-size: 8.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
-  color: var(--dim); padding: 12px 10px 4px;
+  color: var(--dim); padding: 9px 10px 3px;
 }
 .tecny-landing .side-item {
   display: flex; align-items: center; gap: 8px;
-  padding: 5px 10px; margin-bottom: 1px; border-radius: 6px;
-  font-size: 11.5px; font-weight: 500; color: var(--text-2);
+  padding: 4px 10px; margin-bottom: 1px; border-radius: 6px;
+  font-size: 11px; font-weight: 500; color: var(--text-2);
 }
 .tecny-landing .side-item .ico { width: 12px; height: 12px; border-radius: 3px; background: rgba(255,255,255,0.08); flex-shrink: 0; }
 .tecny-landing .side-item.active { background: var(--surface-2); color: var(--text); font-weight: 600; }
@@ -346,17 +353,21 @@
 }
 .tecny-landing .bell { width: 26px; height: 26px; border-radius: 6px; background: rgba(255,255,255,0.04); }
 
-/* Main content */
-.tecny-landing .portal .main { padding: 24px 28px; }
-.tecny-landing .page-title { font-size: 22px; font-weight: 700; letter-spacing: -0.015em; margin: 0 0 4px; }
-.tecny-landing .page-sub { font-size: 12.5px; color: var(--muted); margin-bottom: 16px; }
+/* Main content — compactado 2026-08-05 tras reporte "queda LARGUÍSIMO" de
+   Lucas. Antes: padding 24×28, section-h margin-top 22px, KPIs padding
+   12×14. Ahora todo bajado ~25% para que el mockup sea denso sin sacar
+   contenido. Igual entra en pantalla completa desktop, y en mobile stackea
+   como antes por las media queries. */
+.tecny-landing .portal .main { padding: 18px 22px 22px; }
+.tecny-landing .page-title { font-size: 20px; font-weight: 700; letter-spacing: -0.015em; margin: 0 0 3px; }
+.tecny-landing .page-sub { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
 .tecny-landing .page-sub .link { color: var(--accent); margin-left: 8px; font-weight: 500; }
 
 .tecny-landing .period-card {
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: 10px; padding: 12px 16px; margin-bottom: 20px;
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  font-size: 11.5px;
+  border-radius: 9px; padding: 9px 14px; margin-bottom: 14px;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  font-size: 11px;
 }
 .tecny-landing .period-label { color: var(--muted); font-size: 10.5px; }
 .tecny-landing .chip {
@@ -374,50 +385,50 @@
 .tecny-landing .period-tsp { margin-left: auto; color: var(--dim); font-size: 10.5px; }
 
 .tecny-landing .section-h {
-  font-size: 14.5px; font-weight: 600; letter-spacing: -0.005em;
-  margin: 22px 0 10px;
+  font-size: 13.5px; font-weight: 600; letter-spacing: -0.005em;
+  margin: 14px 0 7px;
 }
-.tecny-landing .section-h .sub { color: var(--muted); font-size: 11px; font-weight: 500; margin-left: 6px; }
+.tecny-landing .section-h .sub { color: var(--muted); font-size: 10.5px; font-weight: 500; margin-left: 6px; }
 
-.tecny-landing .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.tecny-landing .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .tecny-landing .kpi-row.n3 { grid-template-columns: repeat(3, 1fr); }
 .tecny-landing .kpi {
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: 9px; padding: 12px 14px;
+  border-radius: 8px; padding: 10px 12px;
 }
-.tecny-landing .kpi .l { font-size: 9.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.tecny-landing .kpi .l { font-size: 9px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 .tecny-landing .kpi .v {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 18px; font-weight: 700; letter-spacing: -0.01em;
-  margin-top: 6px;
+  font-size: 16px; font-weight: 700; letter-spacing: -0.01em;
+  margin-top: 4px;
 }
-.tecny-landing .kpi .v .cur { color: var(--muted); font-weight: 500; font-size: 10.5px; margin-right: 4px; }
-.tecny-landing .kpi .t { font-size: 10.5px; font-weight: 600; margin-top: 3px; color: var(--pos); }
+.tecny-landing .kpi .v .cur { color: var(--muted); font-weight: 500; font-size: 10px; margin-right: 3px; }
+.tecny-landing .kpi .t { font-size: 10px; font-weight: 600; margin-top: 2px; color: var(--pos); }
 .tecny-landing .kpi .t.neg { color: var(--neg); }
 .tecny-landing .kpi .t.mut { color: var(--muted); }
 
-.tecny-landing .split-tables { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+.tecny-landing .split-tables { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
 .tecny-landing .table-card {
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: 9px; padding: 14px 16px;
+  border-radius: 8px; padding: 11px 14px;
 }
-.tecny-landing .table-card.u-pay-tight { padding: 12px 16px; }
-.tecny-landing .table-h { font-size: 12.5px; font-weight: 600; margin-bottom: 10px; letter-spacing: -0.005em; }
+.tecny-landing .table-card.u-pay-tight { padding: 9px 14px; }
+.tecny-landing .table-h { font-size: 12px; font-weight: 600; margin-bottom: 7px; letter-spacing: -0.005em; }
 .tecny-landing .table-row {
   display: grid; grid-template-columns: 1.6fr 60px 80px;
-  align-items: center; padding: 6px 0; font-size: 11px;
+  align-items: center; padding: 4px 0; font-size: 10.5px;
   border-top: 1px solid var(--hairline);
 }
 .tecny-landing .table-row.hdr {
   color: var(--dim); font-size: 9px; font-weight: 700;
   letter-spacing: 0.06em; text-transform: uppercase;
-  border-top: none; padding-bottom: 4px;
+  border-top: none; padding-bottom: 3px;
 }
 .tecny-landing .table-row .num { font-family: 'JetBrains Mono', monospace; font-weight: 600; text-align: right; }
 
 .tecny-landing .payment-row {
   display: grid; grid-template-columns: 2fr 1fr 1fr 1fr;
-  padding: 7px 12px; font-size: 11px;
+  padding: 5px 12px; font-size: 10.5px;
   border-top: 1px solid var(--hairline);
 }
 .tecny-landing .payment-row.hdr {
