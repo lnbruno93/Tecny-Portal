@@ -1,49 +1,77 @@
 ---
 /**
- * Modulos.astro — sección "Módulos" con las 6 features del producto.
+ * Modulos.astro — sección "Los módulos" con 7 cards del producto.
  *
- * Port de `frontend/src/screens/Landing.jsx:358-435`.
- * Los SVGs son inline — mismo diseño 1:1 que el SPA. Los `tint-*` viven en
- * landing.css (`tint-amber`, `tint-blue`, `tint-green`, `tint-purple`,
- * `tint-cyan`, `tint-pink`) y matchean colores del design system.
+ * 2026-08-05 (feedback Lucas): rewrite completo del copy con foco en el
+ * value prop concreto (IMEI, dólar del día, categorías VIP, cobro en la
+ * puerta, etc.), agregando el 7mo módulo que faltaba (el subtitle decía
+ * "Siete módulos" pero solo mostraban 6 — bug del audit 07-25). Nuevas
+ * features visuales:
+ *   · Número prominente arriba de cada card (01, 02, …)
+ *   · Badges opcionales debajo del body (chips destacables, uno puede
+ *     marcarse "hi" para color amarillo — muestra un estado especial)
+ *   · Link opcional dentro del body para llevar al detalle
+ *
+ * Los tints son colores por card (mismo pattern que la versión anterior).
+ * Se agregó `tint-orange` (7mo color) en landing.css.
  */
 
 const MODULOS = [
   {
+    n: '01',
+    tint: 'tint-blue',
+    title: 'Inventario con IMEI',
+    body: 'Buscás cualquier equipo por IMEI y sabés al instante dónde está: en stock, vendido o en servicio técnico. Con el valor total de tu inventario actualizado al día, y la trazabilidad completa desde el proveedor que te lo vendió.',
+    iconKey: 'inventario',
+    badges: [
+      { text: 'Búsqueda por IMEI' },
+      { text: 'Stock valorizado' },
+      { text: 'En servicio técnico', hi: true },
+      { text: 'Trazabilidad por proveedor' },
+    ] as ReadonlyArray<{ text: string; hi?: boolean }>,
+  },
+  {
+    n: '02',
     tint: 'tint-amber',
-    title: 'Cotizador',
-    body: 'Precios al instante con tipo de cambio, recargos por cuota y formas de pago. Copiás el texto y lo mandás por WhatsApp.',
+    title: 'Cotizador con dólar del día',
+    body: 'Precios al instante con tipo de cambio, recargos por cuota y todas las formas de pago. Copiás el texto y lo mandás por WhatsApp.',
     iconKey: 'cotizador',
   },
   {
-    tint: 'tint-blue',
-    title: 'Financiera',
-    body: 'Cargá comprobantes con foto, el OCR detecta el monto y calcula la retención automáticamente. Pagos y vendedores en un solo lugar.',
-    iconKey: 'financiera',
-  },
-  {
-    tint: 'tint-green',
-    title: 'Cajas',
-    body: 'Deudas e inversiones por contacto, en pesos y dólares por separado. Sabés con exactitud qué entra, qué sale y a quién.',
-    iconKey: 'cajas',
-  },
-  {
-    tint: 'tint-purple',
-    title: 'Envíos',
-    body: 'Despachos a domicilio con prioridad, horario y operador. Cada envío lleva productos con IMEI y cobros a realizar en la entrega.',
-    iconKey: 'envios',
-  },
-  {
+    n: '03',
     tint: 'tint-cyan',
-    title: 'Cuentas CC',
-    body: 'Clientes B2B con categorías VIP, A+ y A-. Compras, pagos, devoluciones y entregas con detalle de IMEI verificado por item.',
+    title: 'Cuenta corriente por cliente',
+    body: 'Clientes B2B con categorías VIP, A+ y A-. Compras, pagos, devoluciones y entregas, con IMEI verificado ítem por ítem.',
     iconKey: 'cuentascc',
   },
   {
+    n: '04',
+    tint: 'tint-green',
+    title: 'Caja en pesos y en dólares',
+    body: 'Varias cajas separadas por moneda. Sabés con exactitud qué entra, qué sale y a quién, sin mezclar efectivo con transferencias.',
+    iconKey: 'cajas',
+  },
+  {
+    n: '05',
     tint: 'tint-pink',
-    title: 'Usados',
-    body: 'Catálogo de precios en USD editable como una planilla. Actualizá decenas de modelos de una vez y mantené la tabla al día.',
+    title: 'Canje de usados en parte de pago',
+    body: 'Catálogo de precios en USD editable como una planilla, por modelo, capacidad y batería.',
     iconKey: 'usados',
+    link: { text: 'Ver cómo funciona →', href: '#como' },
+  },
+  {
+    n: '06',
+    tint: 'tint-purple',
+    title: 'Comprobantes con lector de fotos',
+    body: 'Subís la foto de la transferencia y el sistema detecta el monto solo. Calcula la retención y deja el pago asentado en la cuenta.',
+    iconKey: 'comprobantes',
+  },
+  {
+    n: '07',
+    tint: 'tint-orange',
+    title: 'Envíos con IMEI y cobro en la puerta',
+    body: 'Despachos con prioridad, horario y operador asignado. Cada envío lleva los productos con IMEI y lo que hay que cobrar al entregar.',
+    iconKey: 'envios',
   },
 ] as const;
 ---
@@ -53,12 +81,32 @@ const MODULOS = [
     <div class="s-head">
       <div class="s-kicker">Los módulos</div>
       <h2 class="s-title">Una herramienta para cada parte del negocio</h2>
-      <p class="s-sub">Siete módulos que conversan entre sí. Activá los que necesitás, sumá el resto cuando crezcas.</p>
+      <p class="s-sub">Siete módulos que conversan entre sí. Activá los que necesitás y sumá el resto cuando crezcas.</p>
     </div>
     <div class="mods">
       {MODULOS.map((mod) => (
         <div class="mod">
-          <div class={`ico ${mod.tint}`}>
+          <div class="mod-num">{mod.n}</div>
+          <h3>{mod.title}</h3>
+          <p>
+            {mod.body}
+            {'link' in mod && mod.link && (
+              <> <a href={mod.link.href} class="mod-link">{mod.link.text}</a></>
+            )}
+          </p>
+          {'badges' in mod && mod.badges && (
+            <div class="mod-badges">
+              {mod.badges.map((b) => (
+                <span class={`mod-badge${b.hi ? ' hi' : ''}`}>{b.text}</span>
+              ))}
+            </div>
+          )}
+          <div class={`ico ${mod.tint}`} aria-hidden="true">
+            {mod.iconKey === 'inventario' && (
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/>
+              </svg>
+            )}
             {mod.iconKey === 'cotizador' && (
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="4" y="3" width="16" height="18" rx="2.5"/>
@@ -68,9 +116,10 @@ const MODULOS = [
                 <circle cx="15.5" cy="13.5" r="0.7" fill="currentColor"/>
               </svg>
             )}
-            {mod.iconKey === 'financiera' && (
+            {mod.iconKey === 'cuentascc' && (
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M3 17 9 11l4 4 8-9"/><path d="M14 6h7v7"/>
+                <path d="M5 3v18l2-1.5L9 21l2-1.5L13 21l2-1.5L17 21l2-1.5V3l-2 1.5L15 3l-2 1.5L11 3 9 4.5 7 3 5 4.5Z"/>
+                <path d="M8.5 8h7M8.5 12h7"/>
               </svg>
             )}
             {mod.iconKey === 'cajas' && (
@@ -78,6 +127,20 @@ const MODULOS = [
                 <path d="M21 8H6a3 3 0 0 1 0-6h13v6Z"/>
                 <path d="M3 5v13a3 3 0 0 0 3 3h15V8"/>
                 <circle cx="17" cy="14" r="1.4" fill="currentColor"/>
+              </svg>
+            )}
+            {mod.iconKey === 'usados' && (
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="6" y="2" width="12" height="20" rx="2.5"/>
+                <path d="M10 5h4"/>
+                <circle cx="12" cy="18" r="0.8" fill="currentColor"/>
+              </svg>
+            )}
+            {mod.iconKey === 'comprobantes' && (
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 4h13l3 3v13a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/>
+                <circle cx="12" cy="13" r="3.2"/>
+                <path d="M9 8h6"/>
               </svg>
             )}
             {mod.iconKey === 'envios' && (
@@ -88,22 +151,7 @@ const MODULOS = [
                 <circle cx="17.5" cy="18" r="2"/>
               </svg>
             )}
-            {mod.iconKey === 'cuentascc' && (
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M5 3v18l2-1.5L9 21l2-1.5L13 21l2-1.5L17 21l2-1.5V3l-2 1.5L15 3l-2 1.5L11 3 9 4.5 7 3 5 4.5Z"/>
-                <path d="M8.5 8h7M8.5 12h7"/>
-              </svg>
-            )}
-            {mod.iconKey === 'usados' && (
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="6" y="2" width="12" height="20" rx="2.5"/>
-                <path d="M10 5h4"/>
-                <circle cx="12" cy="18" r="0.8" fill="currentColor"/>
-              </svg>
-            )}
           </div>
-          <h3>{mod.title}</h3>
-          <p>{mod.body}</p>
         </div>
       ))}
     </div>

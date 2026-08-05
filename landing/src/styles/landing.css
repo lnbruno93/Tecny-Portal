@@ -513,18 +513,51 @@
   padding: 24px; transition: .16s; position: relative; overflow: hidden;
 }
 .tecny-landing .mod:hover { border-color: var(--border-strong); transform: translateY(-2px); background: var(--surface-2); }
-.tecny-landing .mod .ico { width: 44px; height: 44px; border-radius: 11px; display: grid; place-items: center; margin-bottom: 16px; }
+/* 2026-08-05: número prominente arriba del title (01, 02, …). Estilo
+   igual al `.n` de los steps de Cómo Funciona — misma tipografía mono +
+   accent color. Distingue visualmente los cards y los ordena. */
+.tecny-landing .mod .mod-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px; font-weight: 600;
+  color: var(--accent); margin-bottom: 14px;
+}
+.tecny-landing .mod .ico { width: 44px; height: 44px; border-radius: 11px; display: grid; place-items: center; margin-top: 18px; }
 .tecny-landing .mod h3 { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 8px; }
 .tecny-landing .mod p { font-size: 14px; color: var(--text-2); margin: 0; line-height: 1.5; }
+/* 2026-08-05: link inline dentro del body ("Ver cómo funciona →"). Color
+   accent + underline en hover. Se usa en módulos que tienen deep dive. */
+.tecny-landing .mod .mod-link { color: var(--accent); font-weight: 500; text-decoration: none; white-space: nowrap; }
+.tecny-landing .mod .mod-link:hover { text-decoration: underline; }
+/* 2026-08-05: badges/chips debajo del body (opcional). Grid de pills
+   para mostrar features específicas de un módulo (ej. Inventario tiene
+   4: búsqueda por IMEI, stock valorizado, en servicio técnico, trazabilidad).
+   La variante `.hi` (highlight) colorea con warn/amber para destacar un
+   estado especial que el usuario quiere que se vea (ej. "En servicio técnico"). */
+.tecny-landing .mod .mod-badges {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin-top: 14px;
+}
+.tecny-landing .mod .mod-badge {
+  display: inline-flex; align-items: center;
+  padding: 5px 10px; border-radius: 6px;
+  font-size: 11.5px; font-weight: 500;
+  color: var(--text-2); background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.tecny-landing .mod .mod-badge.hi {
+  color: var(--warn); background: var(--warn-soft);
+  border-color: rgba(251,191,36,0.3);
+}
 .tecny-landing .tint-amber{background:rgba(14,165,233,0.13);color:#0ea5e9}
 .tecny-landing .tint-blue{background:rgba(122,169,255,0.14);color:#7aa9ff}
 .tecny-landing .tint-green{background:rgba(74,222,128,0.13);color:#6ee79f}
 .tecny-landing .tint-purple{background:rgba(167,139,250,0.16);color:#c4aeff}
 .tecny-landing .tint-cyan{background:rgba(56,189,248,0.14);color:#6fcef5}
 .tecny-landing .tint-pink{background:rgba(244,114,182,0.14);color:#f4a5cf}
-/* .tint-slate removido en Sprint 3 L2: nunca fue aplicado a ningún módulo
-   (los tints en uso son amber/blue/green/purple/cyan/pink). Si a futuro se
-   necesita un tint neutro, agregar de vuelta. */
+/* 2026-08-05: tint-orange agregado para el 7mo módulo (Envíos con IMEI).
+   Antes eran 6 tints para 6 módulos; con el rewrite pasan a ser 7 y el
+   subtitle "Siete módulos que conversan entre sí" ya no miente. */
+.tecny-landing .tint-orange{background:rgba(251,146,60,0.14);color:#fbb56b}
 
 /* ── Feature highlight ───────────────────────────────── */
 .tecny-landing .feat { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
