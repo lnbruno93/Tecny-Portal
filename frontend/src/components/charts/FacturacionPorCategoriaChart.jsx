@@ -24,10 +24,14 @@ export default function FacturacionPorCategoriaChart({ data, loading = false }) 
     nombre: `${r.emoji || '📦'} ${r.nombre}`,
     USD:    Number(r.usd) || 0,
   }));
+  // task #311: idem UnidadesPorCategoriaChart — evita "Top 0" cuando vacío.
+  const subtitle = items.length > 0
+    ? `Top ${items.length} en USD (retail + B2B)`
+    : 'USD (retail + B2B)';
   return (
     <ChartCard
       title="Facturación por categoría"
-      subtitle={`Top ${items.length} en USD (retail + B2B)`}
+      subtitle={subtitle}
       height="lg"
       loading={loading}
       empty={!loading && chartData.length === 0}
