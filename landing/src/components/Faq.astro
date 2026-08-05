@@ -4,25 +4,41 @@
  *
  * Port de `frontend/src/screens/Landing.jsx:686-709`.
  *
- * Renderizamos los 6 defaults hardcoded (mismos que FALLBACK_FAQ) y el
+ * Renderizamos los 7 defaults hardcoded (mismos que FALLBACK_FAQ) y el
  * script inline abajo reemplaza la lista con los del CMS si Lucas cargó
  * overrides desde admin.tecnyapp.com/sitio-publico.
  *
  * Primer item abierto por default (patrón <details open>).
  */
 
+/* 2026-08-05 (feedback Lucas): rewrite completo del FAQ con nuevo orden
+   (7 preguntas — antes 6). Cambios respecto a la versión anterior:
+     · Nueva pregunta 01: onboarding sin migración dolorosa (destraba una
+       de las objeciones más frecuentes de un revendedor con Excel viejo).
+     · Nueva pregunta 02: compatibilidad multi-marca (destraba la duda
+       "¿esto es solo para iPhone?" que aparece porque el copy de la
+       landing y del catálogo usa iPhone en los mocks).
+     · Reordenadas: onboarding + marcas primero (info que la gente busca
+       antes de decidir), después permisos, monedas, OCR, instalación,
+       y cierre con "¿qué pasa al terminar los 14 días?" (que reemplaza
+       la vieja "¿Ofrecen prueba gratis?" — ya se asume que hay prueba;
+       ahora respondemos qué pasa cuando termina).
+     · Removida: "¿Qué pasa con mis datos si dejo de usarlo?" — ya está
+       cubierta por la nueva sección `TusDatos` (backups + export + soft-
+       delete) que vive antes del FAQ.
+     · Título de la 05 sin "(OCR)" — más humano, menos jerga técnica. */
 const FALLBACK_FAQ = [
   {
     id: 'default-1',
-    question: '¿Necesito instalar algo?',
+    question: '¿Tengo que cargar todo mi stock de nuevo?',
     answer:
-      'No. Tecny funciona desde el navegador, en la compu o el celular. Creás tu cuenta y empezás a usarlo en minutos, sin descargas ni configuración técnica.',
+      'No. Empezás a usarlo con el próximo equipo que entra y el sistema va armando la foto del negocio a medida que cargás. Si querés subir tu planilla de una, la importás en un archivo y te damos una mano.',
   },
   {
     id: 'default-2',
-    question: '¿Cómo funciona el lector de comprobantes (OCR)?',
+    question: '¿Sirve solo para iPhone o también para otras marcas?',
     answer:
-      'Sacás una foto del comprobante de pago o subís el PDF, y el sistema detecta el monto automáticamente con inteligencia artificial. Si la confianza es alta, queda pre-cargado; si no, te avisa para que lo revises. Aceptamos JPG, PNG, WEBP y PDF de hasta 5 MB.',
+      'Sirve para cualquier equipo con IMEI: iPhone, Samsung, Xiaomi, Motorola, tablets, smartwatches. Los ejemplos y catálogos que ves usan iPhone porque es lo más habitual en el rubro, pero cargás cualquier marca y modelo y funciona igual.',
   },
   {
     id: 'default-3',
@@ -38,15 +54,21 @@ const FALLBACK_FAQ = [
   },
   {
     id: 'default-5',
-    question: '¿Qué pasa con mis datos si dejo de usarlo?',
+    question: '¿Cómo funciona el lector de comprobantes?',
     answer:
-      'Tus datos son tuyos. Podés exportarlos en cualquier momento. Nada se borra de forma definitiva sin tu confirmación — el sistema usa borrado suave para que nunca pierdas un registro por error.',
+      'Sacás una foto del comprobante de pago o subís el PDF, y el sistema detecta el monto automáticamente con inteligencia artificial. Si la confianza es alta, queda pre-cargado; si no, te avisa para que lo revises. Aceptamos JPG, PNG, WEBP y PDF de hasta 5 MB.',
   },
   {
     id: 'default-6',
-    question: '¿Ofrecen prueba gratis?',
+    question: '¿Necesito instalar algo?',
     answer:
-      '14 días gratis con todas las funciones, sin tarjeta de crédito. Si te sirve, elegís un plan; si no, no pagás nada.',
+      'No. Tecny funciona desde el navegador, en la compu o el celular. Creás tu cuenta y empezás a usarlo en minutos, sin descargas ni configuración técnica.',
+  },
+  {
+    id: 'default-7',
+    question: '¿Qué pasa cuando terminan los 14 días?',
+    answer:
+      'Elegís el plan que te sirve y seguís con toda tu data intacta. Si preferís no seguir, tu cuenta pausa y podés exportar todo desde el sistema antes de que se archive. Nada se borra sin avisarte primero.',
   },
 ] as const;
 ---
