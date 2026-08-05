@@ -23,7 +23,7 @@ function fmtUsd(v) {
   return `u$s${Math.round(n).toLocaleString('es-AR')}`;
 }
 
-export default function FacturacionEgresosChart({ hastaMes = null, meses = 6 }) {
+export default function FacturacionEgresosChart({ hastaMes = null, meses = 6, etiquetaId = null, claseId = null }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -31,12 +31,18 @@ export default function FacturacionEgresosChart({ hastaMes = null, meses = 6 }) 
     let alive = true;
     setLoading(true);
     const params = { meses: String(meses) };
-    if (hastaMes) params.hasta = hastaMes;
+    if (hastaMes)   params.hasta       = hastaMes;
+    // task #312: filtros opcionales. Backend acepta etiqueta_id/clase_id.
+    // Cuando aplican, la serie de 6 meses recalcula facturación filtrada.
+    // Egresos NO se filtran (son operativos globales) — la ganancia neta
+    // queda con base parcial + descuento total, ver docstring en dashboard.js.
+    if (etiquetaId) params.etiqueta_id = String(etiquetaId);
+    if (claseId)    params.clase_id    = String(claseId);
     dashApi.serie6Meses(params)
       .then(bundle => { if (alive) { setData(bundle.data || []); setLoading(false); } })
       .catch(() => { if (alive) { setData([]); setLoading(false); } });
     return () => { alive = false; };
-  }, [hastaMes, meses]);
+  }, [hastaMes, meses, etiquetaId, claseId]);
 
   const chartData = (data || []).map(d => ({
     mes: labelMes(d.mes),
