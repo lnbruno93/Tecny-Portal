@@ -655,6 +655,134 @@
 }
 .tecny-landing .calc-cta:hover { background: var(--accent-soft); }
 
+/* ── Canje de usados ─────────────────────────────────────
+   2026-08-05: nueva sección deep-dive del módulo 05 (Canje de usados).
+   Mismo pattern de layout que `.feat` (grid 2 col: contenido izq, mock
+   visual der) pero con ratios un poco distintos — izq lleva 3 steps +
+   flow diagram, así que le damos un poquito más de aire (1.05fr / 0.95fr).
+   La tabla del catálogo a la derecha es un mock estático estilo "planilla
+   de precios" — matchea el mensaje del copy ("editable como planilla"). */
+.tecny-landing .canje {
+  display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 48px; align-items: start;
+}
+.tecny-landing .canje-content { min-width: 0; }
+
+/* Steps verticales — número en circle + body al lado. Contrastan con
+   los steps horizontales de ComoFunciona (4 col grid) — acá van en 1
+   col porque son "how it works" narrativo del canje específico. */
+.tecny-landing .canje-steps {
+  list-style: none; padding: 0; margin: 32px 0 0;
+  display: flex; flex-direction: column; gap: 20px;
+}
+.tecny-landing .canje-step {
+  display: grid; grid-template-columns: 32px 1fr; gap: 16px; align-items: start;
+}
+.tecny-landing .canje-step-n {
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--accent-soft); color: var(--accent);
+  display: grid; place-items: center;
+  font: 600 13.5px/1 'JetBrains Mono', monospace;
+  flex-shrink: 0;
+}
+.tecny-landing .canje-step-body h3 {
+  margin: 4px 0 6px; font-size: 15.5px; font-weight: 600;
+  letter-spacing: -0.01em; color: var(--text);
+}
+.tecny-landing .canje-step-body p {
+  margin: 0; font-size: 14px; color: var(--text-2); line-height: 1.5;
+}
+
+/* Flow diagram — 3 pills conectadas con flechas ›. Visualiza el
+   "círculo" del canje: cliente entrega → cálculo → entra al stock.
+   Puramente visual — role="img" con aria-label leído en su totalidad. */
+.tecny-landing .canje-flow {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: 10px; margin-top: 32px;
+  padding: 16px 18px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.tecny-landing .canje-pill {
+  display: inline-flex; align-items: center;
+  padding: 7px 12px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12.5px; font-weight: 500; color: var(--text-2);
+  white-space: nowrap;
+}
+.tecny-landing .canje-pill-accent {
+  color: var(--accent); background: var(--accent-soft);
+  border-color: rgba(14,165,233,0.35);
+  font-weight: 600;
+}
+.tecny-landing .canje-arrow {
+  color: var(--muted); font-size: 15px; line-height: 1;
+  user-select: none;
+}
+
+/* Tabla catálogo — mock estático del "Catálogo de usados" del portal.
+   Header con título + subtítulo + badge verde "Actualizado hoy" (dot
+   verde igual que el `.calc-live-badge` del cotizador). Table nativa
+   con borders sutiles entre rows; monto de toma con color positivo. */
+.tecny-landing .canje-visual {
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: 16px; padding: 20px;
+  box-shadow: 0 30px 70px -24px rgba(0,0,0,0.7);
+}
+.tecny-landing .canje-cat-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 12px; margin-bottom: 16px;
+}
+.tecny-landing .canje-cat-title {
+  font-size: 15px; font-weight: 600; letter-spacing: -0.01em; color: var(--text);
+  margin-bottom: 4px;
+}
+.tecny-landing .canje-cat-sub {
+  font-size: 12.5px; color: var(--muted);
+}
+.tecny-landing .canje-cat-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11.5px; font-weight: 600; color: var(--pos);
+  background: rgba(74,222,128,0.10);
+  padding: 5px 10px; border-radius: 999px;
+  white-space: nowrap; flex-shrink: 0;
+}
+.tecny-landing .canje-cat-badge .dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--pos);
+}
+
+.tecny-landing .canje-cat-table {
+  width: 100%; border-collapse: collapse;
+  font-size: 13px;
+}
+.tecny-landing .canje-cat-table thead th {
+  text-align: left;
+  padding: 10px 8px;
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+.tecny-landing .canje-cat-table tbody td {
+  padding: 11px 8px;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--text-2);
+}
+.tecny-landing .canje-cat-table tbody tr:last-child td { border-bottom: none; }
+.tecny-landing .canje-cat-table .ta-right { text-align: right; }
+.tecny-landing .canje-cat-modelo { color: var(--text); font-weight: 500; }
+.tecny-landing .canje-cat-cap,
+.tecny-landing .canje-cat-bat { font-family: 'JetBrains Mono', monospace; font-size: 12.5px; }
+.tecny-landing .canje-cat-toma {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600; color: var(--pos);
+}
+
+.tecny-landing .canje-cat-foot {
+  margin-top: 14px; padding-top: 12px;
+  border-top: 1px solid var(--hairline);
+  font-size: 11.5px; color: var(--muted); text-align: center;
+}
+
 /* Testimonios (`.test*`) y BigStat (`.bigstat*`) removidos en Sprint 3 L2
    (2026-07-19). Contexto: la sección JSX se removió en #441 (2026-06-26)
    por contenido inventado (nombres/quotes fake + 4 métricas no auditables
@@ -792,6 +920,9 @@
      (heredado por el fallthrough al selector .plans arriba) a 1 columna. */
   .tecny-landing .plans.plans-4col { grid-template-columns: repeat(2, 1fr); }
   .tecny-landing .feat { grid-template-columns: 1fr; gap: 32px; }
+  /* Canje de usados: en tablet/mobile la tabla del catálogo pasa
+     debajo del contenido. Reducimos gap para no dejar hueco raro. */
+  .tecny-landing .canje { grid-template-columns: 1fr; gap: 32px; }
   /* .tests + .bigstat removidos del media query en Sprint 3 L2 — los selectores base también salieron. */
   .tecny-landing .foot-grid { grid-template-columns: 1fr 1fr; gap: 28px; }
   .tecny-landing .contact-grid { grid-template-columns: 1fr 1fr; }
