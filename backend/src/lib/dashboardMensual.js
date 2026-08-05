@@ -391,6 +391,171 @@ async function egresosAgregados(...allArgs) {
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// COMPOSICIÓN DE VENTAS (task #309) — data para gráficos del Resumen
+// ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Ventas por ETIQUETA (incluye retail por etiqueta + B2B como bloque agregado).
+ * Retail: LEFT JOIN etiquetas para incluir ventas sin etiqueta ('Sin etiqueta').
+ * B2B: aparece como una entrada más con etiqueta='B2B' para lectura unificada
+ * en el gráfico dona del frontend.
+ * Devuelve [{ etiqueta, color, n, usd }] ordenado por usd desc.
+ */
+async function ventasPorEtiqueta(...allArgs) {
+  const { exec, restArgs } = _resolveExec(allArgs[0], allArgs.slice(1));
+  const [desde, hasta] = restArgs;
+  const { rows: retail } = await exec.query(
+    `SELECT COALESCE(e.nombre, 'Sin etiqueta') AS etiqueta,
+            COALESCE(e.color, '#94a3b8')        AS color,
+            COUNT(*)::int                       AS n,
+            COALESCE(SUM(v.total_usd), 0)::numeric AS usd
+       FROM ventas v
+       LEFT JOIN etiquetas e ON e.id = v.etiqueta_id
+      WHERE v.fecha BETWEEN $1 AND $2
+        AND v.deleted_at IS NULL AND v.estado <> 'cancelado'
+      GROUP BY 1, 2
+      ORDER BY 4 DESC`,
+    [desde, hasta]
+  );
+  const { rows: b2b } = await exec.query(
+    `SELECT COUNT(*)::int                       AS n,
+            COALESCE(SUM((
+              SELECT SUM(i.valor) FROM items_movimiento_cc i
+               WHERE i.movimiento_cc_id = m.id AND i.devuelto_at IS NULL
+            )), 0)::numeric                     AS usd
+       FROM movimientos_cc m
+      WHERE m.fecha BETWEEN $1 AND $2
+        AND m.deleted_at IS NULL AND m.tipo = 'compra'`,
+    [desde, hasta]
+  );
+  const out = retail.map(r => ({
+    etiqueta: r.etiqueta,
+    color:    r.color,
+    n:        Number(r.n),
+    usd:      round2(r.usd),
+  }));
+  const b2bN = Number(b2b[0]?.n || 0);
+  if (b2bN > 0) {
+    out.push({ etiqueta: 'B2B', color: '#6b7cff', n: b2bN, usd: round2(b2b[0].usd) });
+  }
+  return out.sort((a, b) => b.usd - a.usd);
+}
+
+/**
+ * Unidades vendidas por CATEGORÍA (clase_id). Combina retail + B2B.
+ * Devuelve [{ clase_id, nombre, emoji, unidades, usd }] Top 20 por unidades.
+ */
+async function unidadesPorCategoria(...allArgs) {
+  const { exec, restArgs } = _resolveExec(allArgs[0], allArgs.slice(1));
+  const [desde, hasta] = restArgs;
+  // Retail: agrupamos por clase_id del producto vendido (JOIN productos).
+  // Ítems manuales sin producto_id → clase_id NULL → 'Sin categoría'.
+  const { rows: retail } = await exec.query(
+    `SELECT p.clase_id                            AS clase_id,
+            COUNT(vi.id)::int                     AS unidades,
+            COALESCE(SUM(vi.precio_vendido * vi.cantidad), 0)::numeric AS usd
+       FROM venta_items vi
+       JOIN ventas v ON v.id = vi.venta_id
+       LEFT JOIN productos p ON p.id = vi.producto_id
+      WHERE v.fecha BETWEEN $1 AND $2
+        AND v.deleted_at IS NULL AND v.estado <> 'cancelado'
+      GROUP BY p.clase_id`,
+    [desde, hasta]
+  );
+  // B2B: items_movimiento_cc.producto_id → productos.clase_id.
+  const { rows: b2b } = await exec.query(
+    `SELECT p.clase_id                            AS clase_id,
+            COUNT(i.id)::int                      AS unidades,
+            COALESCE(SUM(i.valor), 0)::numeric    AS usd
+       FROM items_movimiento_cc i
+       JOIN movimientos_cc m ON m.id = i.movimiento_cc_id
+       LEFT JOIN productos p ON p.id = i.producto_id
+      WHERE m.fecha BETWEEN $1 AND $2
+        AND m.deleted_at IS NULL AND m.tipo = 'compra'
+        AND i.devuelto_at IS NULL
+      GROUP BY p.clase_id`,
+    [desde, hasta]
+  );
+  // Lookup nombres.
+  const claseIds = [...new Set([...retail, ...b2b].map(r => r.clase_id).filter(Boolean))];
+  let clases = new Map();
+  if (claseIds.length > 0) {
+    const { rows } = await exec.query(
+      `SELECT id, nombre, emoji FROM clases_producto WHERE id = ANY($1::uuid[])`,
+      [claseIds]
+    );
+    clases = new Map(rows.map(r => [r.id, { nombre: r.nombre, emoji: r.emoji }]));
+  }
+  // Merge retail + b2b por clase_id.
+  const combined = new Map();
+  const acc = (arr) => {
+    for (const r of arr) {
+      const key = r.clase_id || '__sin__';
+      const prev = combined.get(key) || { clase_id: r.clase_id, unidades: 0, usd: 0 };
+      prev.unidades += Number(r.unidades);
+      prev.usd      += Number(r.usd);
+      combined.set(key, prev);
+    }
+  };
+  acc(retail);
+  acc(b2b);
+  return Array.from(combined.values())
+    .map(r => {
+      const meta = r.clase_id ? clases.get(r.clase_id) : null;
+      return {
+        clase_id: r.clase_id,
+        nombre:   meta?.nombre || 'Sin categoría',
+        emoji:    meta?.emoji  || '📦',
+        unidades: r.unidades,
+        usd:      round2(r.usd),
+      };
+    })
+    .filter(r => r.unidades > 0)
+    .sort((a, b) => b.unidades - a.unidades)
+    .slice(0, 20);
+}
+
+/**
+ * Ventas por DÍA del mes (retail + B2B combinado). Devuelve array denso
+ * (todos los días del período, con 0 cuando no hubo). Facilita gráfico
+ * de barras estilo EstadísticasNube (screenshot Lucas).
+ */
+async function ventasPorDia(...allArgs) {
+  const { exec, restArgs } = _resolveExec(allArgs[0], allArgs.slice(1));
+  const [desde, hasta] = restArgs;
+  const { rows } = await exec.query(
+    `WITH retail AS (
+       SELECT v.fecha::date AS dia, COUNT(*)::int AS n_retail
+         FROM ventas v
+        WHERE v.fecha BETWEEN $1 AND $2
+          AND v.deleted_at IS NULL AND v.estado <> 'cancelado'
+        GROUP BY v.fecha::date
+     ),
+     b2b AS (
+       SELECT m.fecha::date AS dia, COUNT(*)::int AS n_b2b
+         FROM movimientos_cc m
+        WHERE m.fecha BETWEEN $1 AND $2
+          AND m.deleted_at IS NULL AND m.tipo = 'compra'
+        GROUP BY m.fecha::date
+     ),
+     dias AS (
+       SELECT generate_series($1::date, $2::date, '1 day')::date AS dia
+     )
+     SELECT d.dia,
+            COALESCE(r.n_retail, 0) + COALESCE(b.n_b2b, 0) AS n
+       FROM dias d
+       LEFT JOIN retail r ON r.dia = d.dia
+       LEFT JOIN b2b    b ON b.dia = d.dia
+      ORDER BY d.dia`,
+    [desde, hasta]
+  );
+  return rows.map(r => ({
+    dia: r.dia.toISOString ? r.dia.toISOString().slice(0, 10) : String(r.dia).slice(0, 10),
+    n:   Number(r.n),
+  }));
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // ORQUESTADOR
 // ──────────────────────────────────────────────────────────────────────
 
@@ -406,9 +571,12 @@ async function egresosAgregados(...allArgs) {
 async function kpisDelPeriodo(...allArgs) {
   const { exec, restArgs } = _resolveExec(allArgs[0], allArgs.slice(1));
   const [desde, hasta, fechaCorte = hasta] = restArgs;
+  // 2026-08-05 (task #309): 3 helpers nuevos para gráficos del Resumen —
+  // corren en paralelo con los del bundle original (sin costo latencia).
   const [
     ventas, productos, vendedores, metodos,
     cajas, deudaCC, deudaProv, egresos,
+    porEtiqueta, porCategoria, porDia,
   ] = await Promise.all([
     ventasAgregadas(exec, desde, hasta),
     topProductos(exec, desde, hasta),
@@ -418,7 +586,17 @@ async function kpisDelPeriodo(...allArgs) {
     deudaCCClientes(exec, fechaCorte),
     deudaProveedores(exec, fechaCorte),
     egresosAgregados(exec, desde, hasta),
+    ventasPorEtiqueta(exec, desde, hasta),
+    unidadesPorCategoria(exec, desde, hasta),
+    ventasPorDia(exec, desde, hasta),
   ]);
+
+  // Margen neto % = (ganancia_usd − egresos.total_usd) / ventas_usd × 100.
+  // Vive acá para que frontend no re-calcule (single source of truth) y
+  // porque necesita cruzar 3 valores de sub-bundles distintos.
+  const margenNetoPct = ventas.ventas_usd > 0
+    ? round2(((Number(ventas.ganancia_usd) - Number(egresos.total_usd)) / Number(ventas.ventas_usd)) * 100)
+    : 0;
 
   return {
     periodo: { desde, hasta },
@@ -427,11 +605,15 @@ async function kpisDelPeriodo(...allArgs) {
       top_productos:  productos,
       top_vendedores: vendedores,
       pagos_por_metodo: metodos,
+      por_etiqueta:   porEtiqueta,       // task #309 (B2)
+      por_categoria:  porCategoria,      // task #309 (B1 + B3)
+      por_dia:        porDia,            // task #309 (C1)
     },
     cajas,        // { cajas, por_moneda, capital_usd_equivalente, tc_referencia }
     deuda_cc:     deudaCC,
     deuda_proveedores: deudaProv,
     egresos,
+    margen_neto_pct: margenNetoPct,      // task #309 (A2)
   };
 }
 
@@ -463,4 +645,9 @@ function mesAnterior(periodo) {
   return `${y}-${String(m - 1).padStart(2, '0')}`;
 }
 
-module.exports = { kpisDelPeriodo, rangoMes, mesAnterior };
+module.exports = {
+  kpisDelPeriodo, rangoMes, mesAnterior,
+  // task #309: exportados para el endpoint serie-6-meses que compone su
+  // propio bundle liviano (ventas + egresos) sin re-computar todo el mensual.
+  ventasAgregadas, egresosAgregados,
+};

@@ -15,6 +15,13 @@ import { fmt, fmtFecha } from '../lib/format';
 // local aparecía vacía. Ahora derivamos el código de la moneda local
 // (ARS/UYU) del tenant.
 import { useMonedasTenant } from '../lib/useMonedasTenant';
+// task #309: gráficos del Resumen del mes (secciones A + B + C1).
+import FacturacionEgresosChart    from '../components/charts/FacturacionEgresosChart';
+import MargenNetoCard             from '../components/charts/MargenNetoCard';
+import UnidadesPorCategoriaChart  from '../components/charts/UnidadesPorCategoriaChart';
+import VentasPorEtiquetaChart     from '../components/charts/VentasPorEtiquetaChart';
+import FacturacionPorCategoriaChart from '../components/charts/FacturacionPorCategoriaChart';
+import VentasPorDiaChart          from '../components/charts/VentasPorDiaChart';
 
 function mesActualISO() {
   const d = new Date();
@@ -297,6 +304,48 @@ export default function Resumen() {
             <div className="u-flex-1-1-220">
               {/* Egresos: más es peor → invertirSigno */}
               <KpiCard label="Egresos del mes" unidad="USD" valor={egresosA} comparado={egresosC} invertirSigno />
+            </div>
+          </div>
+
+          {/* ── Bloque 3.5: Gráficos (task #309) ── */}
+          {/* Sección A — Facturación & Rentabilidad. A1 tiene su propio fetch
+              (serie 6 meses), independiente del bundle actual/comparado.
+              A2 se alimenta del margen_neto_pct que ya viene en el bundle. */}
+          <h3 className="u-mt-18-mb-8">Facturación y rentabilidad</h3>
+          <div className="row u-gap-12-flex-wrap">
+            <div className="u-flex-11-380">
+              <FacturacionEgresosChart hastaMes={periodoActual} meses={6} />
+            </div>
+            <div className="u-flex-1-1-220">
+              <MargenNetoCard
+                margenActual={actual?.margen_neto_pct}
+                margenComparado={comparado?.margen_neto_pct}
+              />
+            </div>
+          </div>
+
+          {/* Sección B — Composición de ventas. Los 3 charts usan data del
+              bundle actual (fetch único, sin round-trips extra). */}
+          <h3 className="u-mt-18-mb-8">Composición de ventas</h3>
+          <div className="row u-gap-12-flex-wrap">
+            <div className="u-flex-11-380">
+              <UnidadesPorCategoriaChart data={actual?.ventas?.por_categoria} />
+            </div>
+            <div className="u-flex-11-380">
+              <VentasPorEtiquetaChart data={actual?.ventas?.por_etiqueta} />
+            </div>
+          </div>
+          <div className="row u-gap-12-flex-wrap">
+            <div className="u-flex-11-380">
+              <FacturacionPorCategoriaChart data={actual?.ventas?.por_categoria} />
+            </div>
+          </div>
+
+          {/* Sección C — Actividad temporal. C1 es serie diaria del período. */}
+          <h3 className="u-mt-18-mb-8">Actividad diaria</h3>
+          <div className="row u-gap-12-flex-wrap">
+            <div className="u-flex-11-380">
+              <VentasPorDiaChart data={actual?.ventas?.por_dia} />
             </div>
           </div>
 

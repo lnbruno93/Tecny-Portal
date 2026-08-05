@@ -5175,3 +5175,14 @@ body.modal-open { overflow: hidden; }
   margin-top: 14px;
 }
 .cat-value .ccy                { font-size: 11.5px; color: var(--text-muted); font-weight: 500; margin-right: 4px; }
+
+/* task #309: alturas fijas para el area de gráficos del Resumen. Usamos 3
+   tamaños predefinidos para evitar `style={{}}` inline (guardrail CSP,
+   decisión durable 69). Los charts de recharts usan ResponsiveContainer
+   width/height 100%, así que la altura viene del div padre acá. */
+.u-chart-h-sm                  { height: 200px; }
+.u-chart-h-md                  { height: 240px; }
+.u-chart-h-lg                  { height: 320px; }
+
+/* KPI grande estilo Resumen — número monoespaciado 32px + peso 700. */
+.u-fs-32-mono                  { font-family: var(--font-mono, ui-monospace, monospace); font-size: 32px; }
