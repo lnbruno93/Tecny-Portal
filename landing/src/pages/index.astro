@@ -2,7 +2,7 @@
 /**
  * Home de tecnyapp.com — landing pública.
  *
- * Ensambla las 12 secciones (post-refactor Fase 3 + delta 2026-08-05):
+ * Ensambla las 13 secciones (post-refactor Fase 3 + delta 2026-08-05):
  *   1. Nav (sticky con brand + links internos + CTAs)
  *   2. Hero (headline + blurb + CTAs — mockup extraído a PortalMockup.astro)
  *   3. ComoFunciona (4 steps + callout vendedores)
@@ -11,10 +11,11 @@
  *   6. FeatureHighlight (Cotizador con calculadora mock rediseñada)
  *   7. CanjeUsados (deep-dive del módulo 05: valores de toma + tabla catálogo)
  *   8. Precios (4 planes, fetch dinámico)
- *   9. Faq (6 defaults + hidratable desde CMS)
- *  10. CtaFinal (CTA final antes del footer, texto editable)
- *  11. Contacto (WhatsApp + Email + IG + address editables)
- *  12. Footer
+ *   9. TusDatos (3 pilares post-precios: backups + export + soft-delete)
+ *  10. Faq (6 defaults + hidratable desde CMS)
+ *  11. CtaFinal (CTA final antes del footer, texto editable)
+ *  12. Contacto (WhatsApp + Email + IG + address editables)
+ *  13. Footer
  *
  * TODO tiene que estar envuelto en <div class="tecny-landing"> — los
  * selectores de `landing.css` están scoped a esa clase (var(--accent),
@@ -32,6 +33,7 @@ import Modulos from '../components/Modulos.astro';
 import FeatureHighlight from '../components/FeatureHighlight.astro';
 import CanjeUsados from '../components/CanjeUsados.astro';
 import Precios from '../components/Precios.astro';
+import TusDatos from '../components/TusDatos.astro';
 import TrustedCompanies from '../components/TrustedCompanies.astro';
 import Faq from '../components/Faq.astro';
 import CtaFinal from '../components/CtaFinal.astro';
@@ -152,6 +154,11 @@ const softwareApplicationJsonLd = {
         "Ver cómo funciona →" del módulo 05 en Modulos.astro apunta a `#canje`. */}
     <CanjeUsados />
     <Precios />
+    {/* 2026-08-05: sección "Tus datos" — 3 pilares (backups + export
+        + soft-delete). Va DESPUÉS de Precios para cerrar la ansiedad
+        natural del visitor tras evaluar el pricing ("¿y qué pasa si
+        me quiero ir?"). Antes del FAQ y CTA final. */}
+    <TusDatos />
     <Faq />
     <CtaFinal />
     <Contacto />
