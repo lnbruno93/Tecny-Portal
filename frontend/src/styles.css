@@ -5187,15 +5187,25 @@ body.modal-open { overflow: hidden; }
 /* KPI grande estilo Resumen — número monoespaciado 32px + peso 700. */
 .u-fs-32-mono                  { font-family: var(--font-mono, ui-monospace, monospace); font-size: 32px; }
 
-/* task #311: separadores más amplios entre secciones de gráficos + gap
-   entre cards. u-mt-18-mb-8 se sentía apretado en vistas grandes; estos
-   dan más aire visual entre bloques.
-
-   task #313 (2026-08-05): 20px seguía sintiéndose pegado con recharts.
-   Subimos gap a 32px + margin-top de secciones a 32px. Los charts tienen
-   fondo dark casi idéntico al background, sin el gap grande visualmente
-   se lee como una única superficie continua. */
-.u-mt-24-mb-12                 { margin-top: 24px; margin-bottom: 12px; }
+/* task #311: separadores más amplios entre secciones de gráficos.
+   u-mt-18-mb-8 se sentía apretado en vistas grandes; 32px da más aire. */
 .u-mt-32-mb-12                 { margin-top: 32px; margin-bottom: 12px; }
-.u-gap-20-flex-wrap            { gap: 20px; flex-wrap: wrap; }
-.u-gap-32-flex-wrap            { gap: 32px; flex-wrap: wrap; }
+
+/* task #314 (2026-08-05): row wrapper para cards de gráficos.
+   Historial: task #311 arrancó con gap 20px (u-gap-20-flex-wrap) →
+   task #313 subió a 32px (u-gap-32-flex-wrap) → task #314 llega a la
+   raíz del problema. El gap era irrelevante: --border (#1f2740) es casi
+   idéntico a --surface (#131a2b), así que el borde de los cards se
+   perdía y los rectángulos se leían como una única superficie continua.
+   Fix compuesto: gap 40px + --border-strong (más contraste) + --shadow-md
+   (depth) en los cards descendientes. Respeta los 3 temas (vault/slate/
+   linen) porque usa vars. Ver decisión durable 78. */
+.charts-row {
+  display: flex;
+  gap: 40px;
+  flex-wrap: wrap;
+}
+.charts-row > * > .card {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+}
