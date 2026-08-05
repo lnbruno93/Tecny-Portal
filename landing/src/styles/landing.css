@@ -483,6 +483,18 @@
 .tecny-landing .step p { font-size: 14.5px; color: var(--text-2); margin: 0; line-height: 1.5; }
 .tecny-landing .step::before { content:""; position:absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, var(--accent), transparent); border-radius: 2px; }
 
+/* 2026-08-05: callout debajo de los 4 steps con la respuesta a "¿y si
+   tengo vendedores?" (pregunta que Lucas identificó bloqueadora en demos).
+   Card sutil con background y border un poco más marcado — no compite
+   visualmente con los steps pero se lee como bloque destacado. */
+.tecny-landing .como-callout {
+  margin-top: 40px; padding: 20px 28px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 14.5px; color: var(--text-2); line-height: 1.5;
+}
+.tecny-landing .como-callout strong { color: var(--text); font-weight: 600; }
+
 /* ── Modules ─────────────────────────────────────────── */
 .tecny-landing .mods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
 .tecny-landing .mod {
