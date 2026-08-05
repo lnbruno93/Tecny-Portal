@@ -24,7 +24,6 @@ import { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router';
 import { dashboard as dashApi } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
-import { Icons } from '../components/Icons';
 
 // Charts (task #309)
 import FacturacionEgresosChart      from '../components/charts/FacturacionEgresosChart';
@@ -130,9 +129,6 @@ export default function ResumenGraficos() {
               <VentasPorDiaChart data={actual?.ventas?.por_dia} />
             </div>
           </div>
-
-          {/* Icons import está solo para futuras iteraciones (chevrons/back). */}
-          {false && <Icons.ChevronRight size={12} />}
         </>
       )}
     </div>
