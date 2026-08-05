@@ -577,11 +577,83 @@
   background: var(--surface); border: 1px solid var(--border-strong); border-radius: 16px; padding: 28px;
   box-shadow: 0 30px 70px -24px rgba(0,0,0,0.7);
 }
-.tecny-landing .calc-row { display:flex; justify-content: space-between; align-items: baseline; padding: 9px 0; font-size: 14px; }
-.tecny-landing .calc-row .l { color: var(--muted); }
+/* 2026-08-05: sub extra debajo del s-sub del FeatureHighlight — mensaje
+   contextual ("Probalo acá al lado…"). Estilo más chico y muted para
+   que no compita con el s-sub principal. */
+.tecny-landing .feat-sub-extra { font-size: 15px; color: var(--muted); margin-top: 12px; }
+
+/* 2026-08-05: rediseño del mock del cotizador. Header "COTIZADOR · EN VIVO"
+   con badge verde "probalo acá", inputs visuales (Equipo dropdown + Dólar
+   input), filas de cálculo con badges de recargo, divider, total prominente,
+   botón "Copiar para WhatsApp" full width. Todo mock (no funcional) — matchea
+   el look del cotizador real del portal. */
+.tecny-landing .calc-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 18px; padding-bottom: 14px;
+  border-bottom: 1px solid var(--hairline);
+}
+.tecny-landing .calc-title {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--muted);
+}
+.tecny-landing .calc-live-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 600; color: var(--pos);
+}
+.tecny-landing .calc-live-badge .dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--pos);
+  box-shadow: 0 0 0 3px rgba(74,222,128,0.15);
+}
+.tecny-landing .calc-inputs {
+  display: grid; grid-template-columns: 1fr 100px; gap: 12px;
+  margin-bottom: 18px;
+}
+.tecny-landing .calc-field label {
+  display: block;
+  font-size: 12px; color: var(--muted);
+  margin-bottom: 6px;
+}
+.tecny-landing .calc-select,
+.tecny-landing .calc-input-mock {
+  height: 40px; padding: 0 12px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 13.5px; color: var(--text);
+}
+.tecny-landing .calc-select svg { color: var(--muted); flex-shrink: 0; margin-left: 8px; }
+.tecny-landing .calc-input-mock { font-family: 'JetBrains Mono', monospace; }
+
+.tecny-landing .calc-row { display:flex; justify-content: space-between; align-items: baseline; padding: 10px 0; font-size: 14px; }
+.tecny-landing .calc-row .l { color: var(--text-2); display: inline-flex; align-items: center; gap: 6px; }
 .tecny-landing .calc-row .v { font-family:'JetBrains Mono',monospace; font-weight: 600; }
-.tecny-landing .calc-total { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 14px; display:flex; justify-content: space-between; align-items: baseline; }
+/* Badge inline con el % de recargo (+3%, +23,5%, +28%). Chip sutil que
+   no distrae del monto pero comunica el detalle. */
+.tecny-landing .calc-row .calc-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; font-weight: 500;
+  color: var(--muted); background: var(--surface-2);
+  padding: 2px 6px; border-radius: 4px;
+}
+.tecny-landing .calc-divider {
+  height: 1px; background: var(--hairline);
+  margin: 10px 0 4px;
+}
+.tecny-landing .calc-total { padding-top: 12px; display:flex; justify-content: space-between; align-items: baseline; }
 .tecny-landing .calc-total .v { font-family:'JetBrains Mono',monospace; font-size: 24px; font-weight: 700; color: var(--accent); }
+
+/* Botón "Copiar para WhatsApp" del mock — full width, outlined en accent.
+   No es funcional en el mock (data-cta lo trackea igual como intent). */
+.tecny-landing .calc-cta {
+  display: block; width: 100%;
+  margin-top: 18px; padding: 14px 20px;
+  background: transparent; border: 1px solid var(--accent);
+  border-radius: 10px;
+  font: 600 14.5px/1 'Inter', sans-serif;
+  color: var(--accent); cursor: pointer;
+  transition: .14s;
+}
+.tecny-landing .calc-cta:hover { background: var(--accent-soft); }
 
 /* Testimonios (`.test*`) y BigStat (`.bigstat*`) removidos en Sprint 3 L2
    (2026-07-19). Contexto: la sección JSX se removió en #441 (2026-06-26)
