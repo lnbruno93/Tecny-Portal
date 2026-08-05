@@ -7,7 +7,7 @@
  * CTAs:
  *   - "Iniciar sesión" / "Crear cuenta" → rutas de la app SPA (siguen viviendo
  *     en tecny-portal Netlify, proxyeadas desde acá en F6).
- *   - "Solicitá una demo" → Calendly con utm_campaign=nav.
+ *   - "Agendá una demo" → Calendly con utm_campaign=nav.
  *
  * Eventos: `cta_click` con `{location: 'nav', target: 'login'|'signup'|'demo'}`.
  * El script inline al final del componente wire-ea los click handlers para
@@ -34,7 +34,7 @@ import { calendlyHref } from '../lib/calendly';
         rel="noopener noreferrer"
         class="btn btn-primary"
         data-cta="nav:demo"
-      >Solicitá una demo</a>
+      >Agendá una demo</a>
     </div>
   </div>
 </nav>
