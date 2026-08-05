@@ -40,10 +40,10 @@ export interface CtaVariant {
 /** Variante default — usada en el server render + fallback si no matchea UTM. */
 export const DEFAULT_HERO: HeroVariant = {
   eyebrow: 'Creado y pensado por vendedores de tecnología para vendedores de tecnología',
-  headline: 'Tu negocio en una pantalla — sin planillas ni WhatsApp caóticos.',
+  headline: 'Tu negocio más controlado & en una sola pantalla - Sin planillas ni WhatsApp caóticos',
   subheadline: null,
   blurb:
-    'Cotizaciones, cobros, envíos y cuentas corrientes ordenados. Empezá gratis 14 días — sin tarjeta, listo en 10 minutos.',
+    'Cobros, pagos, cotizaciones, envíos, estado de cajas & cuentas corrientes ordenadas. Empezá hoy gratis - sin tarjeta ni compromiso de pago. ¡Ordená tu negocio HOY!',
 };
 
 export const DEFAULT_CTA: CtaVariant = {
