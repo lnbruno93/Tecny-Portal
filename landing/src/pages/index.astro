@@ -134,10 +134,17 @@ const softwareApplicationJsonLd = {
     <Nav />
     <Hero />
     <ComoFunciona />
+    {/* 2026-08-05: TrustedCompanies subida de post-Precios → post-ComoFunciona
+        (feedback Lucas). Motivación: los logos de confianza suman mucho más
+        temprano en el scroll — antes venían recién después de que el visitor
+        pasó por Módulos + FeatureHighlight + Precios. Ahora sirven como
+        "cierre social" del bloque narrativo del hero (Cómo funciona +
+        empresas que ya lo usan) antes de arrancar con los detalles de
+        producto (Módulos, Precios, etc.). */}
+    <TrustedCompanies />
     <Modulos />
     <FeatureHighlight />
     <Precios />
-    <TrustedCompanies />
     <Faq />
     <CtaFinal />
     <Contacto />
