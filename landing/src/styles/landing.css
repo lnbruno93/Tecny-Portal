@@ -657,13 +657,17 @@
 
 /* ── Canje de usados ─────────────────────────────────────
    2026-08-05: nueva sección deep-dive del módulo 05 (Canje de usados).
-   Mismo pattern de layout que `.feat` (grid 2 col: contenido izq, mock
-   visual der) pero con ratios un poco distintos — izq lleva 3 steps +
-   flow diagram, así que le damos un poquito más de aire (1.05fr / 0.95fr).
-   La tabla del catálogo a la derecha es un mock estático estilo "planilla
-   de precios" — matchea el mensaje del copy ("editable como planilla"). */
+   Pattern de layout con grid 2 col INVERTIDO respecto a `.feat` — acá
+   la tabla del catálogo va IZQUIERDA (0.95fr) y el contenido con steps
+   + flow diagram va DERECHA (1.05fr). Feedback Lucas: al armar el
+   zigzag con FeatureHighlight (cotizador contenido-izq/mock-der), el
+   ojo del visitor tiene ritmo alternado en las 2 secciones spotlight
+   consecutivas. La col ancha sigue siendo la del contenido — 3 steps +
+   flow diagram necesitan más aire que la tabla compacta.
+   La tabla del catálogo es un mock estático estilo "planilla de precios"
+   — matchea el mensaje del copy ("editable como planilla"). */
 .tecny-landing .canje {
-  display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 48px; align-items: start;
+  display: grid; grid-template-columns: 0.95fr 1.05fr; gap: 48px; align-items: start;
 }
 .tecny-landing .canje-content { min-width: 0; }
 

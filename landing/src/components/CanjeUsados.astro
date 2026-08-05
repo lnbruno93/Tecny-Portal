@@ -10,11 +10,13 @@
  * resuelve con catálogo en USD editable + descuento automático en la
  * venta + entrada al stock con IMEI.
  *
- * Estructura visual (mismo pattern que FeatureHighlight):
- *   · Izquierda: kicker + h2 + body + 3 steps numerados + flow diagram
- *   · Derecha: mock de la tabla "Catálogo de usados" (surface + border,
+ * Estructura visual (invertida respecto a FeatureHighlight para armar
+ * zigzag con la sección anterior — cotizador tiene contenido izq/mock
+ * der, canje tiene mock izq/contenido der):
+ *   · Izquierda: mock de la tabla "Catálogo de usados" (surface + border,
  *     header con badge "Actualizado hoy", 5 filas de iPhone, footer con
  *     contador de modelos)
+ *   · Derecha: kicker + h2 + body + 3 steps numerados + flow diagram
  *
  * El flow diagram al final es un helper visual — 3 pills conectadas
  * con flechas (Cliente entrega → Valor de toma → Entra al stock).
@@ -57,37 +59,9 @@ const CATALOGO = [
 
 <section class="s" id="canje">
   <div class="wrap canje">
-    <div class="canje-content">
-      <div class="s-kicker">Canje de usados</div>
-      <h2 class="s-title">&ldquo;¿Cuánto me tomás<br />el mío?&rdquo;</h2>
-      <p class="s-sub">
-        La pregunta que aparece en cada venta y que casi siempre se responde a ojo o revisando una planilla vieja.
-        Con Tecny tenés el valor de toma al día, por modelo, capacidad y estado de batería.
-      </p>
-
-      <ol class="canje-steps">
-        {STEPS.map((s) => (
-          <li class="canje-step">
-            <div class="canje-step-n">{s.n}</div>
-            <div class="canje-step-body">
-              <h3>{s.title}</h3>
-              <p>{s.body}</p>
-            </div>
-          </li>
-        ))}
-      </ol>
-
-      {/* Flow diagram — 3 pills conectadas con flechas. Cierra la narrativa
-          "entra usado → cálculo → sale al inventario". Puramente visual. */}
-      <div class="canje-flow" role="img" aria-label="Flujo del canje: cliente entrega, valor de toma, entra al stock con IMEI">
-        <span class="canje-pill">Cliente entrega</span>
-        <span class="canje-arrow" aria-hidden="true">→</span>
-        <span class="canje-pill">Valor de toma</span>
-        <span class="canje-arrow" aria-hidden="true">→</span>
-        <span class="canje-pill canje-pill-accent">Entra al stock con IMEI</span>
-      </div>
-    </div>
-
+    {/* Orden invertido a propósito — mock a la izquierda, contenido a la
+        derecha — para armar zigzag visual con FeatureHighlight (cotizador),
+        que tiene la orientación opuesta. Ver docstring del componente. */}
     <div class="canje-visual">
       <div class="canje-cat-head">
         <div>
@@ -120,6 +94,37 @@ const CATALOGO = [
 
       <div class="canje-cat-foot">
         42 modelos en el catálogo · Última edición: hace 2 horas
+      </div>
+    </div>
+
+    <div class="canje-content">
+      <div class="s-kicker">Canje de usados</div>
+      <h2 class="s-title">&ldquo;¿Cuánto me tomás<br />el mío?&rdquo;</h2>
+      <p class="s-sub">
+        La pregunta que aparece en cada venta y que casi siempre se responde a ojo o revisando una planilla vieja.
+        Con Tecny tenés el valor de toma al día, por modelo, capacidad y estado de batería.
+      </p>
+
+      <ol class="canje-steps">
+        {STEPS.map((s) => (
+          <li class="canje-step">
+            <div class="canje-step-n">{s.n}</div>
+            <div class="canje-step-body">
+              <h3>{s.title}</h3>
+              <p>{s.body}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+
+      {/* Flow diagram — 3 pills conectadas con flechas. Cierra la narrativa
+          "entra usado → cálculo → sale al inventario". Puramente visual. */}
+      <div class="canje-flow" role="img" aria-label="Flujo del canje: cliente entrega, valor de toma, entra al stock con IMEI">
+        <span class="canje-pill">Cliente entrega</span>
+        <span class="canje-arrow" aria-hidden="true">→</span>
+        <span class="canje-pill">Valor de toma</span>
+        <span class="canje-arrow" aria-hidden="true">→</span>
+        <span class="canje-pill canje-pill-accent">Entra al stock con IMEI</span>
       </div>
     </div>
   </div>
