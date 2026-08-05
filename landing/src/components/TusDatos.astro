@@ -1,0 +1,53 @@
+---
+/**
+ * TusDatos.astro — sección "Tu negocio adentro, y siempre tuyo".
+ *
+ * 2026-08-05 (pedido Lucas): sección post-Precios sobre control y
+ * seguridad de datos. Cierra la ansiedad natural del visitor tras
+ * ver precios ("¿y qué pasa si me quiero ir? ¿y si algo se rompe?
+ * ¿me quedo atado?"). Es un bloque de tranquilidad antes del FAQ y
+ * el CTA final — baja la barrera de compromiso para el signup.
+ *
+ * 3 pilares en columnas horizontales (sin íconos ni números — más
+ * limpio que los steps de ComoFunciona; el peso está en el título
+ * grande "y siempre tuyo" que resume el mensaje):
+ *   1. Backups automáticos — data no se pierde por accidente técnico
+ *   2. Los exportás cuando quieras — no hay vendor lock-in
+ *   3. Nada se borra por error — soft-delete con audit trail
+ *
+ * Sección puramente estática — 0 JS, sin variantes.
+ */
+
+const PILARES = [
+  {
+    title: 'Backups automáticos',
+    body: 'Copias diarias de toda tu operación. Si algo pasa, no perdés un registro.',
+  },
+  {
+    title: 'Los exportás cuando quieras',
+    body: 'Stock, cuentas corrientes, caja y movimientos a Excel, sin pedir permiso ni pagar extra.',
+  },
+  {
+    title: 'Nada se borra por error',
+    body: 'El sistema usa borrado suave: todo se puede recuperar y queda registrado quién lo hizo.',
+  },
+] as const;
+---
+
+<section class="s u-bar-y-hairline" id="tus-datos">
+  <div class="wrap">
+    <div class="s-head">
+      <div class="s-kicker">Tus datos</div>
+      <h2 class="s-title">Tu negocio adentro,<br />y siempre tuyo</h2>
+    </div>
+
+    <div class="tus-datos-grid">
+      {PILARES.map((p) => (
+        <div class="tus-datos-item">
+          <h3>{p.title}</h3>
+          <p>{p.body}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
