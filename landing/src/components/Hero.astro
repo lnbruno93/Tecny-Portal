@@ -98,44 +98,156 @@ const HERO_WA_MESSAGE = 'Hola! Vi la landing de Tecny y me interesa conocer más
       </div>
     </div>
 
-    {/* Product window — mockup del portal, idéntico al SPA */}
+    {/* Product window — mockup del portal REAL con Resumen del mes.
+        Task #306 (2026-08-05): rediseño completo del product-shot para
+        reflejar el layout actual (sidebar categorizada, top nav con
+        Cmd+K + notificaciones, user pill abajo, FAB + chatbot) y un
+        escenario simulado de "mes ganador" con datos vivos creíbles
+        (47 ventas · USD 32.4K facturado · +18% vs mes anterior).
+        Diseño validado por Lucas con mockup HTML local (decisión durable 77). */}
     <div class="product-shot">
       <div class="shot-chrome">
         <span></span><span></span><span></span>
-        <div class="shot-url">app.tecnyapp.com/inicio</div>
+        <div class="shot-url">app.tecnyapp.com/resumen</div>
       </div>
-      <div class="shot-body">
-        <div class="shot-side">
-          <div class="sb"><span class="m">T</span> Tecny</div>
-          <div class="sh">Herramientas</div>
-          <div class="si on"><span class="d"></span>Inicio</div>
-          <div class="si"><span class="d"></span>Cotizador</div>
-          <div class="si"><span class="d"></span>Financiera</div>
-          <div class="si"><span class="d"></span>Cajas</div>
-          <div class="si"><span class="d"></span>Envíos</div>
-          <div class="si"><span class="d"></span>Cuentas CC</div>
+      <div class="portal">
+        <aside class="side">
+          <div class="side-brand">
+            <div class="brand-logo">T</div>
+            <div class="brand-txt">
+              <div class="n">Tecny</div>
+              <div class="sub">Portal Operativo</div>
+            </div>
+          </div>
+          <div class="side-body side-body-fade">
+            <div class="side-cat">Comercial</div>
+            <div class="side-item"><div class="ico"></div>Inicio</div>
+            <div class="side-item active"><div class="ico"></div>Resumen del mes</div>
+            <div class="side-item"><div class="ico"></div>Ventas</div>
+            <div class="side-item"><div class="ico"></div>Venta &amp; Gestión B2B</div>
+            <div class="side-item"><div class="ico"></div>Red B2B</div>
+            <div class="side-item"><div class="ico"></div>Contactos</div>
+            <div class="side-cat">Cajas y Proveedores</div>
+            <div class="side-item"><div class="ico"></div>Cajas</div>
+            <div class="side-item"><div class="ico"></div>Sanidad del Negocio</div>
+            <div class="side-item"><div class="ico"></div>Conciliación bancaria</div>
+            <div class="side-item"><div class="ico"></div>Inventario</div>
+            <div class="side-item"><div class="ico"></div>Proveedores | Compras</div>
+            <div class="side-cat">Opciones Financieras</div>
+            <div class="side-item"><div class="ico"></div>Cambios de Divisa</div>
+            <div class="side-item"><div class="ico"></div>Transferencias</div>
+            <div class="side-item"><div class="ico"></div>Tarjetas de Crédito</div>
+            <div class="side-cat">Otras herramientas</div>
+            <div class="side-item"><div class="ico"></div>Cotizador</div>
+            <div class="side-item"><div class="ico"></div>Usados y Cotizador</div>
+            <div class="side-cat">Logística</div>
+            <div class="side-item"><div class="ico"></div>Envíos</div>
+            <div class="side-cat">Proyectos</div>
+            <div class="side-item"><div class="ico"></div>Proyectos</div>
+          </div>
+          <div class="side-user">
+            <div class="user-av">SF</div>
+            <div class="user-info">
+              <div class="n">Santiago Fernandez</div>
+              <div class="r">Admin</div>
+            </div>
+            <div class="user-icons"><div class="ci"></div><div class="ci"></div></div>
+          </div>
+        </aside>
+
+        <div class="portal-main">
+          <div class="top">
+            <span class="top-back">←</span>
+            <span class="top-flag" aria-label="Argentina">🇦🇷</span>
+            <span class="top-crumb">Portal / <span class="cur">Resumen del mes</span></span>
+            <div class="top-search">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+              </svg>
+              Buscar comprobantes, clientes, IMEI…
+              <span class="kbd">⌘K</span>
+            </div>
+            <div class="bell" aria-label="Notificaciones"></div>
+          </div>
+
+          <div class="main">
+            <h1 class="page-title">Resumen del mes</h1>
+            <div class="page-sub">
+              Comparativo de período + KPIs operativos consolidados.
+              <span class="link">Ver gráficos →</span>
+            </div>
+
+            <div class="period-card">
+              <span class="period-label">Período:</span>
+              <span class="chip active">Este mes</span>
+              <span class="chip">Mes pasado</span>
+              <span class="chip">Hace 2 meses</span>
+              <span class="chip">Personalizado</span>
+              <span class="period-vs">vs</span>
+              <span class="period-input">2026-07</span>
+              <span class="period-vs">Agosto 2026 vs Julio 2026</span>
+              <span class="period-tsp">Actualizado: 05/08/26 · 14:32</span>
+            </div>
+
+            <div class="section-h">Ventas</div>
+            <div class="kpi-row">
+              <div class="kpi"><div class="l">Ventas totales</div><div class="v"><span class="cur">USD</span>32.4K</div><div class="t">↗ +18% vs Julio</div></div>
+              <div class="kpi"><div class="l">Ganancia bruta</div><div class="v"><span class="cur">USD</span>8.2K</div><div class="t">↗ +12% vs Julio</div></div>
+              <div class="kpi"><div class="l">Ticket promedio</div><div class="v"><span class="cur">USD</span>689</div><div class="t">↗ +6% vs Julio</div></div>
+              <div class="kpi"><div class="l">Cantidad de ventas</div><div class="v">47</div><div class="t">↗ +11 vs Julio</div></div>
+            </div>
+
+            <div class="section-h">Capital en cajas <span class="sub">(al fin del período)</span></div>
+            <div class="kpi-row">
+              <div class="kpi"><div class="l">Capital total</div><div class="v"><span class="cur">USD eq.</span>42.1K</div><div class="t mut">≈ igual</div></div>
+              <div class="kpi"><div class="l">ARS</div><div class="v"><span class="cur">$</span>28.4M</div><div class="t">↗ +8.4%</div></div>
+              <div class="kpi"><div class="l">USD</div><div class="v"><span class="cur">u$s</span>14.6K</div><div class="t">↗ +2.1%</div></div>
+              <div class="kpi"><div class="l">USDT</div><div class="v">1.8K</div><div class="t mut">≈ igual</div></div>
+            </div>
+
+            <div class="section-h">Deudas y Egresos</div>
+            <div class="kpi-row n3">
+              <div class="kpi"><div class="l">Nos deben (CC clientes)</div><div class="v"><span class="cur">USD</span>5.4K</div><div class="t neg">↗ +18% vs Julio</div></div>
+              <div class="kpi"><div class="l">Debemos (Proveedores)</div><div class="v"><span class="cur">USD</span>3.2K</div><div class="t">↘ −22% vs Julio</div></div>
+              <div class="kpi"><div class="l">Egresos del mes</div><div class="v"><span class="cur">USD</span>4.8K</div><div class="t mut">≈ igual</div></div>
+            </div>
+
+            <div class="split-tables">
+              <div class="table-card">
+                <div class="table-h">Top productos</div>
+                <div class="table-row hdr"><div>Producto</div><div class="num">Cant.</div><div class="num">USD</div></div>
+                <div class="table-row"><div>iPhone 16 Pro 256GB</div><div class="num">12</div><div class="num">13.8K</div></div>
+                <div class="table-row"><div>Samsung Galaxy S25</div><div class="num">7</div><div class="num">6.3K</div></div>
+                <div class="table-row"><div>iPhone 15 Plus 128GB</div><div class="num">5</div><div class="num">4.2K</div></div>
+              </div>
+              <div class="table-card">
+                <div class="table-h">Top vendedores</div>
+                <div class="table-row hdr"><div>Vendedor</div><div class="num">Ventas</div><div class="num">USD</div></div>
+                <div class="table-row"><div>Camila Rodríguez</div><div class="num">18</div><div class="num">12.4K</div></div>
+                <div class="table-row"><div>Martín Silva</div><div class="num">15</div><div class="num">10.1K</div></div>
+                <div class="table-row"><div>Sofía Pérez</div><div class="num">14</div><div class="num">9.9K</div></div>
+              </div>
+            </div>
+
+            <div class="section-h">Pagos por método</div>
+            <div class="table-card u-pay-tight">
+              <div class="payment-row hdr"><div>Método</div><div class="num">Moneda</div><div class="num">USD</div><div class="num">%</div></div>
+              <div class="payment-row"><div>Transferencia</div><div class="num">ARS</div><div class="num">12.6K</div><div class="num">39%</div></div>
+              <div class="payment-row"><div>Efectivo</div><div class="num">USD</div><div class="num">8.2K</div><div class="num">25%</div></div>
+              <div class="payment-row"><div>Tarjeta 3 cuotas</div><div class="num">ARS</div><div class="num">6.1K</div><div class="num">19%</div></div>
+              <div class="payment-row"><div>Tarjeta 12 cuotas</div><div class="num">ARS</div><div class="num">5.5K</div><div class="num">17%</div></div>
+            </div>
+          </div>
         </div>
-        <div class="shot-main">
-          <div class="shot-h">Buen día, Lucas</div>
-          <div class="shot-hsub">Martes 23 de mayo · 18 comprobantes hoy</div>
-          <div class="shot-kpis">
-            <div class="shot-kpi"><div class="l">Comprobantes</div><div class="v">18</div><div class="t">↗ +6</div></div>
-            <div class="shot-kpi"><div class="l">Cobrado neto</div><div class="v">13,06M</div><div class="t">↗ +12.4%</div></div>
-            <div class="shot-kpi"><div class="l">Saldo CC</div><div class="v">14,28M</div><div class="t u-color-muted">−3.1%</div></div>
-            <div class="shot-kpi"><div class="l">Envíos</div><div class="v">7</div><div class="t">↗ +1</div></div>
-          </div>
-          <div class="shot-row">
-            <div><div class="nm">Mac Center · #F-0421</div><div class="meta">Camila R. · Transferencia</div></div>
-            <div class="u-text-right"><div class="amt">ARS 4.280.000</div><span class="pill pill-pos">OCR 96%</span></div>
-          </div>
-          <div class="shot-row">
-            <div><div class="nm">Celular Express · #F-0420</div><div class="meta">Sofía P. · Depósito</div></div>
-            <div class="u-text-right"><div class="amt">ARS 1.840.000</div><span class="pill pill-amber">Pendiente</span></div>
-          </div>
-          <div class="shot-row">
-            <div><div class="nm">iStore Norte · #F-0419</div><div class="meta">Lucas I. · USD efectivo</div></div>
-            <div class="u-text-right"><div class="amt">USD 12.500</div><span class="pill pill-pos">OCR 95%</span></div>
-          </div>
+
+        <div class="fab" aria-hidden="true">+</div>
+        <div class="chatb" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z"/>
+            <path d="M18 15l.9 2.7L21 18.6l-2.1.9L18 22l-.9-2.5-2.1-.9 2.1-.9z"/>
+          </svg>
         </div>
       </div>
     </div>
