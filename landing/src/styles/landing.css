@@ -186,6 +186,15 @@
 .tecny-landing .btn-lg { height: 50px; padding: 0 26px; font-size: 15.5px; border-radius: 12px; }
 .tecny-landing .btn-ghost { background: transparent; border-color: transparent; color: var(--text-2); }
 .tecny-landing .btn-ghost:hover { background: var(--surface); color: var(--text); }
+/* 2026-08-05: botón CTA WhatsApp del Hero (task #306).
+   Verde oficial WhatsApp (#25D366) para reconocibilidad instantánea del
+   canal. No usamos --accent porque acá el color ES el mensaje ("es un
+   botón de WhatsApp"). Hover baja levemente el luminance. */
+.tecny-landing .btn-wa {
+  background: #25D366; color: #ffffff; border-color: transparent;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.25) inset, 0 8px 24px -8px rgba(37,211,102,0.5);
+}
+.tecny-landing .btn-wa:hover { background: #1ebe5a; transform: translateY(-1px); }
 
 /* ── Hero ────────────────────────────────────────────── */
 .tecny-landing .hero { position: relative; overflow: hidden; padding: 100px 0 80px; }
