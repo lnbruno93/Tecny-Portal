@@ -2,19 +2,19 @@
 /**
  * Home de tecnyapp.com — landing pública.
  *
- * Ensambla las 10 secciones portadas de `frontend/src/screens/Landing.jsx`
- * a componentes Astro:
+ * Ensambla las 12 secciones (post-refactor Fase 3 + delta 2026-08-05):
  *   1. Nav (sticky con brand + links internos + CTAs)
- *   2. Hero (headline + blurb + mockup del portal)
- *   3. ComoFunciona (4 steps)
- *   4. Modulos (6 features del producto)
- *   5. FeatureHighlight (Cotizador con calculadora mock)
- *   6. Precios (4 planes, fetch dinámico)
- *   7. TrustedCompanies (carrusel, oculto si vacío)
- *   8. Faq (6 defaults + hidratable desde CMS)
- *   9. CtaFinal (CTA final antes del footer, texto editable)
- *  10. Contacto (WhatsApp + Email + IG + address editables)
- *  11. Footer
+ *   2. Hero (headline + blurb + CTAs — mockup extraído a PortalMockup.astro)
+ *   3. ComoFunciona (4 steps + callout vendedores)
+ *   4. TrustedCompanies (carrusel movido de post-Precios → post-ComoFunciona)
+ *   5. Modulos (7 cards con badges + numeración + link)
+ *   6. FeatureHighlight (Cotizador con calculadora mock rediseñada)
+ *   7. CanjeUsados (deep-dive del módulo 05: valores de toma + tabla catálogo)
+ *   8. Precios (4 planes, fetch dinámico)
+ *   9. Faq (6 defaults + hidratable desde CMS)
+ *  10. CtaFinal (CTA final antes del footer, texto editable)
+ *  11. Contacto (WhatsApp + Email + IG + address editables)
+ *  12. Footer
  *
  * TODO tiene que estar envuelto en <div class="tecny-landing"> — los
  * selectores de `landing.css` están scoped a esa clase (var(--accent),
@@ -30,6 +30,7 @@ import Hero from '../components/Hero.astro';
 import ComoFunciona from '../components/ComoFunciona.astro';
 import Modulos from '../components/Modulos.astro';
 import FeatureHighlight from '../components/FeatureHighlight.astro';
+import CanjeUsados from '../components/CanjeUsados.astro';
 import Precios from '../components/Precios.astro';
 import TrustedCompanies from '../components/TrustedCompanies.astro';
 import Faq from '../components/Faq.astro';
@@ -134,10 +135,23 @@ const softwareApplicationJsonLd = {
     <Nav />
     <Hero />
     <ComoFunciona />
+    {/* 2026-08-05: TrustedCompanies subida de post-Precios → post-ComoFunciona
+        (feedback Lucas). Motivación: los logos de confianza suman mucho más
+        temprano en el scroll — antes venían recién después de que el visitor
+        pasó por Módulos + FeatureHighlight + Precios. Ahora sirven como
+        "cierre social" del bloque narrativo del hero (Cómo funciona +
+        empresas que ya lo usan) antes de arrancar con los detalles de
+        producto (Módulos, Precios, etc.). */}
+    <TrustedCompanies />
     <Modulos />
     <FeatureHighlight />
+    {/* 2026-08-05: sección deep-dive del canje (módulo 05). Va después
+        del FeatureHighlight del cotizador para armar un "par de spotlights"
+        — Cotizador (módulo 02) + Canje (módulo 05), los dos value props
+        más concretos y frecuentes en la operación del revendedor. El link
+        "Ver cómo funciona →" del módulo 05 en Modulos.astro apunta a `#canje`. */}
+    <CanjeUsados />
     <Precios />
-    <TrustedCompanies />
     <Faq />
     <CtaFinal />
     <Contacto />

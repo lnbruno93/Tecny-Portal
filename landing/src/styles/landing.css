@@ -186,9 +186,28 @@
 .tecny-landing .btn-lg { height: 50px; padding: 0 26px; font-size: 15.5px; border-radius: 12px; }
 .tecny-landing .btn-ghost { background: transparent; border-color: transparent; color: var(--text-2); }
 .tecny-landing .btn-ghost:hover { background: var(--surface); color: var(--text); }
+/* 2026-08-05: botón CTA WhatsApp del Hero (task #306).
+   Verde oficial WhatsApp (#25D366) para reconocibilidad instantánea del
+   canal. No usamos --accent porque acá el color ES el mensaje ("es un
+   botón de WhatsApp"). Hover baja levemente el luminance. */
+.tecny-landing .btn-wa {
+  background: #25D366; color: #ffffff; border-color: transparent;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.25) inset, 0 8px 24px -8px rgba(37,211,102,0.5);
+}
+.tecny-landing .btn-wa:hover { background: #1ebe5a; transform: translateY(-1px); }
 
 /* ── Hero ────────────────────────────────────────────── */
-.tecny-landing .hero { position: relative; overflow: hidden; padding: 100px 0 80px; }
+/* 2026-08-05: reducido padding-bottom 80px → 32px → 8px (2 iteraciones).
+   Antes con el mockup dentro del hero el aire abajo se justificaba.
+   Ahora sin el mockup, más ajustado se lee más punchy. Combinado con
+   override del padding-top de la sección #como (~48px), total hero→
+   ComoFunciona baja de 176px a ~56px. */
+.tecny-landing .hero { position: relative; overflow: hidden; padding: 100px 0 8px; }
+/* Padding-top override específico para la primera sección después del hero:
+   la clase `.s` genérica tiene 96px de padding-top (bien para transiciones
+   entre secciones internas), pero justo después del hero queda pesado.
+   Solo aplica a `#como` (la que viene inmediatamente después). */
+.tecny-landing section.s#como { padding-top: 48px; }
 /* 2026-07-13: gradient re-anclado adentro del hero (era `at 70% -5%` — 5%
    arriba del borde superior → creaba una banda azul tenue justo en el borde
    nav→hero que se veía como línea horizontal). Nueva posición `at 70% 25%`
@@ -200,6 +219,12 @@
     radial-gradient(ellipse 600px 400px at 10% 40%, rgba(122,169,255,0.05), transparent 55%);
   pointer-events: none;
 }
+/* Hero stackeado 1-columna. 2026-08-05 (iter 4): el .hero-grid ahora
+   vive DENTRO de un .wrap (2 divs anidados en Hero.astro), no en el
+   mismo elemento. Así el .wrap hace de container (max 1200px, centrado,
+   con padding lateral), y el .hero-grid queda pegado al inicio del
+   wrap con margin default 0 — matcheando el mismo eje izquierdo que
+   `.s-head` del resto de secciones. */
 .tecny-landing .hero-grid { position: relative; display: grid; grid-template-columns: 1fr; gap: 40px; max-width: 880px; }
 .tecny-landing .eyebrow {
   display: inline-flex; align-items: center; gap: 8px;
@@ -239,30 +264,211 @@
 .tecny-landing .shot-chrome span:nth-child(2){ background:#febc2e }
 .tecny-landing .shot-chrome span:nth-child(3){ background:#28c840 }
 .tecny-landing .shot-url { margin-left: 14px; font-family:'JetBrains Mono',monospace; font-size: 12px; color: var(--muted); padding: 4px 12px; background: var(--surface); border-radius: 6px; }
-.tecny-landing .shot-body { display: grid; grid-template-columns: 220px 1fr; min-height: 460px; }
-.tecny-landing .shot-side { background: var(--bg-2); border-right: 1px solid var(--hairline); padding: 18px 12px; }
-.tecny-landing .shot-side .sb { display:flex; align-items:center; gap:9px; padding: 8px 10px 16px; border-bottom: 1px solid var(--hairline); margin-bottom: 12px; font-weight: 700; font-size: 14px; letter-spacing:-0.01em; }
-.tecny-landing .shot-side .sb .m { width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(135deg,var(--accent),var(--accent-2)); color: var(--accent-ink); display: grid; place-items: center; font-size: 10px; font-weight: 800; }
-.tecny-landing .shot-side .sh { font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); padding: 12px 10px 6px; }
-.tecny-landing .shot-side .si { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 7px; font-size: 13px; color: var(--text-2); font-weight: 500; }
-.tecny-landing .shot-side .si.on { background: var(--surface-2); color: var(--text); }
-.tecny-landing .shot-side .si .d { width: 15px; height: 15px; border-radius: 4px; background: rgba(255,255,255,0.08); flex-shrink: 0; }
-.tecny-landing .shot-side .si.on .d { background: var(--accent-soft); }
-.tecny-landing .shot-main { padding: 24px 26px; }
-.tecny-landing .shot-h { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 4px; }
-.tecny-landing .shot-hsub { font-size: 13px; color: var(--muted); margin-bottom: 20px; }
-.tecny-landing .shot-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
-.tecny-landing .shot-kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
-.tecny-landing .shot-kpi .l { font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
-.tecny-landing .shot-kpi .v { font-family:'JetBrains Mono',monospace; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; margin-top: 6px; }
-.tecny-landing .shot-kpi .t { font-size: 11px; font-weight: 600; margin-top: 4px; color: var(--pos); }
-.tecny-landing .shot-row { display: flex; align-items:center; justify-content: space-between; padding: 11px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 9px; margin-bottom: 8px; }
-.tecny-landing .shot-row .nm { font-weight: 600; font-size: 13px; }
-.tecny-landing .shot-row .meta { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
-.tecny-landing .shot-row .amt { font-family:'JetBrains Mono',monospace; font-weight: 600; font-size: 13px; }
-.tecny-landing .pill { display:inline-flex; align-items:center; gap:5px; height:20px; padding:0 8px; font-size:11px; font-weight:600; border-radius:6px; }
-.tecny-landing .pill-pos { background: rgba(74,222,128,0.13); color: var(--pos); }
-.tecny-landing .pill-amber { background: var(--accent-soft); color: var(--accent); }
+/* ── Hero portal mockup (task #306, 2026-08-05) ───────────────────────
+   Reemplaza el mockup viejo (dashboard "Buen día, Lucas" con 6 items
+   sidebar + 4 KPIs + 3 rows de venta). El nuevo mockup refleja el
+   layout real del portal en producción: sidebar categorizada
+   (COMERCIAL / CAJAS / OPCIONES FINANCIERAS / OTRAS / LOGÍSTICA /
+   PROYECTOS), topbar con Cmd+K + notificaciones, user pill abajo,
+   FAB + chatbot flotantes. Vista: Resumen del mes con datos vivos
+   simulados ("mes ganador" Agosto vs Julio +18%). Ver comentario del
+   Hero.astro para el contexto de diseño. */
+.tecny-landing .portal {
+  display: grid; grid-template-columns: 210px 1fr;
+  position: relative;
+  /* Sin min-height: el mockup crece con su contenido. Antes tenía 720px
+     fijo, que dejaba un enorme espacio vacío en el sidebar cuando el main
+     no llegaba a esa altura (reporte Lucas 2026-08-05). */
+}
+.tecny-landing .portal-main { display: flex; flex-direction: column; }
+
+/* Sidebar */
+.tecny-landing .side {
+  background: var(--bg-2); border-right: 1px solid var(--hairline);
+  padding: 14px 8px; display: flex; flex-direction: column;
+}
+.tecny-landing .side-brand {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 10px 14px; margin-bottom: 6px;
+  border-bottom: 1px solid var(--hairline);
+}
+.tecny-landing .brand-logo {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #fff; display: grid; place-items: center;
+  font-size: 14px; font-weight: 800; letter-spacing: -0.02em;
+}
+.tecny-landing .brand-txt { display: flex; flex-direction: column; }
+.tecny-landing .brand-txt .n { font-size: 13.5px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.1; }
+.tecny-landing .brand-txt .sub { font-size: 8.5px; font-weight: 700; color: var(--dim); letter-spacing: 0.1em; text-transform: uppercase; margin-top: 2px; }
+.tecny-landing .side-body { flex: 1; overflow-y: hidden; padding-top: 8px; }
+/* Fade-out en el bottom del side-body para indicar visualmente que hay
+   más items debajo (patrón UX cuando el sidebar es más largo que el
+   viewport). Sugiere "hay scroll" sin necesitar scrollbar.
+   Sin max-height: dejamos que side-body se estire con flex:1 hasta llenar
+   el sidebar (que a su vez matchea el alto del main por CSS grid). El
+   mask-image se aplica sobre TODO el body — como los items reales exceden
+   el espacio disponible por la altura del main, siempre queda un fade
+   auténtico al final. */
+.tecny-landing .side-body.side-body-fade {
+  -webkit-mask-image: linear-gradient(to bottom, black 88%, transparent 100%);
+  mask-image: linear-gradient(to bottom, black 88%, transparent 100%);
+}
+.tecny-landing .side-cat {
+  font-size: 8.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--dim); padding: 9px 10px 3px;
+}
+.tecny-landing .side-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 10px; margin-bottom: 1px; border-radius: 6px;
+  font-size: 11px; font-weight: 500; color: var(--text-2);
+}
+.tecny-landing .side-item .ico { width: 12px; height: 12px; border-radius: 3px; background: rgba(255,255,255,0.08); flex-shrink: 0; }
+.tecny-landing .side-item.active { background: var(--surface-2); color: var(--text); font-weight: 600; }
+.tecny-landing .side-item.active .ico { background: var(--accent-soft); }
+.tecny-landing .side-user {
+  margin-top: auto;
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 6px 4px; border-top: 1px solid var(--hairline);
+}
+.tecny-landing .user-av {
+  width: 26px; height: 26px; border-radius: 6px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #fff; display: grid; place-items: center;
+  font-size: 10px; font-weight: 700; letter-spacing: -0.01em; flex-shrink: 0;
+}
+.tecny-landing .user-info { flex: 1; min-width: 0; }
+.tecny-landing .user-info .n { font-size: 11px; font-weight: 600; letter-spacing: -0.01em; }
+.tecny-landing .user-info .r { font-size: 9px; color: var(--muted); }
+.tecny-landing .user-icons { display: flex; gap: 4px; }
+.tecny-landing .user-icons .ci { width: 14px; height: 14px; border-radius: 3px; background: rgba(255,255,255,0.06); }
+
+/* Topbar */
+.tecny-landing .top {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 20px; border-bottom: 1px solid var(--hairline);
+  background: var(--bg-2);
+}
+.tecny-landing .top-back { color: var(--muted); font-size: 14px; }
+.tecny-landing .top-flag { font-size: 14px; }
+.tecny-landing .top-crumb { color: var(--muted); font-size: 12px; }
+.tecny-landing .top-crumb .cur { color: var(--text); font-weight: 500; }
+.tecny-landing .top-search {
+  margin-left: auto;
+  display: flex; align-items: center; gap: 8px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 5px 8px 5px 12px;
+  width: 280px; font-size: 11.5px; color: var(--muted);
+}
+.tecny-landing .top-search svg { flex-shrink: 0; }
+.tecny-landing .kbd {
+  font-family: 'JetBrains Mono', monospace;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 4px; padding: 1px 5px; font-size: 9.5px; color: var(--text-2);
+  margin-left: auto;
+}
+.tecny-landing .bell { width: 26px; height: 26px; border-radius: 6px; background: rgba(255,255,255,0.04); }
+
+/* Main content — compactado 2026-08-05 tras reporte "queda LARGUÍSIMO" de
+   Lucas. Antes: padding 24×28, section-h margin-top 22px, KPIs padding
+   12×14. Ahora todo bajado ~25% para que el mockup sea denso sin sacar
+   contenido. Igual entra en pantalla completa desktop, y en mobile stackea
+   como antes por las media queries. */
+.tecny-landing .portal .main { padding: 18px 22px 22px; }
+.tecny-landing .page-title { font-size: 20px; font-weight: 700; letter-spacing: -0.015em; margin: 0 0 3px; }
+.tecny-landing .page-sub { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+.tecny-landing .page-sub .link { color: var(--accent); margin-left: 8px; font-weight: 500; }
+
+.tecny-landing .period-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 9px; padding: 9px 14px; margin-bottom: 14px;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  font-size: 11px;
+}
+.tecny-landing .period-label { color: var(--muted); font-size: 10.5px; }
+.tecny-landing .chip {
+  padding: 4px 10px; border-radius: 6px;
+  font-size: 11px; font-weight: 500; color: var(--text-2);
+  background: transparent; border: 1px solid transparent;
+}
+.tecny-landing .chip.active { background: var(--accent); color: #fff; font-weight: 600; }
+.tecny-landing .period-vs { color: var(--muted); font-size: 10.5px; margin-left: 8px; }
+.tecny-landing .period-input {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  padding: 3px 8px; border-radius: 5px; color: var(--text-2);
+}
+.tecny-landing .period-tsp { margin-left: auto; color: var(--dim); font-size: 10.5px; }
+
+.tecny-landing .section-h {
+  font-size: 13.5px; font-weight: 600; letter-spacing: -0.005em;
+  margin: 14px 0 7px;
+}
+.tecny-landing .section-h .sub { color: var(--muted); font-size: 10.5px; font-weight: 500; margin-left: 6px; }
+
+.tecny-landing .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.tecny-landing .kpi-row.n3 { grid-template-columns: repeat(3, 1fr); }
+.tecny-landing .kpi {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 12px;
+}
+.tecny-landing .kpi .l { font-size: 9px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.tecny-landing .kpi .v {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 16px; font-weight: 700; letter-spacing: -0.01em;
+  margin-top: 4px;
+}
+.tecny-landing .kpi .v .cur { color: var(--muted); font-weight: 500; font-size: 10px; margin-right: 3px; }
+.tecny-landing .kpi .t { font-size: 10px; font-weight: 600; margin-top: 2px; color: var(--pos); }
+.tecny-landing .kpi .t.neg { color: var(--neg); }
+.tecny-landing .kpi .t.mut { color: var(--muted); }
+
+.tecny-landing .split-tables { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.tecny-landing .table-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 11px 14px;
+}
+.tecny-landing .table-card.u-pay-tight { padding: 9px 14px; }
+.tecny-landing .table-h { font-size: 12px; font-weight: 600; margin-bottom: 7px; letter-spacing: -0.005em; }
+.tecny-landing .table-row {
+  display: grid; grid-template-columns: 1.6fr 60px 80px;
+  align-items: center; padding: 4px 0; font-size: 10.5px;
+  border-top: 1px solid var(--hairline);
+}
+.tecny-landing .table-row.hdr {
+  color: var(--dim); font-size: 9px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  border-top: none; padding-bottom: 3px;
+}
+.tecny-landing .table-row .num { font-family: 'JetBrains Mono', monospace; font-weight: 600; text-align: right; }
+
+.tecny-landing .payment-row {
+  display: grid; grid-template-columns: 2fr 1fr 1fr 1fr;
+  padding: 5px 12px; font-size: 10.5px;
+  border-top: 1px solid var(--hairline);
+}
+.tecny-landing .payment-row.hdr {
+  color: var(--dim); font-size: 9px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  border-top: none; padding-bottom: 4px;
+}
+.tecny-landing .payment-row .num { font-family: 'JetBrains Mono', monospace; font-weight: 600; text-align: right; }
+
+/* FAB + Chatbot flotantes (bottom-right dentro del mockup) */
+.tecny-landing .fab, .tecny-landing .chatb {
+  position: absolute; right: 20px;
+  width: 40px; height: 40px; border-radius: 50%;
+  display: grid; place-items: center;
+  color: #fff; font-size: 22px; font-weight: 400;
+  box-shadow: 0 6px 20px rgba(14,165,233,0.4);
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+}
+.tecny-landing .fab { bottom: 76px; }
+.tecny-landing .chatb {
+  bottom: 24px;
+  background: linear-gradient(135deg, #22d3ee, #06b6d4);
+  box-shadow: 0 6px 20px rgba(6,182,212,0.4);
+}
 
 /* Logo strip (`.strip*`) removido en Sprint 3 L2 (2026-07-19). Antes vivía
    acá el CSS de la franja "Equipos que ya operan con Tecny" con 6 logos
@@ -288,6 +494,18 @@
 .tecny-landing .step p { font-size: 14.5px; color: var(--text-2); margin: 0; line-height: 1.5; }
 .tecny-landing .step::before { content:""; position:absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, var(--accent), transparent); border-radius: 2px; }
 
+/* 2026-08-05: callout debajo de los 4 steps con la respuesta a "¿y si
+   tengo vendedores?" (pregunta que Lucas identificó bloqueadora en demos).
+   Card sutil con background y border un poco más marcado — no compite
+   visualmente con los steps pero se lee como bloque destacado. */
+.tecny-landing .como-callout {
+  margin-top: 40px; padding: 20px 28px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 14.5px; color: var(--text-2); line-height: 1.5;
+}
+.tecny-landing .como-callout strong { color: var(--text); font-weight: 600; }
+
 /* ── Modules ─────────────────────────────────────────── */
 .tecny-landing .mods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
 .tecny-landing .mod {
@@ -295,18 +513,58 @@
   padding: 24px; transition: .16s; position: relative; overflow: hidden;
 }
 .tecny-landing .mod:hover { border-color: var(--border-strong); transform: translateY(-2px); background: var(--surface-2); }
-.tecny-landing .mod .ico { width: 44px; height: 44px; border-radius: 11px; display: grid; place-items: center; margin-bottom: 16px; }
+/* 2026-08-05: `.mod-wide` ocupa 2 columnas del grid. Se aplica al módulo
+   01 (Inventario con IMEI) porque tiene 4 badges — en 1 col sola quedaban
+   apretados / stackeados en varias filas. En 2 col los badges caben en
+   1 sola fila y el módulo tiene el hero visual que merece por ser el
+   primero. En mobile (≤940px, cuando .mods pasa a 1 col por media query)
+   `mod-wide` no aplica automáticamente — vuelve a ocupar 1 col como los demás. */
+.tecny-landing .mod.mod-wide { grid-column: span 2; }
+/* 2026-08-05: número prominente arriba del title (01, 02, …). Estilo
+   igual al `.n` de los steps de Cómo Funciona — misma tipografía mono +
+   accent color. Distingue visualmente los cards y los ordena. */
+.tecny-landing .mod .mod-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px; font-weight: 600;
+  color: var(--accent); margin-bottom: 14px;
+}
+.tecny-landing .mod .ico { width: 44px; height: 44px; border-radius: 11px; display: grid; place-items: center; margin-top: 18px; }
 .tecny-landing .mod h3 { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 8px; }
 .tecny-landing .mod p { font-size: 14px; color: var(--text-2); margin: 0; line-height: 1.5; }
+/* 2026-08-05: link inline dentro del body ("Ver cómo funciona →"). Color
+   accent + underline en hover. Se usa en módulos que tienen deep dive. */
+.tecny-landing .mod .mod-link { color: var(--accent); font-weight: 500; text-decoration: none; white-space: nowrap; }
+.tecny-landing .mod .mod-link:hover { text-decoration: underline; }
+/* 2026-08-05: badges/chips debajo del body (opcional). Grid de pills
+   para mostrar features específicas de un módulo (ej. Inventario tiene
+   4: búsqueda por IMEI, stock valorizado, en servicio técnico, trazabilidad).
+   La variante `.hi` (highlight) colorea con warn/amber para destacar un
+   estado especial que el usuario quiere que se vea (ej. "En servicio técnico"). */
+.tecny-landing .mod .mod-badges {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin-top: 14px;
+}
+.tecny-landing .mod .mod-badge {
+  display: inline-flex; align-items: center;
+  padding: 5px 10px; border-radius: 6px;
+  font-size: 11.5px; font-weight: 500;
+  color: var(--text-2); background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.tecny-landing .mod .mod-badge.hi {
+  color: var(--warn); background: var(--warn-soft);
+  border-color: rgba(251,191,36,0.3);
+}
 .tecny-landing .tint-amber{background:rgba(14,165,233,0.13);color:#0ea5e9}
 .tecny-landing .tint-blue{background:rgba(122,169,255,0.14);color:#7aa9ff}
 .tecny-landing .tint-green{background:rgba(74,222,128,0.13);color:#6ee79f}
 .tecny-landing .tint-purple{background:rgba(167,139,250,0.16);color:#c4aeff}
 .tecny-landing .tint-cyan{background:rgba(56,189,248,0.14);color:#6fcef5}
 .tecny-landing .tint-pink{background:rgba(244,114,182,0.14);color:#f4a5cf}
-/* .tint-slate removido en Sprint 3 L2: nunca fue aplicado a ningún módulo
-   (los tints en uso son amber/blue/green/purple/cyan/pink). Si a futuro se
-   necesita un tint neutro, agregar de vuelta. */
+/* 2026-08-05: tint-orange agregado para el 7mo módulo (Envíos con IMEI).
+   Antes eran 6 tints para 6 módulos; con el rewrite pasan a ser 7 y el
+   subtitle "Siete módulos que conversan entre sí" ya no miente. */
+.tecny-landing .tint-orange{background:rgba(251,146,60,0.14);color:#fbb56b}
 
 /* ── Feature highlight ───────────────────────────────── */
 .tecny-landing .feat { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
@@ -319,11 +577,211 @@
   background: var(--surface); border: 1px solid var(--border-strong); border-radius: 16px; padding: 28px;
   box-shadow: 0 30px 70px -24px rgba(0,0,0,0.7);
 }
-.tecny-landing .calc-row { display:flex; justify-content: space-between; align-items: baseline; padding: 9px 0; font-size: 14px; }
-.tecny-landing .calc-row .l { color: var(--muted); }
+/* 2026-08-05: sub extra debajo del s-sub del FeatureHighlight — mensaje
+   contextual ("Probalo acá al lado…"). Estilo más chico y muted para
+   que no compita con el s-sub principal. */
+.tecny-landing .feat-sub-extra { font-size: 15px; color: var(--muted); margin-top: 12px; }
+
+/* 2026-08-05: rediseño del mock del cotizador. Header "COTIZADOR · EN VIVO"
+   con badge verde "probalo acá", inputs visuales (Equipo dropdown + Dólar
+   input), filas de cálculo con badges de recargo, divider, total prominente,
+   botón "Copiar para WhatsApp" full width. Todo mock (no funcional) — matchea
+   el look del cotizador real del portal. */
+.tecny-landing .calc-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 18px; padding-bottom: 14px;
+  border-bottom: 1px solid var(--hairline);
+}
+.tecny-landing .calc-title {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--muted);
+}
+.tecny-landing .calc-live-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 600; color: var(--pos);
+}
+.tecny-landing .calc-live-badge .dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--pos);
+  box-shadow: 0 0 0 3px rgba(74,222,128,0.15);
+}
+.tecny-landing .calc-inputs {
+  display: grid; grid-template-columns: 1fr 100px; gap: 12px;
+  margin-bottom: 18px;
+}
+.tecny-landing .calc-field label {
+  display: block;
+  font-size: 12px; color: var(--muted);
+  margin-bottom: 6px;
+}
+.tecny-landing .calc-select,
+.tecny-landing .calc-input-mock {
+  height: 40px; padding: 0 12px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 13.5px; color: var(--text);
+}
+.tecny-landing .calc-select svg { color: var(--muted); flex-shrink: 0; margin-left: 8px; }
+.tecny-landing .calc-input-mock { font-family: 'JetBrains Mono', monospace; }
+
+.tecny-landing .calc-row { display:flex; justify-content: space-between; align-items: baseline; padding: 10px 0; font-size: 14px; }
+.tecny-landing .calc-row .l { color: var(--text-2); display: inline-flex; align-items: center; gap: 6px; }
 .tecny-landing .calc-row .v { font-family:'JetBrains Mono',monospace; font-weight: 600; }
-.tecny-landing .calc-total { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 14px; display:flex; justify-content: space-between; align-items: baseline; }
+/* Badge inline con el % de recargo (+3%, +23,5%, +28%). Chip sutil que
+   no distrae del monto pero comunica el detalle. */
+.tecny-landing .calc-row .calc-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; font-weight: 500;
+  color: var(--muted); background: var(--surface-2);
+  padding: 2px 6px; border-radius: 4px;
+}
+.tecny-landing .calc-divider {
+  height: 1px; background: var(--hairline);
+  margin: 10px 0 4px;
+}
+.tecny-landing .calc-total { padding-top: 12px; display:flex; justify-content: space-between; align-items: baseline; }
 .tecny-landing .calc-total .v { font-family:'JetBrains Mono',monospace; font-size: 24px; font-weight: 700; color: var(--accent); }
+
+/* Botón "Copiar para WhatsApp" del mock — full width, outlined en accent.
+   No es funcional en el mock (data-cta lo trackea igual como intent). */
+.tecny-landing .calc-cta {
+  display: block; width: 100%;
+  margin-top: 18px; padding: 14px 20px;
+  background: transparent; border: 1px solid var(--accent);
+  border-radius: 10px;
+  font: 600 14.5px/1 'Inter', sans-serif;
+  color: var(--accent); cursor: pointer;
+  transition: .14s;
+}
+.tecny-landing .calc-cta:hover { background: var(--accent-soft); }
+
+/* ── Canje de usados ─────────────────────────────────────
+   2026-08-05: nueva sección deep-dive del módulo 05 (Canje de usados).
+   Mismo pattern de layout que `.feat` (grid 2 col: contenido izq, mock
+   visual der) pero con ratios un poco distintos — izq lleva 3 steps +
+   flow diagram, así que le damos un poquito más de aire (1.05fr / 0.95fr).
+   La tabla del catálogo a la derecha es un mock estático estilo "planilla
+   de precios" — matchea el mensaje del copy ("editable como planilla"). */
+.tecny-landing .canje {
+  display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 48px; align-items: start;
+}
+.tecny-landing .canje-content { min-width: 0; }
+
+/* Steps verticales — número en circle + body al lado. Contrastan con
+   los steps horizontales de ComoFunciona (4 col grid) — acá van en 1
+   col porque son "how it works" narrativo del canje específico. */
+.tecny-landing .canje-steps {
+  list-style: none; padding: 0; margin: 32px 0 0;
+  display: flex; flex-direction: column; gap: 20px;
+}
+.tecny-landing .canje-step {
+  display: grid; grid-template-columns: 32px 1fr; gap: 16px; align-items: start;
+}
+.tecny-landing .canje-step-n {
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--accent-soft); color: var(--accent);
+  display: grid; place-items: center;
+  font: 600 13.5px/1 'JetBrains Mono', monospace;
+  flex-shrink: 0;
+}
+.tecny-landing .canje-step-body h3 {
+  margin: 4px 0 6px; font-size: 15.5px; font-weight: 600;
+  letter-spacing: -0.01em; color: var(--text);
+}
+.tecny-landing .canje-step-body p {
+  margin: 0; font-size: 14px; color: var(--text-2); line-height: 1.5;
+}
+
+/* Flow diagram — 3 pills conectadas con flechas ›. Visualiza el
+   "círculo" del canje: cliente entrega → cálculo → entra al stock.
+   Puramente visual — role="img" con aria-label leído en su totalidad. */
+.tecny-landing .canje-flow {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: 10px; margin-top: 32px;
+  padding: 16px 18px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.tecny-landing .canje-pill {
+  display: inline-flex; align-items: center;
+  padding: 7px 12px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12.5px; font-weight: 500; color: var(--text-2);
+  white-space: nowrap;
+}
+.tecny-landing .canje-pill-accent {
+  color: var(--accent); background: var(--accent-soft);
+  border-color: rgba(14,165,233,0.35);
+  font-weight: 600;
+}
+.tecny-landing .canje-arrow {
+  color: var(--muted); font-size: 15px; line-height: 1;
+  user-select: none;
+}
+
+/* Tabla catálogo — mock estático del "Catálogo de usados" del portal.
+   Header con título + subtítulo + badge verde "Actualizado hoy" (dot
+   verde igual que el `.calc-live-badge` del cotizador). Table nativa
+   con borders sutiles entre rows; monto de toma con color positivo. */
+.tecny-landing .canje-visual {
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: 16px; padding: 20px;
+  box-shadow: 0 30px 70px -24px rgba(0,0,0,0.7);
+}
+.tecny-landing .canje-cat-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 12px; margin-bottom: 16px;
+}
+.tecny-landing .canje-cat-title {
+  font-size: 15px; font-weight: 600; letter-spacing: -0.01em; color: var(--text);
+  margin-bottom: 4px;
+}
+.tecny-landing .canje-cat-sub {
+  font-size: 12.5px; color: var(--muted);
+}
+.tecny-landing .canje-cat-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11.5px; font-weight: 600; color: var(--pos);
+  background: rgba(74,222,128,0.10);
+  padding: 5px 10px; border-radius: 999px;
+  white-space: nowrap; flex-shrink: 0;
+}
+.tecny-landing .canje-cat-badge .dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--pos);
+}
+
+.tecny-landing .canje-cat-table {
+  width: 100%; border-collapse: collapse;
+  font-size: 13px;
+}
+.tecny-landing .canje-cat-table thead th {
+  text-align: left;
+  padding: 10px 8px;
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+.tecny-landing .canje-cat-table tbody td {
+  padding: 11px 8px;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--text-2);
+}
+.tecny-landing .canje-cat-table tbody tr:last-child td { border-bottom: none; }
+.tecny-landing .canje-cat-table .ta-right { text-align: right; }
+.tecny-landing .canje-cat-modelo { color: var(--text); font-weight: 500; }
+.tecny-landing .canje-cat-cap,
+.tecny-landing .canje-cat-bat { font-family: 'JetBrains Mono', monospace; font-size: 12.5px; }
+.tecny-landing .canje-cat-toma {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600; color: var(--pos);
+}
+
+.tecny-landing .canje-cat-foot {
+  margin-top: 14px; padding-top: 12px;
+  border-top: 1px solid var(--hairline);
+  font-size: 11.5px; color: var(--muted); text-align: center;
+}
 
 /* Testimonios (`.test*`) y BigStat (`.bigstat*`) removidos en Sprint 3 L2
    (2026-07-19). Contexto: la sección JSX se removió en #441 (2026-06-26)
@@ -462,12 +920,17 @@
      (heredado por el fallthrough al selector .plans arriba) a 1 columna. */
   .tecny-landing .plans.plans-4col { grid-template-columns: repeat(2, 1fr); }
   .tecny-landing .feat { grid-template-columns: 1fr; gap: 32px; }
+  /* Canje de usados: en tablet/mobile la tabla del catálogo pasa
+     debajo del contenido. Reducimos gap para no dejar hueco raro. */
+  .tecny-landing .canje { grid-template-columns: 1fr; gap: 32px; }
   /* .tests + .bigstat removidos del media query en Sprint 3 L2 — los selectores base también salieron. */
   .tecny-landing .foot-grid { grid-template-columns: 1fr 1fr; gap: 28px; }
   .tecny-landing .contact-grid { grid-template-columns: 1fr 1fr; }
   .tecny-landing .nav-links { display: none; }
-  .tecny-landing .shot-body { grid-template-columns: 1fr; }
-  .tecny-landing .shot-side { display: none; }
+  /* Portal mockup mobile (task #306): sidebar oculta, main a full-width. */
+  .tecny-landing .portal { grid-template-columns: 1fr; min-height: 640px; }
+  .tecny-landing .side { display: none; }
+  .tecny-landing .top-search { width: auto; flex: 1; }
 }
 @media (max-width: 640px) {
   /* 2026-06-24 mobile fix v2: el nav tenía brand + 3 botones (Iniciar
@@ -506,7 +969,10 @@
      el .plans genérico, así que necesitamos el override explícito acá. */
   .tecny-landing .plans.plans-4col { grid-template-columns: 1fr; }
   /* .bigstat removida — el selector base también salió (Sprint 3 L2). */
-  .tecny-landing .shot-kpis { grid-template-columns: 1fr 1fr; }
+  /* Portal mockup (task #306): 4 KPI cols → 2×2 en móvil <560px. */
+  .tecny-landing .kpi-row { grid-template-columns: 1fr 1fr; }
+  .tecny-landing .kpi-row.n3 { grid-template-columns: 1fr; }
+  .tecny-landing .split-tables { grid-template-columns: 1fr; }
   .tecny-landing .plan .price .num { font-size: 38px; }
   .tecny-landing .contact-grid { grid-template-columns: 1fr; }
 }

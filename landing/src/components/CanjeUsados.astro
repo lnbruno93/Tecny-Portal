@@ -1,0 +1,126 @@
+---
+/**
+ * CanjeUsados.astro — sección "¿Cuánto me tomás el mío?"
+ * deep dive del módulo 05 (canje de usados en parte de pago).
+ *
+ * 2026-08-05 (pedido Lucas): sumar sección específica para el canje
+ * porque es uno de los value props más concretos del producto — la
+ * pregunta "¿cuánto me tomás el mío?" aparece en TODAS las ventas
+ * y se responde a ojo o revisando una planilla vieja. Tecny lo
+ * resuelve con catálogo en USD editable + descuento automático en la
+ * venta + entrada al stock con IMEI.
+ *
+ * Estructura visual (mismo pattern que FeatureHighlight):
+ *   · Izquierda: kicker + h2 + body + 3 steps numerados + flow diagram
+ *   · Derecha: mock de la tabla "Catálogo de usados" (surface + border,
+ *     header con badge "Actualizado hoy", 5 filas de iPhone, footer con
+ *     contador de modelos)
+ *
+ * El flow diagram al final es un helper visual — 3 pills conectadas
+ * con flechas (Cliente entrega → Valor de toma → Entra al stock).
+ * Cerraría el "círculo" narrativo: entrada del usado, cálculo, y
+ * salida al inventario.
+ *
+ * Sección conectada al módulo 05 vía `#canje` — el link "Ver cómo
+ * funciona →" en Modulos.astro apunta a esta ancla.
+ *
+ * Los valores de toma de la tabla son ilustrativos (verosímiles pero
+ * fake) — mock estático, no fetchea.
+ */
+
+const STEPS = [
+  {
+    n: '1',
+    title: 'Actualizás decenas de modelos de una vez',
+    body: 'El catálogo en USD se edita como una planilla. Cambió el mercado, tocás los valores y toda tu mesa cotiza con el mismo número.',
+  },
+  {
+    n: '2',
+    title: 'El descuento se aplica solo en la venta',
+    body: 'Tomás el usado como parte de pago y el sistema resta el valor de toma del precio final. Sin cuentas aparte ni papelitos.',
+  },
+  {
+    n: '3',
+    title: 'El equipo entra al stock con su IMEI',
+    body: 'Queda cargado con su costo real de toma, listo para revender o mandar a service. El canje cierra el círculo con el inventario.',
+  },
+] as const;
+
+const CATALOGO = [
+  { modelo: 'iPhone 15 Pro', cap: '256GB', bat: '94%', toma: '$720' },
+  { modelo: 'iPhone 14',     cap: '128GB', bat: '91%', toma: '$465' },
+  { modelo: 'iPhone 13',     cap: '128GB', bat: '87%', toma: '$340' },
+  { modelo: 'iPhone 12',     cap: '64GB',  bat: '84%', toma: '$225' },
+  { modelo: 'iPhone 11',     cap: '128GB', bat: '78%', toma: '$155' },
+] as const;
+---
+
+<section class="s" id="canje">
+  <div class="wrap canje">
+    <div class="canje-content">
+      <div class="s-kicker">Canje de usados</div>
+      <h2 class="s-title">&ldquo;¿Cuánto me tomás<br />el mío?&rdquo;</h2>
+      <p class="s-sub">
+        La pregunta que aparece en cada venta y que casi siempre se responde a ojo o revisando una planilla vieja.
+        Con Tecny tenés el valor de toma al día, por modelo, capacidad y estado de batería.
+      </p>
+
+      <ol class="canje-steps">
+        {STEPS.map((s) => (
+          <li class="canje-step">
+            <div class="canje-step-n">{s.n}</div>
+            <div class="canje-step-body">
+              <h3>{s.title}</h3>
+              <p>{s.body}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+
+      {/* Flow diagram — 3 pills conectadas con flechas. Cierra la narrativa
+          "entra usado → cálculo → sale al inventario". Puramente visual. */}
+      <div class="canje-flow" role="img" aria-label="Flujo del canje: cliente entrega, valor de toma, entra al stock con IMEI">
+        <span class="canje-pill">Cliente entrega</span>
+        <span class="canje-arrow" aria-hidden="true">→</span>
+        <span class="canje-pill">Valor de toma</span>
+        <span class="canje-arrow" aria-hidden="true">→</span>
+        <span class="canje-pill canje-pill-accent">Entra al stock con IMEI</span>
+      </div>
+    </div>
+
+    <div class="canje-visual">
+      <div class="canje-cat-head">
+        <div>
+          <div class="canje-cat-title">Catálogo de usados</div>
+          <div class="canje-cat-sub">Valores de toma en USD · editable como planilla</div>
+        </div>
+        <div class="canje-cat-badge"><span class="dot"></span>Actualizado hoy</div>
+      </div>
+
+      <table class="canje-cat-table">
+        <thead>
+          <tr>
+            <th>Modelo</th>
+            <th>Capacidad</th>
+            <th>Batería</th>
+            <th class="ta-right">Toma</th>
+          </tr>
+        </thead>
+        <tbody>
+          {CATALOGO.map((row) => (
+            <tr>
+              <td class="canje-cat-modelo">{row.modelo}</td>
+              <td class="canje-cat-cap">{row.cap}</td>
+              <td class="canje-cat-bat">{row.bat}</td>
+              <td class="canje-cat-toma ta-right">{row.toma}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div class="canje-cat-foot">
+        42 modelos en el catálogo · Última edición: hace 2 horas
+      </div>
+    </div>
+  </div>
+</section>
