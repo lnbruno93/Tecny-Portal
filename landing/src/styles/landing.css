@@ -209,17 +209,12 @@
     radial-gradient(ellipse 600px 400px at 10% 40%, rgba(122,169,255,0.05), transparent 55%);
   pointer-events: none;
 }
-/* 2026-08-05 (task #306): hero split en 2 columnas desktop — texto izquierda,
-   mockup derecha. Max-width crece a 1240px para dar espacio real al mockup
-   sin comprimir el texto. Alineación center vertical para que ambas columnas
-   se lean equilibradas cuando el texto es más corto que el mockup. En mobile
-   (≤940px) stackea a 1 col como antes (ver media query más abajo). */
-.tecny-landing .hero-grid {
-  position: relative; display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
-  gap: 48px; align-items: center;
-  max-width: 1240px;
-}
+/* Hero stackeado 1-columna — texto arriba, mockup debajo con ancho
+   completo. 2026-08-05: probamos hero split 2-col (texto izq + mockup der)
+   pero el mockup necesita ancho generoso para que los KPI rows de 4
+   cards se lean bien; en la columna reducida quedaban cortados. Volvemos
+   al layout 1-col original. */
+.tecny-landing .hero-grid { position: relative; display: grid; grid-template-columns: 1fr; gap: 40px; max-width: 880px; }
 .tecny-landing .eyebrow {
   display: inline-flex; align-items: center; gap: 8px;
   font-size: 12.5px; font-weight: 600; letter-spacing: 0.04em;
@@ -243,11 +238,7 @@
 
 /* Product window */
 .tecny-landing .product-shot {
-  /* 2026-08-05: sin margin-top — antes tenía 64px porque el mockup estaba
-     STACKEADO debajo del headline. Ahora el hero es split 2-col desktop y
-     el mockup queda al lado del texto, alineado por align-items del grid.
-     En mobile (≤940px) volvemos a 64px vía media query. */
-  position: relative;
+  margin-top: 64px; position: relative;
   border-radius: 16px; overflow: hidden;
   border: 1px solid var(--border-strong);
   background: var(--bg-2);
@@ -660,10 +651,6 @@
 
 @media (max-width: 940px) {
   .tecny-landing { --pad: 24px; }
-  /* Hero split 2-col → 1 col en mobile. Restauramos margin-top del mockup
-     porque ahora vuelve a estar STACKEADO debajo del texto. */
-  .tecny-landing .hero-grid { grid-template-columns: 1fr; max-width: 880px; gap: 32px; }
-  .tecny-landing .product-shot { margin-top: 32px; }
   .tecny-landing .steps { grid-template-columns: 1fr 1fr; }
   .tecny-landing .mods, .tecny-landing .plans { grid-template-columns: 1fr; }
   /* 4-col variante: en tablet (≤940px) va a 2 columnas (2×2 grid), en mobile
