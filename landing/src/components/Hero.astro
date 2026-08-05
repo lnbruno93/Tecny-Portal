@@ -53,7 +53,8 @@ const HERO_WA_MESSAGE = 'Hola! Vi la landing de Tecny y me interesa conocer más
 ---
 
 <header class="hero">
-  <div class="wrap hero-grid">
+  <div class="wrap">
+    <div class="hero-grid">
     <div>
       <div class="eyebrow" id="hero-eyebrow">
         <span class="dot"></span> {DEFAULT_HERO.eyebrow}
@@ -103,7 +104,8 @@ const HERO_WA_MESSAGE = 'Hola! Vi la landing de Tecny y me interesa conocer más
         para insertar donde Lucas defina (post-Cómo Funciona, post-Módulos,
         etc.). El hero queda con headline + blurb + CTAs solamente, y la
         sección "Cómo funciona" pasa a estar directamente debajo. */}
-  </div>
+    </div> {/* /.hero-grid */}
+  </div> {/* /.wrap */}
 </header>
 
 <script>
