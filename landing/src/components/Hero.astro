@@ -43,7 +43,6 @@
  * refactor request). Es SVG + text inline — 0 JS, cero fetch.
  */
 import { DEFAULT_HERO } from '../lib/heroVariants';
-import { calendlyHref } from '../lib/calendly';
 import { buildWaLink } from '../lib/waLink';
 
 // WhatsApp CTA del hero — usa el FALLBACK_WHATSAPP del helper (número
@@ -75,13 +74,6 @@ const HERO_WA_MESSAGE = 'Hola! Vi la landing de Tecny y me interesa conocer más
         <a href="/signup" class="btn btn-primary btn-lg" data-cta="hero:signup">
           Empezá gratis
         </a>
-        <a
-          href={calendlyHref('hero')}
-          target="_blank"
-          rel="noopener noreferrer"
-          class="btn btn-lg"
-          data-cta="hero:demo"
-        >Agendá una demo</a>
         <a
           href={buildWaLink(null, HERO_WA_MESSAGE)}
           target="_blank"
