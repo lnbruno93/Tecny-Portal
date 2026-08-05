@@ -197,12 +197,17 @@
 .tecny-landing .btn-wa:hover { background: #1ebe5a; transform: translateY(-1px); }
 
 /* ── Hero ────────────────────────────────────────────── */
-/* 2026-08-05: reducido padding-bottom 80px → 32px. Antes con el mockup
-   dentro del hero el aire abajo se justificaba visualmente. Ahora que
-   el mockup salió y el hero termina en el hero-note ("Sin tarjeta…"),
-   80px + 96px de padding-top de la siguiente sección eran demasiado
-   espacio muerto. Feedback Lucas: "hay mucho aire". */
-.tecny-landing .hero { position: relative; overflow: hidden; padding: 100px 0 32px; }
+/* 2026-08-05: reducido padding-bottom 80px → 32px → 8px (2 iteraciones).
+   Antes con el mockup dentro del hero el aire abajo se justificaba.
+   Ahora sin el mockup, más ajustado se lee más punchy. Combinado con
+   override del padding-top de la sección #como (~48px), total hero→
+   ComoFunciona baja de 176px a ~56px. */
+.tecny-landing .hero { position: relative; overflow: hidden; padding: 100px 0 8px; }
+/* Padding-top override específico para la primera sección después del hero:
+   la clase `.s` genérica tiene 96px de padding-top (bien para transiciones
+   entre secciones internas), pero justo después del hero queda pesado.
+   Solo aplica a `#como` (la que viene inmediatamente después). */
+.tecny-landing section.s#como { padding-top: 48px; }
 /* 2026-07-13: gradient re-anclado adentro del hero (era `at 70% -5%` — 5%
    arriba del borde superior → creaba una banda azul tenue justo en el borde
    nav→hero que se veía como línea horizontal). Nueva posición `at 70% 25%`
