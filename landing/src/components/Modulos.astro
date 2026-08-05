@@ -23,6 +23,7 @@ const MODULOS = [
     title: 'Inventario con IMEI',
     body: 'Buscás cualquier equipo por IMEI y sabés al instante dónde está: en stock, vendido o en servicio técnico. Con el valor total de tu inventario actualizado al día, y la trazabilidad completa desde el proveedor que te lo vendió.',
     iconKey: 'inventario',
+    wide: true,
     badges: [
       { text: 'Búsqueda por IMEI' },
       { text: 'Stock valorizado' },
@@ -85,7 +86,7 @@ const MODULOS = [
     </div>
     <div class="mods">
       {MODULOS.map((mod) => (
-        <div class="mod">
+        <div class={`mod${'wide' in mod && mod.wide ? ' mod-wide' : ''}`}>
           <div class="mod-num">{mod.n}</div>
           <h3>{mod.title}</h3>
           <p>

@@ -513,6 +513,13 @@
   padding: 24px; transition: .16s; position: relative; overflow: hidden;
 }
 .tecny-landing .mod:hover { border-color: var(--border-strong); transform: translateY(-2px); background: var(--surface-2); }
+/* 2026-08-05: `.mod-wide` ocupa 2 columnas del grid. Se aplica al módulo
+   01 (Inventario con IMEI) porque tiene 4 badges — en 1 col sola quedaban
+   apretados / stackeados en varias filas. En 2 col los badges caben en
+   1 sola fila y el módulo tiene el hero visual que merece por ser el
+   primero. En mobile (≤940px, cuando .mods pasa a 1 col por media query)
+   `mod-wide` no aplica automáticamente — vuelve a ocupar 1 col como los demás. */
+.tecny-landing .mod.mod-wide { grid-column: span 2; }
 /* 2026-08-05: número prominente arriba del title (01, 02, …). Estilo
    igual al `.n` de los steps de Cómo Funciona — misma tipografía mono +
    accent color. Distingue visualmente los cards y los ordena. */
