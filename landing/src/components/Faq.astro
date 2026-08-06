@@ -75,7 +75,15 @@ const FALLBACK_FAQ = [
 
 <section class="s u-bar-y-hairline" id="faq">
   <div class="wrap">
-    <div class="s-head">
+    {/* 2026-08-05 (feedback Lucas): FAQ es la ÚNICA sección con head
+        centrado. El resto de la landing va alineada a la izquierda
+        (decisión durable de este mismo día). Excepción a la regla:
+        el FAQ funciona visualmente mejor centrado — hace de "puente"
+        entre el bloque de conversión (Tus Datos → Precios) y el
+        CTA Final. La clase `.center` (aplicada en el CSS con
+        `text-align: center` + `margin: 0 auto`) invierte solo
+        para esta sección. */}
+    <div class="s-head center">
       <div class="s-kicker">Preguntas frecuentes</div>
       <h2 class="s-title">Lo que todos preguntan</h2>
     </div>
