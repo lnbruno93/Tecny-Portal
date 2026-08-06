@@ -629,6 +629,93 @@
 .tecny-landing .calc-select svg { color: var(--muted); flex-shrink: 0; margin-left: 8px; }
 .tecny-landing .calc-input-mock { font-family: 'JetBrains Mono', monospace; }
 
+/* 2026-08-06: inputs REALES del cotizador funcional.
+   Reemplaza los fake `.calc-select` / `.calc-input-mock` (que eran <div>)
+   por <select> y <input type=number> reales. Los estilos matchean el
+   look del mock previo — el usuario no debería notar diferencia visual,
+   solo funcional (ahora escriben y cambian valores).
+
+   `.calc-select-wrap`: contenedor relativo para poder posicionar el
+   chevron SVG absoluto encima del select (que tiene appearance:none
+   y ya no muestra su propia flecha).
+   `.calc-select-real`: select nativo estilado. `appearance: none` en
+   todos los vendors para ocultar el arrow default del browser.
+   `.calc-input-real`: input numérico estilado con la misma fuente mono
+   que el fake anterior. `text-align: right` para que se lea como precio.
+
+   Focus ring en accent — patrón consistente con el resto de la landing. */
+.tecny-landing .calc-select-wrap {
+  position: relative;
+}
+.tecny-landing .calc-select-real,
+.tecny-landing .calc-input-real {
+  width: 100%;
+  height: 40px; padding: 0 12px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13.5px; color: var(--text);
+  font-family: inherit;
+  transition: border-color .14s, box-shadow .14s;
+  -webkit-appearance: none;
+     -moz-appearance: none;
+          appearance: none;
+}
+.tecny-landing .calc-select-real {
+  padding-right: 32px; /* espacio para el chevron */
+  cursor: pointer;
+}
+.tecny-landing .calc-select-real:focus,
+.tecny-landing .calc-input-real:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.15);
+}
+.tecny-landing .calc-input-real {
+  font-family: 'JetBrains Mono', monospace;
+  text-align: right;
+}
+/* Remove spin buttons del <input type=number> — más limpio visualmente */
+.tecny-landing .calc-input-real::-webkit-outer-spin-button,
+.tecny-landing .calc-input-real::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.tecny-landing .calc-input-real[type=number] {
+  -moz-appearance: textfield;
+}
+/* Chevron del select — posicionado absoluto en el wrap. pointer-events:none
+   para que el click pase al <select> y abra el dropdown nativo. */
+.tecny-landing .calc-select-chevron {
+  position: absolute; right: 12px; top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+
+/* Estados del botón Copiar post-click: 2s de feedback visual. */
+.tecny-landing .calc-cta-success {
+  background: var(--accent) !important;
+  color: var(--accent-ink, #fff) !important;
+  border-color: var(--accent) !important;
+}
+.tecny-landing .calc-cta-error {
+  background: transparent !important;
+  color: var(--warn, #f59e0b) !important;
+  border-color: var(--warn, #f59e0b) !important;
+}
+
+/* Fallback clipboard: el <textarea> temporal se agrega al body para
+   permitir select() + execCommand('copy'). Debe estar fuera de vista
+   pero visible al DOM (display:none rompe execCommand en algunos browsers). */
+.tecny-landing .calc-clipboard-fallback,
+.calc-clipboard-fallback {
+  position: fixed !important;
+  top: -1000px !important;
+  left: -1000px !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
 .tecny-landing .calc-row { display:flex; justify-content: space-between; align-items: baseline; padding: 10px 0; font-size: 14px; }
 .tecny-landing .calc-row .l { color: var(--text-2); display: inline-flex; align-items: center; gap: 6px; }
 .tecny-landing .calc-row .v { font-family:'JetBrains Mono',monospace; font-weight: 600; }
