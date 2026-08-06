@@ -140,6 +140,14 @@ router.get('/site-config', async (_req, res) => {
         body:     c.cta?.body     || null,
       },
       faq: Array.isArray(c.faq) ? c.faq : [],
+      // 2026-08-06 Fase 5: 5 secciones nuevas editables. Arrays vacíos y
+      // objects null significan "landing usa fallback hardcoded" (mismo
+      // pattern que testimonials/faq/hero/cta).
+      modulos:       Array.isArray(c.modulos)       ? c.modulos       : [],
+      como_funciona: Array.isArray(c.como_funciona) ? c.como_funciona : [],
+      tus_datos:     Array.isArray(c.tus_datos)     ? c.tus_datos     : [],
+      canje:         c.canje     ?? null,
+      cotizador:     c.cotizador ?? null,
       // Placeholder Fase futura (footer, si Lucas decide hacerlo editable).
       footer: null,
       updated_at: row?.updated_at || null,
@@ -154,6 +162,9 @@ router.get('/site-config', async (_req, res) => {
         address: null, instagram_handle: null, instagram_url: null,
       },
       testimonials: [], // fail-open: landing usa fallback hardcodeado
+      // Fase 5 fail-open: arrays vacíos + objects null → landing usa fallbacks.
+      modulos: [], como_funciona: [], tus_datos: [],
+      canje: null, cotizador: null,
       footer: null,
       updated_at: null,
     });

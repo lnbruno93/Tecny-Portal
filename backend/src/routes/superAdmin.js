@@ -2937,6 +2937,14 @@ router.get('/site-config', async (_req, res, next) => {
       // Feature flag — default a true si viene undefined (matchea el
       // default de la columna que teníamos antes).
       google_reviews_enabled: c.features?.google_reviews_enabled ?? true,
+      // 2026-08-06 Fase 5: 5 nuevas secciones editables.
+      // Arrays vacíos por default (el admin agrega items o deja vacío para
+      // que el landing use los fallback hardcoded). Objects null por default.
+      modulos:       Array.isArray(c.modulos)       ? c.modulos       : [],
+      como_funciona: Array.isArray(c.como_funciona) ? c.como_funciona : [],
+      tus_datos:     Array.isArray(c.tus_datos)     ? c.tus_datos     : [],
+      canje:         c.canje     ?? null,
+      cotizador:     c.cotizador ?? null,
       // Audit fields (siguen en columnas, no en JSONB)
       updated_at: row.updated_at,
       updated_by: row.updated_by,
@@ -2960,7 +2968,15 @@ router.patch('/site-config',
       //   · '' → null (misma convención pre-M4c)
       //   · Testimonials + FAQ: UUIDs generados server-side para items nuevos
       const norm = (v) => (v === '' || v === undefined) ? null : v;
-      const JSONB_ARRAY_FIELDS = new Set(['testimonials', 'faq']);
+      // 2026-08-06: Fase 5 agrega 5 nuevos array fields (modulos, como_funciona,
+      // tus_datos) + 2 fields objeto NO-array (canje, cotizador). Los objects
+      // se writeban directo sin el mapping de UUIDs — sus items internos
+      // (canje.steps, canje.catalogo, cotizador.productos) mantienen sus UUIDs
+      // desde el cliente porque son sub-arrays, no top-level.
+      const JSONB_ARRAY_FIELDS = new Set(['testimonials', 'faq', 'modulos', 'como_funciona', 'tus_datos']);
+      // Fields objeto NO-array — se escriben tal cual pero sus sub-arrays
+      // reciben tratamiento de UUIDs en un post-process abajo.
+      const JSONB_OBJECT_WITH_SUBARRAYS = new Set(['canje', 'cotizador']);
 
       // Map de "flat body field" → "path en el JSONB content". Es la
       // fuente de verdad del contract PATCH → content shape.
@@ -2980,6 +2996,12 @@ router.patch('/site-config',
         testimonials:             ['testimonials'],
         faq:                      ['faq'],
         google_reviews_enabled:   ['features', 'google_reviews_enabled'],
+        // 2026-08-06 Fase 5: nuevas secciones editables
+        modulos:                  ['modulos'],
+        como_funciona:            ['como_funciona'],
+        canje:                    ['canje'],
+        tus_datos:                ['tus_datos'],
+        cotizador:                ['cotizador'],
       };
 
       // Helper: set `path` en `obj` a `value`, creando containers intermedios.
@@ -3024,6 +3046,26 @@ router.patch('/site-config',
               ...t,
               id: t.id || crypto.randomUUID(),
             }));
+          } else if (JSONB_OBJECT_WITH_SUBARRAYS.has(key)) {
+            // Fase 5 (2026-08-06): objetos con sub-arrays (canje, cotizador).
+            // Escribimos el objeto completo pero generamos UUID para items
+            // de los sub-arrays si vinieron sin id (items nuevos del admin).
+            //
+            // Este patrón es más específico que el de arrays top-level porque
+            // los subs pueden tener naming distinto ({steps, catalogo} vs
+            // {productos, recargos}). Preservamos los IDs existentes para no
+            // romper referencias eventuales (analytics, etc.).
+            const obj = req.body[key] || {};
+            const withIds = { ...obj };
+            for (const [subKey, subVal] of Object.entries(obj)) {
+              if (Array.isArray(subVal)) {
+                withIds[subKey] = subVal.map(item => ({
+                  ...item,
+                  id: item.id || crypto.randomUUID(),
+                }));
+              }
+            }
+            value = withIds;
           } else {
             value = norm(req.body[key]);
           }
@@ -3069,6 +3111,15 @@ router.patch('/site-config',
         cta_headline:     c.cta?.headline     ?? null,
         cta_body:         c.cta?.body         ?? null,
         google_reviews_enabled: c.features?.google_reviews_enabled ?? true,
+        // 2026-08-06 Fase 5: 5 nuevas secciones editables.
+        // Arrays: default a [] si no está en el JSONB (el admin decidirá si
+        // suma items o deja vacío para usar los fallback hardcoded del landing).
+        // Objects (canje, cotizador): default a null → landing usa fallback.
+        modulos:       Array.isArray(c.modulos)       ? c.modulos       : [],
+        como_funciona: Array.isArray(c.como_funciona) ? c.como_funciona : [],
+        tus_datos:     Array.isArray(c.tus_datos)     ? c.tus_datos     : [],
+        canje:         c.canje     ?? null,
+        cotizador:     c.cotizador ?? null,
         updated_at: result?.updated_at,
         updated_by: result?.updated_by,
       });
