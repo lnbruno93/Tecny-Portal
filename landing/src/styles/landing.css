@@ -1,6 +1,11 @@
 /**
  * Estilos de la landing comercial de Tecny (en tecnyapp.com root).
  *
+ * 2026-08-05: mobile audit + fixes en el bloque `@media (max-width: 640px)`
+ * (PR #1025 mergeado 5a1839f). El primer intento de deploy falló silenciosamente
+ * en Netlify sin `error_message` público — este trigger-rebuild fuerza otro
+ * build para que los fixes lleguen a prod.
+ *
  * Fuente: paquete entregado por Claude Design (Tecny Landing.html). El HTML
  * original era autocontenido con <style> inline; lo separé en este archivo
  * para que el componente React Landing.jsx se mantenga legible y los estilos
