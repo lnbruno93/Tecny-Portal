@@ -91,7 +91,7 @@ export const CTA_VARIANTS: Readonly<Record<string, CtaVariant>> = Object.freeze(
   pro: {
     headline: 'Recuperá el control de tu equipo.',
     body:
-      'Sumá a tus vendedores en 15 minutos. Empezás gratis 14 días — sin tarjeta ni migración dolorosa.',
+      'Sumá a tus vendedores en 15 minutos. Empezás gratis 30 días — sin tarjeta ni migración dolorosa.',
   },
   enterprise: {
     headline: 'Hablemos de tu operación.',
