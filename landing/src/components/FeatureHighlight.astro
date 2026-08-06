@@ -1,20 +1,75 @@
 ---
 /**
- * FeatureHighlight.astro — sección "Cotizá en segundos" con calculadora
- * mock estilo "cotizador en vivo".
+ * FeatureHighlight.astro — sección "Cotizá en segundos" con cotizador
+ * FUNCIONAL en la landing (feedback Lucas 2026-08-06).
  *
- * 2026-08-05 (feedback Lucas): rewrite del mock del cotizador para que
- * se lea como una réplica visual del cotizador real del portal (header
- * "COTIZADOR · EN VIVO" con badge verde "probalo acá", inputs visuales
- * de Equipo + Dólar, filas de cálculo, divider, total prominente,
- * botón "Copiar para WhatsApp"). Sin emojis en las filas — más limpio,
- * más profesional. Sin la lista de 3 features (checkmarks) que antes
- * competían con el mock; ahora el body es más corto y todo el peso
- * visual va al cotizador mock.
+ * 2026-08-06: rewrite del "mock estático" a cotizador REAL. El usuario:
+ *   1. Cambia el producto en el <select> → recalcula todos los precios
+ *   2. Edita el tipo de cambio en el <input> → recalcula todos los precios
+ *   3. Click "Copiar para WhatsApp" → copia bloque de texto al clipboard
  *
- * Es un mock estático (no funcional) — los inputs son visuales, no
- * disparan cálculos. Los números son fake pero verosímiles.
+ * ── Decisiones durables ────────────────────────────────────────────────
+ *
+ * Catálogo hardcoded (no fetch al backend real):
+ *   Razones: (a) la landing es marketing pública — los precios USD reales
+ *   del tenant son info competitiva y no deben leakearse; (b) evita
+ *   dependencia de un endpoint nuevo del backend (más superficie sin claim
+ *   de negocio); (c) 0 JS async = LCP intacto. Los productos son verosímiles
+ *   y matchean el mercado AR/UY 2026. Si a futuro querés catálogo dinámico,
+ *   cambiar PRODUCTOS por un fetch — mantener la misma interfaz {label, usd}.
+ *
+ * Recargos hardcoded (contado 0% / transf 3% / 3 cuotas 23,5% / 6 cuotas 28%):
+ *   Son valores de mercado defaultean el cotizador. Podrían venir de la API
+ *   pública pero el mismo argumento del catálogo aplica: complejidad no
+ *   justificada para un demo visual de landing.
+ *
+ * Nada de valores del usuario se envía al backend — es 100% client-side.
+ *
+ * ── UX del botón Copiar ────────────────────────────────────────────────
+ * Al click:
+ *   - navigator.clipboard.writeText(bloque)
+ *   - Botón cambia a "¡Copiado! ✓" durante 2s
+ *   - data-cta="highlight:copy-wa" sigue disparando el analytics tracker
+ *     global del index.astro (no hay double-tracking)
+ *
+ * Fallback si clipboard API no está disponible (Safari <13.4 o sin HTTPS):
+ *   - document.execCommand('copy') sobre un <textarea> temporal
+ *   - Mismo feedback visual "¡Copiado! ✓"
  */
+
+const PRODUCTOS = [
+  { label: 'iPhone 16 Pro · 256GB Natural', usd: 1185 },
+  { label: 'iPhone 16 Pro · 128GB Negro', usd: 1049 },
+  { label: 'iPhone 16 · 128GB Rosa', usd: 895 },
+  { label: 'iPhone 15 Pro · 128GB Titanio', usd: 985 },
+  { label: 'iPhone 15 · 128GB Azul', usd: 785 },
+  { label: 'iPhone 14 · 128GB Medianoche', usd: 620 },
+  { label: 'Samsung Galaxy S24 Ultra · 512GB', usd: 1180 },
+  { label: 'Samsung Galaxy S24 · 256GB', usd: 780 },
+  { label: 'Xiaomi Redmi Note 13 Pro · 256GB', usd: 340 },
+] as const;
+
+// Recargos con nombres coherentes con las labels de las rows.
+const RECARGOS = {
+  transferencia: 3,
+  cuotas_3: 23.5,
+  cuotas_6: 28,
+} as const;
+
+// Valores iniciales para el SSR (lo que ve el usuario antes de que
+// hidrate el JS). Matchean el screenshot del mock previo.
+const DEFAULT_DOLAR = 1200;
+const DEFAULT_PRODUCTO_IDX = 0;
+const initialUsd = PRODUCTOS[DEFAULT_PRODUCTO_IDX].usd;
+const initialContado = Math.round(initialUsd * DEFAULT_DOLAR);
+const initialTransf = Math.round(initialContado * (1 + RECARGOS.transferencia / 100));
+const initial3c = Math.round(initialContado * (1 + RECARGOS.cuotas_3 / 100));
+const initial6c = Math.round(initialContado * (1 + RECARGOS.cuotas_6 / 100));
+const initialCuota6 = Math.round(initial6c / 6);
+
+// Format con separador de miles AR. Se repite client-side en el <script>
+// con la misma implementación (asegura consistencia SSR ↔ CSR).
+const fmtARS = (n: number) => '$' + new Intl.NumberFormat('es-AR').format(n);
 ---
 
 <section class="s">
@@ -25,47 +80,202 @@
       <p class="s-sub">Cargás el modelo y el dólar del día, y el sistema arma todas las formas de pago con sus recargos. Copiás y enviás.</p>
       <p class="s-sub feat-sub-extra">Probalo acá al lado — es el cotizador real, con los recargos por cuota que vos configurás.</p>
     </div>
-    <div class="feat-visual">
-      {/* Header del mock: identifica que es el cotizador "en vivo" y
-          señala visualmente que el usuario puede probarlo (dot verde + label).
-          En este mock el badge es puramente decorativo — no dispara nada. */}
+    <div
+      class="feat-visual"
+      data-recargo-transf={RECARGOS.transferencia}
+      data-recargo-3c={RECARGOS.cuotas_3}
+      data-recargo-6c={RECARGOS.cuotas_6}
+    >
       <div class="calc-head">
         <div class="calc-title">COTIZADOR · EN VIVO</div>
         <div class="calc-live-badge"><span class="dot"></span>probalo acá</div>
       </div>
 
-      {/* Inputs visuales del cotizador — no funcionales, solo mockup.
-          Fake `<select>` con option único + fake `<input>` numérico.
-          Estilo matchea el portal real (surface + border + accent al focus). */}
+      {/* Inputs REALES — el <select> y el <input type=number> disparan
+          `change` / `input` que el <script> escucha para recalcular. */}
       <div class="calc-inputs">
         <div class="calc-field">
-          <label>Equipo</label>
-          <div class="calc-select">
-            <span>iPhone 16 Pro · 256GB Natural</span>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+          <label for="calc-producto">Equipo</label>
+          <div class="calc-select-wrap">
+            <select id="calc-producto" class="calc-select-real" aria-label="Elegí el modelo">
+              {PRODUCTOS.map((p, i) => (
+                <option value={p.usd} selected={i === DEFAULT_PRODUCTO_IDX}>{p.label}</option>
+              ))}
+            </select>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="calc-select-chevron"><path d="M6 9l6 6 6-6"/></svg>
           </div>
         </div>
         <div class="calc-field calc-field-dollar">
-          <label>Dólar</label>
-          <div class="calc-input-mock">1200</div>
+          <label for="calc-dolar">Dólar</label>
+          <input
+            id="calc-dolar"
+            type="number"
+            class="calc-input-real"
+            value={DEFAULT_DOLAR}
+            min="1"
+            max="99999"
+            step="1"
+            inputmode="numeric"
+            aria-label="Tipo de cambio del dólar en pesos"
+          />
         </div>
       </div>
 
-      <div class="calc-row"><span class="l">Contado</span><span class="v u-color-pos">$1.422.000</span></div>
-      <div class="calc-row"><span class="l">Transferencia <span class="calc-badge">+3%</span></span><span class="v u-color-pos">$1.464.660</span></div>
-      <div class="calc-row"><span class="l">3 cuotas <span class="calc-badge">+23,5%</span></span><span class="v u-color-accent">$1.756.170</span></div>
-      <div class="calc-row"><span class="l">6 cuotas <span class="calc-badge">+28%</span></span><span class="v u-color-accent">$1.820.160</span></div>
+      <div class="calc-row"><span class="l">Contado</span><span class="v u-color-pos" id="calc-contado">{fmtARS(initialContado)}</span></div>
+      <div class="calc-row"><span class="l">Transferencia <span class="calc-badge">+3%</span></span><span class="v u-color-pos" id="calc-transferencia">{fmtARS(initialTransf)}</span></div>
+      <div class="calc-row"><span class="l">3 cuotas <span class="calc-badge">+23,5%</span></span><span class="v u-color-accent" id="calc-3cuotas">{fmtARS(initial3c)}</span></div>
+      <div class="calc-row"><span class="l">6 cuotas <span class="calc-badge">+28%</span></span><span class="v u-color-accent" id="calc-6cuotas">{fmtARS(initial6c)}</span></div>
 
       <div class="calc-divider"></div>
 
-      <div class="calc-total"><span class="l u-landing-calc-total-label">6 × $303.360</span><span class="v">$1.820.160</span></div>
+      <div class="calc-total">
+        <span class="l u-landing-calc-total-label" id="calc-total-label">6 × {fmtARS(initialCuota6)}</span>
+        <span class="v" id="calc-total-value">{fmtARS(initial6c)}</span>
+      </div>
 
-      {/* Botón "Copiar para WhatsApp" — visual solo, no funcional en el mock.
-          En el portal real dispara `navigator.clipboard.writeText(...)` con el
-          bloque de texto formateado para pegarlo directo en un chat de WA. */}
-      <button type="button" class="calc-cta" data-cta="highlight:copy-wa" aria-label="Copiar cotización para pegar en WhatsApp (demo)">
+      {/* Botón funcional: el <script> engancha el click, arma el mensaje
+          y lo copia al clipboard con feedback visual "¡Copiado! ✓". */}
+      <button type="button" class="calc-cta" id="calc-copy-btn" data-cta="highlight:copy-wa" aria-label="Copiar cotización para pegar en WhatsApp">
         Copiar para WhatsApp
       </button>
     </div>
   </div>
 </section>
+
+<script>
+  /**
+   * Cotizador funcional — client-side puro, 0 fetches al backend.
+   *
+   * Recalcula todos los precios cada vez que el usuario cambia el select
+   * de producto o el input del dólar. El botón "Copiar" arma un bloque
+   * de texto formateado para pegar en WhatsApp y lo copia al clipboard.
+   *
+   * Fallback clipboard: si `navigator.clipboard` no está disponible
+   * (Safari <13.4, contexto HTTP sin secure origin), usa document.execCommand
+   * sobre un textarea temporal. Deprecado pero universalmente soportado.
+   */
+
+  const fmtARS = (n: number) => '$' + new Intl.NumberFormat('es-AR').format(n);
+
+  const selectEl = document.getElementById('calc-producto') as HTMLSelectElement | null;
+  const dolarEl = document.getElementById('calc-dolar') as HTMLInputElement | null;
+  const btnEl = document.getElementById('calc-copy-btn') as HTMLButtonElement | null;
+  const visualEl = document.querySelector('.feat-visual') as HTMLElement | null;
+
+  const contadoEl = document.getElementById('calc-contado');
+  const transfEl = document.getElementById('calc-transferencia');
+  const cuotas3El = document.getElementById('calc-3cuotas');
+  const cuotas6El = document.getElementById('calc-6cuotas');
+  const totalLabelEl = document.getElementById('calc-total-label');
+  const totalValueEl = document.getElementById('calc-total-value');
+
+  // Guardas defensivas — si algún ID no está, el script no hace nada
+  // (mejor que crashear silencioso y bloquear el resto del landing).
+  if (!selectEl || !dolarEl || !btnEl || !visualEl || !contadoEl || !transfEl || !cuotas3El || !cuotas6El || !totalLabelEl || !totalValueEl) {
+    console.warn('[cotizador] Algún elemento del DOM falta — feature desactivada');
+  } else {
+    // Recargos vienen desde data-attrs del wrapper (los define el server).
+    // Mantiene una sola fuente de verdad — cambiarlos en el .astro basta.
+    const recargoTransf = parseFloat(visualEl.dataset.recargoTransf || '3');
+    const recargo3c = parseFloat(visualEl.dataset.recargo3c || '23.5');
+    const recargo6c = parseFloat(visualEl.dataset.recargo6c || '28');
+
+    /**
+     * Recalcula y renderiza todos los montos.
+     * Sanitiza el input del dólar — si NaN, negativo o 0, usa 1 como
+     * mínimo (evita divisiones raras y valores $NaN en pantalla).
+     */
+    function recalcular() {
+      const usd = parseFloat(selectEl!.value) || 0;
+      const dolar = Math.max(1, parseFloat(dolarEl!.value) || 1);
+      const contado = Math.round(usd * dolar);
+      const transf = Math.round(contado * (1 + recargoTransf / 100));
+      const c3 = Math.round(contado * (1 + recargo3c / 100));
+      const c6 = Math.round(contado * (1 + recargo6c / 100));
+      const cuota6 = Math.round(c6 / 6);
+
+      contadoEl!.textContent = fmtARS(contado);
+      transfEl!.textContent = fmtARS(transf);
+      cuotas3El!.textContent = fmtARS(c3);
+      cuotas6El!.textContent = fmtARS(c6);
+      totalLabelEl!.textContent = `6 × ${fmtARS(cuota6)}`;
+      totalValueEl!.textContent = fmtARS(c6);
+    }
+
+    /**
+     * Arma el bloque de texto para copiar al WhatsApp.
+     * Formato pensado para que el revendedor pegue directo en el chat
+     * y el cliente reciba una cotización clara con opciones.
+     */
+    function armarMensaje(): string {
+      const producto = selectEl!.options[selectEl!.selectedIndex].text;
+      const usd = parseFloat(selectEl!.value) || 0;
+      const dolar = Math.max(1, parseFloat(dolarEl!.value) || 1);
+      const contado = Math.round(usd * dolar);
+      const transf = Math.round(contado * (1 + recargoTransf / 100));
+      const c3 = Math.round(contado * (1 + recargo3c / 100));
+      const c6 = Math.round(contado * (1 + recargo6c / 100));
+      const cuota3 = Math.round(c3 / 3);
+      const cuota6 = Math.round(c6 / 6);
+
+      return (
+        `💰 Cotización — ${producto}\n\n` +
+        `Contado: ${fmtARS(contado)}\n` +
+        `Transferencia (+${recargoTransf}%): ${fmtARS(transf)}\n` +
+        `3 cuotas de ${fmtARS(cuota3)} (+${recargo3c}%): ${fmtARS(c3)}\n` +
+        `6 cuotas de ${fmtARS(cuota6)} (+${recargo6c}%): ${fmtARS(c6)}\n\n` +
+        `Cotizado con dólar $${dolar}\n\n` +
+        `— Enviado desde Tecny · tecnyapp.com`
+      );
+    }
+
+    /**
+     * Copia con navigator.clipboard (moderno) y fallback a execCommand
+     * si no está disponible (Safari <13.4, contexto sin secure origin).
+     */
+    async function copiarAlPortapapeles(texto: string): Promise<boolean> {
+      if (navigator.clipboard && window.isSecureContext) {
+        try {
+          await navigator.clipboard.writeText(texto);
+          return true;
+        } catch {
+          // Cae al fallback si el navegador tira NotAllowedError etc.
+        }
+      }
+      const ta = document.createElement('textarea');
+      ta.value = texto;
+      ta.setAttribute('readonly', '');
+      ta.setAttribute('aria-hidden', 'true');
+      ta.className = 'calc-clipboard-fallback';
+      document.body.appendChild(ta);
+      ta.select();
+      let ok = false;
+      try {
+        ok = document.execCommand('copy');
+      } catch {
+        ok = false;
+      }
+      document.body.removeChild(ta);
+      return ok;
+    }
+
+    // Listeners: cambios en producto o dólar recalculan on the fly.
+    selectEl.addEventListener('change', recalcular);
+    dolarEl.addEventListener('input', recalcular);
+
+    // Click en "Copiar para WhatsApp": arma mensaje + copia + feedback.
+    // El data-cta="highlight:copy-wa" se dispara igual desde el listener
+    // global del index.astro (tracking analytics no depende de este handler).
+    btnEl.addEventListener('click', async () => {
+      const texto = armarMensaje();
+      const ok = await copiarAlPortapapeles(texto);
+      const originalText = 'Copiar para WhatsApp';
+      btnEl.textContent = ok ? '¡Copiado! ✓' : 'No se pudo copiar';
+      btnEl.classList.add(ok ? 'calc-cta-success' : 'calc-cta-error');
+      setTimeout(() => {
+        btnEl.textContent = originalText;
+        btnEl.classList.remove('calc-cta-success', 'calc-cta-error');
+      }, 2000);
+    });
+  }
+</script>
