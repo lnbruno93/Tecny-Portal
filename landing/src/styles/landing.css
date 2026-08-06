@@ -969,7 +969,15 @@
 .tecny-landing .foot-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 40px; margin-bottom: 48px; }
 .tecny-landing .foot-brand-blurb { font-size: 14px; color: var(--muted); max-width: 280px; margin-top: 16px; line-height: 1.5; }
 .tecny-landing .foot-col h5 { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); margin: 0 0 16px; }
-.tecny-landing .foot-col a { display: block; font-size: 14px; color: var(--text-2); padding: 5px 0; transition: .12s; }
+/* 2026-08-06 (feedback Lucas): el selector originalmente era sólo `.foot-col a`,
+   pero algunos items del footer son <span role="link" aria-disabled="true">
+   (ítems "próximamente" como Novedades, Sobre nosotros). Sin este selector
+   extendido, esos <span> usaban el font-size default del browser (16px) mientras
+   que los <a> tenían 14px — Novedades se veía visiblemente más grande. Ahora
+   ambos comparten los mismos estilos, sólo cambia opacity via
+   `.u-landing-link-disabled`. */
+.tecny-landing .foot-col a,
+.tecny-landing .foot-col span[role="link"] { display: block; font-size: 14px; color: var(--text-2); padding: 5px 0; transition: .12s; }
 .tecny-landing .foot-col a:hover { color: var(--text); }
 .tecny-landing .foot-bottom { display: flex; justify-content: space-between; align-items: center; padding-top: 28px; border-top: 1px solid var(--hairline); flex-wrap: wrap; gap: 16px; }
 .tecny-landing .foot-bottom .cr { font-size: 13px; color: var(--muted); }
