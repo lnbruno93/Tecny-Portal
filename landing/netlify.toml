@@ -33,11 +33,21 @@
   # cancelaba con "no content change" error (ruido rojo en la UI, sin
   # impacto real en prod porque el último dist válido sigue sirviendo).
   #
-  # El comando `git diff --quiet HEAD^ HEAD landing/` returna 0 (exit=0)
-  # cuando NO hay cambios en landing/ → Netlify skip build. Retorna
-  # 1 (exit!=0) cuando SÍ hay cambios → Netlify build normal.
+  # 2026-08-06 (bugfix): el comando anterior `git diff --quiet HEAD^ HEAD`
+  # NO funciona en Netlify porque Netlify hace shallow clone (`--depth=1`)
+  # y `HEAD^` no existe. Cuando el diff falla, Netlify lo interpreta
+  # como "skip build" → deploys de main mergeados aparecen como
+  # `state: error, skipped: true` sin error_message. Los PR previews sí
+  # funcionaban porque Netlify hace clone completo para previews.
+  # Root cause: perdimos ~12hs de deploys de mobile fixes (PRs #1025, #1026)
+  # por este bug silencioso.
+  #
+  # Fix: usar `git log -1 --name-only` que SOLO mira HEAD (no requiere
+  # HEAD^, funciona en shallow clones). Return 0 (skip) sólo si NO hay
+  # líneas del path `landing/` en los archivos del último commit.
+  # Return 1 (build) en cualquier otro caso.
   # Docs: https://docs.netlify.com/configure-builds/ignore-builds/
-  ignore = "git diff --quiet HEAD^ HEAD landing/"
+  ignore = "! git log -1 --name-only --pretty=format:'' HEAD | grep -q '^landing/'"
 
 [build.environment]
   NODE_VERSION = "22"
