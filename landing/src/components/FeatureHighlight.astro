@@ -144,7 +144,7 @@ const fmtARS = (n: number) => '$' + new Intl.NumberFormat('es-AR').format(n);
 
 <script>
   /**
-   * Cotizador funcional — client-side puro, 0 fetches al backend.
+   * Cotizador funcional — client-side puro para recalcular.
    *
    * Recalcula todos los precios cada vez que el usuario cambia el select
    * de producto o el input del dólar. El botón "Copiar" arma un bloque
@@ -153,7 +153,21 @@ const fmtARS = (n: number) => '$' + new Intl.NumberFormat('es-AR').format(n);
    * Fallback clipboard: si `navigator.clipboard` no está disponible
    * (Safari <13.4, contexto HTTP sin secure origin), usa document.execCommand
    * sobre un textarea temporal. Deprecado pero universalmente soportado.
+   *
+   * ── Hidratación CMS ────────────────────────────────────────────────
+   * Además del cálculo, este script fetchea `/api/public/site-config`
+   * y — si `data.cotizador` viene con productos/recargos — repopula el
+   * <select id="calc-producto"> con los productos del admin y actualiza
+   * los data-attrs de recargo del wrapper. Luego dispara un evento
+   * 'input' sintético sobre #calc-dolar para forzar recalcular() con
+   * los nuevos valores. Si `data.cotizador` es null → SSR fallback.
+   *
+   * Se merge con el script funcional (en vez de usar 2 <script> separados)
+   * para compartir la referencia a `recalcular()` y los recargos vía
+   * `let` mutable — evita re-instalar listeners o duplicar closures.
    */
+  import { apiUrl } from '../lib/api';
+  import { reportLandingError } from '../lib/analytics';
 
   const fmtARS = (n: number) => '$' + new Intl.NumberFormat('es-AR').format(n);
 
@@ -175,10 +189,17 @@ const fmtARS = (n: number) => '$' + new Intl.NumberFormat('es-AR').format(n);
     console.warn('[cotizador] Algún elemento del DOM falta — feature desactivada');
   } else {
     // Recargos vienen desde data-attrs del wrapper (los define el server).
-    // Mantiene una sola fuente de verdad — cambiarlos en el .astro basta.
-    const recargoTransf = parseFloat(visualEl.dataset.recargoTransf || '3');
-    const recargo3c = parseFloat(visualEl.dataset.recargo3c || '23.5');
-    const recargo6c = parseFloat(visualEl.dataset.recargo6c || '28');
+    // Se leen mutable con `let` porque la hidratación CMS (más abajo) puede
+    // actualizar `visualEl.dataset.*` en runtime y necesitamos que el próximo
+    // recalcular() lea los nuevos valores. Por eso NO se cachean fuera —
+    // helper `readRecargos()` los relee del DOM cada vez.
+    function readRecargos() {
+      return {
+        transf: parseFloat(visualEl!.dataset.recargoTransf || '3'),
+        c3: parseFloat(visualEl!.dataset.recargo3c || '23.5'),
+        c6: parseFloat(visualEl!.dataset.recargo6c || '28'),
+      };
+    }
 
     /**
      * Recalcula y renderiza todos los montos.
@@ -186,6 +207,7 @@ const fmtARS = (n: number) => '$' + new Intl.NumberFormat('es-AR').format(n);
      * mínimo (evita divisiones raras y valores $NaN en pantalla).
      */
     function recalcular() {
+      const { transf: recargoTransf, c3: recargo3c, c6: recargo6c } = readRecargos();
       const usd = parseFloat(selectEl!.value) || 0;
       const dolar = Math.max(1, parseFloat(dolarEl!.value) || 1);
       const contado = Math.round(usd * dolar);
@@ -208,6 +230,7 @@ const fmtARS = (n: number) => '$' + new Intl.NumberFormat('es-AR').format(n);
      * y el cliente reciba una cotización clara con opciones.
      */
     function armarMensaje(): string {
+      const { transf: recargoTransf, c3: recargo3c, c6: recargo6c } = readRecargos();
       const producto = selectEl!.options[selectEl!.selectedIndex].text;
       const usd = parseFloat(selectEl!.value) || 0;
       const dolar = Math.max(1, parseFloat(dolarEl!.value) || 1);
@@ -277,5 +300,75 @@ const fmtARS = (n: number) => '$' + new Intl.NumberFormat('es-AR').format(n);
         btnEl.classList.remove('calc-cta-success', 'calc-cta-error');
       }, 2000);
     });
+
+    /**
+     * Hidratación CMS — merged en el mismo <script> del cotizador para
+     * compartir referencias a `recalcular()`, `readRecargos()` y los
+     * elementos del DOM. Si `data.cotizador` viene del backend con
+     * productos, se repuebla el <select>. Si viene con recargos, se
+     * actualizan los data-attrs del wrapper (readRecargos los relee).
+     * Al final se dispara un 'input' sintético en #calc-dolar para
+     * forzar recalcular() con los valores frescos.
+     *
+     * Si `data.cotizador` es null → SSR fallback se mantiene intacto.
+     */
+    type CotizadorProducto = { label: string; usd: number };
+    type CotizadorRecargos = { transferencia?: number; cuotas_3?: number; cuotas_6?: number };
+    type CotizadorPayload = { productos?: CotizadorProducto[]; recargos?: CotizadorRecargos };
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+
+    fetch(apiUrl('/api/public/site-config'), { signal: controller.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error('http ' + res.status);
+        return res.json();
+      })
+      .then((data) => {
+        const cotizador: CotizadorPayload | null = data?.cotizador ?? null;
+        if (!cotizador || typeof cotizador !== 'object') return; // fallback SSR
+
+        // Escape defensivo — labels editables desde admin sin sanitizer.
+        const escape = (s: string) =>
+          s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+        let hydrated = false;
+
+        const productos = Array.isArray(cotizador.productos) ? cotizador.productos : [];
+        if (productos.length > 0) {
+          // Repuebla el <select>. Preserva el ítem seleccionado (índice 0).
+          selectEl!.innerHTML = productos
+            .map(
+              (p, i) =>
+                `<option value="${Number(p.usd) || 0}"${i === 0 ? ' selected' : ''}>${escape(String(p.label ?? ''))}</option>`
+            )
+            .join('');
+          hydrated = true;
+        }
+
+        const recargos = cotizador.recargos;
+        if (recargos && typeof recargos === 'object') {
+          if (typeof recargos.transferencia === 'number' && Number.isFinite(recargos.transferencia)) {
+            visualEl!.dataset.recargoTransf = String(recargos.transferencia);
+          }
+          if (typeof recargos.cuotas_3 === 'number' && Number.isFinite(recargos.cuotas_3)) {
+            visualEl!.dataset.recargo3c = String(recargos.cuotas_3);
+          }
+          if (typeof recargos.cuotas_6 === 'number' && Number.isFinite(recargos.cuotas_6)) {
+            visualEl!.dataset.recargo6c = String(recargos.cuotas_6);
+          }
+          hydrated = true;
+        }
+
+        if (hydrated) {
+          // Dispara 'input' sintético sobre #calc-dolar para forzar el
+          // recalcular() con productos/recargos nuevos. Usar 'input' en
+          // vez de llamar a recalcular() directo asegura que corran
+          // eventuales listeners agregados por otros scripts.
+          dolarEl!.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      })
+      .catch((err) => reportLandingError(err, { section: 'cotizador' }))
+      .finally(() => clearTimeout(timer));
   }
 </script>

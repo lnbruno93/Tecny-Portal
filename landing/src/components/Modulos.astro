@@ -84,7 +84,7 @@ const MODULOS = [
       <h2 class="s-title">Una herramienta para cada parte del negocio</h2>
       <p class="s-sub">Siete módulos que conversan entre sí. Activá los que necesitás y sumá el resto cuando crezcas.</p>
     </div>
-    <div class="mods">
+    <div class="mods" id="mods-list">
       {MODULOS.map((mod) => (
         <div class={`mod${'wide' in mod && mod.wide ? ' mod-wide' : ''}`}>
           <div class="mod-num">{mod.n}</div>
@@ -158,3 +158,91 @@ const MODULOS = [
     </div>
   </div>
 </section>
+
+<script>
+  /**
+   * Hidratación CMS — reemplaza los MODULOS hardcoded si el admin cargó
+   * overrides desde admin.tecnyapp.com/sitio-publico. Los 7 SVG icons
+   * quedan hardcoded acá porque el CMS solo persiste el `iconKey` string;
+   * el markup del SVG vive en el frontend.
+   */
+  import { apiUrl } from '../lib/api';
+  import { reportLandingError } from '../lib/analytics';
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+
+  type ModuloBadge = { text: string; hi?: boolean };
+  type ModuloLink = { text: string; href: string };
+  type Modulo = {
+    id?: string;
+    n: string;
+    tint: string;
+    title: string;
+    body: string;
+    iconKey: string;
+    wide?: boolean;
+    badges?: ModuloBadge[];
+    link?: ModuloLink;
+  };
+
+  // Mapping iconKey → SVG markup. Los 7 keys existentes matchean con los
+  // valores permitidos en el schema Zod del backend.
+  const ICONS: Record<string, string> = {
+    inventario: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>',
+    cotizador: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><rect x="7" y="6.5" width="10" height="3.5" rx="0.6"/><circle cx="8.5" cy="13.5" r="0.7" fill="currentColor"/><circle cx="12" cy="13.5" r="0.7" fill="currentColor"/><circle cx="15.5" cy="13.5" r="0.7" fill="currentColor"/></svg>',
+    cuentascc: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v18l2-1.5L9 21l2-1.5L13 21l2-1.5L17 21l2-1.5V3l-2 1.5L15 3l-2 1.5L11 3 9 4.5 7 3 5 4.5Z"/><path d="M8.5 8h7M8.5 12h7"/></svg>',
+    cajas: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8H6a3 3 0 0 1 0-6h13v6Z"/><path d="M3 5v13a3 3 0 0 0 3 3h15V8"/><circle cx="17" cy="14" r="1.4" fill="currentColor"/></svg>',
+    usados: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M10 5h4"/><circle cx="12" cy="18" r="0.8" fill="currentColor"/></svg>',
+    comprobantes: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h13l3 3v13a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.2"/><path d="M9 8h6"/></svg>',
+    envios: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7h11v9H2z"/><path d="M13 10h4l4 4v2h-8"/><circle cx="7" cy="18" r="2"/><circle cx="17.5" cy="18" r="2"/></svg>',
+  };
+
+  fetch(apiUrl('/api/public/site-config'), { signal: controller.signal })
+    .then((res) => {
+      if (!res.ok) throw new Error('http ' + res.status);
+      return res.json();
+    })
+    .then((data) => {
+      const modulos: Modulo[] = Array.isArray(data?.modulos) ? data.modulos : [];
+      if (modulos.length === 0) return; // mantiene fallback SSR
+
+      const list = document.getElementById('mods-list');
+      if (!list) return;
+
+      // Escape HTML defensivo — el admin edita en textarea sin sanitizer.
+      const escape = (s: string) =>
+        s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+      list.innerHTML = modulos
+        .map((mod) => {
+          const wideClass = mod.wide ? ' mod-wide' : '';
+          const tint = escape(mod.tint || 'tint-blue');
+          const iconSvg = ICONS[mod.iconKey] || '';
+          const linkHtml = mod.link
+            ? ` <a href="${escape(mod.link.href)}" class="mod-link">${escape(mod.link.text)}</a>`
+            : '';
+          const badgesHtml =
+            Array.isArray(mod.badges) && mod.badges.length > 0
+              ? `<div class="mod-badges">${mod.badges
+                  .map(
+                    (b) =>
+                      `<span class="mod-badge${b.hi ? ' hi' : ''}">${escape(b.text)}</span>`
+                  )
+                  .join('')}</div>`
+              : '';
+          return (
+            `<div class="mod${wideClass}">` +
+            `<div class="mod-num">${escape(mod.n)}</div>` +
+            `<h3>${escape(mod.title)}</h3>` +
+            `<p>${escape(mod.body)}${linkHtml}</p>` +
+            badgesHtml +
+            `<div class="ico ${tint}" aria-hidden="true">${iconSvg}</div>` +
+            `</div>`
+          );
+        })
+        .join('');
+    })
+    .catch((err) => reportLandingError(err, { section: 'modulos' }))
+    .finally(() => clearTimeout(timer));
+</script>

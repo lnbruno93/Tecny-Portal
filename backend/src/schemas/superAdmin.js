@@ -250,6 +250,99 @@ const faqItemSchema = z.object({
   answer:   z.string().trim().min(3, 'Respuesta muy corta').max(1000, 'Respuesta muy larga'),
 }).strict();
 
+// 2026-08-06 (CMS Landing Fase 5): schemas para 5 secciones adicionales
+// editables desde admin.tecnyapp.com/sitio-publico. Feedback Lucas — quería
+// sincronizar todo el copy nuevo del landing (rewrite del día) con el CMS.
+//
+// Cada uno matchea el shape del hardcoded en el respectivo componente
+// Astro. Server genera UUID para items sin id (nuevos), mismo patrón que
+// testimonials y faq. Límites max defensivos para no explotar el bundle.
+
+// Modulos.astro — 7 cards de "Los módulos"
+// - n: número visible arriba (01, 02, ..., 07)
+// - tint: clase CSS del ícono (`tint-blue`, `tint-amber`, etc.)
+// - iconKey: ID del SVG a renderar (uno de los 7 definidos en Modulos.astro)
+// - wide: si `true`, el card ocupa 2 columnas (grid-column: span 2)
+// - badges: chips debajo del body — cada uno opcional con `hi: true` para
+//   destacar (color warn amber). Max 6 badges por card por espacio visual.
+// - link: link "Ver cómo funciona →" — opcional
+const TINT_RE = /^tint-(blue|amber|green|purple|cyan|pink|orange)$/;
+const ICON_KEY_MODULOS = /^(inventario|cotizador|cuentascc|cajas|usados|comprobantes|envios)$/;
+const moduloBadgeSchema = z.object({
+  text: z.string().trim().min(1, 'Badge vacío').max(40, 'Badge muy largo'),
+  hi:   z.boolean().optional(),
+}).strict();
+const moduloLinkSchema = z.object({
+  text: z.string().trim().min(1).max(40),
+  href: z.string().trim().min(1).max(200),
+}).strict();
+const moduloItemSchema = z.object({
+  id:      z.string().regex(uuidLoose).optional(),
+  n:       z.string().trim().min(1).max(3, 'n máx 3 chars (01-99)'),
+  tint:    z.string().regex(TINT_RE, 'tint inválido (blue|amber|green|purple|cyan|pink|orange)'),
+  title:   z.string().trim().min(3).max(60, 'Title máx 60'),
+  body:    z.string().trim().min(3).max(400, 'Body máx 400'),
+  iconKey: z.string().regex(ICON_KEY_MODULOS, 'iconKey inválido'),
+  wide:    z.boolean().optional(),
+  badges:  z.array(moduloBadgeSchema).max(6, 'Máx 6 badges').optional(),
+  link:    moduloLinkSchema.optional(),
+}).strict();
+
+// ComoFunciona.astro — 4 steps
+// icon: ID SVG (uno de los 4: inventario, venta, saldos, metricas)
+const ICON_KEY_COMO = /^(inventario|venta|saldos|metricas)$/;
+const comoFuncionaItemSchema = z.object({
+  id:    z.string().regex(uuidLoose).optional(),
+  n:     z.string().trim().min(1).max(3),
+  title: z.string().trim().min(3).max(60),
+  body:  z.string().trim().min(3).max(300),
+  icon:  z.string().regex(ICON_KEY_COMO, 'icon inválido (inventario|venta|saldos|metricas)'),
+}).strict();
+
+// CanjeUsados.astro — 2 arrays anidados: steps (3) + catalogo (5)
+const canjeStepSchema = z.object({
+  id:    z.string().regex(uuidLoose).optional(),
+  n:     z.string().trim().min(1).max(3),
+  title: z.string().trim().min(3).max(80),
+  body:  z.string().trim().min(3).max(300),
+}).strict();
+const canjeCatalogoItemSchema = z.object({
+  id:     z.string().regex(uuidLoose).optional(),
+  modelo: z.string().trim().min(1).max(60),
+  cap:    z.string().trim().min(1).max(20),
+  bat:    z.string().trim().min(1).max(10),
+  toma:   z.string().trim().min(1).max(20),
+}).strict();
+const canjeSchema = z.object({
+  steps:    z.array(canjeStepSchema).max(6, 'Máx 6 steps').optional(),
+  catalogo: z.array(canjeCatalogoItemSchema).max(20, 'Máx 20 filas de catálogo').optional(),
+}).strict();
+
+// TusDatos.astro — 3 pilares (backups + export + soft-delete)
+const tusDatosItemSchema = z.object({
+  id:    z.string().regex(uuidLoose).optional(),
+  title: z.string().trim().min(3).max(50),
+  body:  z.string().trim().min(3).max(300),
+}).strict();
+
+// FeatureHighlight.astro (Cotizador) — catálogo + recargos
+// productos: max 20 (razonable para un demo mock; más satura el <select>)
+// recargos: 3 valores en %, entre 0 y 200 (defensa contra typo tipo 3000%)
+const cotizadorProductoSchema = z.object({
+  id:    z.string().regex(uuidLoose).optional(),
+  label: z.string().trim().min(1).max(60),
+  usd:   z.number().min(1, 'USD debe ser ≥ 1').max(20000, 'USD demasiado alto'),
+}).strict();
+const cotizadorRecargosSchema = z.object({
+  transferencia: z.number().min(0).max(200).optional(),
+  cuotas_3:      z.number().min(0).max(200).optional(),
+  cuotas_6:      z.number().min(0).max(200).optional(),
+}).strict();
+const cotizadorSchema = z.object({
+  productos: z.array(cotizadorProductoSchema).max(20, 'Máx 20 productos').optional(),
+  recargos:  cotizadorRecargosSchema.optional(),
+}).strict();
+
 const updateSiteLandingContactSchema = z.object({
   contact_email: z.union([
     z.string().trim().toLowerCase().regex(CONTACT_EMAIL_RE, 'Email inválido').max(254),
@@ -326,6 +419,19 @@ const updateSiteLandingContactSchema = z.object({
   // Mismo patrón que testimonials — si viene, reemplaza el array completo.
   // Server genera UUID para items sin id (nuevos).
   faq: z.array(faqItemSchema).max(20, 'Máximo 20 preguntas').optional(),
+
+  // 2026-08-06 CMS Landing Fase 5: 5 secciones adicionales editables.
+  // - modulos: los 7 cards de "Los módulos" (max 12 por si Lucas suma en el futuro)
+  // - como_funciona: 4 steps (max 6)
+  // - canje: objeto con {steps, catalogo}
+  // - tus_datos: 3 pilares (max 6)
+  // - cotizador: objeto con {productos, recargos}
+  // Todos opcionales — null/no-viene → landing usa fallback hardcoded del design.
+  modulos:        z.array(moduloItemSchema).max(12, 'Máx 12 módulos').optional(),
+  como_funciona:  z.array(comoFuncionaItemSchema).max(6, 'Máx 6 steps').optional(),
+  canje:          canjeSchema.optional(),
+  tus_datos:      z.array(tusDatosItemSchema).max(6, 'Máx 6 pilares').optional(),
+  cotizador:      cotizadorSchema.optional(),
 }).strict().refine(
   // Al menos un campo debe venir. Sin esto, PATCH con body {} pasaría el
   // Zod y haría un UPDATE no-op — patrón consistente con schemas del resto
