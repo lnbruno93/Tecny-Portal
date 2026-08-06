@@ -940,6 +940,16 @@
   .tecny-landing { --pad: 24px; }
   .tecny-landing .steps { grid-template-columns: 1fr 1fr; }
   .tecny-landing .mods, .tecny-landing .plans { grid-template-columns: 1fr; }
+  /* 2026-08-05 (mobile audit, feedback Lucas): `.mod.mod-wide` mantenía
+     `grid-column: span 2` en desktop para que el card 01 (Inventario con IMEI)
+     ocupara 2 cols del grid de 3. En mobile el grid pasa a 1 col via el
+     override de arriba, pero el `.mod-wide` seguía con span 2 → grid se
+     rompía en 2 cols con la primera de 50px y la segunda de 259px. Los
+     cards SIGUIENTES al mod-wide quedaban en la col de 259px (renglón
+     cortado) y el resto en la col fantasma de 50px (título "Co / cot /
+     dól / del / día" partido letra por letra). Fix: en mobile el
+     mod-wide vuelve a ocupar solo 1 col como los demás. */
+  .tecny-landing .mod.mod-wide { grid-column: auto; }
   /* 4-col variante: en tablet (≤940px) va a 2 columnas (2×2 grid), en mobile
      (heredado por el fallthrough al selector .plans arriba) a 1 columna. */
   .tecny-landing .plans.plans-4col { grid-template-columns: repeat(2, 1fr); }
@@ -988,6 +998,57 @@
      lateral bajamos de 10 a 8 para compensar. Comprobado en Chrome DevTools
      device toolbar iPhone SE (375×667): entra sin desbordar. */
   .tecny-landing .nav-cta .btn { padding: 0 8px; font-size: 13px; height: 44px; }
+
+  /* 2026-08-05 (mobile audit, feedback Lucas "se ve HORRIBLE en cel"):
+     ─────────────────────────────────────────────────────────────────
+     Batch de arreglos para viewport 640px y menos. Problemas puntuales
+     que Lucas vio en su iPhone y fixes aplicados:
+
+     1. Hero headline (h1) — el `clamp(40px, 6.4vw, 76px)` da 40px en
+        375px viewport, y con copy tan largo ("Tu negocio en una sola
+        pantalla - Sin planillas ni WhatsApp caóticos") ocupaba 7
+        líneas visuales — se comía toda la pantalla. Fix: 28px con
+        tracking un poco menos ajustado (letras no se pisan).
+
+     2. Hero blurb — el clamp min 17px es OK pero con el h1 más chico
+        el blurb "compite" — bajamos a 15px para jerarquía correcta.
+
+     3. Eyebrow — el pill "Creado & pensado por y para vendedores de
+        tecnología" ocupaba mucho — reducimos padding + font.
+
+     4. CTAs hero — apilados vertical con full-width. Mejor tap target
+        y visual más limpio que 2 botones flex-wrap con ancho variable.
+
+     5. `.s` padding-y — 96px es demasiado en mobile (60% del viewport).
+        Bajamos a 56px arriba/abajo, más denso, menos scroll fatiga.
+
+     6. `.s-title` — clamp(30px, 4vw, 46px) da 30px en 375px, chico
+        pero razonable. Bajamos a 26px con tracking corregido — cabe
+        mejor con headings tipo "El equipo entra, se vende y el
+        stock se ajusta solo" (3-4 líneas mobile).
+
+     7. `.s-head margin` bajamos 56 → 32 en mobile — menos separación
+        entre el head y el contenido.
+
+     8. Steps `.step` padding-top 28→20 — más denso vertical.
+
+     9. `.steps` gap bajamos 20→28 para dar aire entre las 4 tarjetas
+        apiladas (pasan a 1 col en 560px). En 640-560 quedan en 2 col.
+
+     10. `.cta-final` padding excesivo en mobile (72×48) — bajamos a
+         48×24 para no dominar tanto. */
+  .tecny-landing h1.hero-h { font-size: 28px; letter-spacing: -0.02em; line-height: 1.1; }
+  .tecny-landing .hero-sub { font-size: 15px; margin-bottom: 24px; }
+  .tecny-landing .eyebrow { font-size: 11.5px; padding: 5px 11px; margin-bottom: 20px; }
+  .tecny-landing .hero-actions { flex-direction: column; align-items: stretch; gap: 10px; }
+  .tecny-landing .hero-actions .btn { width: 100%; justify-content: center; }
+  .tecny-landing section.s { padding: 56px 0; }
+  .tecny-landing .s-head { margin-bottom: 32px; }
+  .tecny-landing .s-title { font-size: 26px; letter-spacing: -0.02em; }
+  .tecny-landing .step { padding-top: 20px; }
+  .tecny-landing .steps { gap: 28px; }
+  .tecny-landing .cta-final { padding: 48px 24px; border-radius: 20px; }
+  .tecny-landing .cta-final p { font-size: 16px; }
 }
 @media (max-width: 560px) {
   .tecny-landing .steps { grid-template-columns: 1fr; }
