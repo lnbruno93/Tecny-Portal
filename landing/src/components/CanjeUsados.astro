@@ -80,7 +80,7 @@ const CATALOGO = [
             <th class="ta-right">Toma</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody id="canje-cat-tbody">
           {CATALOGO.map((row) => (
             <tr>
               <td class="canje-cat-modelo">{row.modelo}</td>
@@ -105,7 +105,7 @@ const CATALOGO = [
         Con Tecny tenés el valor de toma al día, por modelo, capacidad y estado de batería.
       </p>
 
-      <ol class="canje-steps">
+      <ol class="canje-steps" id="canje-steps-list">
         {STEPS.map((s) => (
           <li class="canje-step">
             <div class="canje-step-n">{s.n}</div>
@@ -129,3 +129,71 @@ const CATALOGO = [
     </div>
   </div>
 </section>
+
+<script>
+  /**
+   * Hidratación CMS — reemplaza los STEPS y/o el CATALOGO si el admin
+   * cargó overrides. Los dos arrays se hidratan independientemente:
+   * si viene solo steps, catalogo mantiene el fallback y viceversa.
+   */
+  import { apiUrl } from '../lib/api';
+  import { reportLandingError } from '../lib/analytics';
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+
+  type CanjeStep = { id?: string; n: string; title: string; body: string };
+  type CanjeCatRow = { modelo: string; cap: string; bat: string; toma: string };
+
+  fetch(apiUrl('/api/public/site-config'), { signal: controller.signal })
+    .then((res) => {
+      if (!res.ok) throw new Error('http ' + res.status);
+      return res.json();
+    })
+    .then((data) => {
+      const canje = data?.canje;
+      if (!canje || typeof canje !== 'object') return; // mantiene fallback
+
+      const escape = (s: string) =>
+        s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+      const steps: CanjeStep[] = Array.isArray(canje.steps) ? canje.steps : [];
+      if (steps.length > 0) {
+        const stepsList = document.getElementById('canje-steps-list');
+        if (stepsList) {
+          stepsList.innerHTML = steps
+            .map(
+              (s) =>
+                `<li class="canje-step">` +
+                `<div class="canje-step-n">${escape(s.n)}</div>` +
+                `<div class="canje-step-body">` +
+                `<h3>${escape(s.title)}</h3>` +
+                `<p>${escape(s.body)}</p>` +
+                `</div>` +
+                `</li>`
+            )
+            .join('');
+        }
+      }
+
+      const catalogo: CanjeCatRow[] = Array.isArray(canje.catalogo) ? canje.catalogo : [];
+      if (catalogo.length > 0) {
+        const tbody = document.getElementById('canje-cat-tbody');
+        if (tbody) {
+          tbody.innerHTML = catalogo
+            .map(
+              (row) =>
+                `<tr>` +
+                `<td class="canje-cat-modelo">${escape(row.modelo)}</td>` +
+                `<td class="canje-cat-cap">${escape(row.cap)}</td>` +
+                `<td class="canje-cat-bat">${escape(row.bat)}</td>` +
+                `<td class="canje-cat-toma ta-right">${escape(row.toma)}</td>` +
+                `</tr>`
+            )
+            .join('');
+        }
+      }
+    })
+    .catch((err) => reportLandingError(err, { section: 'canje' }))
+    .finally(() => clearTimeout(timer));
+</script>

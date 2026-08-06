@@ -41,7 +41,7 @@ const PILARES = [
       <h2 class="s-title">Tu negocio adentro,<br />y siempre tuyo</h2>
     </div>
 
-    <div class="tus-datos-grid">
+    <div class="tus-datos-grid" id="tus-datos-list">
       {PILARES.map((p) => (
         <div class="tus-datos-item">
           <h3>{p.title}</h3>
@@ -51,3 +51,45 @@ const PILARES = [
     </div>
   </div>
 </section>
+
+<script>
+  /**
+   * Hidratación CMS — reemplaza los PILARES hardcoded si el admin cargó
+   * overrides. Sección sin íconos ni números (solo title + body).
+   */
+  import { apiUrl } from '../lib/api';
+  import { reportLandingError } from '../lib/analytics';
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+
+  type Pilar = { id?: string; title: string; body: string };
+
+  fetch(apiUrl('/api/public/site-config'), { signal: controller.signal })
+    .then((res) => {
+      if (!res.ok) throw new Error('http ' + res.status);
+      return res.json();
+    })
+    .then((data) => {
+      const pilares: Pilar[] = Array.isArray(data?.tus_datos) ? data.tus_datos : [];
+      if (pilares.length === 0) return; // mantiene fallback SSR
+
+      const list = document.getElementById('tus-datos-list');
+      if (!list) return;
+
+      const escape = (s: string) =>
+        s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+      list.innerHTML = pilares
+        .map(
+          (p) =>
+            `<div class="tus-datos-item">` +
+            `<h3>${escape(p.title)}</h3>` +
+            `<p>${escape(p.body)}</p>` +
+            `</div>`
+        )
+        .join('');
+    })
+    .catch((err) => reportLandingError(err, { section: 'tus_datos' }))
+    .finally(() => clearTimeout(timer));
+</script>
