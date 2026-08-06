@@ -28,7 +28,7 @@ const waHref = buildWaLink(WA_NUMBER, WA_MESSAGE);
       <div>
         <div class="brand"><span class="mk">T</span> Tecny</div>
         <p class="foot-brand-blurb">
-          El portal operativo para revendedores. Cotizá, cobrá, despachá y administrá — todo en una sola pantalla.
+          El portal operativo creado por &amp; para revendedores. Cargá tu stock, cotizá, cobrá, despachá &amp; administrá con datos — todo en una sola pantalla.
         </p>
       </div>
 
@@ -44,7 +44,16 @@ const waHref = buildWaLink(WA_NUMBER, WA_MESSAGE);
         <h5>Empresa</h5>
         <span role="link" aria-disabled="true" title="Sobre nosotros — próximamente" class="u-landing-link-disabled">Sobre nosotros</span>
         <a href="#contacto">Contacto</a>
-        <span role="link" aria-disabled="true" title="Soporte — próximamente" class="u-landing-link-disabled">Soporte</span>
+        {/* 2026-08-06 (feedback Lucas): "Soporte" ahora es link activo al WhatsApp
+            de Tecny (mismo canal que el bloque social del bottom). Antes era un
+            <span aria-disabled> "próximamente" — Tecny SÍ tiene canal de soporte. */}
+        <a
+          href={waHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          data-cta="footer:soporte"
+          aria-label="Soporte por WhatsApp"
+        >Soporte</a>
       </div>
 
       <div class="foot-col">
