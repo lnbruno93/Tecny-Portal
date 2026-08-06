@@ -202,17 +202,16 @@
 .tecny-landing .btn-wa:hover { background: #1ebe5a; transform: translateY(-1px); }
 
 /* ── Hero ────────────────────────────────────────────── */
-/* 2026-08-05: reducido padding-bottom 80px → 32px → 8px (2 iteraciones).
-   Antes con el mockup dentro del hero el aire abajo se justificaba.
-   Ahora sin el mockup, más ajustado se lee más punchy. Combinado con
-   override del padding-top de la sección #como (~48px), total hero→
-   ComoFunciona baja de 176px a ~56px. */
-.tecny-landing .hero { position: relative; overflow: hidden; padding: 100px 0 8px; }
-/* Padding-top override específico para la primera sección después del hero:
-   la clase `.s` genérica tiene 96px de padding-top (bien para transiciones
-   entre secciones internas), pero justo después del hero queda pesado.
-   Solo aplica a `#como` (la que viene inmediatamente después). */
-.tecny-landing section.s#como { padding-top: 48px; }
+/* 2026-08-06 (feedback Lucas — spacing audit): restaurado padding-bottom
+   del hero a 56px (era 8px iteración previa). Motivo: Lucas pidió aire
+   uniforme entre TODAS las secciones. Con hero-bottom = 8px y `.s` en
+   72px-top (nuevo valor uniforme), el total hero→ComoFunciona era 80px
+   mientras que otras transiciones secc→secc eran 144px — inconsistente.
+   Ahora hero-bottom = 56px y `.s` top = 72px → total 128px, consistente
+   con las demás transiciones y suficiente aire visual. Removido también
+   el override específico `#como padding-top: 48px` (ya no hace falta,
+   el `.s` genérico da el spacing correcto). */
+.tecny-landing .hero { position: relative; overflow: hidden; padding: 100px 0 56px; }
 /* 2026-07-13: gradient re-anclado adentro del hero (era `at 70% -5%` — 5%
    arriba del borde superior → creaba una banda azul tenue justo en el borde
    nav→hero que se veía como línea horizontal). Nueva posición `at 70% 25%`
@@ -483,7 +482,14 @@
    confiaron") sirve como base. */
 
 /* ── Section frame ───────────────────────────────────── */
-.tecny-landing section.s { padding: 96px 0; }
+/* 2026-08-06 (feedback Lucas — spacing audit): reducido padding-y de
+   96 → 72 para unificar el aire entre secciones. Con 96px, dos secciones
+   consecutivas dejaban 192px de hueco vertical → pesado, rompía la
+   coherencia. Con 72px el aire acumulado baja a 144px — todavía generoso
+   pero se lee como una landing continua, no como collage de bloques.
+   El `.s-head margin-bottom: 56px` se mantiene (aire interno entre head
+   y body de la sección). */
+.tecny-landing section.s { padding: 72px 0; }
 .tecny-landing .s-head { max-width: 680px; margin: 0 0 56px; }
 .tecny-landing .s-head.center { margin: 0 auto 56px; text-align: center; }
 .tecny-landing .s-kicker { font-size: 12.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); margin-bottom: 14px; }
@@ -1143,6 +1149,10 @@
   .tecny-landing .hero-actions { flex-direction: column; align-items: stretch; gap: 10px; }
   .tecny-landing .hero-actions .btn { width: 100%; justify-content: center; }
   .tecny-landing section.s { padding: 56px 0; }
+  /* Hero-bottom mobile proporcional al `.s` mobile (56px) — mismo ratio
+     que desktop (56/72 desktop = 44/56 mobile). Mantiene la consistencia
+     de "aire uniforme entre secciones" en móvil. */
+  .tecny-landing .hero { padding: 72px 0 44px; }
   .tecny-landing .s-head { margin-bottom: 32px; }
   .tecny-landing .s-title { font-size: 26px; letter-spacing: -0.02em; }
   .tecny-landing .step { padding-top: 20px; }
