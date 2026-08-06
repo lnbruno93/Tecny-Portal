@@ -48,7 +48,7 @@ const STEPS = [
       <h2 class="s-title">El equipo entra, se vende y el stock se ajusta solo</h2>
       <p class="s-sub">Sin migración dolorosa. Cargás tu primer equipo y desde ahí el sistema lleva la cuenta.</p>
     </div>
-    <div class="steps">
+    <div class="steps" id="steps-list">
       {STEPS.map((step) => (
         <div class="step">
           <div class="n">{step.n}</div>
@@ -90,3 +90,57 @@ const STEPS = [
     </div>
   </div>
 </section>
+
+<script>
+  /**
+   * Hidratación CMS — reemplaza los STEPS hardcoded si el admin cargó
+   * overrides. Los 4 SVG icons quedan hardcoded acá (CMS solo persiste
+   * la iconKey string).
+   */
+  import { apiUrl } from '../lib/api';
+  import { reportLandingError } from '../lib/analytics';
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+
+  type Step = { id?: string; n: string; title: string; body: string; icon: string };
+
+  const ICONS: Record<string, string> = {
+    inventario: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>',
+    venta: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2h12l4 4v14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path d="M16 2v4h4"/><path d="M8 11h8M8 15h5"/></svg>',
+    saldos: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17 9 11l4 4 8-9"/><path d="M14 6h7v7"/></svg>',
+    metricas: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M8 17V11"/><path d="M13 17V6"/><path d="M18 17v-4"/></svg>',
+  };
+
+  fetch(apiUrl('/api/public/site-config'), { signal: controller.signal })
+    .then((res) => {
+      if (!res.ok) throw new Error('http ' + res.status);
+      return res.json();
+    })
+    .then((data) => {
+      const steps: Step[] = Array.isArray(data?.como_funciona) ? data.como_funciona : [];
+      if (steps.length === 0) return; // mantiene fallback SSR
+
+      const list = document.getElementById('steps-list');
+      if (!list) return;
+
+      const escape = (s: string) =>
+        s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+      list.innerHTML = steps
+        .map((step) => {
+          const iconSvg = ICONS[step.icon] || '';
+          return (
+            `<div class="step">` +
+            `<div class="n">${escape(step.n)}</div>` +
+            `<div class="ico">${iconSvg}</div>` +
+            `<h3>${escape(step.title)}</h3>` +
+            `<p>${escape(step.body)}</p>` +
+            `</div>`
+          );
+        })
+        .join('');
+    })
+    .catch((err) => reportLandingError(err, { section: 'como_funciona' }))
+    .finally(() => clearTimeout(timer));
+</script>
