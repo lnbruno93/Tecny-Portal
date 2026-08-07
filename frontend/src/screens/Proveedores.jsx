@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router';
 import { silentReport } from '../lib/reportError';
 import { Icons } from '../components/Icons';
-import { proveedores as provApi, cajas as cajasApi } from '../lib/api';
+import { proveedores as provApi, cajas as cajasApi, terceroLink as terceroLinkApi } from '../lib/api';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
@@ -13,6 +14,8 @@ import CompraProveedorModal from '../components/CompraProveedorModal';
 import DevolucionMercaderiaProveedorModal from '../components/DevolucionMercaderiaProveedorModal';
 import RelevoProveedorModal from '../components/RelevoProveedorModal';
 import CompraProveedorDetalleModal from '../components/CompraProveedorDetalleModal';
+// 2026-08-07 (task #302): link pragmático cliente ↔ proveedor.
+import LinkTerceroModal from '../components/LinkTerceroModal';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import CajaSelectHint from '../components/CajaSelectHint';
 import TcWarning from '../components/TcWarning';
@@ -51,6 +54,7 @@ const EMPTY_PROV = () => ({
 export default function Proveedores() {
   const { toast } = useToast();
   const confirm   = useConfirm();
+  const navigate  = useNavigate();
   // Safe destructure: useAuth() puede devolver null en tests que renderean
   // el componente sin AuthProvider. En prod siempre hay user (RequireAuth
   // gate-keep arriba en App.jsx).
@@ -86,6 +90,23 @@ export default function Proveedores() {
   // El movimiento seleccionado se abre en CompraProveedorDetalleModal —
   // muestra TODOS los items (no solo el primero + "+N" que muestra la grilla).
   const [detalleMov, setDetalleMov] = useState(null);
+
+  // 2026-08-07 (task #302): link pragmático con cliente_cc del portal.
+  // Se refresca cuando cambia el proveedor seleccionado O cuando se
+  // crea/borra un link.
+  const [terceroLinkData, setTerceroLinkData] = useState(null);
+  const [showLinkTerceroModal, setShowLinkTerceroModal] = useState(false);
+
+  function reloadTerceroLink(provId) {
+    if (!provId) { setTerceroLinkData(null); return Promise.resolve(); }
+    return terceroLinkApi.byProveedor(provId)
+      .then(setTerceroLinkData)
+      .catch(err => { silentReport(err); setTerceroLinkData(null); });
+  }
+  useEffect(() => {
+    reloadTerceroLink(selectedId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
 
   // ── Cargar lista ──
   const listReq = useRef(0); // token "última request gana" (evita que una respuesta lenta pise a una nueva)
@@ -493,6 +514,79 @@ export default function Proveedores() {
                   <Icons.Plus size={13} /> Cargar compra
                 </button>
               </div>
+
+              {/* 2026-08-07 (task #302): panel de vínculo con cliente. Espejo
+                  simétrico del panel de CuentasCC.jsx. Si existe link, muestra
+                  saldo neto consolidado; si no, botón "Vincular con cliente". */}
+              {terceroLinkData && (
+                terceroLinkData.link && terceroLinkData.contraparte ? (
+                  <div className="u-tercero-link-panel">
+                    <div>
+                      <span className="muted tiny">También es cliente · </span>
+                      <span className="u-fw-600">
+                        {terceroLinkData.contraparte.nombre}
+                        {terceroLinkData.contraparte.apellido ? ' ' + terceroLinkData.contraparte.apellido : ''}
+                      </span>
+                      <span className="muted tiny"> · saldo neto </span>
+                      <span className={
+                        'u-tercero-link-panel-neto ' + (
+                          Number(terceroLinkData.saldo_neto_usd) > 0
+                            ? 'u-color-neg'
+                            : Number(terceroLinkData.saldo_neto_usd) < 0
+                              ? 'u-color-pos'
+                              : ''
+                        )
+                      }>
+                        USD {fmt(terceroLinkData.saldo_neto_usd)}
+                      </span>
+                    </div>
+                    <div className="flex-row u-gap-8">
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        onClick={() => navigate(`/cuentas?cliente=${terceroLinkData.contraparte.id}`)}
+                      >
+                        Ver cliente
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        onClick={async () => {
+                          const ok = await confirm({
+                            title: 'Desvincular',
+                            message: `¿Desvincular a ${selected.nombre} de ${terceroLinkData.contraparte.nombre}? Los saldos individuales quedan intactos — sólo se pierde la vista consolidada.`,
+                            confirmLabel: 'Desvincular',
+                            cancelLabel: 'Cancelar',
+                            danger: true,
+                          });
+                          if (!ok) return;
+                          try {
+                            await terceroLinkApi.delete(terceroLinkData.link.id);
+                            toast.success('Desvinculado.');
+                            reloadTerceroLink(selectedId);
+                          } catch (err) {
+                            silentReport(err);
+                            toast.error('No se pudo desvincular.');
+                          }
+                        }}
+                      >
+                        Desvincular
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="u-mt-6">
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      onClick={() => setShowLinkTerceroModal(true)}
+                      title="Vincular con un cliente CC si este proveedor también es cliente"
+                    >
+                      <Icons.Users size={13} /> Vincular con cliente
+                    </button>
+                  </div>
+                )
+              )}
             </div>
 
             {/* ── Tabla spreadsheet ── */}
@@ -741,6 +835,19 @@ export default function Proveedores() {
           proveedor={selected}
           onClose={() => setDetalleMov(null)}
           onSaved={handleCompraSaved /* Fase B: post-edit refresca movs + saldo + inventario */}
+        />
+      )}
+
+      {/* 2026-08-07 (task #302): modal para vincular con cliente CC. Se abre
+          desde la ficha del proveedor. `onLinked` refresca el panel de saldo
+          neto. */}
+      {showLinkTerceroModal && selected && (
+        <LinkTerceroModal
+          source="proveedor"
+          currentId={selected.id}
+          currentNombre={selected.nombre}
+          onClose={() => setShowLinkTerceroModal(false)}
+          onLinked={() => reloadTerceroLink(selectedId)}
         />
       )}
 

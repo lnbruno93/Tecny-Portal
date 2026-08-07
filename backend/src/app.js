@@ -115,6 +115,10 @@ const shareLinksRoutes   = require('./routes/shareLinks');
 const ventasRoutes       = require('./routes/ventas');
 const ventasExtraRoutes  = require('./routes/ventas-extra');
 const proveedoresRoutes  = require('./routes/proveedores');
+// 2026-08-07 (task #302): link pragmático cliente_cc ↔ proveedor. Ver
+// backend/src/routes/terceroLink.js. Ruta requiere caps de ambos módulos
+// (CC + Proveedores) — se resuelve en el mount con requireAnyCapability.
+const terceroLinkRoutes  = require('./routes/terceroLink');
 const proyectosRoutes    = require('./routes/proyectos');
 const dashboardRoutes    = require('./routes/dashboard');
 const conciliacionRoutes = require('./routes/conciliacion');
@@ -1004,6 +1008,14 @@ app.use('/api/ventas',        requireAuth, requireCapability('ventas.trabajar'),
 
 // Proveedores — capability `proveedores.trabajar` (gate del módulo).
 app.use('/api/proveedores',   requireAuth, requireCapability('proveedores.trabajar'), proveedoresRoutes);
+
+// 2026-08-07 (task #302): link pragmático cliente_cc ↔ proveedor. El
+// endpoint se consume desde AMBAS pantallas (CuentasCC.jsx y
+// Proveedores.jsx), entonces el gate acepta cualquiera de las 2 caps —
+// requireAnyCapability corta si no tiene ninguna. Sin cap propia dedicada
+// (`terceros.trabajar`) para no explotar el catálogo por un feature de
+// 4 endpoints.
+app.use('/api/tercero-link',  requireAuth, requireAnyCapability(['b2b.trabajar', 'proveedores.trabajar']), terceroLinkRoutes);
 app.use('/api/proyectos',     requireAuth, requireCapability('proyectos.trabajar'),   proyectosRoutes);
 app.use('/api/conciliacion',  requireAuth, requireCapability('cajas.conciliacion'),   conciliacionRoutes);
 // Alertas: vista cross-módulo (cajas, stock, CC, proveedores). Capability

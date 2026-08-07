@@ -644,6 +644,23 @@ export const proveedores = {
     api(`/api/proveedores/${id}/relevo`, 'POST', data),
 };
 
+// 2026-08-07 (task #302): link pragmático cliente_cc ↔ proveedor. Alternativa
+// mínima al refactor Terceros completo (task #149, en pausa). Cubre "caso
+// Kevin" — mismo tercero es simultáneamente cliente y proveedor, queremos
+// saldo neto consolidado. Ver backend/src/routes/terceroLink.js.
+export const terceroLink = {
+  // Crea el link. body = { cliente_cc_id, proveedor_id, notas? }.
+  create: (data) => api('/api/tercero-link', 'POST', data),
+  // Ficha desde el cliente. Devuelve { link, contraparte, saldo_cliente_usd,
+  // saldo_neto_usd }.
+  byCliente: (cliId) => api(`/api/tercero-link/by-cliente/${cliId}`),
+  // Ficha desde el proveedor. Devuelve { link, contraparte, saldo_proveedor_usd,
+  // saldo_neto_usd }.
+  byProveedor: (provId) => api(`/api/tercero-link/by-proveedor/${provId}`),
+  // Soft-delete del link (permite re-linkear después).
+  delete: (id) => api(`/api/tercero-link/${id}`, 'DELETE'),
+};
+
 export const proyectos = {
   list: (params = {}) => api('/api/proyectos?' + new URLSearchParams(params)),
   get: (id) => api(`/api/proyectos/${id}`),

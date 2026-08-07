@@ -107,7 +107,18 @@ const TABLAS_TENANT_SCOPED = Object.freeze([
   // 2026-08-03 (task #149 Terceros refactor Fase 1 PR 1.1): schema aditivo
   // para el modelo unificado cliente+proveedor. Coexisten con clientes_cc
   // y proveedores hasta Fase 3 cutover. Ver docs/TERCEROS_REFACTOR_PLAN.md.
+  // 2026-08-07 (task #302): las 3 tablas siguen vacías — el refactor está
+  // en pausa y se cerró con la alternativa pragmática `tercero_link`
+  // (siguiente entrada). Ver migration 20260807000000_tercero_link.js.
   'tercero_items',
+  // 2026-08-07 (task #302): link pragmático 1:1 cliente_cc ↔ proveedor
+  // (mismo tercero como cliente Y proveedor). Alternativa mínima al refactor
+  // Terceros completo (Fase 1 mergeada pero pausada). Ver migration
+  // 20260807000000_tercero_link.js.
+  // Orden ASCII (Array.sort() default): `tercero_items` < `tercero_link` <
+  // `tercero_movimientos` porque después del prefijo compartido `tercero_`,
+  // 'i' (0x69) < 'l' (0x6C) < 'm' (0x6D).
+  'tercero_link',
   'tercero_movimientos',
   'terceros',
   'user_capabilities',
