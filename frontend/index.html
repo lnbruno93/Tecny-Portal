@@ -11,10 +11,12 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Tecny" />
 
-    <!-- Icons -->
-    <link rel="icon" href="/favicon.ico" sizes="any" />
-    <link rel="icon" href="/pwa-icon.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon-180x180.png" />
+    <!-- Icons — T azul brand oficial 2026-08-07 (cache-bust ?v=tazul para
+         forzar re-fetch del favicon; browsers cachean por semanas en store
+         aparte del HTML). -->
+    <link rel="icon" href="/favicon.ico?v=tazul" sizes="any" />
+    <link rel="icon" href="/pwa-icon.svg?v=tazul" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon-180x180.png?v=tazul" />
 
     <!-- SEO / Social (UX-1/31 audit 2026-06-22) -->
     <!-- tecnyapp.com es la landing pre-signup. Sin estos tags, los previews
