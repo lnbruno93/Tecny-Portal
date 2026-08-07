@@ -12,13 +12,24 @@ import { render, fireEvent, waitFor, cleanup, configure, within } from '@testing
 import { ToastProvider } from '../contexts/ToastContext';
 import { ConfirmProvider } from './ConfirmModal';
 
-// Fix flakiness histórica en este file (2026-07-12, 2026-07-21 x2):
+// Fix flakiness histórica en este file (2026-07-12, 2026-07-21 x2, 2026-08-07):
 // Docker de GH Actions saturado hace que waitFor con default 1000ms/findBy
 // no alcancen a re-renderizar tras mock async + setState. Local pasa < 40ms.
 // Subimos asyncUtilTimeout global a 8000ms para TODO este file — todos los
-// waitFor/findBy sin timeout explícito heredan este límite. 8s es margen
-// ancho pero no eterno: si un test tarda más de 8s, hay bug real.
+// waitFor/findBy sin timeout explícito heredan este límite.
 configure({ asyncUtilTimeout: 8000 });
+
+// 2026-08-07 (task #330): fix del flake que volvió post-PR #1037. Root cause
+// era un MISMATCH entre 2 timeouts:
+//   · asyncUtilTimeout (RTL): 8000ms — cuánto espera findBy/waitFor internamente
+//   · testTimeout (Vitest default): 5000ms — cuándo Vitest mata el test entero
+// Si un findBy tarda >5s (CI saturado), RTL sigue esperando pero Vitest ya lo
+// mató. Los tests con múltiples findBy encadenados (disable/regenerate/setup
+// pendiente flows) siempre pierden en CI lento. El fix del 07-21 subió el
+// asyncUtilTimeout pero olvidó subir el testTimeout, dejando el bug latente.
+// Ahora ambos alineados: testTimeout > asyncUtilTimeout para que RTL termine
+// su work antes de que Vitest tire del enchufe.
+vi.setConfig({ testTimeout: 20000, hookTimeout: 20000 });
 
 vi.mock('../lib/api', () => ({
   twoFa: {
