@@ -51,12 +51,11 @@ const canonical = new URL(Astro.url.pathname, Astro.site).toString();
     {noindex && <meta name="robots" content="noindex, nofollow" />}
 
     {/* Favicons — T azul brand oficial (2026-08-07).
-        Cache-bust `?v=tazul` para forzar re-fetch — los browsers cachean
-        favicons por semanas en un store aparte del HTML/JS cache, y ni
-        Cmd+Shift+R ni "Clear Site Data" siempre lo purgan. Cambiar el
-        URL fuerza fetch fresh porque el browser ve un recurso "nuevo". */}
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=tazul" />
-    <link rel="icon" href="/favicon.ico?v=tazul" />
+        Path NUEVO `/icon.svg` (no `/favicon.svg`) porque el SW del portal
+        (Vite PWA) precachea `/favicon.svg` en un ámbito compartido — usar
+        un nuevo path bypassa el SW cache y el server devuelve la T azul.
+        favicon.ico legacy queda por default lookup pero no lo linkeamos. */}
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
 
     {/* Open Graph (Facebook, LinkedIn) */}
     <meta property="og:type" content="website" />

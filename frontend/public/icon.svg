@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Tecny Admin favicon — 2026-08-07.
+  Recreación del asset original (pasado por Lucas): cuadrado con gradiente
+  azul + "T" blanca centrada de terminales redondeadas. SVG (no PNG/ICO)
+  porque:
+    · Escala crisp desde 16×16 hasta 512×512 sin blur.
+    · ~500 bytes vs .ico multi-size ~5KB.
+    · Todos los browsers modernos (Chrome/Safari/Firefox/Arc/Edge 2021+)
+      lo aceptan como favicon vía <link rel="icon" type="image/svg+xml">.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 720">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3EB2E6"/>
+      <stop offset="100%" stop-color="#1A83C7"/>
+    </linearGradient>
+  </defs>
+  <rect width="720" height="720" fill="url(#bg)"/>
+  <!-- "T" con strokes redondeados. Un solo <path> para bar+stem, más eficiente
+       que 2 <line>s + evita el issue del stem asomando arriba del bar. -->
+  <g stroke="#ffffff" stroke-width="72" stroke-linecap="round" fill="none">
+    <line x1="240" y1="245" x2="480" y2="245"/>
+    <line x1="360" y1="245" x2="360" y2="510"/>
+  </g>
+</svg>
