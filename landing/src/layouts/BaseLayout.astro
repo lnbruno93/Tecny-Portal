@@ -52,10 +52,17 @@ const canonical = new URL(Astro.url.pathname, Astro.site).toString();
 
     {/* Favicons — T azul brand oficial (2026-08-07).
         Path NUEVO `/icon.svg` (no `/favicon.svg`) porque el SW del portal
-        (Vite PWA) precachea `/favicon.svg` en un ámbito compartido — usar
-        un nuevo path bypassa el SW cache y el server devuelve la T azul.
-        favicon.ico legacy queda por default lookup pero no lo linkeamos. */}
-    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+        (Vite PWA) precachea `/favicon.svg` en un ámbito compartido.
+
+        3 declaraciones para que Arc/Safari/Chrome renderee la T azul en
+        el tab sin caer al favicon histórico cacheado del sitio (bug
+        reportado por Lucas 2026-08-07 — landing con SOLO 1 link icon
+        mostraba el logo Astro cacheado; portal con 3 declaraciones
+        funcionaba OK). Mirror del pattern que ya funciona en el portal
+        (frontend/index.html) y admin (admin-frontend/index.html). */}
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" sizes="any" />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon-180x180.png" />
 
     {/* Open Graph (Facebook, LinkedIn) */}
     <meta property="og:type" content="website" />
