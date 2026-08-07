@@ -121,6 +121,7 @@ router.get('/site-config', async (_req, res) => {
         whatsapp:           c.contact?.whatsapp          || null,
         whatsapp_display:   c.contact?.whatsapp_display  || null,
         address:            c.contact?.address           || null,
+        address_map_url:    c.contact?.address_map_url   || null,
         instagram_handle:   c.contact?.instagram_handle  || null,
         instagram_url:      c.contact?.instagram_url     || null,
       },
@@ -159,7 +160,8 @@ router.get('/site-config', async (_req, res) => {
     res.status(200).json({
       contact: {
         email: null, whatsapp: null, whatsapp_display: null,
-        address: null, instagram_handle: null, instagram_url: null,
+        address: null, address_map_url: null,
+        instagram_handle: null, instagram_url: null,
       },
       testimonials: [], // fail-open: landing usa fallback hardcodeado
       // Fase 5 fail-open: arrays vacíos + objects null → landing usa fallbacks.

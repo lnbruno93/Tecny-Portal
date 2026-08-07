@@ -184,6 +184,32 @@ describe('PATCH /api/super-admin/site-config', () => {
     expect(r.status).toBe(400);
   });
 
+  // 2026-08-07: address_map_url editable + GET público lo expone.
+  it('acepta contact_address_map_url válido y lo expone en /site-config público', async () => {
+    const mapUrl = 'https://maps.google.com/?q=-34.5,-58.5';
+    const r = await request(app).patch('/api/super-admin/site-config').set(auth())
+      .send({ contact_address_map_url: mapUrl });
+    expect(r.status).toBe(200);
+    expect(r.body.contact_address_map_url).toBe(mapUrl);
+
+    const pub = await request(app).get('/api/public/site-config');
+    expect(pub.status).toBe(200);
+    expect(pub.body.contact.address_map_url).toBe(mapUrl);
+  });
+
+  it('rechaza contact_address_map_url con esquema javascript: (XSS) → 400', async () => {
+    const r = await request(app).patch('/api/super-admin/site-config').set(auth())
+      .send({ contact_address_map_url: 'javascript:alert(1)' });
+    expect(r.status).toBe(400);
+  });
+
+  it('contact_address_map_url string vacío se normaliza a null', async () => {
+    const r = await request(app).patch('/api/super-admin/site-config').set(auth())
+      .send({ contact_address_map_url: '' });
+    expect(r.status).toBe(200);
+    expect(r.body.contact_address_map_url).toBeNull();
+  });
+
   it('rechaza body {} — al menos un campo requerido → 400', async () => {
     const r = await request(app).patch('/api/super-admin/site-config').set(auth())
       .send({});

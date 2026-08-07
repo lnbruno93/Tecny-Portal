@@ -215,6 +215,7 @@ const updateComprobanteFooterSchema = z.object({
 //     Sin `+` ni espacios — el frontend lo formatea para display.
 //   · whatsapp_display: string libre para mostrar (ej. "+54 9 11 2616-5007").
 //   · address: string libre max 200.
+//   · address_map_url: URL válida http/https (Google Maps), max 500.
 //   · instagram_handle: sin @, alfanumérico + `.` + `_`, max 30 (patrón real IG).
 //   · instagram_url: URL válida http/https.
 const CONTACT_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -378,6 +379,19 @@ const updateSiteLandingContactSchema = z.object({
     // ejecutaría en cada visitante de la landing. Refine restringe a
     // esquemas seguros (http, https). Ver Landing.jsx: fallback rendered
     // como <span> si el URL no es http(s).
+    z.string().trim().url('URL inválida').max(500).refine(
+      (u) => /^https?:\/\//i.test(u),
+      { message: 'URL debe empezar con http:// o https://' }
+    ),
+    z.literal(''),
+    z.null(),
+  ]).optional(),
+  // 2026-08-07 (feedback Lucas): link a Google Maps del negocio en la card
+  // Ubicación. Misma protección XSS que instagram_url — el hidrator del
+  // landing solo acepta href http(s), pero defense-in-depth acá tampoco
+  // molesta. Max 500 porque los URLs de Google Maps con lat/lng codificado
+  // pueden ser largos (~300-400 chars típico).
+  contact_address_map_url: z.union([
     z.string().trim().url('URL inválida').max(500).refine(
       (u) => /^https?:\/\//i.test(u),
       { message: 'URL debe empezar con http:// o https://' }

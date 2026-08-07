@@ -47,6 +47,8 @@ const CONTACT_FIELDS = [
     hint: 'Cómo se muestra al usuario en la landing.' },
   { key: 'contact_address',          label: 'Dirección / ubicación', placeholder: 'Av. del Libertador 6299, Buenos Aires', type: 'text',
     hint: 'Texto libre. Aparece en la card de Contacto y en el footer.' },
+  { key: 'contact_address_map_url',  label: 'Link a Google Maps', placeholder: 'https://maps.google.com/?q=...', type: 'url',
+    hint: 'Opcional. Si lo cargás, la card Ubicación de la landing se vuelve clickeable y abre Maps en una pestaña nueva.' },
   { key: 'contact_instagram_handle', label: 'Instagram (handle sin @)', placeholder: 'tecny.app', type: 'text',
     hint: 'Solo el nombre, sin @. Ej: tecny.app' },
   { key: 'contact_instagram_url',    label: 'Instagram (URL completa)', placeholder: 'https://instagram.com/tecny.app', type: 'url',

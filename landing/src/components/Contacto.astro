@@ -17,6 +17,10 @@ const FALLBACK_CONTACT = {
   whatsapp: '5491126165007',
   whatsapp_display: '+54 9 11 2616-5007',
   address: 'Buenos Aires, Argentina',
+  // 2026-08-07: address_map_url null por default. Cuando el admin lo carga,
+  // el card Ubicación se vuelve clickeable (hidrator lo up-grade de div a
+  // link real vía el atributo href + target/rel).
+  address_map_url: null as string | null,
   instagram_handle: 'tecny.app',
   instagram_url: 'https://instagram.com/tecny.app',
 };
@@ -95,8 +99,21 @@ const initialWa = buildWaLink(
         </div>
       </a>
 
-      {/* Ubicación — info-only */}
-      <div class="contact-card contact-card-info" aria-label="Ubicación">
+      {/* Ubicación — condicionalmente clickeable a Google Maps.
+          Server-side: si NO hay address_map_url en el fallback, renderizamos
+          un <a> sin href (HTML "placeholder link" — no clickable, sin cursor
+          pointer via CSS). Si HAY URL, ya es un link real.
+          Client-side: el hidrator promueve el <a> a link real si el backend
+          devuelve una address_map_url válida (http/https) — o degrada a
+          placeholder si el URL es inválido o el admin lo borró. */}
+      <a
+        id="contact-address-card"
+        {...(FALLBACK_CONTACT.address_map_url
+          ? { href: FALLBACK_CONTACT.address_map_url, target: '_blank', rel: 'noopener noreferrer' }
+          : {})}
+        class={`contact-card ${FALLBACK_CONTACT.address_map_url ? '' : 'contact-card-info'}`}
+        aria-label="Ubicación"
+      >
         <div class="contact-icon" aria-hidden="true">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
@@ -106,9 +123,11 @@ const initialWa = buildWaLink(
         <div class="contact-body">
           <div class="contact-label">Ubicación</div>
           <div class="contact-value" id="contact-address">{FALLBACK_CONTACT.address}</div>
-          <div class="contact-hint">Reuniones a coordinar</div>
+          <div class="contact-hint" id="contact-address-hint">
+            {FALLBACK_CONTACT.address_map_url ? 'Ver en Google Maps' : 'Reuniones a coordinar'}
+          </div>
         </div>
-      </div>
+      </a>
     </div>
   </div>
 </section>
@@ -152,19 +171,59 @@ const initialWa = buildWaLink(
       // Instagram — XSS defensivo: solo aceptamos http(s). Otro schema (ej.
       // javascript:) queda con el fallback. Backend valida con Zod pero
       // defense-in-depth acá tampoco molesta (audit 2026-07-26).
-      if (c.instagram_url && /^https?:\/\//i.test(c.instagram_url)) {
-        const ig = document.getElementById('contact-instagram') as HTMLAnchorElement | null;
-        if (ig) ig.href = c.instagram_url;
+      //
+      // 2026-08-07: agregado fallback defensivo — si el URL viene incompleto
+      // (ej. "https://instagram.com/" sin el handle, bug real reportado por
+      // Lucas donde el admin cargó handle y borró el URL), construimos el
+      // URL desde el handle. La regla: el URL debe contener el handle
+      // (case-insensitive). Si no matchea o está vacío pero hay handle,
+      // reconstruimos: `https://instagram.com/{handle}`.
+      const ig = document.getElementById('contact-instagram') as HTMLAnchorElement | null;
+      const handle = typeof c.instagram_handle === 'string' ? c.instagram_handle.trim() : '';
+      const urlFromServer = typeof c.instagram_url === 'string' ? c.instagram_url.trim() : '';
+      const urlHasHandle = handle && urlFromServer.toLowerCase().includes(handle.toLowerCase());
+      let finalIgUrl: string | null = null;
+      if (urlFromServer && /^https?:\/\//i.test(urlFromServer) && (urlHasHandle || !handle)) {
+        finalIgUrl = urlFromServer;
+      } else if (handle && /^[a-zA-Z0-9._]{1,30}$/.test(handle)) {
+        // Reconstruir desde el handle (regex matchea IG_HANDLE_RE del backend).
+        finalIgUrl = `https://instagram.com/${handle}`;
       }
+      if (ig && finalIgUrl) ig.href = finalIgUrl;
+
       if (c.instagram_handle) {
         const el = document.getElementById('contact-instagram-handle');
         if (el) el.textContent = `@${c.instagram_handle}`;
       }
 
-      // Address
+      // Address (texto)
       if (c.address) {
         const el = document.getElementById('contact-address');
         if (el) el.textContent = c.address;
+      }
+
+      // Address → Google Maps link.
+      // Promocionamos el <a> a link real si viene URL válida http(s).
+      // Si no viene URL, dejamos el <a> sin href (placeholder no clickeable).
+      // XSS defensivo: mismo criterio que instagram_url — solo http(s).
+      const addrCard = document.getElementById('contact-address-card') as HTMLAnchorElement | null;
+      const addrHint = document.getElementById('contact-address-hint');
+      const mapUrl = typeof c.address_map_url === 'string' ? c.address_map_url.trim() : '';
+      if (addrCard) {
+        if (mapUrl && /^https?:\/\//i.test(mapUrl)) {
+          addrCard.href = mapUrl;
+          addrCard.target = '_blank';
+          addrCard.rel = 'noopener noreferrer';
+          addrCard.classList.remove('contact-card-info');
+          if (addrHint) addrHint.textContent = 'Ver en Google Maps';
+        } else {
+          // Admin borró el URL → degradar a placeholder si venía con fallback.
+          addrCard.removeAttribute('href');
+          addrCard.removeAttribute('target');
+          addrCard.removeAttribute('rel');
+          addrCard.classList.add('contact-card-info');
+          if (addrHint) addrHint.textContent = 'Reuniones a coordinar';
+        }
       }
     })
     .catch((err) => reportLandingError(err, { section: 'contact' }))
