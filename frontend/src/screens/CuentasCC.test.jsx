@@ -34,6 +34,18 @@ vi.mock('../lib/api', () => ({
     createMovimiento: vi.fn(), deleteMovimiento: vi.fn(),
   },
   cajas: { listCajas: vi.fn().mockResolvedValue([]) },
+  // 2026-08-07 (task #302): CuentasCC ahora importa `terceroLink` para el
+  // badge "También es proveedor". Mock devuelve link=null por default —
+  // tests que necesiten el link resuelto lo sobrescriben inline.
+  terceroLink: {
+    create:       vi.fn().mockResolvedValue({ id: 1, cliente_cc_id: 1, proveedor_id: 1 }),
+    byCliente:    vi.fn().mockResolvedValue({ link: null, contraparte: null, saldo_cliente_usd: 0, saldo_neto_usd: 0 }),
+    byProveedor:  vi.fn().mockResolvedValue({ link: null, contraparte: null, saldo_proveedor_usd: 0, saldo_neto_usd: 0 }),
+    delete:       vi.fn().mockResolvedValue({ ok: true }),
+  },
+  proveedores: {
+    list: vi.fn().mockResolvedValue({ data: [] }),
+  },
   // PR-X3: el Content de Conciliación requiere redB2b mocked.
   redB2b: {
     partnerships: {

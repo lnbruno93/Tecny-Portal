@@ -174,12 +174,17 @@ router.get('/by-cliente/:cliente_cc_id', async (req, res, next) => {
       const saldoCliente = Number(cliRes.rows[0].saldo) || 0;
 
       // Link activo (si hay).
+      // 2026-08-07: `AND tenant_id = $2` defensivo. El RLS ya filtra en
+      // prod (NOSUPERUSER FORCE RLS), pero en entornos de test que corren
+      // como superuser (BYPASSRLS efectivo) NO aplica. Este predicate
+      // cierra el gap y agrega defense-in-depth. Los tests de aislamiento
+      // cross-tenant fallaban por esto.
       const linkRes = await client.query(
         `SELECT id, cliente_cc_id, proveedor_id, notas, created_at, created_by
            FROM tercero_link
-          WHERE cliente_cc_id = $1 AND deleted_at IS NULL
+          WHERE cliente_cc_id = $1 AND tenant_id = $2 AND deleted_at IS NULL
           LIMIT 1`,
-        [cliId]
+        [cliId, req.tenantId]
       );
       const link = linkRes.rows[0] || null;
 
@@ -270,12 +275,13 @@ router.get('/by-proveedor/:proveedor_id', async (req, res, next) => {
       if (provRes.rows.length === 0) return { notFound: true };
       const saldoProv = Number(provRes.rows[0].saldo_usd) || 0;
 
+      // Ver comment del by-cliente sobre `AND tenant_id = $2` defensivo.
       const linkRes = await client.query(
         `SELECT id, cliente_cc_id, proveedor_id, notas, created_at, created_by
            FROM tercero_link
-          WHERE proveedor_id = $1 AND deleted_at IS NULL
+          WHERE proveedor_id = $1 AND tenant_id = $2 AND deleted_at IS NULL
           LIMIT 1`,
-        [provId]
+        [provId, req.tenantId]
       );
       const link = linkRes.rows[0] || null;
 
@@ -345,11 +351,12 @@ router.delete('/:id', async (req, res, next) => {
       [String(req.tenantId)]
     );
 
+    // 2026-08-07: `AND tenant_id = $2` defensivo — ver comment de by-cliente.
     const { rows: before } = await client.query(
       `SELECT * FROM tercero_link
-        WHERE id = $1 AND deleted_at IS NULL
+        WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
         FOR UPDATE`,
-      [id]
+      [id, req.tenantId]
     );
     if (!before[0]) {
       await client.query('ROLLBACK');
@@ -358,9 +365,9 @@ router.delete('/:id', async (req, res, next) => {
 
     const { rows } = await client.query(
       `UPDATE tercero_link SET deleted_at = NOW()
-        WHERE id = $1
+        WHERE id = $1 AND tenant_id = $2
         RETURNING id, cliente_cc_id, proveedor_id, deleted_at`,
-      [id]
+      [id, req.tenantId]
     );
 
     await audit(client, 'tercero_link', 'DELETE', id, {
