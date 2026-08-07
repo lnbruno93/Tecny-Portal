@@ -23,6 +23,19 @@ import { fmtDateTime } from '../lib/format.js';
 // Componente aparte porque tiene CRUD granular row-by-row (no comparte el
 // diff-tracking de esta pantalla) y encapsula el modal de upload.
 import TrustedCompaniesCard from '../components/TrustedCompaniesCard.jsx';
+// 2026-08-06 CMS Landing Fase 5: 5 cards adicionales editables (Módulos,
+// Cómo funciona, Tus datos, Canje, Cotizador). Extraídas a componente
+// aparte para no crecer este file arriba de ~1300 líneas — patrón que ya
+// usamos con TrustedCompaniesCard (Fase 4). A diferencia de aquella, estas
+// SÍ comparten el diff-tracking + PATCH atómico (viven en site_landing_config
+// content JSONB), así que reciben value/onChange controlados y el save vive
+// acá abajo en `guardar()`.
+import {
+  ModulosCard, ComoFuncionaCard, TusDatosCard, CanjeCard, CotizadorCard,
+  sameJSON as sameFase5,
+  sanitizeModulos, sanitizeComoFunciona, sanitizeTusDatos,
+  sanitizeCanje, sanitizeCotizador,
+} from '../components/SitioPublicoFase5Cards.jsx';
 
 // Campos de contacto en el orden que el operador espera verlos en el form.
 const CONTACT_FIELDS = [
@@ -118,6 +131,20 @@ export default function SitioPublico() {
   const [ctaOriginal, setCtaOriginal]   = useState(EMPTY_CTA);
   const [faq, setFaq]                   = useState([]);
   const [faqOriginal, setFaqOriginal]   = useState([]);
+  // 2026-08-06 Fase 5: 5 nuevas secciones. Arrays (modulos, como_funciona,
+  // tus_datos) default a []; objetos (canje, cotizador) default a null hasta
+  // que el fetch traiga algo. El fallback en la landing se ocupa cuando el
+  // admin deja vacío.
+  const [modulos, setModulos]                     = useState([]);
+  const [modulosOriginal, setModulosOriginal]     = useState([]);
+  const [comoFunciona, setComoFunciona]                 = useState([]);
+  const [comoFuncionaOriginal, setComoFuncionaOriginal] = useState([]);
+  const [tusDatos, setTusDatos]                 = useState([]);
+  const [tusDatosOriginal, setTusDatosOriginal] = useState([]);
+  const [canje, setCanje]                 = useState({ steps: [], catalogo: [] });
+  const [canjeOriginal, setCanjeOriginal] = useState({ steps: [], catalogo: [] });
+  const [cotizador, setCotizador]                 = useState({ productos: [], recargos: {} });
+  const [cotizadorOriginal, setCotizadorOriginal] = useState({ productos: [], recargos: {} });
   const [meta, setMeta]         = useState({ updated_at: null });
   const [loading, setLoading]   = useState(true);
   const [saving, setSaving]     = useState(false);
@@ -152,6 +179,31 @@ export default function SitioPublico() {
       const nFaq = Array.isArray(row?.faq) ? row.faq : [];
       setFaq(nFaq);
       setFaqOriginal(nFaq);
+      // 2026-08-06 Fase 5: 5 nuevas secciones. Backend devuelve arrays
+      // vacíos y objetos null-safe (ver response shape en superAdmin.js
+      // PATCH /site-config).
+      const nModulos = Array.isArray(row?.modulos) ? row.modulos : [];
+      setModulos(nModulos);
+      setModulosOriginal(nModulos);
+      const nComo = Array.isArray(row?.como_funciona) ? row.como_funciona : [];
+      setComoFunciona(nComo);
+      setComoFuncionaOriginal(nComo);
+      const nTus = Array.isArray(row?.tus_datos) ? row.tus_datos : [];
+      setTusDatos(nTus);
+      setTusDatosOriginal(nTus);
+      const nCanje = row?.canje && typeof row.canje === 'object'
+        ? { steps: Array.isArray(row.canje.steps) ? row.canje.steps : [],
+            catalogo: Array.isArray(row.canje.catalogo) ? row.canje.catalogo : [] }
+        : { steps: [], catalogo: [] };
+      setCanje(nCanje);
+      setCanjeOriginal(nCanje);
+      const nCotiz = row?.cotizador && typeof row.cotizador === 'object'
+        ? { productos: Array.isArray(row.cotizador.productos) ? row.cotizador.productos : [],
+            recargos: row.cotizador.recargos && typeof row.cotizador.recargos === 'object'
+              ? row.cotizador.recargos : {} }
+        : { productos: [], recargos: {} };
+      setCotizador(nCotiz);
+      setCotizadorOriginal(nCotiz);
       setMeta({ updated_at: row?.updated_at || null });
 
       // Cargar status en paralelo — no bloquea si falla (feature no crítica).
@@ -180,18 +232,34 @@ export default function SitioPublico() {
   const testimonialsDirty = !sameTestimonials(testimonials, testimonialsOriginal);
   const faqDirty = !sameFaq(faq, faqOriginal);
   const googleEnabledDirty = googleEnabled !== googleEnabledOriginal;
+  // 2026-08-06 Fase 5: dirty por campo (comparación deep-equal por serialización).
+  const modulosDirty       = !sameFase5(modulos, modulosOriginal);
+  const comoFuncionaDirty  = !sameFase5(comoFunciona, comoFuncionaOriginal);
+  const tusDatosDirty      = !sameFase5(tusDatos, tusDatosOriginal);
+  const canjeDirty         = !sameFase5(canje, canjeOriginal);
+  const cotizadorDirty     = !sameFase5(cotizador, cotizadorOriginal);
   const isDirty = dirtyContactKeys.length > 0
     || dirtyHeroKeys.length > 0
     || dirtyCtaKeys.length > 0
     || testimonialsDirty
     || faqDirty
-    || googleEnabledDirty;
+    || googleEnabledDirty
+    || modulosDirty
+    || comoFuncionaDirty
+    || tusDatosDirty
+    || canjeDirty
+    || cotizadorDirty;
   const totalChanges = dirtyContactKeys.length
     + dirtyHeroKeys.length
     + dirtyCtaKeys.length
     + (testimonialsDirty ? 1 : 0)
     + (faqDirty ? 1 : 0)
-    + (googleEnabledDirty ? 1 : 0);
+    + (googleEnabledDirty ? 1 : 0)
+    + (modulosDirty ? 1 : 0)
+    + (comoFuncionaDirty ? 1 : 0)
+    + (tusDatosDirty ? 1 : 0)
+    + (canjeDirty ? 1 : 0)
+    + (cotizadorDirty ? 1 : 0);
 
   async function guardar() {
     if (!isDirty) return;
@@ -217,6 +285,14 @@ export default function SitioPublico() {
         });
       }
       if (googleEnabledDirty) patch.google_reviews_enabled = googleEnabled;
+      // 2026-08-06 Fase 5: sanitizers strip _tempId + campos vacíos +
+      // coercen tipos (usd string→number). Ver comentarios en el propio
+      // module para las reglas concretas de cada uno.
+      if (modulosDirty)       patch.modulos       = sanitizeModulos(modulos);
+      if (comoFuncionaDirty)  patch.como_funciona = sanitizeComoFunciona(comoFunciona);
+      if (tusDatosDirty)      patch.tus_datos     = sanitizeTusDatos(tusDatos);
+      if (canjeDirty)         patch.canje         = sanitizeCanje(canje);
+      if (cotizadorDirty)     patch.cotizador     = sanitizeCotizador(cotizador);
       const updated = await adminApi.updateSiteConfig(patch);
       const nContact = CONTACT_FIELDS.reduce((acc, f) => {
         acc[f.key] = updated?.[f.key] ?? '';
@@ -240,6 +316,32 @@ export default function SitioPublico() {
       const nFaq = Array.isArray(updated?.faq) ? updated.faq : [];
       setFaq(nFaq);
       setFaqOriginal(nFaq);
+      // 2026-08-06 Fase 5: refresh de las 5 secciones nuevas post-save.
+      // Server devolvió los arrays/objects finales (con UUIDs generados
+      // para items nuevos) — los seteamos como estado + originales para
+      // que el diff quede a 0.
+      const nModulos = Array.isArray(updated?.modulos) ? updated.modulos : [];
+      setModulos(nModulos);
+      setModulosOriginal(nModulos);
+      const nComo = Array.isArray(updated?.como_funciona) ? updated.como_funciona : [];
+      setComoFunciona(nComo);
+      setComoFuncionaOriginal(nComo);
+      const nTus = Array.isArray(updated?.tus_datos) ? updated.tus_datos : [];
+      setTusDatos(nTus);
+      setTusDatosOriginal(nTus);
+      const nCanje2 = updated?.canje && typeof updated.canje === 'object'
+        ? { steps: Array.isArray(updated.canje.steps) ? updated.canje.steps : [],
+            catalogo: Array.isArray(updated.canje.catalogo) ? updated.canje.catalogo : [] }
+        : { steps: [], catalogo: [] };
+      setCanje(nCanje2);
+      setCanjeOriginal(nCanje2);
+      const nCotiz2 = updated?.cotizador && typeof updated.cotizador === 'object'
+        ? { productos: Array.isArray(updated.cotizador.productos) ? updated.cotizador.productos : [],
+            recargos: updated.cotizador.recargos && typeof updated.cotizador.recargos === 'object'
+              ? updated.cotizador.recargos : {} }
+        : { productos: [], recargos: {} };
+      setCotizador(nCotiz2);
+      setCotizadorOriginal(nCotiz2);
       setMeta({ updated_at: updated?.updated_at || null });
       setSavedMsg('Guardado. Los cambios aparecen en tecnyapp.com en máx. 5 minutos.');
       setTimeout(() => setSavedMsg(null), 6000);
@@ -268,6 +370,12 @@ export default function SitioPublico() {
     setHero(heroOriginal);
     setCta(ctaOriginal);
     setFaq(faqOriginal);
+    // 2026-08-06 Fase 5: rollback las 5 secciones nuevas.
+    setModulos(modulosOriginal);
+    setComoFunciona(comoFuncionaOriginal);
+    setTusDatos(tusDatosOriginal);
+    setCanje(canjeOriginal);
+    setCotizador(cotizadorOriginal);
     setError(null);
   }
 
@@ -744,6 +852,17 @@ export default function SitioPublico() {
               )}
             </div>
           </Card>
+
+          {/* ── SECCIONES FASE 5 (2026-08-06) ──
+              Módulos + Cómo funciona + Tus datos + Canje + Cotizador. Todas
+              usan el mismo diff-tracking + PATCH del batch de arriba. El
+              orden matcha el orden visual de la landing (top→bottom) para
+              que el operador encuentre las secciones donde las espera. */}
+          <ModulosCard        value={modulos}      original={modulosOriginal}      onChange={setModulos}      saving={saving} />
+          <ComoFuncionaCard   value={comoFunciona} original={comoFuncionaOriginal} onChange={setComoFunciona} saving={saving} />
+          <TusDatosCard       value={tusDatos}     original={tusDatosOriginal}     onChange={setTusDatos}     saving={saving} />
+          <CanjeCard          value={canje}        original={canjeOriginal}        onChange={setCanje}        saving={saving} />
+          <CotizadorCard      value={cotizador}    original={cotizadorOriginal}    onChange={setCotizador}    saving={saving} />
 
           {/* ── SECCIÓN EMPRESAS QUE CONFIARON (Fase 4, 2026-07-18) ──
               Card autónoma con su propio CRUD granular row-by-row.
