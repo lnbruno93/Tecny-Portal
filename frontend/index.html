@@ -11,11 +11,13 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Tecny" />
 
-    <!-- Icons — T azul brand oficial 2026-08-07 (cache-bust ?v=tazul para
-         forzar re-fetch del favicon; browsers cachean por semanas en store
-         aparte del HTML). -->
-    <link rel="icon" href="/favicon.ico?v=tazul" sizes="any" />
-    <link rel="icon" href="/pwa-icon.svg?v=tazul" type="image/svg+xml" />
+    <!-- Icons — T azul brand oficial 2026-08-07.
+         Path NUEVO `/icon.svg` (no `/favicon.svg`) porque el SW viejo del
+         portal (Vite PWA) precachea el `/favicon.svg` y lo intercepta,
+         devolviendo la versión vieja aunque el server ya sirve la nueva.
+         Al usar un path que el SW viejo NO tiene en precache, el request
+         pasa al network y el server devuelve la T azul. -->
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon-180x180.png?v=tazul" />
 
     <!-- SEO / Social (UX-1/31 audit 2026-06-22) -->
