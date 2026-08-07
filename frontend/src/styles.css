@@ -5219,3 +5219,63 @@ body.modal-open { overflow: hidden; }
 .charts-row + .charts-row {
   margin-top: 40px;
 }
+
+/* ─── task #302 (2026-08-07): LinkTerceroModal picker list ────────── */
+/* Lista scrolleable con matches en el modal Vincular tercero. Estilo
+   consistente con .u-dropdown-abs pero embebido en el body del modal
+   (no absoluto). Alto máximo 240px para que 6-8 items sean visibles
+   sin scroll y +N genere scroll interno. */
+.u-link-tercero-list {
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.u-link-tercero-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+.u-link-tercero-item:hover {
+  background: var(--surface-2, var(--surface));
+}
+.u-link-tercero-item:last-child {
+  border-bottom: 0;
+}
+.u-link-tercero-item-selected {
+  background: var(--accent-soft, rgba(59,130,246,0.12));
+  color: var(--accent, #3b82f6);
+  font-weight: 600;
+}
+
+/* Badge del panel "también es proveedor / también es cliente" en la
+   ficha CC y en la ficha Proveedores. Layout compacto en 1 fila con
+   saldo neto destacado + botones "Ver otra ficha" y "Desvincular". */
+.u-tercero-link-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  margin-top: 6px;
+  border: 1px solid var(--accent, #3b82f6);
+  background: var(--accent-soft, rgba(59,130,246,0.08));
+  border-radius: 6px;
+  font-size: 12px;
+}
+.u-tercero-link-panel-neto {
+  font-family: var(--mono, monospace);
+  font-weight: 700;
+  font-size: 13px;
+}
