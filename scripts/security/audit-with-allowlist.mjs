@@ -91,6 +91,28 @@ const ALLOWLIST = [
     addedAt: '2026-08-03',
     expiresAt: '2026-11-03', // 3 meses; alinear con el resto de allowlist en la próxima re-evaluación
   },
+  {
+    // 2026-08-07: publicado hoy, bloqueó CI del PR #1045 (fix flake TwoFaSection).
+    // dompurify: IN_PLACE hook removal deja un subtree "detached" ejecutable → XSS.
+    // Usamos dompurify en 2 lugares (search+filter en Astro landing + purify.es en
+    // el bundle Vite del portal cliente). Ambos usan dompurify default config
+    // (no custom hooks IN_PLACE) — la superficie explotable requiere agregar y
+    // luego remover un hook durante el mismo sanitize, cosa que NO hacemos.
+    // Non-explotable en nuestra arquitectura.
+    //
+    // Fix upstream disponible en dompurify@3.2.7 (semver-minor) — dependabot lo
+    // va a levantar en el próximo pass. Allowlist temporal 3 meses.
+    advisoryId: 'GHSA-55q2-fjhq-7xh7',
+    title: 'DOMPurify: IN_PLACE hook removal leaves a detached subtree executable, causing XSS',
+    reason:
+      'dompurify se usa en el bundle del portal cliente (purify.es via imports) y en la ' +
+      'landing Astro — ambos usan la config default sin custom hooks IN_PLACE. La ' +
+      'superficie explotable requiere agregar+remover hooks durante el mismo sanitize ' +
+      'call, patrón que NO usamos. Fix upstream disponible en dompurify@3.2.7 — ' +
+      'dependabot lo va a bumpear en el próximo pass.',
+    addedAt: '2026-08-07',
+    expiresAt: '2026-11-07', // 3 meses; expira antes del pass regular quarterly
+  },
 ];
 
 // ── Main ─────────────────────────────────────────────────────────────────
